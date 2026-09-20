@@ -4,106 +4,133 @@
 <meta charset="utf-8">
 <title>Semu Bezel Editor</title>
 <style>
-  :root { --bg: #16171a; --panel: #1f2126; --line: #2c2f36; --text: #e8e8e8; --muted: #9aa0aa; --accent: #ffb454; }
-  * { box-sizing: border-box; }
+  :root { --bg: #1c1c1e; --panel: rgba(36,36,38,.92); --line: rgba(255,255,255,.08); --line-strong: rgba(255,255,255,.14); --text: #f2f2f7; --muted: #98989f; --accent: #0a84ff; --accent-soft: rgba(10,132,255,.18); --radius: 10px; }
+  * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
   html, body { height: 100%; margin: 0; }
-  body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; display: grid; grid-template-columns: 320px 1fr; grid-template-rows: 100%; }
-  aside { background: var(--panel); border-right: 1px solid var(--line); overflow: auto; padding: 10px; }
-  main { position: relative; overflow: hidden; }
+  body { background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system, "SF Pro Text", "Helvetica Neue", Inter, system-ui, sans-serif; display: grid; grid-template-rows: 46px 1fr; grid-template-columns: 280px 1fr 300px; grid-template-areas: "bar bar bar" "layers view props"; user-select: none; }
+  header { grid-area: bar; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: var(--panel); border-bottom: 1px solid var(--line); backdrop-filter: blur(20px); }
+  header .title { font-weight: 600; letter-spacing: .01em; margin-right: 6px; }
+  header .spacer { flex: 1; }
+  .seg { display: inline-flex; background: rgba(255,255,255,.06); border-radius: 8px; padding: 2px; gap: 2px; }
+  .seg button { border: 0; background: transparent; color: var(--text); padding: 4px 10px; border-radius: 6px; font: inherit; cursor: pointer; }
+  .seg button:hover { background: rgba(255,255,255,.08); }
+  .seg button.on { background: rgba(255,255,255,.16); }
+  .seg button:disabled { opacity: .35; cursor: default; }
+  button.primary { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 6px 14px; font: inherit; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+  button.primary:hover { filter: brightness(1.1); }
+  select, input[type=number], input[type=text] { font: inherit; color: var(--text); background: rgba(0,0,0,.28); border: 1px solid var(--line-strong); border-radius: 7px; padding: 5px 8px; outline: none; }
+  select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  input[type=number] { width: 72px; text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=color] { width: 28px; height: 22px; border: 1px solid var(--line-strong); border-radius: 6px; background: transparent; padding: 0; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); overflow: auto; padding: 12px; }
+  aside.props { grid-area: props; border-right: 0; border-left: 1px solid var(--line); }
+  aside.layers { grid-area: layers; }
+  main { grid-area: view; position: relative; overflow: hidden; background: #111113; }
   canvas { display: block; width: 100%; height: 100%; cursor: default; image-rendering: pixelated; }
-  #hud { position: absolute; left: 10px; top: 10px; background: rgba(20,22,26,.85); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: 12px ui-monospace, monospace; pointer-events: none; white-space: pre; }
-  h1 { font-size: 14px; margin: 0 0 8px; color: var(--muted); }
-  h2 { font-size: 12px; margin: 12px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  select, input, button { font: inherit; color: var(--text); background: #111; border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; }
-  input[type=number] { width: 66px; }
-  button { cursor: pointer; }
-  button.small { padding: 1px 6px; font-size: 11px; }
-  button.primary { background: var(--accent); color: #111; font-weight: 600; border-color: var(--accent); }
-  .row { display: flex; gap: 6px; align-items: center; margin: 4px 0; flex-wrap: wrap; }
-  .layer { display: flex; gap: 6px; align-items: center; padding: 5px 6px; border: 1px solid var(--line); border-radius: 6px; margin: 4px 0; cursor: pointer; background: #1a1c21; }
-  .layer.active { border-color: var(--accent); background: #2a2d35; }
-  .layer .name { flex: 1; font-weight: 600; }
-  .layer .meta { color: var(--muted); font-size: 11px; }
-  .layer.hidden .name { color: var(--muted); font-weight: 400; }
-  .rect { margin: 4px 0; padding: 4px 6px; border-radius: 4px; border: 1px solid transparent; }
-  .rect.active { background: #2a2d35; border-color: var(--line); }
-  .rect .title { font-weight: 600; cursor: pointer; }
-  .sw { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: middle; border: 1px solid #555; }
-  #status { color: var(--muted); margin-top: 8px; min-height: 18px; }
-  kbd { background: #111; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font: 11px ui-monospace, monospace; }
-  .help { color: var(--muted); font-size: 11px; margin-top: 10px; }
+  #hud { position: absolute; left: 12px; bottom: 12px; background: rgba(28,28,30,.85); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; font: 12px ui-monospace, "SF Mono", Menlo, monospace; color: var(--muted); pointer-events: none; white-space: pre; backdrop-filter: blur(12px); }
+  h2 { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 6px 0 8px; }
+  .layer { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; cursor: default; }
+  .layer:hover { background: rgba(255,255,255,.05); }
+  .layer.active { background: var(--accent-soft); }
+  .layer.dragover { box-shadow: 0 -2px 0 var(--accent); }
+  .layer .eye { width: 20px; height: 20px; border: 0; background: transparent; color: var(--text); font-size: 13px; cursor: pointer; border-radius: 5px; opacity: .9; }
+  .layer.hidden .eye { opacity: .3; }
+  .layer.hidden .name { color: var(--muted); }
+  .layer .thumb { width: 44px; height: 26px; border-radius: 4px; background: repeating-conic-gradient(#3a3a3c 0 25%, #2a2a2c 0 50%) 0 0 / 10px 10px; object-fit: contain; flex: none; border: 1px solid var(--line); }
+  .layer .name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .layer .badge { font-size: 10px; color: var(--muted); background: rgba(255,255,255,.06); border-radius: 4px; padding: 1px 5px; }
+  .layer .badge.canvas { color: #fff; background: var(--accent); }
+  .group { background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
+  .group h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  .row label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+  .grid2 label { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: var(--muted); font-size: 12px; }
+  .item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 7px; cursor: default; }
+  .item:hover { background: rgba(255,255,255,.05); }
+  .item.active { background: var(--accent-soft); }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; border: 1px solid rgba(0,0,0,.4); }
+  .muted { color: var(--muted); font-size: 12px; }
+  #status { color: var(--muted); font-size: 12px; min-width: 200px; text-align: right; }
+  #menu { position: fixed; z-index: 10; min-width: 200px; background: rgba(44,44,46,.96); border: 1px solid var(--line-strong); border-radius: 10px; padding: 5px; box-shadow: 0 12px 40px rgba(0,0,0,.5); backdrop-filter: blur(20px); display: none; }
+  #menu div { padding: 6px 10px; border-radius: 6px; cursor: default; display: flex; justify-content: space-between; gap: 12px; }
+  #menu div:hover { background: var(--accent); color: #fff; }
+  #menu .sep { height: 1px; background: var(--line-strong); margin: 4px 6px; padding: 0; }
+  #menu .head { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  #menu .head:hover { background: transparent; color: var(--muted); }
+  kbd { font: 11px ui-monospace, "SF Mono", Menlo, monospace; color: var(--muted); }
 </style>
 </head>
 <body>
-<aside>
-  <h1>Semu bezels</h1>
-  <div class="row"><select id="package" style="flex:1"></select></div>
-  <div class="row"><button id="save" class="primary">Save</button><button id="reset">Reset</button><button id="fit">Fit</button><label><input type="checkbox" id="show-game" checked> test card</label></div>
-  <div id="status"></div>
-  <h2>Layers (top first)</h2>
+<header>
+  <span class="title">Semu Bezels</span>
+  <select id="package"></select>
+  <span class="spacer"></span>
+  <div class="seg"><button id="undo" title="Undo (⌘Z)">↶</button><button id="redo" title="Redo (⇧⌘Z)">↷</button></div>
+  <div class="seg"><button id="fit" title="Fit (F)">Fit</button><button id="zoom-out" title="Zoom out">−</button><button id="zoom-label" title="100% (1)" style="min-width:56px">100%</button><button id="zoom-in" title="Zoom in">+</button></div>
+  <div class="seg"><button id="xray" title="X-ray: see the plate through the cutouts (X)">X-ray</button><button id="show-game" class="on" title="Show the test card in each picture">Test card</button></div>
+  <span id="status"></span>
+  <button id="save" class="primary" title="Save (⌘S)">Save</button>
+</header>
+<aside class="layers">
+  <h2>Layers</h2>
   <div id="layers"></div>
-  <h2>Selection</h2>
-  <div id="selection"></div>
-  <div class="help">
-    Click a layer to select it; drag its box or handles, or type the extents. The <b>canvas</b> radio picks the layer whose pixel grid every rectangle is addressed in.
-    <kbd>arrows</kbd> nudge 1 px, <kbd>shift</kbd> 10 px, <kbd>alt</kbd> resizes. <kbd>wheel</kbd> zooms in integer steps around the cursor (no smoothing), <kbd>space</kbd>+drag or middle button pans, <kbd>1</kbd> = 100%, <kbd>f</kbd> fits.
-    Screens: <span class="sw" style="background:#f0f"></span>opening (tube) <span class="sw" style="background:#0f0"></span>picture (image) <span class="sw" style="background:#0dcff"></span>ring inner <span class="sw" style="background:#fd0"></span>ring outer
-  </div>
+  <div class="muted" style="margin-top:12px">Drag rows to reorder. Right-click a layer for its options. The <span style="font-size:10px;padding:1px 5px;border-radius:4px;background:var(--accent);color:#fff">canvas</span> layer is the pixel grid every rectangle is addressed in.</div>
 </aside>
 <main>
   <canvas id="view"></canvas>
   <div id="hud"></div>
 </main>
+<aside class="props">
+  <h2>Properties</h2>
+  <div id="props"></div>
+  <div class="muted" style="margin-top:14px">
+    <kbd>arrows</kbd> nudge 1 px, <kbd>⇧</kbd> 10 px, <kbd>⌥</kbd> resizes · <kbd>wheel</kbd> zooms in integer steps · <kbd>space</kbd>+drag pans · <kbd>1</kbd> 100% · <kbd>F</kbd> fit · <kbd>X</kbd> x-ray · <kbd>⌘Z</kbd> undo
+  </div>
+</aside>
+<div id="menu"></div>
 <script>
 const ZOOMS = [0.125, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
-const COLORS = { tube: "#ff00ff", image: "#00ff00", inner: "#0dcfff", outer: "#ffdd00", layer: "#ffb454" };
-const NAMES = { tube: "opening", image: "picture", inner: "ring in", outer: "ring out" };
+const COLORS = { tube: "#ff2d92", image: "#30d158", inner: "#64d2ff", outer: "#ffd60a", layer: "#0a84ff" };
+const NAMES = { tube: "opening", image: "picture", inner: "ring inner", outer: "ring outer" };
+const CUTOUTS = "cutouts";
 const canvas = document.getElementById("view");
 const ctx = canvas.getContext("2d");
 const hud = document.getElementById("hud");
-const state = { packages: [], current: null, original: null, images: {}, zoom: 1, ox: 0, oy: 0, selected: null, drag: null, space: false, dirty: false, cursor: null, showGame: true };
+const state = { packages: [], current: null, original: null, images: {}, thumbs: {}, zoom: 1, ox: 0, oy: 0, selected: null, hover: null, drag: null, space: false, dirty: false, cursor: null, showGame: true, xray: false, past: [], future: [] };
 
 function status(text) { document.getElementById("status").textContent = text; }
+function clone(value) { return JSON.parse(JSON.stringify(value)); }
 function layersTopFirst() { return [...state.current.layers].sort((a, b) => b.order - a.order); }
 function layersBottomFirst() { return [...state.current.layers].sort((a, b) => a.order - b.order); }
 function layerById(id) { return state.current.layers.find(l => l.id === id); }
-function screenRect(screen, key) {
-  if (key === "tube" || key === "image") return screen[key];
-  return screen.ring ? screen.ring[key] : null;
-}
+function cutoutsLayer() { return layerById(CUTOUTS); }
+function screenRect(screen, key) { if (key === "tube" || key === "image") return screen[key]; return screen.ring ? screen.ring[key] : null; }
 function setScreenRect(screen, key, r) { if (key === "tube" || key === "image") screen[key] = r; else if (screen.ring) screen.ring[key] = r; }
-function radiusOf(screen, key) {  // corner radius in canvas px for the rects that carry one
+
+// ---- history
+function record() { state.past.push(clone(state.current)); if (state.past.length > 200) state.past.shift(); state.future = []; state.dirty = true; updateHistoryButtons(); }
+function undo() { if (!state.past.length) return; state.future.push(clone(state.current)); state.current = state.past.pop(); state.dirty = true; afterHistory(); }
+function redo() { if (!state.future.length) return; state.past.push(clone(state.current)); state.current = state.future.pop(); state.dirty = true; afterHistory(); }
+function afterHistory() { if (state.selected && state.selected.kind === "screen" && !state.current.screens[state.selected.screen]) state.selected = null; buildLayers(); buildProps(); draw(); updateHistoryButtons(); }
+function updateHistoryButtons() { document.getElementById("undo").disabled = !state.past.length; document.getElementById("redo").disabled = !state.future.length; }
+
+// ---- shapes
+function radiusOf(screen, key) {
   if (key === "tube") return screen.shape ? (screen.shape.radius || 0) * Math.min(screen.tube.w, screen.tube.h) : 0;
   if (key === "inner") return screen.ring ? screen.ring.inner_radius || 0 : 0;
   if (key === "outer") return screen.ring ? screen.ring.outer_radius || 0 : 0;
   return null;
 }
-function exponentOf(screen, key) { return key === "tube" && screen.shape && screen.shape.kind === "squircle" ? Math.max(2, screen.shape.exponent || 4) : 2; }
+function exponentOf(screen) { return screen.shape && screen.shape.kind === "squircle" ? Math.max(2, screen.shape.exponent || 4) : 2; }
 function setRadius(screen, key, px) {
   const r = screenRect(screen, key);
   const clamped = Math.max(0, Math.min(px, Math.min(r.w, r.h) / 2));
   if (key === "tube") { screen.shape = screen.shape || { kind: "rounded", radius: 0, exponent: 4 }; if (screen.shape.kind === "none") screen.shape.kind = "rounded"; screen.shape.radius = Math.round(clamped / Math.min(r.w, r.h) * 10000) / 10000; }
   else if (key === "inner") screen.ring.inner_radius = Math.round(clamped * 10) / 10;
   else if (key === "outer") screen.ring.outer_radius = Math.round(clamped * 10) / 10;
-  state.dirty = true;
 }
-function cornerPath(x, y, w, h, radius, n) {  // superellipse corners: n = 2 is a circle, larger is a squircle
-  const r = Math.max(0, Math.min(radius, Math.min(w, h) / 2));
-  ctx.beginPath();
-  if (r < 0.5) { ctx.rect(x, y, w, h); return; }
-  const corner = (cx, cy, sx, sy, from) => { for (let i = 0; i <= 12; i++) { const t = from + (i / 12) * Math.PI / 2; const c = Math.cos(t), s = Math.sin(t); ctx.lineTo(cx + sx * r * Math.sign(c) * Math.pow(Math.abs(c), 2 / n), cy + sy * r * Math.sign(s) * Math.pow(Math.abs(s), 2 / n)); } };
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y); corner(x + w - r, y + r, 1, 1, -Math.PI / 2);
-  ctx.lineTo(x + w, y + h - r); corner(x + w - r, y + h - r, 1, 1, 0);
-  ctx.lineTo(x + r, y + h); corner(x + r, y + h - r, 1, 1, Math.PI / 2);
-  ctx.lineTo(x, y + r); corner(x + r, y + r, 1, 1, Math.PI);
-  ctx.closePath();
-}
-function radiusHandle(r, radiusPx) {  // the yellow diamond on the top edge, radius px in from the corner
-  const [x0, y0] = toScreen(r.x + radiusPx, r.y);
-  return [x0, y0];
-}
-function bulgeOf(screen, key) {  // how far each edge's middle bows outward, canvas px: {x: left/right edges, y: top/bottom edges}; the ring follows the opening
+function bulgeOf(screen, key) {  // canvas px the edge middles bow outward; the ring follows the opening
   if (key === "image") return null;
   const b = screen.shape && screen.shape.bulge ? screen.shape.bulge : { x: 0, y: 0 };
   if (key === "tube") return { x: b.x || 0, y: b.y || 0 };
@@ -113,16 +140,9 @@ function bulgeOf(screen, key) {  // how far each edge's middle bows outward, can
 function setBulge(screen, axis, px) {
   screen.shape = screen.shape || { kind: "rounded", radius: 0, exponent: 4 };
   screen.shape.bulge = screen.shape.bulge || { x: 0, y: 0 };
-  const limit = Math.min(screen.tube.w, screen.tube.h) / 2;
-  screen.shape.bulge[axis] = Math.round(Math.max(0, Math.min(px, limit)));
-  state.dirty = true;
+  screen.shape.bulge[axis] = Math.round(Math.max(0, Math.min(px, Math.min(screen.tube.w, screen.tube.h) / 2)));
 }
-function bulgeHandles(r, bulge) {  // orange diamonds at the top and right edge middles, pushed out by the bulge
-  const [tx, ty] = toScreen(r.x + r.w / 2, r.y - bulge.y);
-  const [rx, ry] = toScreen(r.x + r.w + bulge.x, r.y + r.h / 2);
-  return { top: [tx, ty], right: [rx, ry] };
-}
-function bulgedPath(x, y, w, h, radius, n, bx, by) {  // the rounded rectangle with every edge bowed outward, most at its middle, none at the corners
+function shapePath(x, y, w, h, radius, n, bx, by) {  // rounded rectangle with every edge bowed outward (most at its middle, none at the corners), screen pixels
   const r = Math.max(0, Math.min(radius, Math.min(w, h) / 2));
   const cx = x + w / 2, cy = y + h / 2, hx = w / 2, hy = h / 2;
   const points = [];
@@ -135,152 +155,249 @@ function bulgedPath(x, y, w, h, radius, n, bx, by) {  // the rounded rectangle w
   ctx.beginPath();
   points.forEach(([px, py], i) => {
     const ux = (px - cx) / hx, uy = (py - cy) / hy;
-    const qx = cx + (px - cx) * (1 + bx / hx * Math.max(0, 1 - uy * uy));
-    const qy = cy + (py - cy) * (1 + by / hy * Math.max(0, 1 - ux * ux));
+    const qx = cx + (px - cx) * (1 + (hx > 0 ? bx / hx : 0) * Math.max(0, 1 - uy * uy));
+    const qy = cy + (py - cy) * (1 + (hy > 0 ? by / hy : 0) * Math.max(0, 1 - ux * ux));
     if (i === 0) ctx.moveTo(qx, qy); else ctx.lineTo(qx, qy);
   });
   ctx.closePath();
 }
+function rectPath(screen, key) {  // one cutout rectangle's outline in screen pixels, with its radius and bulge
+  const r = screenRect(screen, key);
+  const [x0, y0] = toScreen(r.x, r.y), [x1, y1] = toScreen(r.x + r.w, r.y + r.h);
+  const radius = radiusOf(screen, key), bulge = bulgeOf(screen, key) || { x: 0, y: 0 };
+  shapePath(x0, y0, x1 - x0, y1 - y0, (radius || 0) * state.zoom, key === "tube" ? exponentOf(screen) : 2, bulge.x * state.zoom, bulge.y * state.zoom);
+}
+
+// ---- selection helpers
 function selectedRect() {
   const s = state.selected;
   if (!s) return null;
-  if (s.kind === "layer") { const layer = layerById(s.id); return layer.follow === "viewport" ? null : layer.rect; }
-  return screenRect(state.current.screens[s.screen], s.key);
+  if (s.kind === "layer") { const layer = layerById(s.id); return layer && layer.follow !== "viewport" ? layer.rect : null; }
+  const screen = state.current.screens[s.screen];
+  return screen ? screenRect(screen, s.key) : null;
 }
-function setSelectedRect(r) {
-  const s = state.selected;
-  if (s.kind === "layer") layerById(s.id).rect = r; else setScreenRect(state.current.screens[s.screen], s.key, r);
-  state.dirty = true;
-}
+function setSelectedRect(r) { const s = state.selected; if (s.kind === "layer") layerById(s.id).rect = r; else setScreenRect(state.current.screens[s.screen], s.key, r); }
+function select(selection) { state.selected = selection; buildLayers(); buildProps(); draw(); }
 
+// ---- loading
 async function loadPackages() {
   state.packages = await (await fetch("/api/packages")).json();
   const select = document.getElementById("package");
-  select.innerHTML = state.packages.map(p => `<option value="${p.id}">${p.id}${p.geometry_from ? " (inherits " + p.geometry_from + ")" : ""}</option>`).join("");
+  select.innerHTML = state.packages.map(p => `<option value="${p.id}">${p.id}${p.geometry_from ? " · inherits " + p.geometry_from : ""}</option>`).join("");
   const wanted = state.packages.some(p => p.id === location.hash.slice(1)) ? location.hash.slice(1) : state.packages[0].id;
   select.value = wanted;
   await open(wanted);
 }
-
 async function open(id) {
   if (state.dirty && !confirm("Discard unsaved changes?")) { document.getElementById("package").value = state.current.id; return; }
   const source = state.packages.find(p => p.id === id);
-  state.current = JSON.parse(JSON.stringify(source));
-  state.original = JSON.parse(JSON.stringify(source));
-  state.selected = null; state.dirty = false; state.images = {};
+  state.current = clone(source);
+  for (const layer of state.current.layers) if (layer.id === "screens") layer.id = CUTOUTS;
+  state.original = clone(state.current);
+  state.selected = null; state.dirty = false; state.images = {}; state.thumbs = {}; state.past = []; state.future = [];
   location.hash = id;
   let pending = 0;
   for (const layer of state.current.layers) {
     if (!layer.file) continue;
     pending++;
     const image = new Image();
-    image.onload = () => { state.images[layer.id] = image; pending--; if (pending === 0) { status(`${id}: ${state.current.canvas.w}x${state.current.canvas.h}, ${state.current.layers.length} layers`); fit(); } draw(); };
+    image.onload = () => { state.images[layer.id] = image; thumbnail(layer.id, image); pending--; if (pending === 0) { status(`${id} · ${state.current.canvas.w}×${state.current.canvas.h}`); fit(); } buildLayers(); draw(); };
     image.onerror = () => { pending--; status(`layer ${layer.id} failed to load`); draw(); };
     image.src = `/layer/${id}/${layer.id}`;
   }
   status("loading layers…");
-  buildPanel();
+  buildLayers(); buildProps(); updateHistoryButtons();
   fit();
 }
+function thumbnail(id, image) {
+  const t = document.createElement("canvas"); t.width = 88; t.height = 52;
+  const c = t.getContext("2d"); const scale = Math.min(88 / image.width, 52 / image.height);
+  c.drawImage(image, (88 - image.width * scale) / 2, (52 - image.height * scale) / 2, image.width * scale, image.height * scale);
+  state.thumbs[id] = t.toDataURL();
+}
 
-function buildPanel() {
+// ---- layers panel
+function buildLayers() {
   const root = document.getElementById("layers");
   root.innerHTML = "";
   for (const layer of layersTopFirst()) {
     const row = document.createElement("div");
-    const active = state.selected && state.selected.kind === "layer" && state.selected.id === layer.id;
+    const active = state.selected && ((state.selected.kind === "layer" && state.selected.id === layer.id) || (state.selected.kind === "screen" && layer.id === CUTOUTS));
     row.className = "layer" + (active ? " active" : "") + (layer.visible === false ? " hidden" : "");
-    row.innerHTML = `<input type="checkbox" title="visible" ${layer.visible === false ? "" : "checked"} data-act="visible">
-      <input type="radio" name="canvas" title="canvas: the addressable pixel grid" ${state.current.canvas_layer === layer.id ? "checked" : ""} ${layer.file ? "" : "disabled"} data-act="canvas">
-      <span class="name">${layer.id}</span><span class="meta">${layer.size ? layer.size.w + "x" + layer.size.h : "screens"}${layer.follow === "viewport" ? " · viewport" : ""}${layer.blend && layer.blend !== "normal" ? " · " + layer.blend : ""} · ${layer.order}</span>
-      <button class="small" data-act="up" title="move up">▲</button><button class="small" data-act="down" title="move down">▼</button>`;
-    row.addEventListener("click", event => {
-      const act = event.target.dataset.act;
-      if (act === "visible") { layer.visible = event.target.checked; state.dirty = true; buildPanel(); draw(); return; }
-      if (act === "canvas") { setCanvasLayer(layer); return; }
-      if (act === "up" || act === "down") { reorder(layer, act === "up" ? 1 : -1); return; }
-      if (layer.id === "screens") { state.selected = { kind: "screen", screen: 0, key: "image" }; }
-      else state.selected = { kind: "layer", id: layer.id };
-      buildPanel(); draw();
-    });
+    row.draggable = true; row.dataset.id = layer.id;
+    const badges = [];
+    if (state.current.canvas_layer === layer.id) badges.push('<span class="badge canvas">canvas</span>');
+    if (layer.follow === "viewport") badges.push('<span class="badge">viewport</span>');
+    if (layer.blend && layer.blend !== "normal") badges.push(`<span class="badge">${layer.blend}</span>`);
+    if (layer.opacity !== undefined && layer.opacity < 1) badges.push(`<span class="badge">${Math.round(layer.opacity * 100)}%</span>`);
+    const thumb = layer.id === CUTOUTS ? `<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:14px">▣</div>` : `<img class="thumb" src="${state.thumbs[layer.id] || ""}" alt="">`;
+    row.innerHTML = `<button class="eye" title="${layer.visible === false ? "show" : "hide"}">${layer.visible === false ? "◌" : "●"}</button>${thumb}<span class="name">${layer.id}</span>${badges.join("")}`;
+    row.querySelector(".eye").addEventListener("click", event => { event.stopPropagation(); record(); layer.visible = layer.visible === false; buildLayers(); draw(); });
+    row.addEventListener("click", () => { select(layer.id === CUTOUTS ? { kind: "screen", screen: 0, key: "tube" } : { kind: "layer", id: layer.id }); });
+    row.addEventListener("contextmenu", event => { event.preventDefault(); showMenu(event.clientX, event.clientY, layerMenu(layer)); });
+    row.addEventListener("dragstart", event => { event.dataTransfer.setData("text/plain", layer.id); });
+    row.addEventListener("dragover", event => { event.preventDefault(); row.classList.add("dragover"); });
+    row.addEventListener("dragleave", () => row.classList.remove("dragover"));
+    row.addEventListener("drop", event => { event.preventDefault(); row.classList.remove("dragover"); const moving = layerById(event.dataTransfer.getData("text/plain")); if (moving && moving !== layer) placeAbove(moving, layer); });
     root.appendChild(row);
   }
-  buildSelection();
 }
-
-function reorder(layer, direction) {  // swap order values with the neighbour in that direction
-  const sorted = layersBottomFirst();
-  const index = sorted.indexOf(layer);
-  const other = sorted[index + direction];
+function placeAbove(moving, target) {  // drop a layer just above the target: renumber the stack bottom-up
+  record();
+  const order = layersBottomFirst().filter(l => l !== moving);
+  order.splice(order.indexOf(target) + 1, 0, moving);
+  order.forEach((l, i) => { l.order = i; });
+  buildLayers(); draw();
+}
+function reorder(layer, direction) {
+  const sorted = layersBottomFirst(); const other = sorted[sorted.indexOf(layer) + direction];
   if (!other) return;
-  [layer.order, other.order] = [other.order, layer.order];
-  state.dirty = true; buildPanel(); draw();
+  record(); [layer.order, other.order] = [other.order, layer.order]; buildLayers(); draw();
 }
-
-function setCanvasLayer(layer) {  // re-express every rectangle in the new layer's pixel grid
-  const old = state.current.canvas, from = layerById(state.current.canvas_layer).rect;
+function setCanvasLayer(layer) {
+  if (!layer.size || layer.id === state.current.canvas_layer) return;
+  record();
   const to = layer.rect, size = layer.size;
   const convert = r => r ? { x: Math.round((r.x - to.x) / to.w * size.w), y: Math.round((r.y - to.y) / to.h * size.h), w: Math.round(r.w / to.w * size.w), h: Math.round(r.h / to.h * size.h) } : r;
-  for (const l of state.current.layers) l.rect = convert(l.rect);
+  for (const l of state.current.layers) if (l.rect) l.rect = convert(l.rect);
   for (const s of state.current.screens) { s.tube = convert(s.tube); s.image = convert(s.image); if (s.ring) { s.ring.inner = convert(s.ring.inner); s.ring.outer = convert(s.ring.outer); } }
-  state.current.canvas_layer = layer.id;
-  state.current.canvas = { w: size.w, h: size.h };
-  state.dirty = true; buildPanel(); fit();
+  state.current.canvas_layer = layer.id; state.current.canvas = { w: size.w, h: size.h };
+  buildLayers(); buildProps(); fit();
 }
 
-function buildSelection() {
-  const root = document.getElementById("selection");
+// ---- context menu
+function showMenu(x, y, items) {
+  const menu = document.getElementById("menu");
+  menu.innerHTML = "";
+  for (const item of items) {
+    const div = document.createElement("div");
+    if (item.sep) { div.className = "sep"; menu.appendChild(div); continue; }
+    if (item.head) { div.className = "head"; div.textContent = item.head; menu.appendChild(div); continue; }
+    div.innerHTML = `<span>${item.label}</span><span class="muted">${item.hint || ""}</span>`;
+    div.addEventListener("click", event => { event.stopPropagation(); hideMenu(); item.run(); });
+    menu.appendChild(div);
+  }
+  menu.style.display = "block";
+  const width = menu.offsetWidth, height = menu.offsetHeight;
+  menu.style.left = Math.min(x, window.innerWidth - width - 8) + "px";
+  menu.style.top = Math.min(y, window.innerHeight - height - 8) + "px";
+}
+function hideMenu() { document.getElementById("menu").style.display = "none"; }
+function pickColor(initial, apply) {  // the native colour picker, from a menu
+  const input = document.createElement("input"); input.type = "color"; input.value = initial || "#202020"; input.style.position = "fixed"; input.style.opacity = "0";
+  document.body.appendChild(input);
+  let recorded = false;
+  input.addEventListener("input", () => { if (!recorded) { record(); recorded = true; } apply(input.value); draw(); buildProps(); });
+  input.addEventListener("change", () => { input.remove(); buildLayers(); });
+  input.click();
+}
+function layerMenu(layer) {
+  const items = [{ head: layer.id }];
+  items.push({ label: layer.visible === false ? "Show" : "Hide", run: () => { record(); layer.visible = layer.visible === false; buildLayers(); draw(); } });
+  items.push({ label: "Bring forward", run: () => reorder(layer, 1) });
+  items.push({ label: "Send backward", run: () => reorder(layer, -1) });
+  if (layer.size) items.push({ label: "Make this the canvas", hint: state.current.canvas_layer === layer.id ? "✓" : "", run: () => setCanvasLayer(layer) });
+  items.push({ sep: true });
+  for (const blend of ["normal", "add", "multiply"]) items.push({ label: `Blend: ${blend}`, hint: (layer.blend || "normal") === blend ? "✓" : "", run: () => { record(); layer.blend = blend; buildLayers(); draw(); } });
+  items.push({ sep: true });
+  for (const opacity of [1, 0.75, 0.5, 0.25]) items.push({ label: `Opacity ${Math.round(opacity * 100)}%`, hint: (layer.opacity === undefined ? 1 : layer.opacity) === opacity ? "✓" : "", run: () => { record(); layer.opacity = opacity; buildLayers(); draw(); } });
+  if (layer.id === CUTOUTS) {
+    items.push({ sep: true });
+    state.current.screens.forEach(screen => {
+      if (screen.ring) items.push({ label: `${screen.id}: ring colour…`, hint: `<span class="sw" style="background:${screen.ring.color || "#202020"}"></span>`, run: () => pickColor(screen.ring.color, v => { screen.ring.color = v; }) });
+      items.push({ label: `${screen.id}: surround colour…`, hint: `<span class="sw" style="background:${screen.surround || "#000000"}"></span>`, run: () => pickColor(screen.surround, v => { screen.surround = v; }) });
+      if (!screen.image) items.push({ label: `${screen.id}: add picture`, run: () => { record(); screen.image = { ...screen.tube }; select({ kind: "screen", screen: state.current.screens.indexOf(screen), key: "image" }); } });
+      if (!screen.ring && screen.tube) items.push({ label: `${screen.id}: add ring`, run: () => { record(); const t = screen.tube, inset = Math.round(Math.min(t.w, t.h) * 0.05); screen.ring = { inner: { x: t.x + inset, y: t.y + inset, w: t.w - 2 * inset, h: t.h - 2 * inset }, outer: { ...t }, inner_radius: 0, outer_radius: 0, color: "#202020" }; select({ kind: "screen", screen: state.current.screens.indexOf(screen), key: "inner" }); } });
+    });
+  }
+  items.push({ sep: true });
+  items.push({ label: "Reset layer", hint: "as emitted", run: () => { record(); const original = state.original.layers.find(l => l.id === layer.id); if (original) Object.assign(layer, clone(original)); if (layer.id === CUTOUTS) state.current.screens = clone(state.original.screens); buildLayers(); buildProps(); draw(); } });
+  return items;
+}
+window.addEventListener("click", hideMenu);
+
+// ---- properties panel
+function numberField(label, value, onchange, step = 1, extra = "") {
+  const wrap = document.createElement("label");
+  wrap.innerHTML = `<span>${label}</span><input type="number" step="${step}" value="${value}" ${extra}>`;
+  const input = wrap.querySelector("input");
+  input.addEventListener("change", () => { const v = parseFloat(input.value); if (Number.isFinite(v)) { record(); onchange(v); buildLayers(); draw(); } });
+  return wrap;
+}
+function rectFields(rect) {
+  const grid = document.createElement("div"); grid.className = "grid2";
+  for (const k of ["x", "y", "w", "h"]) grid.appendChild(numberField(k.toUpperCase(), rect[k], v => { rect[k] = Math.round(v); }));
+  return grid;
+}
+function buildProps() {
+  const root = document.getElementById("props");
   root.innerHTML = "";
   const s = state.selected;
-  if (!s) { root.innerHTML = `<div class="help">nothing selected</div>`; return; }
-  const field = (r, onchange) => `<div class="row">${["x", "y", "w", "h"].map(k => `<label>${k} <input type="number" step="1" value="${r[k]}" data-k="${k}"></label>`).join("")}</div>`;
+  if (!s) { root.innerHTML = `<div class="muted">Select a layer or a cutout rectangle.</div>`; return; }
   if (s.kind === "layer") {
     const layer = layerById(s.id);
-    const blendRow = `<div class="row"><label>blend <select data-blend="1">${["normal", "add", "multiply"].map(b => `<option value="${b}" ${(layer.blend || "normal") === b ? "selected" : ""}>${b}</option>`).join("")}</select></label><label>opacity <input type="number" step="0.05" min="0" max="1" value="${layer.opacity === undefined ? 1 : layer.opacity}" data-opacity="1"></label></div>`;
-    if (layer.follow === "viewport") root.innerHTML = `<div class="rect active"><div class="title">${layer.id}</div>${blendRow}<div class="help">follows the viewport: drawn to cover the canvas, no extent of its own<br>${layer.file || ""}</div></div>`;
-    else root.innerHTML = `<div class="rect active"><div class="title"><span class="sw" style="background:${COLORS.layer}"></span>${layer.id} extent</div>${field(layer.rect)}${blendRow}<div class="help">${layer.file || ""}</div></div>`;
-    root.querySelectorAll("input[type=number][data-k]").forEach(input => input.addEventListener("change", () => { const v = parseInt(input.value, 10); if (Number.isFinite(v)) { layer.rect[input.dataset.k] = v; state.dirty = true; draw(); } }));
-    root.querySelector("select[data-blend]").addEventListener("change", event => { layer.blend = event.target.value; state.dirty = true; buildPanel(); draw(); });
-    root.querySelector("input[data-opacity]").addEventListener("change", event => { layer.opacity = Math.max(0, Math.min(1, parseFloat(event.target.value) || 0)); state.dirty = true; draw(); });
+    if (!layer) { root.innerHTML = ""; return; }
+    const group = document.createElement("div"); group.className = "group";
+    group.innerHTML = `<h3><span class="sw" style="background:${COLORS.layer}"></span>${layer.id}</h3><div class="muted" style="margin-bottom:8px;word-break:break-all">${layer.file || ""}${layer.size ? ` · ${layer.size.w}×${layer.size.h}` : ""}</div>`;
+    if (layer.follow === "viewport") group.innerHTML += `<div class="muted">Follows the viewport: drawn to cover the canvas, no extent of its own.</div>`;
+    else if (layer.rect) group.appendChild(rectFields(layer.rect));
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<label>Blend <select>${["normal", "add", "multiply"].map(b => `<option ${(layer.blend || "normal") === b ? "selected" : ""}>${b}</option>`).join("")}</select></label>`;
+    row.querySelector("select").addEventListener("change", event => { record(); layer.blend = event.target.value; buildLayers(); draw(); });
+    row.appendChild(numberField("Opacity", layer.opacity === undefined ? 1 : layer.opacity, v => { layer.opacity = Math.max(0, Math.min(1, v)); }, 0.05, 'min="0" max="1"'));
+    group.appendChild(row);
+    root.appendChild(group);
     return;
   }
   state.current.screens.forEach((screen, index) => {
-    const section = document.createElement("div");
-    section.innerHTML = `<div class="help">screen <b>${screen.id}</b>${screen.aspect ? ` · aspect ${screen.aspect}` : ""}</div>`;
+    const group = document.createElement("div"); group.className = "group";
+    group.innerHTML = `<h3>Cutout <span class="muted">${screen.id}${screen.aspect ? ` · ${screen.aspect}` : ""}</span></h3>`;
     for (const key of ["tube", "image", "inner", "outer"]) {
       const r = screenRect(screen, key);
       if (!r) continue;
-      const row = document.createElement("div");
       const active = s.screen === index && s.key === key;
-      row.className = "rect" + (active ? " active" : "");
+      const item = document.createElement("div"); item.className = "item" + (active ? " active" : "");
+      item.innerHTML = `<span class="sw" style="background:${COLORS[key]}"></span><span style="flex:1;font-weight:500">${NAMES[key]}</span><span class="muted">${r.w}×${r.h}${key === "image" ? " · " + (r.w / r.h).toFixed(4) : ""}</span>`;
+      item.addEventListener("click", () => select({ kind: "screen", screen: index, key }));
+      group.appendChild(item);
+      if (!active) continue;
+      group.appendChild(rectFields(r));
       const radiusPx = radiusOf(screen, key);
-      const bulgeNow = key === "tube" ? bulgeOf(screen, "tube") : null;
-      const bulgeFields = key === "tube" ? `<div class="row"><label>bulge x px <input type="number" step="1" min="0" value="${bulgeNow.x}" data-bulge="x"></label><label>bulge y px <input type="number" step="1" min="0" value="${bulgeNow.y}" data-bulge="y"></label></div>` : "";
-      const extra = radiusPx === null ? "" : bulgeFields + `<div class="row"><label>radius px <input type="number" step="1" value="${Math.round(radiusPx * 10) / 10}" data-radius="1"></label>${key === "tube" ? `<label>shape <select data-kind="1"><option value="rounded" ${screen.shape && screen.shape.kind !== "squircle" ? "selected" : ""}>round</option><option value="squircle" ${screen.shape && screen.shape.kind === "squircle" ? "selected" : ""}>squircle</option></select></label><label>n <input type="number" step="0.5" min="2" value="${screen.shape ? screen.shape.exponent || 4 : 4}" data-exponent="1"></label>` : ""}</div>`;
-      row.innerHTML = `<div class="title"><span class="sw" style="background:${COLORS[key]}"></span>${NAMES[key]} <span class="meta" style="color:var(--muted);font-weight:400">${key === "image" ? (r.w / r.h).toFixed(4) : ""}</span></div>${field(r)}${extra}`;
-      row.querySelector(".title").addEventListener("click", () => { state.selected = { kind: "screen", screen: index, key }; buildSelection(); draw(); });
-      row.querySelectorAll("input[data-bulge]").forEach(input => input.addEventListener("change", () => { setBulge(screen, input.dataset.bulge, parseFloat(input.value) || 0); draw(); }));
-      const radiusInput = row.querySelector("input[data-radius]");
-      if (radiusInput) radiusInput.addEventListener("change", () => { setRadius(screen, key, parseFloat(radiusInput.value) || 0); draw(); });
-      const kindSelect = row.querySelector("select[data-kind]");
-      if (kindSelect) kindSelect.addEventListener("change", () => { screen.shape = screen.shape || { kind: "rounded", radius: 0, exponent: 4 }; screen.shape.kind = kindSelect.value; state.dirty = true; draw(); });
-      const exponentInput = row.querySelector("input[data-exponent]");
-      if (exponentInput) exponentInput.addEventListener("change", () => { screen.shape = screen.shape || { kind: "squircle", radius: 0, exponent: 4 }; screen.shape.exponent = Math.max(2, parseFloat(exponentInput.value) || 4); state.dirty = true; draw(); });
-      row.querySelectorAll("input[type=number]").forEach(input => input.addEventListener("change", () => { const v = parseInt(input.value, 10); if (Number.isFinite(v)) { r[input.dataset.k] = v; state.dirty = true; state.selected = { kind: "screen", screen: index, key }; buildSelection(); draw(); } }));
-      section.appendChild(row);
+      if (radiusPx !== null) {
+        const row = document.createElement("div"); row.className = "row";
+        row.appendChild(numberField("Corner radius", Math.round(radiusPx * 10) / 10, v => setRadius(screen, key, v)));
+        if (key === "tube") {
+          const shape = document.createElement("label");
+          shape.innerHTML = `Shape <select><option value="rounded" ${screen.shape && screen.shape.kind !== "squircle" ? "selected" : ""}>round</option><option value="squircle" ${screen.shape && screen.shape.kind === "squircle" ? "selected" : ""}>squircle</option></select>`;
+          shape.querySelector("select").addEventListener("change", event => { record(); screen.shape = screen.shape || { kind: "rounded", radius: 0, exponent: 4 }; screen.shape.kind = event.target.value; buildProps(); draw(); });
+          row.appendChild(shape);
+          if (screen.shape && screen.shape.kind === "squircle") row.appendChild(numberField("n", screen.shape.exponent || 4, v => { screen.shape.exponent = Math.max(2, v); }, 0.5, 'min="2"'));
+        }
+        group.appendChild(row);
+      }
+      if (key === "tube") {
+        const bulge = bulgeOf(screen, "tube");
+        const row = document.createElement("div"); row.className = "row";
+        row.appendChild(numberField("Bulge sides", bulge.x, v => setBulge(screen, "x", v), 1, 'min="0"'));
+        row.appendChild(numberField("Bulge top/bottom", bulge.y, v => setBulge(screen, "y", v), 1, 'min="0"'));
+        group.appendChild(row);
+        const colors = document.createElement("div"); colors.className = "row";
+        colors.innerHTML = `<label>Surround <input type="color" value="${screen.surround || "#000000"}"></label>`;
+        colors.querySelector("input").addEventListener("input", event => { if (!colors.dataset.recorded) { record(); colors.dataset.recorded = "1"; } screen.surround = event.target.value; draw(); });
+        group.appendChild(colors);
+      }
+      if ((key === "inner" || key === "outer") && screen.ring) {
+        const colors = document.createElement("div"); colors.className = "row";
+        colors.innerHTML = `<label>Ring colour <input type="color" value="${screen.ring.color || "#202020"}"></label>`;
+        colors.querySelector("input").addEventListener("input", event => { if (!colors.dataset.recorded) { record(); colors.dataset.recorded = "1"; } screen.ring.color = event.target.value; draw(); });
+        group.appendChild(colors);
+      }
     }
-    const adders = document.createElement("div");
-    adders.className = "row";
-    if (!screen.image) { const b = document.createElement("button"); b.className = "small"; b.textContent = "+ picture"; b.addEventListener("click", () => { screen.image = { ...screen.tube }; state.dirty = true; state.selected = { kind: "screen", screen: index, key: "image" }; buildSelection(); draw(); }); adders.appendChild(b); }
-    if (!screen.ring && screen.tube) { const b = document.createElement("button"); b.className = "small"; b.textContent = "+ ring"; b.addEventListener("click", () => { const t = screen.tube; const inset = Math.round(Math.min(t.w, t.h) * 0.05); screen.ring = { inner: { x: t.x + inset, y: t.y + inset, w: t.w - 2 * inset, h: t.h - 2 * inset }, outer: { ...t }, inner_radius: 0, outer_radius: 0, color: "#202020" }; state.dirty = true; state.selected = { kind: "screen", screen: index, key: "inner" }; buildSelection(); draw(); }); adders.appendChild(b); }
-    if (screen.ring) { const c = document.createElement("label"); c.innerHTML = `ring colour <input type="color" value="${screen.ring.color || "#202020"}">`; c.querySelector("input").addEventListener("input", event => { screen.ring.color = event.target.value; state.dirty = true; draw(); }); adders.appendChild(c); }
-    section.appendChild(adders);
-    root.appendChild(section);
+    root.appendChild(group);
   });
 }
 
-function refreshInputs() { buildSelection(); }
-
+// ---- view
 function fit() {
   const c = state.current.canvas;
   const scale = Math.min(canvas.width / c.w, canvas.height / c.h);
@@ -289,14 +406,18 @@ function fit() {
   state.oy = Math.round((canvas.height - c.h * state.zoom) / 2);
   draw();
 }
-
+function zoomTo(next, sx, sy) {
+  const [px, py] = toPlate(sx, sy);
+  state.zoom = next;
+  state.ox = Math.round(sx - px * next); state.oy = Math.round(sy - py * next);
+  draw();
+}
 function resize() {
   const box = canvas.parentElement.getBoundingClientRect();
   canvas.width = Math.floor(box.width * devicePixelRatio);
   canvas.height = Math.floor(box.height * devicePixelRatio);
   draw();
 }
-
 function toScreen(x, y) { return [state.ox + x * state.zoom, state.oy + y * state.zoom]; }
 function toPlate(sx, sy) { return [(sx - state.ox) / state.zoom, (sy - state.oy) / state.zoom]; }
 function handles(r) {
@@ -304,8 +425,10 @@ function handles(r) {
   const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
   return { nw: [x0, y0], n: [mx, y0], ne: [x1, y0], e: [x1, my], se: [x1, y1], s: [mx, y1], sw: [x0, y1], w: [x0, my] };
 }
+function radiusHandle(r, radiusPx) { return toScreen(r.x + radiusPx, r.y); }
+function bulgeHandles(r, bulge) { return { top: toScreen(r.x + r.w / 2, r.y - bulge.y), right: toScreen(r.x + r.w + bulge.x, r.y + r.h / 2) }; }
 
-function drawTestCard(x, y, w, h, hue) {  // the synthetic core's card, at the picture's own size
+function drawTestCard(x, y, w, h, hue) {
   ctx.fillStyle = hue ? "#c84830" : "#3060e0"; ctx.fillRect(x, y, w, h * 2 / 3);
   ctx.fillStyle = hue ? "#e8b028" : "#30c840"; ctx.fillRect(x, y + h * 2 / 3, w, h / 3);
   ctx.strokeStyle = "#fff"; ctx.lineWidth = Math.max(1, state.zoom); ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
@@ -314,49 +437,48 @@ function drawTestCard(x, y, w, h, hue) {  // the synthetic core's card, at the p
   for (const [cx, cy] of [[x, y], [x + w - cell * 4, y], [x, y + h - cell * 4], [x + w - cell * 4, y + h - cell * 4]])
     for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { ctx.fillStyle = (i + j) % 2 ? "#101010" : "#ffffff"; ctx.fillRect(cx + i * cell, cy + j * cell, cell, cell); }
 }
-
-function drawScreens() {
+function drawCutouts(layer) {  // like Mega Bezel: the ring, the black edge inside it, the picture clipped to the opening; the plate shows through everywhere else
+  ctx.save();
+  ctx.globalAlpha = (layer.opacity === undefined ? 1 : layer.opacity) * (state.xray ? 0.35 : 1);
   for (const screen of state.current.screens) {
-    const tube = screen.tube, image = screen.image, ring = screen.ring;
-    if (ring && ring.outer && ring.inner) {  // like Mega Bezel: the bezel ring, the black edge inside it, the picture; the plate shows through everywhere else
-      const [ox, oy] = toScreen(ring.outer.x, ring.outer.y), [ix, iy] = toScreen(ring.inner.x, ring.inner.y);
-      const bo = bulgeOf(screen, "outer"), bi = bulgeOf(screen, "inner");
-      ctx.fillStyle = ring.color || "#202020";
-      bulgedPath(ox, oy, ring.outer.w * state.zoom, ring.outer.h * state.zoom, (ring.outer_radius || 0) * state.zoom, 2, bo.x * state.zoom, bo.y * state.zoom); ctx.fill();
-      ctx.fillStyle = "#000";
-      bulgedPath(ix, iy, ring.inner.w * state.zoom, ring.inner.h * state.zoom, (ring.inner_radius || 0) * state.zoom, 2, bi.x * state.zoom, bi.y * state.zoom); ctx.fill();
-    } else if (tube) { const [x, y] = toScreen(tube.x, tube.y); ctx.fillStyle = screen.surround || "#000"; ctx.fillRect(x, y, tube.w * state.zoom, tube.h * state.zoom); }
-    if (image && state.showGame) { const [x, y] = toScreen(image.x, image.y); drawTestCard(x, y, image.w * state.zoom, image.h * state.zoom, screen.id === "bottom"); }
+    const ring = screen.ring, image = screen.image;
+    if (ring && ring.outer && ring.inner) {
+      ctx.fillStyle = ring.color || "#202020"; rectPath(screen, "outer"); ctx.fill();
+      ctx.fillStyle = "#000"; rectPath(screen, "inner"); ctx.fill();
+    } else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
+    if (image && state.showGame) {
+      ctx.save(); rectPath(screen, "tube"); ctx.clip();
+      const [x, y] = toScreen(image.x, image.y); drawTestCard(x, y, image.w * state.zoom, image.h * state.zoom, screen.id === "bottom");
+      ctx.restore();
+    }
   }
+  ctx.restore();
 }
-
 function draw() {
   ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = "#101114";
+  ctx.fillStyle = "#111113";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   if (!state.current) return;
   const c = state.current.canvas;
   const [cx0, cy0] = toScreen(0, 0);
   for (const layer of layersBottomFirst()) {
     if (layer.visible === false) continue;
-    if (layer.id === "screens") { drawScreens(); continue; }
+    if (layer.id === CUTOUTS) { drawCutouts(layer); continue; }
     const image = state.images[layer.id];
     if (!image) continue;
     ctx.save();
     ctx.globalCompositeOperation = layer.blend === "add" ? "lighter" : (layer.blend === "multiply" ? "multiply" : "source-over");
     ctx.globalAlpha = layer.opacity === undefined ? 1 : Math.max(0, Math.min(1, layer.opacity));
-    if (layer.follow === "viewport" && !(layer.size && layer.size.w === c.w && layer.size.h === c.h)) {  // follows the viewport: covers the whole canvas, centred, aspect kept; a canvas-sized plate is the canvas
+    if (layer.follow === "viewport" && !(layer.size && layer.size.w === c.w && layer.size.h === c.h)) {
       const scale = Math.max(c.w / image.width, c.h / image.height);
       const w = image.width * scale, h = image.height * scale;
       const [x, y] = toScreen((c.w - w) / 2, (c.h - h) / 2);
       ctx.beginPath(); ctx.rect(cx0, cy0, c.w * state.zoom, c.h * state.zoom); ctx.clip();
-      ctx.drawImage(image, x, y, w * state.zoom, h * state.zoom); ctx.restore();
-      continue;
-    }
-    if (layer.rect) { const [x, y] = toScreen(layer.rect.x, layer.rect.y); ctx.drawImage(image, x, y, layer.rect.w * state.zoom, layer.rect.h * state.zoom); }
+      ctx.drawImage(image, x, y, w * state.zoom, h * state.zoom);
+    } else if (layer.rect) { const [x, y] = toScreen(layer.rect.x, layer.rect.y); ctx.drawImage(image, x, y, layer.rect.w * state.zoom, layer.rect.h * state.zoom); }
     ctx.restore();
   }
-  ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1; ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 1; ctx.setLineDash([6, 4]);
   ctx.strokeRect(cx0 + 0.5, cy0 + 0.5, c.w * state.zoom, c.h * state.zoom);
   ctx.setLineDash([]);
   if (state.zoom >= 8) {
@@ -368,77 +490,80 @@ function draw() {
     for (let y = y0; y <= y1; y++) { const [, sy] = toScreen(0, y); ctx.moveTo(0, sy + 0.5); ctx.lineTo(canvas.width, sy + 0.5); }
     ctx.stroke();
   }
-  const outline = (r, color, label, active, grabbable, radiusPx, exponent, bulgeArg) => {
-    const [x0, y0] = toScreen(r.x, r.y), [x1, y1] = toScreen(r.x + r.w, r.y + r.h);
-    ctx.strokeStyle = color; ctx.lineWidth = active ? 2 : 1;
-    const bulge = bulgeArg || { x: 0, y: 0 };
-    if ((radiusPx !== null && radiusPx > 0) || bulge.x > 0 || bulge.y > 0) { bulgedPath(x0, y0, x1 - x0, y1 - y0, (radiusPx || 0) * state.zoom, exponent, bulge.x * state.zoom, bulge.y * state.zoom); ctx.stroke(); }
-    else ctx.strokeRect(Math.round(x0) + 0.5, Math.round(y0) + 0.5, Math.round(x1 - x0), Math.round(y1 - y0));
-    ctx.fillStyle = color; ctx.font = "12px system-ui"; ctx.fillText(`${label} ${r.x},${r.y} ${r.w}x${r.h}${radiusPx !== null ? ` r${Math.round(radiusPx)}` : ""}`, x0 + 4, y0 - 4);
-    if (grabbable) for (const [, [hx, hy]] of Object.entries(handles(r))) { const size = active ? 4 : 2.5; ctx.fillStyle = active ? "#fff" : color; ctx.fillRect(hx - size, hy - size, size * 2, size * 2); ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.strokeRect(hx - size - 0.5, hy - size - 0.5, size * 2 + 1, size * 2 + 1); }
-    const diamond = (hx, hy, fill) => { ctx.fillStyle = fill; ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(hx, hy - 7); ctx.lineTo(hx + 7, hy); ctx.lineTo(hx, hy + 7); ctx.lineTo(hx - 7, hy); ctx.closePath(); ctx.fill(); ctx.stroke(); };
-    if (active && radiusPx !== null) { const [hx, hy] = radiusHandle(r, radiusPx); diamond(hx, hy, "#ffdd00"); }  // corner radius: drag along the top edge
-    if (active && bulgeArg && bulgeArg.editable) { const h = bulgeHandles(r, bulgeArg); diamond(h.top[0], h.top[1], "#ff8c1a"); diamond(h.right[0], h.right[1], "#ff8c1a"); }  // edge bulge: drag the edge middles outward
-  };
-  const s = state.selected;
-  if (s && s.kind === "layer") { const layer = layerById(s.id); if (layer.rect && layer.follow !== "viewport") outline(layer.rect, COLORS.layer, layer.id, true, true, null, 2); }
+  const s = state.selected, hover = state.hover;
+  const diamond = (hx, hy, fill) => { ctx.fillStyle = fill; ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(hx, hy - 7); ctx.lineTo(hx + 7, hy); ctx.lineTo(hx, hy + 7); ctx.lineTo(hx - 7, hy); ctx.closePath(); ctx.fill(); ctx.stroke(); };
+  const label = (text, color, r) => { const [x0, y0] = toScreen(r.x, r.y); ctx.font = "600 12px -apple-system, system-ui, sans-serif"; const w = ctx.measureText(text).width + 12; ctx.fillStyle = "rgba(0,0,0,.7)"; ctx.fillRect(x0, y0 - 22, w, 18); ctx.fillStyle = color; ctx.fillText(text, x0 + 6, y0 - 9); };
+  const knobs = (r, active, color) => { for (const [, [hx, hy]] of Object.entries(handles(r))) { const size = active ? 4 : 2.5; ctx.fillStyle = active ? "#fff" : color; ctx.fillRect(hx - size, hy - size, size * 2, size * 2); ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.strokeRect(hx - size - 0.5, hy - size - 0.5, size * 2 + 1, size * 2 + 1); } };
+  if (s && s.kind === "layer") {
+    const layer = layerById(s.id);
+    if (layer && layer.rect && layer.follow !== "viewport") {
+      const [x0, y0] = toScreen(layer.rect.x, layer.rect.y);
+      ctx.strokeStyle = COLORS.layer; ctx.lineWidth = 2; ctx.strokeRect(x0 + 0.5, y0 + 0.5, layer.rect.w * state.zoom, layer.rect.h * state.zoom);
+      knobs(layer.rect, true, COLORS.layer);
+      label(`${layer.id} ${layer.rect.x},${layer.rect.y} ${layer.rect.w}×${layer.rect.h}`, COLORS.layer, layer.rect);
+    }
+  }
+  const cutouts = cutoutsLayer();
   const screensSelected = s && s.kind === "screen";
-  if (layerById("screens").visible !== false) state.current.screens.forEach((screen, index) => {
+  if (cutouts && cutouts.visible !== false) state.current.screens.forEach((screen, index) => {
     for (const key of ["tube", "outer", "inner", "image"]) {
       const r = screenRect(screen, key);
       if (!r) continue;
       const active = screensSelected && s.screen === index && s.key === key;
-      const bulge = bulgeOf(screen, key);
-      outline(r, COLORS[key], `${screen.id} ${NAMES[key]}`, active, screensSelected, radiusOf(screen, key), exponentOf(screen, key), bulge ? { ...bulge, editable: key === "tube" } : null);
+      const hovered = hover && hover.kind === "screen" && hover.screen === index && hover.key === key;
+      ctx.strokeStyle = COLORS[key]; ctx.lineWidth = active ? 2 : 1; ctx.globalAlpha = active || hovered || screensSelected ? 1 : 0.55;
+      rectPath(screen, key); ctx.stroke();
+      ctx.globalAlpha = 1;
+      if (screensSelected) knobs(r, active, COLORS[key]);
+      if (active || hovered) label(`${screen.id} ${NAMES[key]} ${r.x},${r.y} ${r.w}×${r.h}`, COLORS[key], r);
+      if (active) {
+        const radiusPx = radiusOf(screen, key);
+        if (radiusPx !== null) { const [hx, hy] = radiusHandle(r, radiusPx); diamond(hx, hy, COLORS.outer); }
+        if (key === "tube") { const h = bulgeHandles(r, bulgeOf(screen, "tube")); diamond(h.top[0], h.top[1], "#ff9f0a"); diamond(h.right[0], h.right[1], "#ff9f0a"); }
+      }
     }
   });
   const [px, py] = state.cursor ? toPlate(state.cursor[0], state.cursor[1]) : [0, 0];
-  hud.textContent = `${state.current.id}  canvas ${state.current.canvas_layer} ${c.w}x${c.h}  zoom ${state.zoom >= 1 ? state.zoom + "x" : "1/" + Math.round(1 / state.zoom)}  cursor ${Math.floor(px)},${Math.floor(py)}${state.dirty ? "  · unsaved" : ""}`;
+  hud.textContent = `${c.w}×${c.h} · canvas ${state.current.canvas_layer} · ${Math.floor(px)}, ${Math.floor(py)}${state.dirty ? " · unsaved" : ""}`;
+  document.getElementById("zoom-label").textContent = state.zoom >= 1 ? `${state.zoom * 100}%` : `${Math.round(state.zoom * 1000) / 10}%`;
 }
 
-function hit(sx, sy) {  // the selection's handles first, then the smallest screen rect under the cursor, then the selected layer's body
+// ---- hit testing and cursors
+function hit(sx, sy) {
   const [px, py] = toPlate(sx, sy);
   const current = selectedRect();
   if (current && state.selected.kind === "screen") {
-    const radiusPx = radiusOf(state.current.screens[state.selected.screen], state.selected.key);
+    const screen = state.current.screens[state.selected.screen];
+    const radiusPx = radiusOf(screen, state.selected.key);
     if (radiusPx !== null) { const [hx, hy] = radiusHandle(current, radiusPx); if (Math.abs(sx - hx) <= 8 && Math.abs(sy - hy) <= 8) return { ...state.selected, handle: "radius" }; }
     if (state.selected.key === "tube") {
-      const h = bulgeHandles(current, bulgeOf(state.current.screens[state.selected.screen], "tube"));
+      const h = bulgeHandles(current, bulgeOf(screen, "tube"));
       if (Math.abs(sx - h.top[0]) <= 8 && Math.abs(sy - h.top[1]) <= 8) return { ...state.selected, handle: "bulge-y" };
       if (Math.abs(sx - h.right[0]) <= 8 && Math.abs(sy - h.right[1]) <= 8) return { ...state.selected, handle: "bulge-x" };
     }
   }
   if (current) for (const [name, [hx, hy]] of Object.entries(handles(current))) if (Math.abs(sx - hx) <= 6 && Math.abs(sy - hy) <= 6) return { ...state.selected, handle: name };
-  if (layerById("screens").visible !== false && state.selected && state.selected.kind === "screen") state.current.screens.forEach((screen, index) => {  // any screen rect's handles once the screens are selected
-    for (const key of ["tube", "outer", "inner", "image"]) {
-      const r = screenRect(screen, key);
+  const cutouts = cutoutsLayer();
+  if (cutouts && cutouts.visible !== false && state.selected && state.selected.kind === "screen") {
+    for (let index = 0; index < state.current.screens.length; index++) for (const key of ["tube", "outer", "inner", "image"]) {
+      const r = screenRect(state.current.screens[index], key);
       if (r) for (const [name, [hx, hy]] of Object.entries(handles(r))) if (Math.abs(sx - hx) <= 5 && Math.abs(sy - hy) <= 5) return { kind: "screen", screen: index, key, handle: name };
     }
-  });
-  let best = null;
-  if (layerById("screens").visible !== false) state.current.screens.forEach((screen, index) => {
-    for (const key of ["tube", "outer", "inner", "image"]) {
-      const r = screenRect(screen, key);
-      if (r && px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h && (!best || r.w * r.h < best.area)) best = { kind: "screen", screen: index, key, handle: "move", area: r.w * r.h };
-    }
-  });
-  if (best) return best;
+    let best = null;
+    state.current.screens.forEach((screen, index) => {
+      for (const key of ["tube", "outer", "inner", "image"]) {
+        const r = screenRect(screen, key);
+        if (r && px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h && (!best || r.w * r.h < best.area)) best = { kind: "screen", screen: index, key, handle: "move", area: r.w * r.h };
+      }
+    });
+    if (best) return best;
+  }
   if (current && state.selected.kind === "layer" && px >= current.x && px <= current.x + current.w && py >= current.y && py <= current.y + current.h) return { ...state.selected, handle: "move" };
   return null;
 }
-
-canvas.addEventListener("mousedown", event => {
-  const sx = event.offsetX * devicePixelRatio, sy = event.offsetY * devicePixelRatio;
-  if (event.button === 1 || event.button === 2 || state.space) { state.drag = { pan: true, sx, sy, ox: state.ox, oy: state.oy }; event.preventDefault(); return; }
-  const target = hit(sx, sy);
-  if (!target) { state.drag = { pan: true, sx, sy, ox: state.ox, oy: state.oy }; return; }
-  state.selected = { kind: target.kind, id: target.id, screen: target.screen, key: target.key };
-  state.drag = { handle: target.handle, sx, sy, start: { ...selectedRect() } };
-  buildPanel(); draw();
-});
 const CURVE_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M4 18 C 4 8, 8 4, 18 4" fill="none" stroke="black" stroke-width="4"/><path d="M4 18 C 4 8, 8 4, 18 4" fill="none" stroke="white" stroke-width="2"/><circle cx="18" cy="4" r="3" fill="white" stroke="black"/></svg>')}") 12 12, pointer`;
-function cursorFor(target) {  // like a design tool: the pointer says what a press would do
-  if (state.space) return "grab";
+function cursorFor(target) {
+  if (state.space) return state.drag ? "grabbing" : "grab";
   if (!target) return "default";
   const h = target.handle;
   if (h === "radius" || h === "bulge-x" || h === "bulge-y") return CURVE_CURSOR;
@@ -449,78 +574,124 @@ function cursorFor(target) {  // like a design tool: the pointer says what a pre
   if (h === "e" || h === "w") return "ew-resize";
   return "default";
 }
+
+canvas.addEventListener("mousedown", event => {
+  hideMenu();
+  const sx = event.offsetX * devicePixelRatio, sy = event.offsetY * devicePixelRatio;
+  if (event.button === 2) return;
+  if (event.button === 1 || state.space) { state.drag = { pan: true, sx, sy, ox: state.ox, oy: state.oy }; canvas.style.cursor = "grabbing"; event.preventDefault(); return; }
+  const target = hit(sx, sy);
+  if (!target) { state.drag = { pan: true, sx, sy, ox: state.ox, oy: state.oy }; canvas.style.cursor = "grabbing"; return; }
+  state.selected = { kind: target.kind, id: target.id, screen: target.screen, key: target.key };
+  record();
+  state.drag = { handle: target.handle, sx, sy, start: { ...selectedRect() }, moved: false };
+  buildLayers(); buildProps(); draw();
+});
+canvas.addEventListener("contextmenu", event => {
+  event.preventDefault();
+  const sx = event.offsetX * devicePixelRatio, sy = event.offsetY * devicePixelRatio;
+  const target = hit(sx, sy);
+  if (target && target.kind === "layer") showMenu(event.clientX, event.clientY, layerMenu(layerById(target.id)));
+  else if (target && target.kind === "screen") { state.selected = { kind: "screen", screen: target.screen, key: target.key }; buildProps(); draw(); showMenu(event.clientX, event.clientY, layerMenu(cutoutsLayer())); }
+  else if (state.selected && state.selected.kind === "layer") showMenu(event.clientX, event.clientY, layerMenu(layerById(state.selected.id)));
+});
 canvas.addEventListener("mousemove", event => {
   const sx = event.offsetX * devicePixelRatio, sy = event.offsetY * devicePixelRatio;
   state.cursor = [sx, sy];
-  if (!state.drag) { canvas.style.cursor = cursorFor(hit(sx, sy)); draw(); return; }
-  if (state.drag.pan) { canvas.style.cursor = "grabbing"; }
+  if (!state.drag) {
+    const target = hit(sx, sy);
+    const hover = target && target.kind === "screen" ? { kind: "screen", screen: target.screen, key: target.key } : null;
+    const changed = JSON.stringify(hover) !== JSON.stringify(state.hover);
+    state.hover = hover;
+    canvas.style.cursor = cursorFor(target);
+    if (changed) draw(); else { const [px, py] = toPlate(sx, sy); hud.textContent = hud.textContent.replace(/· -?\d+, -?\d+/, `· ${Math.floor(px)}, ${Math.floor(py)}`); }
+    return;
+  }
   if (state.drag.pan) { state.ox = state.drag.ox + (sx - state.drag.sx); state.oy = state.drag.oy + (sy - state.drag.sy); draw(); return; }
   const dx = Math.round((sx - state.drag.sx) / state.zoom), dy = Math.round((sy - state.drag.sy) / state.zoom);
   const s = state.drag.start, h = state.drag.handle;
-  if (h === "radius") { const [px] = toPlate(sx, sy); setRadius(state.current.screens[state.selected.screen], state.selected.key, px - s.x); refreshInputs(); draw(); return; }
-  if (h === "bulge-y") { const [, py] = toPlate(sx, sy); setBulge(state.current.screens[state.selected.screen], "y", s.y - py); refreshInputs(); draw(); return; }
-  if (h === "bulge-x") { const [px] = toPlate(sx, sy); setBulge(state.current.screens[state.selected.screen], "x", px - (s.x + s.w)); refreshInputs(); draw(); return; }
+  const screen = state.selected.kind === "screen" ? state.current.screens[state.selected.screen] : null;
+  if (h === "radius") { const [px] = toPlate(sx, sy); setRadius(screen, state.selected.key, px - s.x); state.dirty = true; state.drag.moved = true; buildProps(); draw(); return; }
+  if (h === "bulge-y") { const [, py] = toPlate(sx, sy); setBulge(screen, "y", s.y - py); state.dirty = true; state.drag.moved = true; buildProps(); draw(); return; }
+  if (h === "bulge-x") { const [px] = toPlate(sx, sy); setBulge(screen, "x", px - (s.x + s.w)); state.dirty = true; state.drag.moved = true; buildProps(); draw(); return; }
   let x = s.x, y = s.y, w = s.w, hh = s.h;
   if (h === "move") { x += dx; y += dy; }
-  if (h.includes("w")) { x += dx; w -= dx; }
-  if (h.includes("e")) { w += dx; }
-  if (h.includes("n")) { y += dy; hh -= dy; }
-  if (h.includes("s")) { hh += dy; }
+  else {
+    if (h === "w" || h === "nw" || h === "sw") { x += dx; w -= dx; }
+    if (h === "e" || h === "ne" || h === "se") { w += dx; }
+    if (h === "n" || h === "nw" || h === "ne") { y += dy; hh -= dy; }
+    if (h === "s" || h === "sw" || h === "se") { hh += dy; }
+  }
   if (w < 1 || hh < 1) return;
   setSelectedRect({ x, y, w, h: hh });
-  refreshInputs(); draw();
+  state.dirty = true; state.drag.moved = true;
+  buildProps(); draw();
 });
-window.addEventListener("mouseup", () => { state.drag = null; if (state.cursor) canvas.style.cursor = cursorFor(hit(state.cursor[0], state.cursor[1])); });
-canvas.addEventListener("contextmenu", event => event.preventDefault());
+window.addEventListener("mouseup", () => {
+  if (state.drag && !state.drag.pan && !state.drag.moved && state.past.length) {  // a click that moved nothing leaves no history entry
+    const last = state.past[state.past.length - 1];
+    if (JSON.stringify(last) === JSON.stringify(state.current)) { state.past.pop(); updateHistoryButtons(); }
+  }
+  state.drag = null;
+  if (state.cursor) canvas.style.cursor = cursorFor(hit(state.cursor[0], state.cursor[1]));
+});
 canvas.addEventListener("wheel", event => {
   event.preventDefault();
   const sx = event.offsetX * devicePixelRatio, sy = event.offsetY * devicePixelRatio;
-  const [px, py] = toPlate(sx, sy);
-  const next = ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, ZOOMS.indexOf(state.zoom) + (event.deltaY < 0 ? 1 : -1)))];
-  state.zoom = next;
-  state.ox = Math.round(sx - px * next); state.oy = Math.round(sy - py * next);
-  draw();
+  zoomTo(ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, ZOOMS.indexOf(state.zoom) + (event.deltaY < 0 ? 1 : -1)))], sx, sy);
 }, { passive: false });
 window.addEventListener("keydown", event => {
+  if (event.key === "Escape") { hideMenu(); return; }
   if (event.target.tagName === "INPUT" || event.target.tagName === "SELECT") return;
+  const meta = event.metaKey || event.ctrlKey;
+  if (meta && event.key.toLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) redo(); else undo(); return; }
+  if (meta && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); return; }
+  if (meta && event.key.toLowerCase() === "s") { event.preventDefault(); save(); return; }
   if (event.code === "Space") { state.space = true; canvas.style.cursor = state.drag ? "grabbing" : "grab"; event.preventDefault(); return; }
-  if (event.key === "1") { state.zoom = 1; draw(); return; }
-  if (event.key === "f") { fit(); return; }
+  if (event.key === "1") { zoomTo(1, canvas.width / 2, canvas.height / 2); return; }
+  if (event.key.toLowerCase() === "f") { fit(); return; }
+  if (event.key.toLowerCase() === "x") { toggleXray(); return; }
   const current = selectedRect();
   if (!current) return;
-  const step = event.shiftKey ? 10 : 1, r = { ...current }, resize = event.altKey;
-  if (event.key === "ArrowLeft") { if (resize) r.w -= step; else r.x -= step; }
-  else if (event.key === "ArrowRight") { if (resize) r.w += step; else r.x += step; }
-  else if (event.key === "ArrowUp") { if (resize) r.h -= step; else r.y -= step; }
-  else if (event.key === "ArrowDown") { if (resize) r.h += step; else r.y += step; }
+  const step = event.shiftKey ? 10 : 1, r = { ...current }, resizing = event.altKey;
+  if (event.key === "ArrowLeft") { if (resizing) r.w -= step; else r.x -= step; }
+  else if (event.key === "ArrowRight") { if (resizing) r.w += step; else r.x += step; }
+  else if (event.key === "ArrowUp") { if (resizing) r.h -= step; else r.y -= step; }
+  else if (event.key === "ArrowDown") { if (resizing) r.h += step; else r.y += step; }
   else return;
   event.preventDefault();
   if (r.w < 1 || r.h < 1) return;
-  setSelectedRect(r); refreshInputs(); draw();
+  record(); setSelectedRect(r); buildProps(); draw();
 });
 window.addEventListener("keyup", event => { if (event.code === "Space") { state.space = false; if (state.cursor) canvas.style.cursor = cursorFor(hit(state.cursor[0], state.cursor[1])); } });
 
+function toggleXray() { state.xray = !state.xray; document.getElementById("xray").classList.toggle("on", state.xray); draw(); }
 document.getElementById("package").addEventListener("change", event => open(event.target.value));
 document.getElementById("fit").addEventListener("click", fit);
-document.getElementById("show-game").addEventListener("change", event => { state.showGame = event.target.checked; draw(); });
-document.getElementById("reset").addEventListener("click", () => { state.current = JSON.parse(JSON.stringify(state.original)); state.dirty = false; state.selected = null; buildPanel(); draw(); status("reset"); });
-document.getElementById("save").addEventListener("click", async () => {
+document.getElementById("zoom-in").addEventListener("click", () => zoomTo(ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(state.zoom) + 1)], canvas.width / 2, canvas.height / 2));
+document.getElementById("zoom-out").addEventListener("click", () => zoomTo(ZOOMS[Math.max(0, ZOOMS.indexOf(state.zoom) - 1)], canvas.width / 2, canvas.height / 2));
+document.getElementById("zoom-label").addEventListener("click", () => zoomTo(1, canvas.width / 2, canvas.height / 2));
+document.getElementById("xray").addEventListener("click", toggleXray);
+document.getElementById("show-game").addEventListener("click", event => { state.showGame = !state.showGame; event.currentTarget.classList.toggle("on", state.showGame); draw(); });
+document.getElementById("undo").addEventListener("click", undo);
+document.getElementById("redo").addEventListener("click", redo);
+async function save() {
   status("saving…");
   const payload = {
     id: state.current.id, canvas_layer: state.current.canvas_layer,
     layers: state.current.layers.map(l => ({ id: l.id, visible: l.visible !== false, order: l.order, rect: l.rect, blend: l.blend || "normal", opacity: l.opacity === undefined ? 1 : l.opacity })),
-    screens: state.current.screens.map(s => ({ id: s.id, tube: s.tube, image: s.image, shape: s.shape || null, ring: s.ring ? { inner: s.ring.inner, outer: s.ring.outer, inner_radius: s.ring.inner_radius || 0, outer_radius: s.ring.outer_radius || 0, color: s.ring.color || "#202020" } : null })),
+    screens: state.current.screens.map(s => ({ id: s.id, tube: s.tube, image: s.image, surround: s.surround, shape: s.shape || null, ring: s.ring ? { inner: s.ring.inner, outer: s.ring.outer, inner_radius: s.ring.inner_radius || 0, outer_radius: s.ring.outer_radius || 0, color: s.ring.color || "#202020" } : null })),
   };
   const response = await fetch("/api/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   const result = await response.json().catch(() => ({ error: "bad response" }));
   if (result.error) { status("save failed: " + result.error); return; }
   state.dirty = false;
-  const stored = state.packages.find(p => p.id === state.current.id);
-  Object.assign(stored, JSON.parse(JSON.stringify(state.current)));
-  state.original = JSON.parse(JSON.stringify(state.current));
+  Object.assign(state.packages.find(p => p.id === state.current.id), clone(state.current));
+  state.original = clone(state.current);
   status(`saved ${result.saved.join(", ")}`);
   draw();
-});
+}
+document.getElementById("save").addEventListener("click", save);
 window.addEventListener("resize", resize);
 window.addEventListener("beforeunload", event => { if (state.dirty) { event.preventDefault(); event.returnValue = ""; } });
 resize();

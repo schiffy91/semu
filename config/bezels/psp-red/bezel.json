@@ -170,7 +170,7 @@
       }
     },
     {
-      "id": "screens",
+      "id": "cutouts",
       "order": 5,
       "visible": true,
       "follow": "canvas",

@@ -146,6 +146,9 @@
       },
       "order": 0,
       "visible": true,
+      "follow": "viewport",
+      "blend": "normal",
+      "opacity": 1,
       "rect": {
         "x": 0,
         "y": 0,
@@ -163,6 +166,9 @@
       },
       "order": 2,
       "visible": true,
+      "follow": "canvas",
+      "blend": "normal",
+      "opacity": 1,
       "rect": {
         "x": 0,
         "y": 0,
@@ -171,9 +177,12 @@
       }
     },
     {
-      "id": "screens",
+      "id": "cutouts",
       "order": 5,
-      "visible": true
+      "visible": true,
+      "follow": "canvas",
+      "blend": "normal",
+      "opacity": 1
     }
   ]
 }

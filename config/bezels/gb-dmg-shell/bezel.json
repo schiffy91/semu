@@ -261,7 +261,7 @@
       }
     },
     {
-      "id": "screens",
+      "id": "cutouts",
       "order": 11,
       "visible": true,
       "follow": "canvas",
