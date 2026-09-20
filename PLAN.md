@@ -557,6 +557,18 @@ Update this block whenever a milestone criterion changes state.
   a 640x480 window so its CRT mask aliases there; Wii U stays unframed
   (Cemu is unhooked); the PSP panel is placed from the device's physical
   proportions because the Duimon art has no drawn screen edge.
+- Bezel gallery and closed loop (2026-09-19 evening): `tools/bezel-gallery.py`
+  renders all 63 variant cells per screen configuration (Deck 1280x800, PC 4K
+  3840x2160) in two modes: fast previews from `tools/bezel_fake.py` (the
+  compositor's geometry in numpy from `semu render-env`, 63 cells in under
+  30 s) and real renders through RetroArch plus the surface-aware synthetic
+  test-card core. The RetroArch bridge now takes only the narrower screen's
+  columns from a stacked dual frame (the 3DS bottom screen lost its side
+  bars). DS and 3DS default to the Duimon shells with an inset drawn bezel
+  around the fitted 4:3 game (`frame.around = "game"`); the computed layouts
+  stay as alternates, prefer the larger main screen (centered main when it
+  fits, else the pair centered) and use thinner frames. Every Deck and 4K
+  preview was inspected; real renders confirm the same geometry.
 - Active milestone: M5/M6 hardware acceptance once a Deck is reachable
   (`DECK_HOST=deck tests/deck/deploy.sh install`), then the native-emulator
   render hook.
