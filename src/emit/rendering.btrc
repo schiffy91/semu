@@ -360,6 +360,7 @@ class SemuRenderEnvironment {
         env.set("SEMU_RENDER_SYSTEM_ID", system.id);
         env.set("SEMU_RENDER_EMULATOR_ID", emulatorId);
         env.set("SEMU_RENDER_STATE_DIR", stateRoot);
+        env.set("SEMU_RENDER_COMPOSITOR_DIR", PathTools.join(plan.configRoot, "render"));  // the compositor GLSL is data: config/render/compositor.{vert,frag}
         env.set("SEMU_RENDER_SHADERS", shaderPath.isEmpty() ? "0" : "1");
         env.set("SEMU_RENDER_BEZELS", bezels ? "1" : "0");
         env.set("SEMU_RENDER_INTEGER_SCALE", SemuJson.boolAt(settings, "visual.integer_scaling", true) ? "1" : "0");
