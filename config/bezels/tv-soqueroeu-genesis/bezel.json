@@ -50,5 +50,9 @@
   "doc": {
     "scene": "Soqueroeu TV background with the manufacturer's badge, lit for late night by the Duimon ambient plate at build time",
     "tube": "the measured phosphor opening; the game sits inside at the system aspect and the rest of the tube stays dark glass"
+  },
+  "upstream": {
+    "kind": "scene",
+    "preset": "presets/TV-Console/Sega_Genesis.slangp"
   }
 }

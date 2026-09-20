@@ -21,7 +21,6 @@
         "h": 1392
       },
       "fit": "aspect",
-      "inset": 0.0,
       "shape": {
         "kind": "rounded",
         "radius": 0.013,
@@ -38,17 +37,33 @@
       },
       "shader": null,
       "measurement": {
-        "tool": "tools/bezel-measure.py",
-        "mode": "seed",
-        "threshold": 14,
-        "min_fill": 0.97,
-        "corner_radius_px": 18.1,
-        "source": "upstream scene at 3840x2160"
+        "tool": "tools/bezel-calibrate.py",
+        "preset": "presets/TV-Console/Sega_Dreamcast-[FLAT].slangp",
+        "viewport": "3840x2160",
+        "cards_px": [
+          [
+            480,
+            4,
+            2880,
+            2152
+          ]
+        ],
+        "screen": 0
+      },
+      "image": {
+        "x": 480,
+        "y": 4,
+        "w": 2880,
+        "h": 2152
       }
     }
   ],
   "doc": {
     "scene": "Soqueroeu TV background with the manufacturer's badge, lit for late night by the Duimon ambient plate at build time",
     "tube": "the measured phosphor opening; the game sits inside at the system aspect and the rest of the tube stays dark glass"
+  },
+  "upstream": {
+    "kind": "scene",
+    "preset": "presets/TV-Console/Sega_Dreamcast-[FLAT].slangp"
   }
 }

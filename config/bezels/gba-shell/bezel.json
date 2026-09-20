@@ -21,13 +21,12 @@
         "h": 1890
       },
       "fit": "aspect",
-      "inset": 0.11,
       "shape": {
         "kind": "squircle",
         "radius": 0.2939,
         "exponent": 4.0
       },
-      "surround": "#26264a",
+      "surround": "#1a1a1a",
       "curvature": 0.0,
       "vignette": 0.06,
       "bloom": 0.0,
@@ -38,14 +37,49 @@
       },
       "shader": null,
       "measurement": {
-        "tool": "tools/bezel-measure.py",
-        "mode": "opaque",
-        "layer": "GBA_Glass.png",
-        "corner_radius_px": 555.4
+        "tool": "tools/bezel-calibrate.py",
+        "preset": "Presets/Advanced/Nintendo_GBA/GBA-[ADV]-[LCD-GRID].slangp",
+        "viewport": "3840x2160",
+        "cards_px": [
+          [
+            1536,
+            820,
+            768,
+            520
+          ]
+        ],
+        "device_px": [
+          1037,
+          617,
+          1766,
+          1011
+        ],
+        "silhouette_px": [
+          120,
+          44,
+          4160,
+          2410
+        ],
+        "scale": [
+          0.42452,
+          0.4195
+        ],
+        "screen": 0
+      },
+      "image": {
+        "x": 1295,
+        "y": 528,
+        "w": 1809,
+        "h": 1240
       }
     }
   ],
   "doc": {
     "lens": "the AGB-001 lens is a squircle; the 3:2 LCD sits inside it with the measured surround margin"
+  },
+  "upstream": {
+    "kind": "device",
+    "preset": "Presets/Advanced/Nintendo_GBA/GBA-[ADV]-[LCD-GRID].slangp",
+    "silhouette": "Graphics/Nintendo_GBA/GBA_Device.png"
   }
 }

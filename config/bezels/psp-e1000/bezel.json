@@ -64,5 +64,10 @@
         "note": "PSP-E1000 art has no drawn screen edge; the panel is placed from the device's real proportions between the controls"
       }
     }
-  ]
+  ],
+  "upstream": {
+    "kind": "device",
+    "preset": "Presets/Advanced/SONY_PSP/PSP-[ADV]-[Guest].slangp",
+    "silhouette": "Graphics/SONY_PSP/PSP_Wide.png"
+  }
 }

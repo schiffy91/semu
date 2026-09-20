@@ -21,6 +21,8 @@ class Screen:  # one SEMU_RENDER_SCREEN_<n>* group
         key = lambda name: env.get(f"SEMU_RENDER_SCREEN_{index}{name}{suffix}")
         tube = key("")
         self.tube = tuple(float(v) for v in tube.split(",")) if tube else None
+        image = key("_IMAGE")
+        self.image = tuple(float(v) for v in image.split(",")) if image else None
         look = key("_LOOK")
         values = [float(v) for v in look.split(",")] if look else [0, 0, 2, 0, 0, 0, 0, 0, 0, 0]
         self.shape, self.radius, self.exponent, self.fit, self.inset = int(values[0]), values[1], max(values[2], 2.0), int(values[3]), min(max(values[4], 0.0), 1.0) * 0.45
@@ -68,13 +70,15 @@ class Geometry:
         return (ax + (aw - w) // 2, ay + (ah - h) // 2, int(w), int(h))
 
     @classmethod
-    def place_in_tube(cls, lane, screen, tube, aspect, integer):
+    def place_in_tube(cls, lane, screen, tube, aspect, integer, image=None):
         lane.tube = tube
         tx, ty, tw, th = tube
         inset = int(screen.inset * min(tw, th) + 0.5)
         area = (tx + inset, ty + inset, tw - 2 * inset, th - 2 * inset)
         if area[2] < 1 or area[3] < 1:
             area = tube
+        if image is not None:
+            area = image
         if screen.fit == 1:
             lane.out = area
             return
@@ -189,7 +193,11 @@ class FakeCompositor:
             for index, lane in enumerate(self.lanes):
                 nx, ny, nw, nh = p.screens[index].tube
                 tube = (round(cx + nx * cw), round(cy + ny * ch), round(nw * cw), round(nh * ch))
-                Geometry.place_in_tube(lane, p.screens[index], tube, self.aspect if len(self.lanes) == 1 else None, False)
+                image = None
+                if p.screens[index].image:
+                    ix, iy, iw, ih = p.screens[index].image
+                    image = (round(cx + ix * cw), round(cy + iy * ch), round(iw * cw), round(ih * ch))
+                Geometry.place_in_tube(lane, p.screens[index], tube, self.aspect if len(self.lanes) == 1 else None, False, image)
             return
         if len(self.lanes) == 1:
             margin = layout_frame if bezel and p.frame else 0

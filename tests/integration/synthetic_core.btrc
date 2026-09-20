@@ -22,6 +22,8 @@ int SyntheticWidths[2];
 int SyntheticHeights[2];
 int SyntheticFrameWidth;
 int SyntheticFrameHeight;
+float SyntheticAspect;
+int SyntheticFlat;
 
 class SyntheticGeometry {
     class void load() {  // the launcher's surface contract, else the classic 256x240 card
@@ -47,6 +49,15 @@ class SyntheticGeometry {
         }
         SyntheticFrameWidth = SyntheticWidths[0] > SyntheticWidths[1] ? SyntheticWidths[0] : SyntheticWidths[1];
         SyntheticFrameHeight = SyntheticHeights[0] + SyntheticHeights[1];
+        SyntheticAspect = (float)SyntheticFrameWidth / (float)SyntheticFrameHeight;
+        int aspectWidth = 0;
+        int aspectHeight = 0;
+        char* aspect = getenv("SEMU_RENDER_ASPECT");  // single screens present at the system's display aspect, as the launcher declares it
+        if (SyntheticScreens == 1 && aspect != null && sscanf(aspect, "%d:%d", &aspectWidth, &aspectHeight) == 2 && aspectWidth > 0 && aspectHeight > 0) {
+            SyntheticAspect = (float)aspectWidth / (float)aspectHeight;
+        }
+        char* flat = getenv("SEMU_SYNTHETIC_FLAT");  // calibration: a bit per lit screen (1 = first, 2 = second), lit screens are one flat saturated color, the rest black
+        SyntheticFlat = flat == null ? 0 : atoi(flat);
     }
 }
 
@@ -56,6 +67,14 @@ class SyntheticPattern {
     }
 
     class void card(int screen, int originX, int originY, int width, int height) {  // border, checker corners, crosshair, a moving marker; hue differs per screen
+        if (SyntheticFlat != 0) {
+            bool lit = ((SyntheticFlat >> screen) & 1) != 0;
+            uint32_t flat = !lit ? SyntheticPattern.color(16, 16, 16) : (screen == 0 ? SyntheticPattern.color(0, 255, 0) : SyntheticPattern.color(255, 0, 255));  // never fully black: Mega Bezel blanks on an all-black source
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) { SyntheticPixels[(originY + y) * SyntheticFrameWidth + originX + x] = flat; }
+            }
+            return;
+        }
         uint32_t sky = screen == 0 ? SyntheticPattern.color(48, 96, 224) : SyntheticPattern.color(200, 72, 48);
         uint32_t ground = screen == 0 ? SyntheticPattern.color(48, 200, 64) : SyntheticPattern.color(232, 176, 40);
         uint32_t border = SyntheticPattern.color(255, 255, 255);
@@ -118,7 +137,7 @@ void retro_get_system_av_info(struct retro_system_av_info* info) {
     info->geometry.base_height = (unsigned int)SyntheticFrameHeight;
     info->geometry.max_width = 1024;
     info->geometry.max_height = 1024;
-    info->geometry.aspect_ratio = (float)SyntheticFrameWidth / (float)SyntheticFrameHeight;
+    info->geometry.aspect_ratio = SyntheticAspect;
     info->timing.fps = 60.0;
     info->timing.sample_rate = 48000.0;
 }

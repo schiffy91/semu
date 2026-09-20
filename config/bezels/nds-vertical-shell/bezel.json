@@ -13,18 +13,12 @@
     "around": "game"
   },
   "canvas": {
-    "w": 2560,
-    "h": 1600
+    "w": 3840,
+    "h": 2160
   },
   "screens": [
     {
       "id": "top",
-      "tube": {
-        "x": 871,
-        "y": 64,
-        "w": 818,
-        "h": 612
-      },
       "fit": "aspect",
       "inset": 0.02,
       "shape": {
@@ -32,7 +26,7 @@
         "radius": 0.0196,
         "exponent": 4.0
       },
-      "surround": "#1b1b1b",
+      "surround": "#151515",
       "curvature": 0.0,
       "vignette": 0.05,
       "bloom": 0.0,
@@ -49,12 +43,6 @@
     },
     {
       "id": "bottom",
-      "tube": {
-        "x": 871,
-        "y": 910,
-        "w": 818,
-        "h": 613
-      },
       "fit": "aspect",
       "inset": 0.02,
       "shape": {
@@ -62,7 +50,7 @@
         "radius": 0.0196,
         "exponent": 4.0
       },
-      "surround": "#1b1b1b",
+      "surround": "#151515",
       "curvature": 0.0,
       "vignette": 0.05,
       "bloom": 0.0,
@@ -79,6 +67,11 @@
     }
   ],
   "doc": {
-    "frame": "the Duimon openings are wider than the screens; an inset drawn bezel around the fitted game turns the leftover into a real-looking inner frame, as Duimon's own presets draw"
+    "plate": "Duimon's vertical clamshell plate; openings and images come from calibrating its own preset"
+  },
+  "upstream": {
+    "kind": "device",
+    "preset": "Presets/Advanced/Nintendo_NDS/NDS_Vertical-[ADV]-[LCD-GRID]-[Integer].slangp",
+    "silhouette": "Graphics/Nintendo_NDS/NDS_Vertical.png"
   }
 }

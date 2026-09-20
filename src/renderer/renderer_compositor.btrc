@@ -47,6 +47,7 @@ struct RendererNormalizedHole {
 struct RendererScreenConfig {
     int look_set;
     struct RendererNormalizedHole tube;
+    struct RendererNormalizedHole image;  // calibrated picture rectangle inside the opening
     int shape;
     float radius;
     float exponent;
@@ -253,6 +254,8 @@ class RendererConfiguration {
         memset(screen, 0, sizeof(struct RendererScreenConfig));
         snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d%s", index, suffix);
         RendererConfiguration.parseHole(&screen->tube, name);
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_IMAGE%s", index, suffix);
+        RendererConfiguration.parseHole(&screen->image, name);
         snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_LOOK%s", index, suffix);
         char* look = getenv(name);
         float values[10];
@@ -454,13 +457,20 @@ class RendererGeometry {
     }
 
     class void placeInTube(struct RendererLaneGeometry* lane, struct RendererScreenConfig* screen,
-                           struct RendererPixelRect* tube, float declaredAspect, int integerScaling) {  // the game inside its opening by the screen's fit policy
+                           struct RendererPixelRect* tube, struct RendererPixelRect* image,
+                           float declaredAspect, int integerScaling) {  // the game inside the calibrated image rectangle, else inside the inset opening
         RendererGeometry.setTube(lane, tube->x, tube->y, tube->width, tube->height);
         int insetX = (int)(screen->inset * (float)(tube->width < tube->height ? tube->width : tube->height) + 0.5f);
         int areaX = tube->x + insetX;
         int areaY = tube->y + insetX;
         int areaWidth = tube->width - 2 * insetX;
         int areaHeight = tube->height - 2 * insetX;
+        if (image != null && image->width > 0 && image->height > 0) {
+            areaX = image->x;
+            areaY = image->y;
+            areaWidth = image->width;
+            areaHeight = image->height;
+        }
         if (areaWidth < 1 || areaHeight < 1) {
             areaX = tube->x;
             areaY = tube->y;
@@ -672,8 +682,14 @@ class RendererGeometry {
                 struct RendererPixelRect tube;
                 RendererCompositionContract.aperture(&canvas, screen->tube.x, screen->tube.y,
                     screen->tube.width, screen->tube.height, &tube);
-                RendererGeometry.placeInTube(&geometry->lanes[index], screen, &tube,
-                    frame->surface_count == 1 ? singleAspect : 0.0f, 0);  // a framed screen fills its opening; integer steps only without a bezel
+                struct RendererPixelRect image;
+                memset(&image, 0, sizeof(struct RendererPixelRect));
+                if (screen->image.set != 0) {
+                    RendererCompositionContract.aperture(&canvas, screen->image.x, screen->image.y,
+                        screen->image.width, screen->image.height, &image);
+                }
+                RendererGeometry.placeInTube(&geometry->lanes[index], screen, &tube, &image,
+                    frame->surface_count == 1 ? singleAspect : 0.0f, 0);  // a framed screen fills its picture rectangle; integer steps only without a bezel
             }
             return true;
         }
