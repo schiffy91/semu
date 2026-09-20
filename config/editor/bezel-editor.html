@@ -7,7 +7,7 @@
   :root { --bg: #1c1c1e; --panel: rgba(36,36,38,.92); --line: rgba(255,255,255,.08); --line-strong: rgba(255,255,255,.14); --text: #f2f2f7; --muted: #98989f; --accent: #0a84ff; --accent-soft: rgba(10,132,255,.18); --radius: 10px; }
   * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
   html, body { height: 100%; margin: 0; }
-  body { background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system, "SF Pro Text", "Helvetica Neue", Inter, system-ui, sans-serif; display: grid; grid-template-rows: 46px 1fr; grid-template-columns: 280px 1fr 300px; grid-template-areas: "bar bar bar" "layers view props"; user-select: none; }
+  body { background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system, "SF Pro Text", "Helvetica Neue", Inter, system-ui, sans-serif; display: grid; grid-template-rows: 46px 1fr; grid-template-columns: 320px 1fr; grid-template-areas: "bar bar" "side view"; user-select: none; }
   header { grid-area: bar; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: var(--panel); border-bottom: 1px solid var(--line); backdrop-filter: blur(20px); }
   header .title { font-weight: 600; letter-spacing: .01em; margin-right: 6px; }
   header .spacer { flex: 1; }
@@ -26,9 +26,8 @@
   select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   input[type=number] { width: 72px; text-align: right; font-variant-numeric: tabular-nums; }
   input[type=color] { width: 28px; height: 22px; border: 1px solid var(--line-strong); border-radius: 6px; background: transparent; padding: 0; }
-  aside { background: var(--panel); border-right: 1px solid var(--line); overflow: auto; padding: 12px; }
-  aside.props { grid-area: props; border-right: 0; border-left: 1px solid var(--line); }
-  aside.layers { grid-area: layers; }
+  aside { grid-area: side; background: var(--panel); border-right: 1px solid var(--line); overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+  aside section.props { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 8px; flex: 1; }
   main { grid-area: view; position: relative; overflow: hidden; background: #111113; }
   canvas { display: block; width: 100%; height: 100%; cursor: default; image-rendering: pixelated; }
   #hud { position: absolute; left: 12px; bottom: 12px; background: rgba(28,28,30,.85); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; font: 12px ui-monospace, "SF Mono", Menlo, monospace; color: var(--muted); pointer-events: none; white-space: pre; backdrop-filter: blur(12px); }
@@ -47,6 +46,11 @@
   .group { background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
   .group h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
   .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  .curve { background: rgba(0,0,0,.18); border-radius: 8px; padding: 4px 8px; margin: 6px 0; }
+  .curve .line { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  .curve .lead { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; width: 58px; flex: none; }
+  .curve label { display: inline-flex; align-items: center; gap: 5px; }
+  .curve input[type=number] { width: 62px; }
   .row label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
   .grid2 label { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: var(--muted); font-size: 12px; }
@@ -76,22 +80,24 @@
   <span id="status"></span>
   <button id="save" class="primary" title="Save (⌘S)">Save</button>
 </header>
-<aside class="layers">
+<aside>
+<section class="layers">
   <h2>Layers</h2>
   <div id="layers"></div>
-  <div class="muted" style="margin-top:12px">Drag rows to reorder. Right-click a layer for its options. The <span style="font-size:10px;padding:1px 5px;border-radius:4px;background:var(--accent);color:#fff">canvas</span> layer is the pixel grid every rectangle is addressed in.</div>
+  <div class="muted" style="margin-top:8px">Drag rows to reorder. Right-click a layer for its options. The <span style="font-size:10px;padding:1px 5px;border-radius:4px;background:var(--accent);color:#fff">canvas</span> layer is the pixel grid every rectangle is addressed in.</div>
+</section>
+<section class="props">
+  <h2>Properties</h2>
+  <div id="props"></div>
+  <div class="muted" style="margin-top:14px">
+    <kbd>arrows</kbd> nudge 1 px, <kbd>⇧</kbd> 10 px, <kbd>⌥</kbd> resizes · <kbd>wheel</kbd> pans · <kbd>⌃</kbd>/<kbd>⌥</kbd>+wheel zooms in integer steps · <kbd>space</kbd>+drag pans · <kbd>1</kbd> 100% · <kbd>F</kbd> fit · <kbd>X</kbd> x-ray · <kbd>[</kbd> <kbd>]</kbd> cutout opacity · <kbd>⌘Z</kbd> undo · yellow diamond: corner radius · orange diamonds: edge bulge
+  </div>
+</section>
 </aside>
 <main>
   <canvas id="view"></canvas>
   <div id="hud"></div>
 </main>
-<aside class="props">
-  <h2>Properties</h2>
-  <div id="props"></div>
-  <div class="muted" style="margin-top:14px">
-    <kbd>arrows</kbd> nudge 1 px, <kbd>⇧</kbd> 10 px, <kbd>⌥</kbd> resizes · <kbd>wheel</kbd> pans · <kbd>⌃</kbd>/<kbd>⌥</kbd>+wheel zooms in integer steps · <kbd>space</kbd>+drag pans · <kbd>1</kbd> 100% · <kbd>F</kbd> fit · <kbd>X</kbd> x-ray · <kbd>[</kbd> <kbd>]</kbd> cutout opacity · <kbd>⌘Z</kbd> undo
-  </div>
-</aside>
 <div id="menu"></div>
 <script>
 const ZOOMS = [0.125, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
@@ -141,10 +147,12 @@ function bulgeOf(screen, key) {  // canvas px the edge middles bow outward; the 
   const r = screenRect(screen, key), t = screen.tube;
   return t ? { x: (b.x || 0) * r.w / t.w, y: (b.y || 0) * r.h / t.h } : { x: 0, y: 0 };
 }
-function setBulge(screen, axis, px) {
+function setBulge(screen, axis, px, key = "tube") {  // a ring rectangle's bulge scales back onto the tube
+  const r = screenRect(screen, key), t = screen.tube;
+  const scaled = key === "tube" || !r ? px : px * (axis === "x" ? t.w / r.w : t.h / r.h);
   screen.shape = screen.shape || { kind: "rounded", radius: 0, exponent: 4 };
   screen.shape.bulge = screen.shape.bulge || { x: 0, y: 0 };
-  screen.shape.bulge[axis] = Math.round(Math.max(0, Math.min(px, Math.min(screen.tube.w, screen.tube.h) / 2)));
+  screen.shape.bulge[axis] = Math.round(Math.max(0, Math.min(scaled, Math.min(t.w, t.h) / 2)));
 }
 function shapePath(x, y, w, h, radius, n, bx, by) {  // rounded rectangle with every edge bowed outward (most at its middle, none at the corners), screen pixels
   const r = Math.max(0, Math.min(radius, Math.min(w, h) / 2));
@@ -212,6 +220,8 @@ async function open(id) {
     image.src = `/layer/${id}/${layer.id}`;
   }
   status("loading layers…");
+  const wanted = new URLSearchParams(location.search).get("select");  // ?select=0:tube opens with that cutout rectangle selected
+  if (wanted && wanted.includes(":")) { const [index, key] = wanted.split(":"); if (state.current.screens[Number(index)] && screenRect(state.current.screens[Number(index)], key)) state.selected = { kind: "screen", screen: Number(index), key }; }
   buildLayers(); buildProps(); updateHistoryButtons();
   fit();
 }
@@ -370,25 +380,27 @@ function buildProps() {
       group.appendChild(item);
       if (!active) continue;
       group.appendChild(rectFields(r));
-      const radiusPx = radiusOf(screen, key);
-      if (radiusPx !== null) {
-        const row = document.createElement("div"); row.className = "row";
-        row.appendChild(numberField("Corner radius", Math.round(radiusPx * 10) / 10, v => setRadius(screen, key, v)));
+      const radiusPx = radiusOf(screen, key), bulge = bulgeOf(screen, key);
+      if (radiusPx !== null) {  // one Curve row: the yellow corner diamond and the orange edge diamonds, as numbers
+        const row = document.createElement("div"); row.className = "curve";
+        const line = (color, title) => { const l = document.createElement("div"); l.className = "line"; l.innerHTML = `<span class="lead"><span class="sw" style="background:${color};transform:rotate(45deg)"></span>${title}</span>`; row.appendChild(l); return l; };
+        const corner = line(COLORS.outer, "Corner");
+        corner.appendChild(numberField("radius", Math.round(radiusPx * 10) / 10, v => setRadius(screen, key, v)));
         if (key === "tube") {
           const shape = document.createElement("label");
-          shape.innerHTML = `Shape <select><option value="rounded" ${screen.shape && screen.shape.kind !== "squircle" ? "selected" : ""}>round</option><option value="squircle" ${screen.shape && screen.shape.kind === "squircle" ? "selected" : ""}>squircle</option></select>`;
+          shape.innerHTML = `<select><option value="rounded" ${screen.shape && screen.shape.kind !== "squircle" ? "selected" : ""}>round</option><option value="squircle" ${screen.shape && screen.shape.kind === "squircle" ? "selected" : ""}>squircle</option></select>`;
           shape.querySelector("select").addEventListener("change", event => { record(); screen.shape = screen.shape || { kind: "rounded", radius: 0, exponent: 4 }; screen.shape.kind = event.target.value; buildProps(); draw(); });
-          row.appendChild(shape);
-          if (screen.shape && screen.shape.kind === "squircle") row.appendChild(numberField("n", screen.shape.exponent || 4, v => { screen.shape.exponent = Math.max(2, v); }, 0.5, 'min="2"'));
+          corner.appendChild(shape);
+          if (screen.shape && screen.shape.kind === "squircle") corner.appendChild(numberField("n", screen.shape.exponent || 4, v => { screen.shape.exponent = Math.max(2, v); }, 0.5, 'min="2"'));
+        }
+        if (bulge) {  // the orange edge diamonds: sideways and up/down, canvas px
+          const edges = line("#ff9f0a", "Bulge");
+          edges.appendChild(numberField("↔", Math.round(bulge.x), v => setBulge(screen, "x", v, key), 1, 'min="0" title="sides bow out this many px"'));
+          edges.appendChild(numberField("↕", Math.round(bulge.y), v => setBulge(screen, "y", v, key), 1, 'min="0" title="top and bottom bow out this many px"'));
         }
         group.appendChild(row);
       }
       if (key === "tube") {
-        const bulge = bulgeOf(screen, "tube");
-        const row = document.createElement("div"); row.className = "row";
-        row.appendChild(numberField("Bulge sides", bulge.x, v => setBulge(screen, "x", v), 1, 'min="0"'));
-        row.appendChild(numberField("Bulge top/bottom", bulge.y, v => setBulge(screen, "y", v), 1, 'min="0"'));
-        group.appendChild(row);
         const colors = document.createElement("div"); colors.className = "row";
         colors.innerHTML = `<label>Surround <input type="color" value="${screen.surround || "#000000"}"></label>`;
         colors.querySelector("input").addEventListener("input", event => { if (!colors.dataset.recorded) { record(); colors.dataset.recorded = "1"; } screen.surround = event.target.value; draw(); });
@@ -434,7 +446,18 @@ function handles(r) {
   return { nw: [x0, y0], n: [mx, y0], ne: [x1, y0], e: [x1, my], se: [x1, y1], s: [mx, y1], sw: [x0, y1], w: [x0, my] };
 }
 function radiusHandle(r, radiusPx) { return toScreen(r.x + radiusPx, r.y); }
-function bulgeHandles(r, bulge) { return { top: toScreen(r.x + r.w / 2, r.y - bulge.y), right: toScreen(r.x + r.w + bulge.x, r.y + r.h / 2) }; }
+function bulgeHandles(r, bulge) {  // one diamond at each edge middle, riding on the bowed edge
+  const mx = r.x + r.w / 2, my = r.y + r.h / 2;
+  return { "bulge-top": toScreen(mx, r.y - bulge.y), "bulge-bottom": toScreen(mx, r.y + r.h + bulge.y), "bulge-left": toScreen(r.x - bulge.x, my), "bulge-right": toScreen(r.x + r.w + bulge.x, my) };
+}
+function bulgeDrag(screen, key, handle, px, py) {  // pointer position in canvas px to that edge's outward distance
+  const r = screenRect(screen, key);
+  if (handle === "bulge-top") setBulge(screen, "y", r.y - py, key);
+  else if (handle === "bulge-bottom") setBulge(screen, "y", py - (r.y + r.h), key);
+  else if (handle === "bulge-left") setBulge(screen, "x", r.x - px, key);
+  else setBulge(screen, "x", px - (r.x + r.w), key);
+}
+function curveHandles(r) { const h = handles(r); return { nw: h.nw, ne: h.ne, se: h.se, sw: h.sw }; }  // curving rectangles resize by corners; their edge middles carry the bulge
 
 function drawTestCard(x, y, w, h, hue) {
   ctx.fillStyle = hue ? "#c84830" : "#3060e0"; ctx.fillRect(x, y, w, h * 2 / 3);
@@ -501,7 +524,7 @@ function draw() {
   const s = state.selected, hover = state.hover;
   const diamond = (hx, hy, fill) => { ctx.fillStyle = fill; ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(hx, hy - 7); ctx.lineTo(hx + 7, hy); ctx.lineTo(hx, hy + 7); ctx.lineTo(hx - 7, hy); ctx.closePath(); ctx.fill(); ctx.stroke(); };
   const label = (text, color, r) => { const [x0, y0] = toScreen(r.x, r.y); ctx.font = "600 12px -apple-system, system-ui, sans-serif"; const w = ctx.measureText(text).width + 12; ctx.fillStyle = "rgba(0,0,0,.7)"; ctx.fillRect(x0, y0 - 22, w, 18); ctx.fillStyle = color; ctx.fillText(text, x0 + 6, y0 - 9); };
-  const knobs = (r, active, color) => { for (const [, [hx, hy]] of Object.entries(handles(r))) { const size = active ? 4 : 2.5; ctx.fillStyle = active ? "#fff" : color; ctx.fillRect(hx - size, hy - size, size * 2, size * 2); ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.strokeRect(hx - size - 0.5, hy - size - 0.5, size * 2 + 1, size * 2 + 1); } };
+  const knobs = (r, active, color, cornersOnly = false) => { for (const [, [hx, hy]] of Object.entries(cornersOnly ? curveHandles(r) : handles(r))) { const size = active ? 4 : 2.5; ctx.fillStyle = active ? "#fff" : color; ctx.fillRect(hx - size, hy - size, size * 2, size * 2); ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.strokeRect(hx - size - 0.5, hy - size - 0.5, size * 2 + 1, size * 2 + 1); } };
   if (s && s.kind === "layer") {
     const layer = layerById(s.id);
     if (layer && layer.rect && layer.follow !== "viewport") {
@@ -522,12 +545,13 @@ function draw() {
       ctx.strokeStyle = COLORS[key]; ctx.lineWidth = active ? 2 : 1; ctx.globalAlpha = active || hovered || screensSelected ? 1 : 0.55;
       rectPath(screen, key); ctx.stroke();
       ctx.globalAlpha = 1;
-      if (screensSelected) knobs(r, active, COLORS[key]);
+      if (screensSelected) knobs(r, active, COLORS[key], bulgeOf(screen, key) !== null);
       if (active || hovered) label(`${screen.id} ${NAMES[key]} ${r.x},${r.y} ${r.w}×${r.h}`, COLORS[key], r);
       if (active) {
         const radiusPx = radiusOf(screen, key);
         if (radiusPx !== null) { const [hx, hy] = radiusHandle(r, radiusPx); diamond(hx, hy, COLORS.outer); }
-        if (key === "tube") { const h = bulgeHandles(r, bulgeOf(screen, "tube")); diamond(h.top[0], h.top[1], "#ff9f0a"); diamond(h.right[0], h.right[1], "#ff9f0a"); }
+        const bulge = bulgeOf(screen, key);
+        if (bulge) for (const [hx, hy] of Object.values(bulgeHandles(r, bulge))) diamond(hx, hy, "#ff9f0a");
       }
     }
   });
@@ -544,13 +568,11 @@ function hit(sx, sy) {
     const screen = state.current.screens[state.selected.screen];
     const radiusPx = radiusOf(screen, state.selected.key);
     if (radiusPx !== null) { const [hx, hy] = radiusHandle(current, radiusPx); if (Math.abs(sx - hx) <= 8 && Math.abs(sy - hy) <= 8) return { ...state.selected, handle: "radius" }; }
-    if (state.selected.key === "tube") {
-      const h = bulgeHandles(current, bulgeOf(screen, "tube"));
-      if (Math.abs(sx - h.top[0]) <= 8 && Math.abs(sy - h.top[1]) <= 8) return { ...state.selected, handle: "bulge-y" };
-      if (Math.abs(sx - h.right[0]) <= 8 && Math.abs(sy - h.right[1]) <= 8) return { ...state.selected, handle: "bulge-x" };
-    }
+    const bulge = bulgeOf(screen, state.selected.key);
+    if (bulge) for (const [name, [hx, hy]] of Object.entries(bulgeHandles(current, bulge))) if (Math.abs(sx - hx) <= 8 && Math.abs(sy - hy) <= 8) return { ...state.selected, handle: name };
   }
-  if (current) for (const [name, [hx, hy]] of Object.entries(handles(current))) if (Math.abs(sx - hx) <= 6 && Math.abs(sy - hy) <= 6) return { ...state.selected, handle: name };
+  const curving = current && state.selected.kind === "screen" && bulgeOf(state.current.screens[state.selected.screen], state.selected.key) !== null;
+  if (current) for (const [name, [hx, hy]] of Object.entries(curving ? curveHandles(current) : handles(current))) if (Math.abs(sx - hx) <= 6 && Math.abs(sy - hy) <= 6) return { ...state.selected, handle: name };
   const cutouts = cutoutsLayer();
   if (cutouts && cutouts.visible !== false && state.selected && state.selected.kind === "screen") {
     for (let index = 0; index < state.current.screens.length; index++) for (const key of ["tube", "outer", "inner", "image"]) {
@@ -574,7 +596,7 @@ function cursorFor(target) {
   if (state.space) return state.drag ? "grabbing" : "grab";
   if (!target) return "default";
   const h = target.handle;
-  if (h === "radius" || h === "bulge-x" || h === "bulge-y") return CURVE_CURSOR;
+  if (h === "radius" || (h && h.startsWith("bulge-"))) return CURVE_CURSOR;
   if (h === "move") return "move";
   if (h === "nw" || h === "se") return "nwse-resize";
   if (h === "ne" || h === "sw") return "nesw-resize";
@@ -620,8 +642,7 @@ canvas.addEventListener("mousemove", event => {
   const s = state.drag.start, h = state.drag.handle;
   const screen = state.selected.kind === "screen" ? state.current.screens[state.selected.screen] : null;
   if (h === "radius") { const [px] = toPlate(sx, sy); setRadius(screen, state.selected.key, px - s.x); state.dirty = true; state.drag.moved = true; buildProps(); draw(); return; }
-  if (h === "bulge-y") { const [, py] = toPlate(sx, sy); setBulge(screen, "y", s.y - py); state.dirty = true; state.drag.moved = true; buildProps(); draw(); return; }
-  if (h === "bulge-x") { const [px] = toPlate(sx, sy); setBulge(screen, "x", px - (s.x + s.w)); state.dirty = true; state.drag.moved = true; buildProps(); draw(); return; }
+  if (h && h.startsWith("bulge-")) { const [px, py] = toPlate(sx, sy); bulgeDrag(screen, state.selected.key, h, px, py); state.dirty = true; state.drag.moved = true; buildProps(); draw(); return; }
   let x = s.x, y = s.y, w = s.w, hh = s.h;
   if (h === "move") { x += dx; y += dy; }
   else {
