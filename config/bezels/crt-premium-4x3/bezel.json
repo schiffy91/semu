@@ -15,19 +15,23 @@
     {
       "id": "main",
       "tube": {
-        "x": 396,
-        "y": 160,
-        "w": 792,
-        "h": 594
+        "x": 375,
+        "y": 172,
+        "w": 835,
+        "h": 566
       },
       "fit": "aspect",
       "inset": 0,
       "shape": {
         "kind": "rounded",
-        "radius": 0.044999999999999998,
-        "exponent": 4
+        "radius": 0.047,
+        "exponent": 4,
+        "bulge": {
+          "x": 9,
+          "y": 14
+        }
       },
-      "surround": "#000000",
+      "surround": "#ff0000",
       "curvature": 0.035000000000000003,
       "vignette": 0.20000000000000001,
       "bloom": 0.17999999999999999,
@@ -40,6 +44,12 @@
       "measurement": {
         "tool": "legacy",
         "mode": "measured_continuous_opening"
+      },
+      "provenance": {
+        "edited": {
+          "tool": "semu bezel edit",
+          "when": "2026-09-19 23:03:35"
+        }
       }
     }
   ],
@@ -59,13 +69,17 @@
         "y": 0,
         "w": 1584,
         "h": 990
-      }
+      },
+      "blend": "normal",
+      "opacity": 1
     },
     {
       "id": "cutouts",
       "order": 1,
       "visible": true,
-      "follow": "canvas"
+      "follow": "canvas",
+      "blend": "normal",
+      "opacity": 1
     }
   ],
   "canvas_layer": "art"
