@@ -129,6 +129,8 @@
           "HSM_DUALSCREEN_CORE_IMAGE_SPLIT_OFFSET": "0",
           "HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS": "80.000000",
           "HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION": "4.000000",
+          "HSM_FRM_THICKNESS": "100",
+          "HSM_FRM_THICKNESS_SCALE_X": "100",
           "HSM_GLOBAL_CORNER_RADIUS": "10",
           "HSM_LED_LAYER_ORDER": "4.000000",
           "HSM_LED_OPACITY": "0.000000",
@@ -138,6 +140,11 @@
           "HSM_LED_SCALE_X": "100",
           "HSM_NON_INTEGER_SCALE": "88.900000",
           "HSM_NON_INTEGER_SCALE_OFFSET": "100",
+          "HSM_REFLECT_BLUR_MAX": "95",
+          "HSM_REFLECT_DIFFUSED_AMOUNT": "50",
+          "HSM_REFLECT_DIRECT_AMOUNT": "150",
+          "HSM_REFLECT_FADE_AMOUNT": "100",
+          "HSM_REFLECT_GLOBAL_AMOUNT": "20",
           "HSM_ROTATE_CORE_IMAGE": "0",
           "HSM_SCREEN_CORNER_RADIUS_SCALE": "100",
           "HSM_SCREEN_POSITION_X": "0",
@@ -152,9 +159,13 @@
       "inset": null,
       "measurement": null,
       "reflection": {
-        "strength": 0.20000000000000001,
+        "strength": 0.40000000000000002,
         "blur": 0.94999999999999996,
-        "fade": 1
+        "fade": 1,
+        "reach": {
+          "x": 35,
+          "y": 35
+        }
       }
     },
     {
@@ -274,6 +285,8 @@
           "HSM_DUALSCREEN_CORE_IMAGE_SPLIT_OFFSET": "0",
           "HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS": "80.000000",
           "HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION": "4.000000",
+          "HSM_FRM_THICKNESS": "100",
+          "HSM_FRM_THICKNESS_SCALE_X": "100",
           "HSM_GLOBAL_CORNER_RADIUS": "10",
           "HSM_LED_LAYER_ORDER": "4.000000",
           "HSM_LED_OPACITY": "0.000000",
@@ -283,6 +296,11 @@
           "HSM_LED_SCALE_X": "100",
           "HSM_NON_INTEGER_SCALE": "88.900000",
           "HSM_NON_INTEGER_SCALE_OFFSET": "100",
+          "HSM_REFLECT_BLUR_MAX": "95",
+          "HSM_REFLECT_DIFFUSED_AMOUNT": "50",
+          "HSM_REFLECT_DIRECT_AMOUNT": "150",
+          "HSM_REFLECT_FADE_AMOUNT": "100",
+          "HSM_REFLECT_GLOBAL_AMOUNT": "20",
           "HSM_ROTATE_CORE_IMAGE": "0",
           "HSM_SCREEN_CORNER_RADIUS_SCALE": "100",
           "HSM_SCREEN_POSITION_X": "0",
@@ -297,9 +315,13 @@
       "inset": null,
       "measurement": null,
       "reflection": {
-        "strength": 0.20000000000000001,
+        "strength": 0.40000000000000002,
         "blur": 0.94999999999999996,
-        "fade": 1
+        "fade": 1,
+        "reach": {
+          "x": 35,
+          "y": 35
+        }
       }
     }
   ],

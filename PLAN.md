@@ -740,7 +740,13 @@ Update this block whenever a milestone criterion changes state.
   (`screens[].reflection`) and only ever lands on a bezel band: the ring,
   which may be unfilled (`ring.color: none`) to mark a painted bezel on a
   plate such as gb-studio; the chrome pass reflects the part of the band
-  outside the opening. The crt-premium / crt-silver plates were deleted on
+  outside the opening. The reflection mirrors the picture across its own
+  edge (Mega Bezel masks the black edge out), its strength is the global
+  amount times the direct and diffused amounts (so a 20 % preset is 40 %),
+  and it keeps going past the drawn bezel by `reflection.reach {x,y}` px,
+  defaulted from the preset's frame (HSM_FRM_THICKNESS x 0.0007): the
+  Soqueroeu PSX, Wii, N64 and Dreamcast scenes draw a 16 px bezel and were
+  invisible without it. The crt-premium / crt-silver plates were deleted on
   2026-09-20 (the user did not want them; every TV system has its Soqueroeu
   scene, Switch and Wii U stay bezel-free by design). Cutout handles became zones: the knob at a corner or
   edge middle sizes (Shift keeps the ratio), and just beyond it the same
