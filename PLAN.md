@@ -368,6 +368,86 @@ it. **Done when:** every system's default capture shows its measured tube
 holding the game at the right aspect inside the right plate, with the
 per-screen look applied and nothing bleeding over the bezel.
 
+### M11. Bezel dimensions from the files, verified in a fast loop
+
+The render-based calibration (RetroArch running each upstream preset with a
+flat card) was the wrong tool: a build-time calculation became a slow, flaky
+runtime dependency. Every number is determined by files already pinned in
+`config/assets/bezels.json`: the Duimon and Soqueroeu layer PNGs and the
+preset parameter chains. This milestone computes the dimensions from those
+files, reviews them without any emulator, and keeps the emulator only for the
+final visual check. Already in place from the earlier attempt and kept: the
+`image` rectangle in the renderer, emitter and fast preview; the synthetic
+core's flat-card and control-file modes; the gallery's verify mode.
+
+**M11.1 Preset resolution.** `tools/bezel-dimensions.py` resolves each
+package's upstream preset through its `#reference` chain (Duimon or Soqueroeu
+tree, then the Mega Bezel base presets in the pinned shader tree), later
+assignments overriding earlier ones, and produces the merged `HSM_*`
+parameter set plus the layer image paths (BackgroundImage, DeviceImage,
+DecalImage, CabinetGlassImage, TopLayerImage, LEDImage). Output:
+`build/bezel-dimensions/<package>.params.json`. Done when every package
+resolves with no missing file and the merged set is printed for inspection.
+
+**M11.2 Placement math ported.** From Mega Bezel's own source
+(`shaders/base/common/params-0-screen-scale.inc` for unit conversions,
+`common-functions.inc` for screen scale, position and dual-screen offsets,
+`params-4-image-layers.inc` for background and device layer placement) port
+the closed-form placement to Python, in viewport units at the plate's aspect:
+screen height from `HSM_NON_INTEGER_SCALE`, width from
+`HSM_ASPECT_RATIO_MODE` (auto from the system aspect, explicit, 4:3, 3:2,
+16:9, PAR from the native size), `HSM_SCREEN_POSITION_X/Y`, the
+`HSM_DUALSCREEN_*` split and `HSM_2ND_SCREEN_*` scale, offset and crop, the
+viewport flip, and for device plates the layer transform from
+`HSM_DEVICE_SCALE`/`POS` with its follow-layer and scale-inherit modes and
+`HSM_BG_FILL_MODE`. Scenes map viewport to plate 1:1; device plates map
+through the device layer transform and the layer's alpha silhouette. Done
+when unit tests reproduce, within 2 px at 3840x2160, the seven rectangles the
+render-based run measured (nes, genesis, gc, dreamcast, gb, gbc, gba): those
+captures are the ground truth for the port and the last thing RetroArch is
+used for in this milestone.
+
+**M11.3 Openings from the layers.** Lens windows are the alpha bounds of the
+`*_Glass` layers (done for DMG, GBC, GBA). DS and 3DS windows are the two
+largest rectangular regions on the `*_Decal` layers (new detector in
+`tools/bezel-measure.py`; the vertical clamshells likewise). TV tubes are the
+dark openings of the scene plates (done). Plates with no drawn opening (PSP
+E1000) and scenes that paint their own tube use opening = image. Done when
+every screen of every package has an opening with its method recorded.
+
+**M11.4 Package emission.** The tool writes into `config/bezels/*/bezel.json`
+per screen: `tube` (opening), `image`, the drawn inner ring from
+`HSM_BZL_WIDTH/HEIGHT` and corner scales, the corner shape from the opening
+mask, `surround` sampled from the plate between image and opening, and a
+provenance block naming the preset, the parameters used, and the flip.
+Recolor packages inherit from their base. The main (top) screen takes the
+larger window when the two differ; the upper window when they match. Done
+when `semu render-env` emits `SEMU_RENDER_SCREEN_<n>_IMAGE` for every
+calibrated package and the contract tests assert image inside opening and
+image aspect within 1 % of the system aspect for all of them.
+
+**M11.5 Review without an emulator.** Two generated sheets: a dimensions
+table (package, screen, canvas, opening, image, aspect, surround, preset,
+flip, aspect mismatch) and an overlay sheet (each plate with the opening and
+image outlined), both linked from the gallery page. Done when all 29
+packages are on the sheets and inspected: image inside opening, aspect right,
+main screen in the large window, nothing outside the plate.
+
+**M11.6 Fast and real galleries, verified.** The fast gallery renders both
+screen configurations from the packages in under a minute. The real gallery
+runs on a worker pool (one RetroArch per private display, six at once) with
+one launch per cell that also lights the flat card through the Semu renderer
+and measures where it lands; pass is within 2 px of the package. Done when
+both configurations render with zero verification failures and both sheets
+are inspected.
+
+**M11.7 Cleanup.** Delete `tools/bezel-calibrate.py` and the RetroArch
+calibration path, update README and the memory notes, commit.
+
+Order and expected cost: M11.1 and M11.2 are the work (a few hundred lines of
+Python against Mega Bezel's source, half a day); M11.3 to M11.5 are an hour;
+M11.6 runs in minutes on this machine. No emulator is launched before M11.6.
+
 ## Verification rules
 
 - A contract test asserts exact generated bytes or keys against the
@@ -569,7 +649,21 @@ Update this block whenever a milestone criterion changes state.
   stay as alternates, prefer the larger main screen (centered main when it
   fits, else the pair centered) and use thinner frames. Every Deck and 4K
   preview was inspected; real renders confirm the same geometry.
-- Active milestone: M5/M6 hardware acceptance once a Deck is reachable
+- Calibration (2026-09-19 night): the user found the picture placement wrong
+  in most packages; the openings were measured but the picture inside them
+  was guessed. `tools/bezel-calibrate.py` now renders each package's upstream
+  preset (Soqueroeu TV scenes, Duimon device presets, Standard tier) in real
+  RetroArch at 3840x2160 with the synthetic core lighting one flat screen at
+  a time, diffs dark and lit frames (scanline gaps closed), detects flipped
+  viewports against the plate, maps device plates through their silhouette
+  over a flat floor, and writes `screens[].image` (plate pixels) plus the
+  measured surround color. Scenes use the image as their opening; device
+  shells keep the lens as the opening. The DS and 3DS faces are Duimon's
+  device+decal plates (two equal windows), and the main screen takes the
+  larger window. `tools/bezel-gallery.py --mode real --verify` lights the
+  flat card in the Semu renderer and checks the picture lands within 2 px of
+  the package geometry; the page shows the upstream render beside each cell.
+- Active milestone: M11 (dimensions from the files); then M5/M6 hardware acceptance once a Deck is reachable
   (`DECK_HOST=deck tests/deck/deploy.sh install`), then the native-emulator
   render hook.
 - Build structure (2026-09-19 evening): 22 flakes, one per emulator (8),
