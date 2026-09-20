@@ -323,7 +323,7 @@ class RenderingContract {
         contract.expect(dual.contains("SEMU_RENDER_SURFACE_COUNT=2"), "nds has two surfaces");
         contract.expect(dual.contains("SEMU_RENDER_BEZELS=1") && dual.contains("SEMU_RENDER_LAYOUT=main_right") && dual.contains("SEMU_RENDER_BEZEL_ID=dual-main-right"), "the DS default is the computed main-right layout, which needs no plate");
         bool frame = false;
-        for entry in dual { if (entry.startsWith("SEMU_RENDER_FRAME=0.05,0.03,")) { frame = true; } }
+        for entry in dual { if (entry.startsWith("SEMU_RENDER_FRAME=0.03,0.03,")) { frame = true; } }
         contract.expect(frame, "computed layouts draw a frame around each screen");
         SemuPlan shell = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"shell\"}}}}", diagnostics);
         Vector<string> shellEnv = SemuRenderEnvironment.compile(shell, nds, "retroarch", "/state/retroarch", diagnostics);

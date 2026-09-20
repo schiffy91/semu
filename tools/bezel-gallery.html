@@ -38,13 +38,15 @@
 <header>
   <h1>Semu bezels</h1>
   <nav id="consoles"></nav>
+  <select id="mode" title="Renderer"><option value="real">Real renderer</option><option value="fake">Fast preview</option></select>
   <select id="config" title="Screen configuration"></select>
 </header>
 <main id="main"></main>
 <footer id="footer"></footer>
 <script>
 const manifest = /*MANIFEST*/null;
-const state = { system: null, config: null };
+const state = { system: null, config: null, mode: null };
+const modeSelect = document.getElementById("mode");
 const consoles = document.getElementById("consoles");
 const configSelect = document.getElementById("config");
 const main = document.getElementById("main");
@@ -68,7 +70,8 @@ function render() {
   const system = manifest.systems.find(s => s.id === state.system) || manifest.systems[0];
   const config = manifest.configs[state.config] ? state.config : Object.keys(manifest.configs)[0];
   state.system = system.id; state.config = config;
-  remember("semu-gallery-system", system.id); remember("semu-gallery-config", config);
+  remember("semu-gallery-system", system.id); remember("semu-gallery-config", config); remember("semu-gallery-mode", state.mode);
+  modeSelect.value = state.mode;
   [...consoles.children].forEach(button => button.classList.toggle("active", button.dataset.id === system.id));
   configSelect.value = config;
   const screens = system.screens.map(s => `${s.id} ${s.native.w}x${s.native.h}`).join(", ");
@@ -76,7 +79,7 @@ function render() {
   for (const v of system.variants) {
     html += `<section class="variant">
       <h2>${v.label}${v.default ? '<span class="badge">default</span>' : ""}<small>${v.bezel ? `<code>${v.bezel}</code> · ${v.family} · ${v.layout}` : "bezels off"}</small></h2>
-      <div class="capture"><img loading="lazy" src="${v.captures[config]}" alt="${system.id} ${v.id} ${config}"></div>
+      ${(() => { const c = v.captures[config] || {}; const src = c[state.mode] || c.real || c.fake; const other = c[state.mode] ? "" : ` (showing ${c.real ? "real" : "fast"} render: no ${state.mode === "real" ? "real" : "fast"} render yet)`; return src ? `<div class="capture"><img loading="lazy" src="${src}" alt="${system.id} ${v.id} ${config}"></div><div class="system">${state.mode === "real" ? "Real renderer" : "Fast preview"}${other}</div>` : `<div class="system">no render</div>`; })()}
       <div class="plates">${plate("Art plate", v.art)}${plate("Background", v.background)}</div>
       <details><summary>Package facts</summary>
         ${v.frame ? `<div>Drawn frame: width ${fmt(v.frame.width)} · radius ${fmt(v.frame.radius)} · ${v.frame.color}</div>` : ""}
@@ -102,9 +105,11 @@ for (const [id, config] of Object.entries(manifest.configs)) {
   configSelect.appendChild(option);
 }
 configSelect.onchange = () => { state.config = configSelect.value; render(); };
+modeSelect.onchange = () => { state.mode = modeSelect.value; render(); };
+state.mode = pick("semu-gallery-mode", "real");
 state.system = pick("semu-gallery-system", manifest.systems[0].id);
 state.config = pick("semu-gallery-config", Object.keys(manifest.configs)[0]);
-document.getElementById("footer").textContent = `Generated ${manifest.generated} by tools/bezel-gallery.py through the Semu renderer (RetroArch + synthetic test card).`;
+document.getElementById("footer").textContent = `Generated ${manifest.generated} by tools/bezel-gallery.py: real renders through RetroArch and libsemurenderer with the synthetic test card; fast previews through tools/bezel_fake.py (same geometry, no shader chains).`;
 render();
 </script>
 </body>

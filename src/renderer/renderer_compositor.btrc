@@ -73,6 +73,7 @@ struct RendererVariantConfig {
     struct RendererPath background;
     int layout;
     int frame_set;
+    int frame_around_game;  // ring around the fitted game instead of the opening: an inset bezel inside a device plate
     float frame_width;
     float frame_radius;
     float frame_r;
@@ -201,12 +202,14 @@ void main(){
  if(uPass<0.5){vec3 c=vec3(0.0);if(hasBg>0.5&&inside(p,uBackgroundRect))c=texture(uBackground,artUv(p,uBackgroundRect)).rgb;frag=vec4(c,1.0);return;}
  if(uPass<1.5){float m0=shapeMask(p,uTube,uShape);float m1=dual>0.5?shapeMask(p,uTube2,uShape2):0.0;if(m0<=0.0&&m1<=0.0)discard;
   vec3 c;float a;
-  if(m0>=m1){c=screenColor(uGame,uGlass,p,uTube,uRect,uFx,uSurround,uRotation.x,uReflect.x,uReflect.z);a=m0;}
-  else{c=screenColor(uGame2,uGlass2,p,uTube2,uRect2,uFx2,uSurround2,uRotation.y,uReflect.y,uReflect.w);a=m1;}
+  if(m0>=m1){c=screenColor(uGame,uGlass,p,uTube,uRect,uFx,uSurround,uRotation.x,uReflect.x,uReflect.z);a=m0;
+   if(uFrame.z>1.5){vec4 f=frameRing(p,uRect,vec4(1.0,uFrame.y,2.0,0.0));c=mix(c,f.rgb,f.a);}}
+  else{c=screenColor(uGame2,uGlass2,p,uTube2,uRect2,uFx2,uSurround2,uRotation.y,uReflect.y,uReflect.w);a=m1;
+   if(uFrame.z>1.5){vec4 f=frameRing(p,uRect2,vec4(1.0,uFrame.y,2.0,0.0));c=mix(c,f.rgb,f.a);}}
   frag=vec4(c,a);return;}
  if(uPass<2.5){vec4 c=vec4(0.0);
   if(hasArt>0.5&&inside(p,uBezelRect))c=texture(uBezel,artUv(p,uBezelRect));
-  if(uFrame.z>0.5){vec4 f=frameRing(p,uTube,uShape);c=mix(c,vec4(f.rgb,1.0),f.a);if(dual>0.5){vec4 f2=frameRing(p,uTube2,uShape2);c=mix(c,vec4(f2.rgb,1.0),f2.a);}}
+  if(uFrame.z>0.5&&uFrame.z<1.5){vec4 f=frameRing(p,uTube,uShape);c=mix(c,vec4(f.rgb,1.0),f.a);if(dual>0.5){vec4 f2=frameRing(p,uTube2,uShape2);c=mix(c,vec4(f2.rgb,1.0),f2.a);}}
   if(c.a<=0.0)discard;
   vec2 q;float k=halo(p,uTube,q);vec3 g=blurred(uGame,rotatedUv(q,uRotation.x))*k*uFx.w;
   if(dual>0.5){vec2 q2;float k2=halo(p,uTube2,q2);g=max(g,blurred(uGame2,rotatedUv(q2,uRotation.y))*k2*uFx2.w);}
@@ -302,8 +305,11 @@ class RendererConfiguration {
         variant->layout = RendererConfiguration.parseLayout(getenv(name));
         snprintf(name, sizeof(name), "SEMU_RENDER_FRAME%s", suffix);
         char* frame = getenv(name);
-        if (frame != null && sscanf(frame, "%f,%f,%f,%f,%f", &variant->frame_width, &variant->frame_radius, &variant->frame_r, &variant->frame_g, &variant->frame_b) == 5 && variant->frame_width > 0.0f) {
+        float around = 0.0f;
+        int parsed = frame == null ? 0 : sscanf(frame, "%f,%f,%f,%f,%f,%f", &variant->frame_width, &variant->frame_radius, &variant->frame_r, &variant->frame_g, &variant->frame_b, &around);
+        if (parsed >= 5 && variant->frame_width > 0.0f) {
             variant->frame_set = 1;
+            variant->frame_around_game = around > 0.5f ? 1 : 0;
         }
         for (int index = 0; index < 2; index++) {
             RendererConfiguration.loadScreen(&variant->screens[index], index, suffix);
@@ -490,42 +496,44 @@ class RendererGeometry {
     }
 
     class bool mainBeside(struct RendererCompositionGeometry* geometry, int areaWidth, int areaHeight,
-                          int frame, int gap, bool right) {  // main at the largest integer scale that leaves the second screen at least 1x beside it
+                          int frame, int gap, bool right) {  // the larger main wins: centered main with the second beside it, else the pair centered
         struct RendererLaneGeometry* main = &geometry->lanes[0];
         struct RendererLaneGeometry* second = &geometry->lanes[1];
         int mainWidth = RendererGeometry.rotatedWidth(main);
         int mainHeight = RendererGeometry.rotatedHeight(main);
         int secondWidth = RendererGeometry.rotatedWidth(second);
         int secondHeight = RendererGeometry.rotatedHeight(second);
-        int scale = (areaHeight - 2 * frame) / mainHeight;
-        int side = 0;
-        while (scale >= 1) {  // room beside the centered main: its frame, the gap, the second screen's frame and an outer margin
-            side = (areaWidth - scale * mainWidth) / 2 - 3 * frame - 2 * gap;
-            if (side >= secondWidth) { break; }
-            scale--;
+        int tallest = (areaHeight - 2 * frame) / mainHeight;
+        int centeredScale = tallest;
+        int centeredSide = 0;
+        while (centeredScale >= 1) {
+            centeredSide = (areaWidth - centeredScale * mainWidth) / 2 - 3 * frame - 2 * gap;
+            if (centeredSide >= secondWidth) { break; }
+            centeredScale--;
         }
-        bool centered = scale >= 1;
-        if (!centered) {  // no room to center the main screen: keep its largest integer scale and center the pair instead
-            scale = (areaHeight - 2 * frame) / mainHeight;
-            while (scale >= 1) {
-                side = areaWidth - scale * mainWidth - 4 * frame - 3 * gap;
-                if (side >= secondWidth) { break; }
-                scale--;
-            }
-            if (scale < 1) { return false; }
+        int pairScale = tallest;
+        int pairSide = 0;
+        while (pairScale >= 1) {
+            pairSide = areaWidth - pairScale * mainWidth - 4 * frame - 3 * gap;
+            if (pairSide >= secondWidth) { break; }
+            pairScale--;
         }
+        bool centered = centeredScale >= 1 && centeredScale >= pairScale;
+        int scale = centered ? centeredScale : pairScale;
+        int side = centered ? centeredSide : pairSide;
+        if (scale < 1) { return false; }
         float secondScale = (float)side / (float)secondWidth;
         float tall = (float)(scale * mainHeight) / (float)secondHeight;
         if (tall < secondScale) { secondScale = tall; }
+        int secondOutWidth = (int)((float)secondWidth * secondScale + 0.5f);
+        int secondOutHeight = (int)((float)secondHeight * secondScale + 0.5f);
         int mainX = (areaWidth - scale * mainWidth) / 2;
         int mainY = (areaHeight - scale * mainHeight) / 2;
         if (!centered) {
-            int pairWidth = scale * mainWidth + 2 * frame + gap + (int)((float)secondWidth * secondScale + 0.5f);
+            int pairWidth = scale * mainWidth + 2 * frame + gap + secondOutWidth;
             mainX = right ? (areaWidth - pairWidth) / 2 : (areaWidth + pairWidth) / 2 - scale * mainWidth;
         }
         RendererGeometry.exact(main, mainX, mainY, scale * mainWidth, scale * mainHeight);
-        int secondOutWidth = (int)((float)secondWidth * secondScale + 0.5f);
-        int secondOutHeight = (int)((float)secondHeight * secondScale + 0.5f);
         int secondX = right ? mainX + scale * mainWidth + 2 * frame + gap : mainX - 2 * frame - gap - secondOutWidth;
         int secondY = mainY + (scale * mainHeight - secondOutHeight) / 2;
         RendererGeometry.exact(second, secondX, secondY, secondOutWidth, secondOutHeight);
@@ -582,7 +590,7 @@ class RendererGeometry {
 
     class void computed(struct RendererCompositionGeometry* geometry, int layout, int areaWidth, int areaHeight,
                         int frame, int integerScaling) {
-        int gap = areaWidth / 50;
+        int gap = areaWidth / 64;
         if (layout == SEMU_LAYOUT_MAIN_RIGHT || layout == SEMU_LAYOUT_MAIN_LEFT) {
             if (RendererGeometry.mainBeside(geometry, areaWidth, areaHeight, frame, gap, layout == SEMU_LAYOUT_MAIN_RIGHT)) { return; }
             RendererGeometry.sideBySide(geometry, areaWidth, areaHeight, frame, gap, integerScaling);  // too small for the policy: the plain side-by-side keeps both screens whole
@@ -647,7 +655,8 @@ class RendererGeometry {
         if (bezel && variant->frame_set != 0) {
             frameWidth = (int)(variant->frame_width * (float)areaHeight + 0.5f);
             geometry->frame_width = (float)frameWidth;
-            geometry->framed = 1;
+            geometry->framed = variant->frame_around_game != 0 ? 2 : 1;
+            if (variant->frame_around_game != 0) { frameWidth = 0; }
         }
         if (bezel && fixed) {
             struct RendererCanvasRect canvas;
@@ -1372,7 +1381,7 @@ class RendererCompositor {
         RendererCompositor.set4(gl, resources->uniform_flags,
             geometry->lane_count > 1 ? 1.0f : 0.0f, art ? 1.0f : 0.0f, background ? 1.0f : 0.0f, 0.0f);
         RendererCompositor.set4(gl, resources->uniform_frame,
-            geometry->frame_width, variant->frame_radius, framed ? 1.0f : 0.0f, 0.0f);
+            geometry->frame_width, variant->frame_radius, framed ? (float)geometry->framed : 0.0f, 0.0f);
         RendererCompositor.set4(gl, resources->uniform_frame_color,
             variant->frame_r, variant->frame_g, variant->frame_b, 1.0f);
         if (resources->uniform_menu_on >= 0) {

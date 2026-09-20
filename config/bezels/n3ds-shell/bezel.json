@@ -7,9 +7,10 @@
   "art": "assets/bezels/n3ds/shell.png",
   "background": "assets/bezels/backgrounds/desk-night.png",
   "frame": {
-    "width": 0.03,
+    "width": 0.012,
     "radius": 0.02,
-    "color": "#0e0e0e"
+    "color": "#0a0a0a",
+    "around": "game"
   },
   "canvas": {
     "w": 3840,
@@ -25,13 +26,13 @@
         "h": 1641
       },
       "fit": "aspect",
-      "inset": 0.0,
+      "inset": 0.02,
       "shape": {
         "kind": "rounded",
         "radius": 0.0119,
         "exponent": 4.0
       },
-      "surround": "#151515",
+      "surround": "#1b1b1b",
       "curvature": 0.0,
       "vignette": 0.05,
       "bloom": 0.0,
@@ -57,13 +58,13 @@
         "h": 764
       },
       "fit": "aspect",
-      "inset": 0.0,
+      "inset": 0.02,
       "shape": {
         "kind": "rounded",
         "radius": 0.0228,
         "exponent": 4.0
       },
-      "surround": "#151515",
+      "surround": "#1b1b1b",
       "curvature": 0.0,
       "vignette": 0.05,
       "bloom": 0.0,
@@ -80,5 +81,8 @@
         "threshold": 3
       }
     }
-  ]
+  ],
+  "doc": {
+    "frame": "the Duimon openings are wider than the screens; an inset drawn bezel around the fitted game turns the leftover into a real-looking inner frame, as Duimon's own presets draw"
+  }
 }

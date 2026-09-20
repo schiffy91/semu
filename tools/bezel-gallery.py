@@ -1,10 +1,14 @@
 #!/usr/bin/env nix-shell
-#!nix-shell -i python3 -p python3 xorg.xorgserver xorg.xwd imagemagick
-# Renders every system's bezel variants through the real Semu renderer (RetroArch + the synthetic
-# test-card core on a private Xvfb display) for each screen configuration, copies the packages'
-# art and background plates, and writes a static gallery site.
-# usage: bezel-gallery.py OUT_DIR [--configs deck,pc4k] [--systems nes,snes] [--wait 6] [--display 80]
+#!nix-shell -i python3 -p python3Packages.numpy python3Packages.pillow xorg.xorgserver xorg.xwd imagemagick
+# Renders every system's bezel variants for each screen configuration, copies the packages' art and
+# background plates, and writes a static gallery site. Two renderers: "fake" (tools/bezel_fake.py,
+# the compositor's geometry in numpy, seconds for everything) for iteration, and "real" (RetroArch +
+# the synthetic test-card core through libsemurenderer on a private Xvfb, about nine seconds a cell).
+# usage: bezel-gallery.py OUT_DIR [--mode fake|real|both] [--configs deck,pc4k] [--systems nes,snes] [--wait 6] [--display 80]
 import argparse, json, os, shutil, subprocess, sys, time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from bezel_fake import FakeCompositor
 
 CONFIGS = {"deck": (1280, 800, "Steam Deck 1280x800"), "pc4k": (3840, 2160, "PC 4K 3840x2160")}
 
@@ -15,13 +19,16 @@ class Gallery:
         self.repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.out = os.path.abspath(args.out)
         self.semu = args.semu or shutil.which("semu") or "/run/current-system/sw/bin/semu"
-        bundle = os.path.dirname(os.path.realpath(self.semu))
-        self.retroarch = args.retroarch or os.path.join(bundle, "retroarch")
-        self.core = args.core or self.build_core()
+        installed = os.path.dirname(os.path.realpath(shutil.which("semu") or "/run/current-system/sw/bin/semu"))  # the installed bundle carries the assets and RetroArch
+        self.retroarch = args.retroarch or os.path.join(installed, "retroarch")
+        os.environ.setdefault("SEMU_ASSET_ROOT", os.path.dirname(installed))  # a locally built CLI (--semu) still resolves the bundle's assets
+        self.modes = ["fake", "real"] if args.mode == "both" else [args.mode]
+        self.core = args.core or (self.build_core() if "real" in self.modes else None)
         self.configs = {name: CONFIGS[name] for name in args.configs.split(",")}
         os.makedirs(os.path.join(self.out, "plates"), exist_ok=True)
         for name in self.configs:
-            os.makedirs(os.path.join(self.out, name), exist_ok=True)
+            for mode in ("fake", "real"):
+                os.makedirs(os.path.join(self.out, name, mode), exist_ok=True)
         self.work = os.path.join(self.out, ".work")
         os.makedirs(self.work, exist_ok=True)
         self.rom = os.path.join(self.work, "pattern.semu")
@@ -52,9 +59,14 @@ class Gallery:
         path = os.path.join(self.repo, "config/bezels", bezel_id, "bezel.json")
         return json.load(open(path)) if os.path.exists(path) else None
 
-    def render_env(self, system, settings):
-        command = [self.semu, "render-env", "--system", system, "--emulator", "retroarch", "--settings-json", json.dumps(settings)]
-        run = subprocess.run(command, capture_output=True, text=True)
+    def render_env(self, system, settings):  # a --semu build runs unwrapped against the working tree's config, so package edits show without a rebuild
+        executable, environment = self.semu, dict(os.environ)
+        unwrapped = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(self.semu))), "lib/semu/semu-btrc")
+        if self.args.semu and os.path.exists(unwrapped):
+            executable = unwrapped
+            environment["SEMU_SOURCE_ROOT"] = os.path.join(self.repo, "config")
+        command = [executable, "render-env", "--system", system, "--emulator", "retroarch", "--settings-json", json.dumps(settings)]
+        run = subprocess.run(command, capture_output=True, text=True, env=environment)
         if run.returncode != 0:
             raise RuntimeError(f"render-env failed for {system}: {run.stderr.strip()}")
         return dict(line.split("=", 1) for line in run.stdout.splitlines() if "=" in line)
@@ -118,11 +130,17 @@ class Gallery:
                 env = self.render_env(system, settings)
                 captures = {}
                 for config, (width, height, _) in self.configs.items():
-                    output = os.path.join(self.out, config, f"{system}-{variant_id}.png")
-                    if not os.path.exists(output) or self.args.force:
-                        print(f"{system} {variant_id} @ {config}", flush=True)
-                        self.capture(env, width, height, output)
-                    captures[config] = f"{config}/{system}-{variant_id}.png"
+                    captures[config] = {}
+                    for mode in ("fake", "real"):
+                        relative = f"{config}/{mode}/{system}-{variant_id}.png"
+                        output = os.path.join(self.out, relative)
+                        if mode in self.modes and (not os.path.exists(output) or self.args.force):
+                            print(f"{system} {variant_id} @ {config} ({mode})", flush=True)
+                            if mode == "fake":
+                                FakeCompositor(env, width, height).render().save(output)
+                            else:
+                                self.capture(env, width, height, output)
+                        captures[config][mode] = relative if os.path.exists(output) else None
                 entry["variants"].append({
                     "id": variant_id, "label": label, "bezel": bezel_id, "default": bezels.get("default_variant") == variant_id,
                     "layout": package.get("layout") if package else None, "family": package.get("family") if package else None,
@@ -142,6 +160,7 @@ class Gallery:
     def main(cls):
         parser = argparse.ArgumentParser()
         parser.add_argument("out")
+        parser.add_argument("--mode", default="fake", choices=["fake", "real", "both"])
         parser.add_argument("--configs", default="deck,pc4k")
         parser.add_argument("--systems", default="")
         parser.add_argument("--wait", type=float, default=6.0)

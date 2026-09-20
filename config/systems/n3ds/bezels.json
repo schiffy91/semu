@@ -1,9 +1,14 @@
 {
   "schema_version": 4,
   "enabled": true,
-  "default_variant": "main_right",
+  "default_variant": "shell",
   "widescreen_variant": "",
   "variants": [
+    {
+      "id": "shell",
+      "label": "Duimon shell",
+      "bezel": "n3ds-shell"
+    },
     {
       "id": "main_right",
       "label": "Main centered, second right",
@@ -23,11 +28,6 @@
       "id": "stacked",
       "label": "Stacked",
       "bezel": "dual-stacked"
-    },
-    {
-      "id": "shell",
-      "label": "3DS shell",
-      "bezel": "n3ds-shell"
     },
     {
       "id": "vertical",

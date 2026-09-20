@@ -169,7 +169,8 @@ class SemuRenderEnvironment {
             env.set("SEMU_RENDER_LAYOUT" + suffix, SemuBezelPackage.layout(package));
             JSONValue frame = package.get("frame");
             if (frame != null && frame.isObject()) {
-                env.set("SEMU_RENDER_FRAME" + suffix, f"{SemuRenderEnvironment.numberOr(frame, "width", "0")},{SemuRenderEnvironment.numberOr(frame, "radius", "0")},{SemuRenderEnvironment.color(SemuJson.textAt(frame, "color"), "0.08,0.08,0.08")}");
+                string around = SemuJson.textAt(frame, "around").equals("game") ? "1" : "0";  // ring around the fitted game inside a device opening, else around the opening
+                env.set("SEMU_RENDER_FRAME" + suffix, f"{SemuRenderEnvironment.numberOr(frame, "width", "0")},{SemuRenderEnvironment.numberOr(frame, "radius", "0")},{SemuRenderEnvironment.color(SemuJson.textAt(frame, "color"), "0.08,0.08,0.08")},{around}");
             }
         }
         for (int index = 0; index < ids.size(); index++) {
