@@ -7,7 +7,7 @@
   "art": null,
   "background": "assets/bezels/backgrounds/desk-night.png",
   "frame": {
-    "width": 0.05,
+    "width": 0.03,
     "radius": 0.03,
     "color": "#121212"
   },
