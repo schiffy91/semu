@@ -58,6 +58,19 @@ class SyntheticGeometry {
         }
         char* flat = getenv("SEMU_SYNTHETIC_FLAT");  // calibration: a bit per lit screen (1 = first, 2 = second), lit screens are one flat saturated color, the rest black
         SyntheticFlat = flat == null ? 0 : atoi(flat);
+        SyntheticControl.poll();
+    }
+}
+
+class SyntheticControl {
+    class void poll() {  // SEMU_SYNTHETIC_CONTROL names a file whose first integer replaces the flat mask each frame: one launch serves every calibration state
+        char* path = getenv("SEMU_SYNTHETIC_CONTROL");
+        if (path == null || path[0] == 0) { return; }
+        FILE* file = fopen(path, "r");
+        if (file == null) { return; }
+        int value = 0;
+        if (fscanf(file, "%d", &value) == 1) { SyntheticFlat = value; }
+        fclose(file);
     }
 }
 
@@ -177,6 +190,7 @@ bool retro_load_game_special(unsigned int type, const struct retro_game_info* in
 
 void retro_run() {
     SyntheticFrame++;
+    SyntheticControl.poll();
     if (SyntheticInputPoll != null) { SyntheticInputPoll(); }
     SyntheticPattern.fill();
     size_t pitch = (size_t)SyntheticFrameWidth * sizeof(uint32_t);
