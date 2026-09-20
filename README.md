@@ -122,7 +122,13 @@ layout, frame and per-screen tube, shape, look, glass and shader) through
 `SEMU_RENDER_*`, bound by `config/systems/<id>/{shaders,bezels}.json`.
 Screen openings are measured with `tools/bezel-measure.py`; art is rendered
 from pinned upstream layers by `nix build .#bezel-generate` and baked into
-`config/assets`. Switch variants without a rebuild:
+`config/assets`. `tools/bezel-gallery.py build/bezel-gallery` renders every
+system's bezel variants through the real renderer (RetroArch plus the
+synthetic test-card core on Xvfb) for the Steam Deck (1280x800) and a 4K PC
+(3840x2160) and writes a static site (`index.html`: consoles across the top,
+screen configuration top right, one section per variant with the composed
+frame, the art and background plates and the package facts). Switch variants
+without a rebuild:
 
 ```sh
 semu settings put visual.systems.gb.bezel_variant studio
