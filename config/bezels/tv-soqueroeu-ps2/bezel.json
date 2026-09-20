@@ -114,8 +114,6 @@
           "HSM_NON_INTEGER_SCALE": "64.370285",
           "HSM_NON_INTEGER_SCALE_OFFSET": "100",
           "HSM_REFLECT_BLUR_MAX": "95",
-          "HSM_REFLECT_DIFFUSED_AMOUNT": "50",
-          "HSM_REFLECT_DIRECT_AMOUNT": "150",
           "HSM_REFLECT_FADE_AMOUNT": "100",
           "HSM_REFLECT_GLOBAL_AMOUNT": "40",
           "HSM_ROTATE_CORE_IMAGE": "0",
@@ -132,13 +130,9 @@
       "inset": null,
       "measurement": null,
       "reflection": {
-        "strength": 0.55999999999999994,
+        "strength": 0.40000000000000002,
         "blur": 0.94999999999999996,
-        "fade": 1,
-        "reach": {
-          "x": 54,
-          "y": 52
-        }
+        "fade": 1
       }
     }
   ],

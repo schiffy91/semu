@@ -134,8 +134,6 @@
           "HSM_NON_INTEGER_SCALE": "58.970268",
           "HSM_NON_INTEGER_SCALE_OFFSET": "100",
           "HSM_REFLECT_BLUR_MAX": "95",
-          "HSM_REFLECT_DIFFUSED_AMOUNT": "50",
-          "HSM_REFLECT_DIRECT_AMOUNT": "150",
           "HSM_REFLECT_FADE_AMOUNT": "100",
           "HSM_REFLECT_GLOBAL_AMOUNT": "21.000000",
           "HSM_ROTATE_CORE_IMAGE": "0",
@@ -156,13 +154,9 @@
         }
       },
       "reflection": {
-        "strength": 0.29399999999999998,
+        "strength": 0.20999999999999999,
         "blur": 0.94999999999999996,
-        "fade": 1,
-        "reach": {
-          "x": 47,
-          "y": 47
-        }
+        "fade": 1
       }
     }
   ],
