@@ -601,9 +601,9 @@ function drawReflection(screen, baseAlpha) {  // the picture mirrored across its
     }
     o.restore();
   };
-  const ramp = (o, near, far) => {  // erase with alpha `near` at the picture edge rising to `far` at the band's outer edge, on every side
+  const ramp = (o, near, far, curve = 1) => {  // erase with alpha `near` at the picture edge going to `far` at the band's outer edge, on every side; curve 2 holds `near` longer
     o.save(); o.translate(-ox, -oy); o.globalCompositeOperation = "destination-out";
-    const wash = (x0, y0, x1, y1, rx, ry, rw, rh) => { if (rw <= 0 || rh <= 0) return; const g = o.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, `rgba(0,0,0,${near})`); g.addColorStop(1, `rgba(0,0,0,${far})`); o.fillStyle = g; o.fillRect(rx, ry, rw, rh); };
+    const wash = (x0, y0, x1, y1, rx, ry, rw, rh) => { if (rw <= 0 || rh <= 0) return; const g = o.createLinearGradient(x0, y0, x1, y1); for (let i = 0; i <= 4; i++) { const t = i / 4; g.addColorStop(t, `rgba(0,0,0,${near + (far - near) * Math.pow(t, curve)})`); } o.fillStyle = g; o.fillRect(rx, ry, rw, rh); };
     wash(ix, 0, bx, 0, bx, by, ix - bx, oh); wash(ix + iw, 0, bx + ow, 0, ix + iw, by, bx + ow - ix - iw, oh);
     wash(0, iy, 0, by, bx, by, ow, iy - by); wash(0, iy + ih, 0, by + oh, bx, iy + ih, ow, by + oh - iy - ih);
     o.restore();
@@ -612,9 +612,9 @@ function drawReflection(screen, baseAlpha) {  // the picture mirrored across its
   const sharp = reflectCanvas.getContext("2d"), soft = reflectBlurCanvas.getContext("2d");
   sharp.clearRect(0, 0, bw, bh); soft.clearRect(0, 0, bw, bh);
   mirrors(sharp, 0.6 * state.zoom);
-  const blurPx = Math.max(1, (0.002 + (look.blur === undefined ? 0.95 : look.blur) * 0.025) * iw);  // like the shader: a fraction of the picture width
+  const blurPx = Math.max(1, (0.001 + (look.blur === undefined ? 0.95 : look.blur) * 0.012) * iw);  // like the shader: a fraction of the picture width
   mirrors(soft, blurPx);
-  ramp(soft, 1, 0);  // the blurred copy only shows further out
+  ramp(soft, 1, 0, 2);  // the blurred copy only takes over further out; near the edge the mirror stays sharp
   sharp.drawImage(reflectBlurCanvas, 0, 0);
   ramp(sharp, 0, look.fade === undefined ? 1 : look.fade);  // then the whole thing fades with distance
   ctx.save();
