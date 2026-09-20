@@ -247,17 +247,22 @@ class SemuRetroArchSurfaceModel {
         if (firstHeight < 1 || secondHeight < 1) { return false; }
 
         int top = frame->framebuffer_height - viewportY - viewportHeight;
+        unsigned int compositeWidth =
+            SemuRetroArchSurfaceModel.compositeWidth(contract);
         frame->surface_count = 2;
-        SemuRetroArchSurfaceModel.fill(&frame->surfaces[0],
-            viewportX, top, viewportWidth, firstHeight,
-            (int)contract->surfaces[0].native_width,
-            (int)contract->surfaces[0].native_height,
-            SEMU_RENDER_ORIGIN_TOP_LEFT);
-        SemuRetroArchSurfaceModel.fill(&frame->surfaces[1],
-            viewportX, top + firstHeight, viewportWidth, secondHeight,
-            (int)contract->surfaces[1].native_width,
-            (int)contract->surfaces[1].native_height,
-            SEMU_RENDER_ORIGIN_TOP_LEFT);
+        for (int index = 0; index < 2; index++) {  // a narrower screen sits centered in the composite row: take only its columns
+            int width = (int)((unsigned long long)viewportWidth
+                * (unsigned long long)contract->surfaces[index].native_width
+                / (unsigned long long)compositeWidth);
+            if (width < 1) { return false; }
+            int x = viewportX + (viewportWidth - width) / 2;
+            SemuRetroArchSurfaceModel.fill(&frame->surfaces[index],
+                x, index == 0 ? top : top + firstHeight, width,
+                index == 0 ? firstHeight : secondHeight,
+                (int)contract->surfaces[index].native_width,
+                (int)contract->surfaces[index].native_height,
+                SEMU_RENDER_ORIGIN_TOP_LEFT);
+        }
         return true;
     }
 

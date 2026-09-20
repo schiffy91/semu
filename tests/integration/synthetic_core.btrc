@@ -1,8 +1,12 @@
-// A content-free libretro core that draws a fixed pattern, so RetroArch can run headless without a ROM.
+// A content-free libretro core that draws a test card, so RetroArch can run headless without a ROM.
+// It honors the Semu surface contract (SEMU_RENDER_SURFACE_COUNT and SURFACE_<n>_NATIVE): one
+// card per declared screen, stacked top over bottom at native size, the way dual-screen cores do.
 
 #include <libretro.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 __fn_ptr<bool, unsigned int, void*> SyntheticEnvironment;
@@ -11,29 +15,84 @@ __fn_ptr<void, int16_t, int16_t> SyntheticAudio;
 __fn_ptr<size_t, const int16_t*, size_t> SyntheticAudioBatch;
 __fn_ptr<void> SyntheticInputPoll;
 __fn_ptr<int16_t, unsigned int, unsigned int, unsigned int, unsigned int> SyntheticInputState;
-uint32_t SyntheticPixels[256 * 240];
+uint32_t SyntheticPixels[1024 * 1024];
 unsigned long long SyntheticFrame;
+int SyntheticScreens;
+int SyntheticWidths[2];
+int SyntheticHeights[2];
+int SyntheticFrameWidth;
+int SyntheticFrameHeight;
+
+class SyntheticGeometry {
+    class void load() {  // the launcher's surface contract, else the classic 256x240 card
+        SyntheticScreens = 1;
+        SyntheticWidths[0] = 256;
+        SyntheticHeights[0] = 240;
+        SyntheticWidths[1] = 0;
+        SyntheticHeights[1] = 0;
+        char* count = getenv("SEMU_RENDER_SURFACE_COUNT");
+        int screens = count == null ? 1 : atoi(count);
+        if (screens < 1 || screens > 2) { screens = 1; }
+        for (int index = 0; index < screens; index++) {
+            char name[64];
+            snprintf(name, sizeof(name), "SEMU_RENDER_SURFACE_%d_NATIVE", index);
+            char* native = getenv(name);
+            int width = 0;
+            int height = 0;
+            if (native != null && sscanf(native, "%dx%d", &width, &height) == 2 && width > 0 && height > 0 && width <= 1024 && height <= 512) {
+                SyntheticWidths[index] = width;
+                SyntheticHeights[index] = height;
+                SyntheticScreens = index + 1;
+            }
+        }
+        SyntheticFrameWidth = SyntheticWidths[0] > SyntheticWidths[1] ? SyntheticWidths[0] : SyntheticWidths[1];
+        SyntheticFrameHeight = SyntheticHeights[0] + SyntheticHeights[1];
+    }
+}
 
 class SyntheticPattern {
     class uint32_t color(int red, int green, int blue) {
         return 0xff000000u | ((uint32_t)red << 16) | ((uint32_t)green << 8) | (uint32_t)blue;
     }
 
-    class void fill() {
-        uint32_t sky = SyntheticPattern.color(48, 96, 224);
-        uint32_t ground = SyntheticPattern.color(48, 200, 64);
+    class void card(int screen, int originX, int originY, int width, int height) {  // border, checker corners, crosshair, a moving marker; hue differs per screen
+        uint32_t sky = screen == 0 ? SyntheticPattern.color(48, 96, 224) : SyntheticPattern.color(200, 72, 48);
+        uint32_t ground = screen == 0 ? SyntheticPattern.color(48, 200, 64) : SyntheticPattern.color(232, 176, 40);
+        uint32_t border = SyntheticPattern.color(255, 255, 255);
+        uint32_t dark = SyntheticPattern.color(16, 16, 16);
         uint32_t marker = SyntheticPattern.color(240, 224, 24);
-        for (int y = 0; y < 240; y++) {
-            for (int x = 0; x < 256; x++) { SyntheticPixels[y * 256 + x] = y < 160 ? sky : ground; }
+        int horizon = height * 2 / 3;
+        int cell = width >= 320 ? 16 : 8;
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                uint32_t value = y < horizon ? sky : ground;
+                bool edge = x < 2 || y < 2 || x >= width - 2 || y >= height - 2;
+                bool corner = (x < cell * 4 || x >= width - cell * 4) && (y < cell * 4 || y >= height - cell * 4);
+                bool cross = x == width / 2 || y == height / 2;
+                if (corner) { value = ((x / cell + y / cell) % 2 == 0) ? border : dark; }
+                if (cross) { value = border; }
+                if (edge) { value = border; }
+                SyntheticPixels[(originY + y) * SyntheticFrameWidth + originX + x] = value;
+            }
         }
-        int tick = (int)(SyntheticFrame % 200ULL);
-        for (int y = 100; y < 132; y++) {
-            for (int x = tick; x < tick + 32 && x < 256; x++) { SyntheticPixels[y * 256 + x] = marker; }
+        int tick = (int)(SyntheticFrame % (unsigned long long)(width > 40 ? width - 40 : 1));
+        for (int y = height / 2 - 12; y < height / 2 + 12; y++) {
+            for (int x = tick + 4; x < tick + 36 && x < width; x++) { SyntheticPixels[(originY + y) * SyntheticFrameWidth + originX + x] = marker; }
+        }
+    }
+
+    class void fill() {
+        for (int index = 0; index < SyntheticFrameWidth * SyntheticFrameHeight; index++) { SyntheticPixels[index] = 0xff000000u; }
+        int originY = 0;
+        for (int screen = 0; screen < SyntheticScreens; screen++) {  // narrower screens sit centered, as Azahar stacks 320 under 400
+            int originX = (SyntheticFrameWidth - SyntheticWidths[screen]) / 2;
+            SyntheticPattern.card(screen, originX, originY, SyntheticWidths[screen], SyntheticHeights[screen]);
+            originY += SyntheticHeights[screen];
         }
     }
 }
 
-void retro_init() { SyntheticFrame = 0ULL; }
+void retro_init() { SyntheticFrame = 0ULL; SyntheticGeometry.load(); }
 void retro_deinit() {}
 unsigned int retro_api_version() { return RETRO_API_VERSION; }
 void retro_set_environment(__fn_ptr<bool, unsigned int, void*> callback) { SyntheticEnvironment = callback; }
@@ -54,11 +113,12 @@ void retro_get_system_info(struct retro_system_info* info) {
 
 void retro_get_system_av_info(struct retro_system_av_info* info) {
     memset(info, 0, sizeof(*info));
-    info->geometry.base_width = 256;
-    info->geometry.base_height = 240;
-    info->geometry.max_width = 256;
-    info->geometry.max_height = 240;
-    info->geometry.aspect_ratio = 4.0f / 3.0f;
+    SyntheticGeometry.load();
+    info->geometry.base_width = (unsigned int)SyntheticFrameWidth;
+    info->geometry.base_height = (unsigned int)SyntheticFrameHeight;
+    info->geometry.max_width = 1024;
+    info->geometry.max_height = 1024;
+    info->geometry.aspect_ratio = (float)SyntheticFrameWidth / (float)SyntheticFrameHeight;
     info->timing.fps = 60.0;
     info->timing.sample_rate = 48000.0;
 }
@@ -100,6 +160,6 @@ void retro_run() {
     SyntheticFrame++;
     if (SyntheticInputPoll != null) { SyntheticInputPoll(); }
     SyntheticPattern.fill();
-    size_t pitch = (size_t)256 * sizeof(uint32_t);
-    if (SyntheticVideo != null) { SyntheticVideo(SyntheticPixels, 256u, 240u, pitch); }
+    size_t pitch = (size_t)SyntheticFrameWidth * sizeof(uint32_t);
+    if (SyntheticVideo != null) { SyntheticVideo(SyntheticPixels, (unsigned int)SyntheticFrameWidth, (unsigned int)SyntheticFrameHeight, pitch); }
 }
