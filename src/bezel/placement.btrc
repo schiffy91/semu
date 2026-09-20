@@ -89,6 +89,7 @@ class MegaBezelParams {  // converted the way params-0-screen-scale.inc, params-
         if (name.equals("HSM_BZL_WIDTH")) { return 0.0008624; }
         if (name.equals("HSM_BZL_HEIGHT")) { return 0.0008732; }
         if (name.equals("HSM_BZL_OUTER_POSITION_Y")) { return 0.0005; }
+        if (name.equals("HSM_FRM_THICKNESS")) { return 0.0007; }
         if (name.equals("HSM_BZL_COLOR_HUE")) { return 1.0 / 360.0; }
         if (name.endsWith("_SCALE") || name.endsWith("_SCALE_X") || name.endsWith("_POS_Y")) { return 0.01; }  // image layers
         if (name.endsWith("_POS_X")) { return -0.01; }
@@ -132,6 +133,7 @@ class MegaBezelScreen {  // one screen's rectangles in viewport fractions
     public BezelRect diffuse;
     public BezelRect tube;
     public BezelRect bezel;
+    public BezelRect frame;  // Mega Bezel's frame around the bezel: where a scene's painted TV frame shows, and how far the reflection reaches
     public double pictureRadius;  // viewport-height fractions, like the rects
     public double tubeRadius;
     public double bezelRadius;
@@ -377,6 +379,8 @@ class MegaBezelPlacement {
         double black = self.p.get("HSM_TUBE_BLACK_EDGE_THICKNESS");
         Vector<double> tube = self.tubeScale(diffuse, black * self.p.get("HSM_TUBE_BLACK_EDGE_THICKNESS_X_SCALE"), black);
         Vector<double> bezel = [tube[0] * (self.p.get("HSM_BZL_WIDTH") / aspect + 1.0), tube[1] * (self.p.get("HSM_BZL_HEIGHT") + 1.0)];
+        double frameThickness = self.p.get("HSM_FRM_THICKNESS");
+        Vector<double> frame = [bezel[0] * (frameThickness * self.p.get("HSM_FRM_THICKNESS_SCALE_X") / aspect + 1.0), bezel[1] * (frameThickness + 1.0)];  // common-functions-bezel.inc frame_outside_coord
         if (self.p.get("HSM_BZL_OUTER_POSITION_Y") != 0.0) { self.failure = "HSM_BZL_OUTER_POSITION_Y is not ported"; }
         double cx = 0.5 + offset[0];
         double cy = 0.5 + offset[1];
@@ -390,6 +394,7 @@ class MegaBezelPlacement {
         result.diffuse = BezelRect.centered(cx, cy, diffuse[0], diffuse[1]);
         result.tube = BezelRect.centered(cx, cy, tube[0], tube[1]);
         result.bezel = BezelRect.centered(cx, cy, bezel[0], bezel[1]);
+        result.frame = BezelRect.centered(cx, cy, frame[0], frame[1]);
         result.pictureRadius = radius * self.p.get("HSM_SCREEN_CORNER_RADIUS_SCALE") * scale[1];
         result.tubeRadius = radius * self.p.get("HSM_BZL_INNER_CORNER_RADIUS_SCALE") * tube[1];
         result.bezelRadius = radius * self.p.get("HSM_BZL_OUTER_CORNER_RADIUS_SCALE") * bezel[1];

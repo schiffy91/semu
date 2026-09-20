@@ -166,6 +166,12 @@ class BezelEditor {
                 if (reflection != null && reflection.isObject()) {
                     JSONValue kept = JSONValue.makeObject();
                     for key in ["strength", "blur", "fade"] { kept.set(key, JSONValue.makeFloat(BezelNumber.clamp(BezelNumber.of(reflection.get(key)), 0.0, 1.0))); }
+                    JSONValue reach = reflection.get("reach");
+                    if (reach != null && reach.isObject()) {
+                        JSONValue keptReach = JSONValue.makeObject();
+                        for key in ["x", "y"] { keptReach.set(key, JSONValue.makeInt((int)(BezelNumber.clamp(BezelNumber.of(reach.get(key)), 0.0, 100000.0) + 0.5))); }
+                        kept.set("reach", keptReach);
+                    }
                     screen.set("reflection", kept);
                 }
                 JSONValue provenance = screen.get("provenance");

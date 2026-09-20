@@ -209,12 +209,19 @@ class SemuRenderEnvironment {
         return f"{SemuRenderEnvironment.fraction(x / (w / 2.0))},{SemuRenderEnvironment.fraction(y / (h / 2.0))}";
     }
 
-    class string reflect(JSONValue screen) {  // strength,blur,fade of the picture mirrored onto the ring, or onto the plate around the opening
+    class string reflect(JSONValue screen) {  // strength,blur,fade of the bezel reflection, then how far past the bezel it reaches as fractions of the bezel's width and height
         JSONValue reflection = screen.get("reflection");
         if (reflection == null || !reflection.isObject()) { return ""; }
         double strength = atof(SemuRenderEnvironment.numberOr(reflection, "strength", "0"));
         if (strength <= 0.0) { return ""; }
-        return f"{SemuRenderEnvironment.fraction(strength)},{SemuRenderEnvironment.fraction(atof(SemuRenderEnvironment.numberOr(reflection, "blur", "0")))},{SemuRenderEnvironment.fraction(atof(SemuRenderEnvironment.numberOr(reflection, "fade", "0")))}";
+        JSONValue ring = screen.get("ring");
+        JSONValue outer = ring == null || !ring.isObject() ? null : ring.get("outer");
+        JSONValue reach = reflection.get("reach");
+        double w = outer == null ? 0.0 : atof(SemuRenderEnvironment.numberOr(outer, "w", "0"));
+        double h = outer == null ? 0.0 : atof(SemuRenderEnvironment.numberOr(outer, "h", "0"));
+        double rx = reach == null || !reach.isObject() || w <= 0.0 ? 0.0 : atof(SemuRenderEnvironment.numberOr(reach, "x", "0")) / w;
+        double ry = reach == null || !reach.isObject() || h <= 0.0 ? 0.0 : atof(SemuRenderEnvironment.numberOr(reach, "y", "0")) / h;
+        return f"{SemuRenderEnvironment.fraction(strength)},{SemuRenderEnvironment.fraction(atof(SemuRenderEnvironment.numberOr(reflection, "blur", "0")))},{SemuRenderEnvironment.fraction(atof(SemuRenderEnvironment.numberOr(reflection, "fade", "0")))},{SemuRenderEnvironment.fraction(rx)},{SemuRenderEnvironment.fraction(ry)}";
     }
 
     class string look(JSONValue screen) {  // shape,radius,exponent,fit,inset,curvature,vignette,bloom,glow,reflect

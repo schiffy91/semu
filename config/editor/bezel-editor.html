@@ -249,7 +249,7 @@ async function open(id) {
     if (!layer.file) continue;
     pending++;
     const image = new Image();
-    image.onload = () => { state.images[layer.id] = image; thumbnail(layer.id, image); pending--; if (pending === 0) { status(`${id} · ${state.current.canvas.w}×${state.current.canvas.h}`); fit(); } buildLayers(); draw(); };
+    image.onload = () => { state.images[layer.id] = image; thumbnail(layer.id, image); pending--; if (pending === 0) { status(`${id} · ${state.current.canvas.w}×${state.current.canvas.h}`); if (!state.pinnedView) fit(); } buildLayers(); draw(); };
     image.onerror = () => { pending--; status(`layer ${layer.id} failed to load`); draw(); };
     image.src = `/layer/${id}/${layer.id}`;
   }
@@ -260,7 +260,7 @@ async function open(id) {
   buildLayers(); buildProps(); updateHistoryButtons();
   fit();
   const zoom = Number(new URLSearchParams(location.search).get("zoom")), at = (new URLSearchParams(location.search).get("at") || "").split(",").map(Number);  // ?zoom=4&at=176,105 opens zoomed on a canvas point
-  if (ZOOMS.includes(zoom) && at.length === 2 && at.every(Number.isFinite)) { state.zoom = zoom; state.ox = canvas.width / 2 - at[0] * zoom; state.oy = canvas.height / 2 - at[1] * zoom; draw(); }
+  if (ZOOMS.includes(zoom) && at.length === 2 && at.every(Number.isFinite)) { state.pinnedView = true; state.zoom = zoom; state.ox = canvas.width / 2 - at[0] * zoom; state.oy = canvas.height / 2 - at[1] * zoom; draw(); }
 }
 function thumbnail(id, image) {
   const t = document.createElement("canvas"); t.width = 88; t.height = 52;
@@ -492,6 +492,8 @@ function buildProps() {
       group.appendChild(sliderRow("Strength", current.strength || 0, v => { reflection().strength = v; }));
       group.appendChild(sliderRow("Blur", current.blur === undefined ? 0.95 : current.blur, v => { reflection().blur = v; }));
       group.appendChild(sliderRow("Fade", current.fade === undefined ? 1 : current.fade, v => { reflection().fade = v; }));
+      const reach = current.reach || { x: 0, y: 0 };
+      group.appendChild(field("Reach", numberInput("↔", Math.round(reach.x || 0), v => { reflection().reach = { ...(reflection().reach || {}), x: Math.max(0, Math.round(v)) }; }, 1, 'min="0" title="how far past the bezel outer the reflection keeps going, sideways, canvas px"'), numberInput("↕", Math.round(reach.y || 0), v => { reflection().reach = { ...(reflection().reach || {}), y: Math.max(0, Math.round(v)) }; }, 1, 'min="0" title="how far past the bezel outer the reflection keeps going, up and down, canvas px"')));
     }
     root.appendChild(group);
   });
@@ -576,12 +578,21 @@ function innerContents(screen) {  // what lies inside the bezel's inner edge, sm
   ctx = saved;
   return innerCanvas;
 }
-function drawReflection(screen, baseAlpha) {  // the inside of the bezel mirrored across its inner edge onto the band: sharp at the edge, blurrier and fainter further out
-  const look = screen.reflection, image = screen.ring.inner, band = screen.ring.outer;
+function reachRect(screen) {  // the bezel outer grown by the reflection's reach: where the reflection ends
+  const o = screen.ring.outer, reach = (screen.reflection && screen.reflection.reach) || { x: 0, y: 0 };
+  return { x: o.x - (reach.x || 0), y: o.y - (reach.y || 0), w: o.w + 2 * (reach.x || 0), h: o.h + 2 * (reach.y || 0) };
+}
+function reachPath(screen) {  // its outline, screen px, with the bezel's corner radius grown along
+  const r = reachRect(screen), reach = (screen.reflection && screen.reflection.reach) || { x: 0, y: 0 }, bulge = bulgeOf(screen, "outer") || { x: 0, y: 0 };
+  const [x0, y0] = toScreen(r.x, r.y), [x1, y1] = toScreen(r.x + r.w, r.y + r.h);
+  shapePath(x0, y0, x1 - x0, y1 - y0, ((radiusOf(screen, "outer") || 0) + Math.min(reach.x || 0, reach.y || 0) * 0.6) * state.zoom, 2, bulge.x * state.zoom, bulge.y * state.zoom);
+}
+function drawReflection(screen, baseAlpha) {  // the picture mirrored across its own edge onto the bezel band and its reach, like Mega Bezel: sharp at the edge, blurrier and fainter further out
+  const look = screen.reflection, image = pictureRect(screen), band = reachRect(screen);
   const [ix, iy] = toScreen(image.x, image.y), iw = image.w * state.zoom, ih = image.h * state.zoom;
   const [bx, by] = toScreen(band.x, band.y), bw = Math.ceil(band.w * state.zoom), bh = Math.ceil(band.h * state.zoom);
   if (bw < 2 || bh < 2 || bw * bh > 16000000) return;
-  const card = innerContents(screen);
+  const card = testCard(256, Math.max(8, Math.round(256 * image.h / image.w)), screen.id === "bottom");
   const ox = Math.floor(bx), oy = Math.floor(by), ow = band.w * state.zoom, oh = band.h * state.zoom;
   const mirrors = (o, blur) => {  // left, right, top, bottom, four corners
     o.save(); o.translate(-ox, -oy); o.filter = blur > 0.5 ? `blur(${blur}px)` : "none"; o.imageSmoothingEnabled = true;
@@ -607,7 +618,7 @@ function drawReflection(screen, baseAlpha) {  // the inside of the bezel mirrore
   sharp.drawImage(reflectBlurCanvas, 0, 0);
   ramp(sharp, 0, look.fade === undefined ? 1 : look.fade);  // then the whole thing fades with distance
   ctx.save();
-  rectPath(screen, "outer"); ctx.clip();
+  reachPath(screen); ctx.clip();
   ctx.globalAlpha = baseAlpha * look.strength;
   ctx.drawImage(reflectCanvas, ox, oy);
   ctx.restore();
@@ -706,6 +717,7 @@ function draw() {
         const radiusPx = radiusOf(screen, key);
         const bulge = bulgeOf(screen, key);
         if (radiusPx !== null && bulge) for (const [name, [hx, hy]] of Object.entries(curveMarks(r, bulge))) diamond(hx, hy, name.length === 2 ? COLORS.outer : "#ff9f0a");  // yellow corners curve, orange edges bow
+        if ((key === "outer" || key === "inner") && screen.reflection && screen.reflection.reach && (screen.reflection.reach.x || screen.reflection.reach.y)) { ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = COLORS.outer; ctx.globalAlpha = 0.7; ctx.lineWidth = 1; reachPath(screen); ctx.stroke(); ctx.restore(); }  // dashed: where the reflection ends
       }
     }
   });
