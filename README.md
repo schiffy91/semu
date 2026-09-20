@@ -123,11 +123,16 @@ layout, frame and per-screen tube, shape, look, glass and shader) through
 Screen openings are measured with `tools/bezel-measure.py`; art is rendered
 from pinned upstream layers by `nix build .#bezel-generate` and baked into
 `config/assets`. `tools/bezel-gallery.py build/bezel-gallery` renders every
-system's bezel variants through the real renderer (RetroArch plus the
-synthetic test-card core on Xvfb) for the Steam Deck (1280x800) and a 4K PC
-(3840x2160) and writes a static site (`index.html`: consoles across the top,
+system's bezel variants for the Steam Deck (1280x800) and a 4K PC (3840x2160)
+and writes a static site (`index.html`: consoles across the top, renderer and
 screen configuration top right, one section per variant with the composed
-frame, the art and background plates and the package facts). Switch variants
+frame, the art and background plates and the package facts). `--mode fake`
+(the default) draws the compositor's geometry in numpy from the same
+`semu render-env` output in under a minute for everything; `--mode real` runs
+RetroArch with the synthetic test-card core through libsemurenderer on Xvfb
+(about nine seconds a cell); `--mode both` does both. With
+`--semu build/semu-cli/bin/semu` the previews read the working tree's
+packages, so a bezel edit shows without a rebuild. Switch variants
 without a rebuild:
 
 ```sh
