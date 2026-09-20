@@ -706,7 +706,25 @@ Update this block whenever a milestone criterion changes state.
   the fast/real galleries (M11.6) and the glass assets, which are whole
   layers squeezed into the lens by the renderer and need a `crop` in their
   recipes.
-- Active milestone: M11 bake-from-layers and galleries; then M5/M6 hardware acceptance once a Deck is reachable
+- Layer stack in the renderer (2026-09-20): the compositor draws the
+  package's layers itself (`SEMU_RENDER_CANVAS`, `SEMU_RENDER_LAYER_<n>` =
+  file, extent or cover, above/below the screens, blend, opacity; up to
+  eight per variant, JPEG and PNG) with Mega Bezel's blend modes (LED and
+  device-LED layers are additive black plates, glass and top plates normal
+  alpha), and in layered mode paints only the black edge, ring and picture
+  so the plate art shows through the lens. Verified with headless RetroArch
+  captures of the GBA, Game Boy and NES through the rebuilt bundle (`art=0`
+  in the renderer's debug line, shells and TV scene composed from the
+  upstream layers). The editor composites with the same blend modes,
+  covers the canvas with viewport-following plates, draws canvas-sized
+  plates at the canvas, exposes per-axis edge bulge handles (the opening's
+  sides bow out like a tube; `shape.bulge` in px, the ring follows) and
+  design-tool cursors. Still open: bundling the upstream layer files into
+  the asset tree (today they resolve through `build/bezel/shaders`, so only
+  a launch from the repository checkout reaches them; the installed bundle
+  falls back to the flat plate), the DS/3DS/PSP captures, the fast/real
+  galleries, and the glass-asset crop.
+- Active milestone: M11 layer bundling into the asset tree and galleries; then M5/M6 hardware acceptance once a Deck is reachable
   (`DECK_HOST=deck tests/deck/deploy.sh install`), then the native-emulator
   render hook.
 - Build structure (2026-09-19 evening): 22 flakes, one per emulator (8),
