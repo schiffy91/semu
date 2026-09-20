@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Semu Bezel Gallery</title>
+<style>
+  :root { --bg: #16171a; --panel: #1f2126; --line: #2c2f36; --text: #e8e8e8; --muted: #9aa0aa; --accent: #ffb454; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; margin: 0 12px 0 0; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  nav { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+  nav button { background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
+  nav button.active { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 600; }
+  select { background: #111; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: inherit; }
+  main { max-width: 1400px; margin: 0 auto; padding: 16px; }
+  .system { margin-bottom: 8px; color: var(--muted); font-size: 13px; }
+  section.variant { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 0 0 20px; }
+  section.variant h2 { margin: 0 0 4px; font-size: 18px; }
+  section.variant h2 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+  .badge { display: inline-block; background: var(--accent); color: #111; border-radius: 4px; padding: 0 6px; font-size: 12px; font-weight: 600; margin-left: 8px; vertical-align: middle; }
+  .capture img { width: 100%; height: auto; display: block; border-radius: 6px; background: #000; }
+  .plates { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 12px; }
+  .plate { background: #14151a; border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  .plate img { width: 100%; height: auto; display: block; border-radius: 4px; background: repeating-conic-gradient(#2a2c33 0 25%, #202228 0 50%) 0 0 / 16px 16px; }
+  .plate .caption { color: var(--muted); font-size: 12px; margin-top: 6px; word-break: break-all; }
+  details { margin-top: 10px; }
+  details summary { cursor: pointer; color: var(--muted); }
+  table { border-collapse: collapse; font-size: 13px; margin-top: 8px; width: 100%; }
+  td, th { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #cfd6e4; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Semu bezels</h1>
+  <nav id="consoles"></nav>
+  <select id="config" title="Screen configuration"></select>
+</header>
+<main id="main"></main>
+<footer id="footer"></footer>
+<script>
+const manifest = /*MANIFEST*/null;
+const state = { system: null, config: null };
+const consoles = document.getElementById("consoles");
+const configSelect = document.getElementById("config");
+const main = document.getElementById("main");
+
+function fmt(value) { return typeof value === "number" ? (Math.round(value * 10000) / 10000).toString() : String(value); }
+function rect(r) { return r ? `${r.x}, ${r.y}  ${r.w}x${r.h}` : "computed"; }
+function pick(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; } }
+function remember(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
+
+function screenRows(screens) {
+  if (!screens) return "";
+  return screens.map(s => `<tr><td><code>${s.id}</code></td><td>${rect(s.tube)}</td><td>${s.shape ? s.shape.kind + (s.shape.kind === "squircle" ? ` n=${s.shape.exponent}` : "") + " r=" + fmt(s.shape.radius) : "none"}</td><td>${s.fit}${s.inset ? ` inset ${fmt(s.inset)}` : ""}</td><td><span style="display:inline-block;width:12px;height:12px;background:${s.surround};border:1px solid #555;vertical-align:middle"></span> ${s.surround}</td><td>curve ${fmt(s.curvature)} · vignette ${fmt(s.vignette)} · bloom ${fmt(s.bloom)} · glow ${fmt(s.glow)}${s.glass ? ` · glass ${fmt(s.glass.reflect)}` : ""}</td><td>${s.shader ? `<code>${s.shader}</code>` : "system default"}</td></tr>`).join("");
+}
+
+function plate(label, p) {
+  if (!p) return `<div class="plate"><div class="caption">${label}: none</div></div>`;
+  return `<div class="plate"><img loading="lazy" src="${p.file}" alt="${label}"><div class="caption">${label} · ${p.width}x${p.height} · <code>${p.source}</code></div></div>`;
+}
+
+function render() {
+  const system = manifest.systems.find(s => s.id === state.system) || manifest.systems[0];
+  const config = manifest.configs[state.config] ? state.config : Object.keys(manifest.configs)[0];
+  state.system = system.id; state.config = config;
+  remember("semu-gallery-system", system.id); remember("semu-gallery-config", config);
+  [...consoles.children].forEach(button => button.classList.toggle("active", button.dataset.id === system.id));
+  configSelect.value = config;
+  const screens = system.screens.map(s => `${s.id} ${s.native.w}x${s.native.h}`).join(", ");
+  let html = `<div class="system">${system.name} · screens: ${screens} · shader default: <code>${system.shader_default || "none"}</code> (${system.shader_variants.join(", ") || "none"})</div>`;
+  for (const v of system.variants) {
+    html += `<section class="variant">
+      <h2>${v.label}${v.default ? '<span class="badge">default</span>' : ""}<small>${v.bezel ? `<code>${v.bezel}</code> · ${v.family} · ${v.layout}` : "bezels off"}</small></h2>
+      <div class="capture"><img loading="lazy" src="${v.captures[config]}" alt="${system.id} ${v.id} ${config}"></div>
+      <div class="plates">${plate("Art plate", v.art)}${plate("Background", v.background)}</div>
+      <details><summary>Package facts</summary>
+        ${v.frame ? `<div>Drawn frame: width ${fmt(v.frame.width)} · radius ${fmt(v.frame.radius)} · ${v.frame.color}</div>` : ""}
+        ${v.canvas ? `<div>Canvas: ${v.canvas.w}x${v.canvas.h}</div>` : ""}
+        ${v.screens ? `<table><tr><th>screen</th><th>tube (px)</th><th>shape</th><th>fit</th><th>surround</th><th>look</th><th>shader</th></tr>${screenRows(v.screens)}</table>` : ""}
+        <table>${Object.entries(v.env).map(([k, val]) => `<tr><td><code>${k}</code></td><td><code>${val}</code></td></tr>`).join("")}</table>
+      </details>
+    </section>`;
+  }
+  main.innerHTML = html;
+  window.scrollTo(0, 0);
+}
+
+for (const system of manifest.systems) {
+  const button = document.createElement("button");
+  button.textContent = system.name; button.dataset.id = system.id;
+  button.onclick = () => { state.system = system.id; render(); };
+  consoles.appendChild(button);
+}
+for (const [id, config] of Object.entries(manifest.configs)) {
+  const option = document.createElement("option");
+  option.value = id; option.textContent = config.label;
+  configSelect.appendChild(option);
+}
+configSelect.onchange = () => { state.config = configSelect.value; render(); };
+state.system = pick("semu-gallery-system", manifest.systems[0].id);
+state.config = pick("semu-gallery-config", Object.keys(manifest.configs)[0]);
+document.getElementById("footer").textContent = `Generated ${manifest.generated} by tools/bezel-gallery.py through the Semu renderer (RetroArch + synthetic test card).`;
+render();
+</script>
+</body>
+</html>
