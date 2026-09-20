@@ -122,28 +122,25 @@ function bulgeHandles(r, bulge) {  // orange diamonds at the top and right edge 
   const [rx, ry] = toScreen(r.x + r.w + bulge.x, r.y + r.h / 2);
   return { top: [tx, ty], right: [rx, ry] };
 }
-function bulgedPath(x, y, w, h, radius, n, bx, by) {  // the rounded rectangle with each edge bowed outward by a circular arc through the midpoint
-  if (bx < 0.5 && by < 0.5) { cornerPath(x, y, w, h, radius, n); return; }
-  const steps = 48, r = Math.max(0, Math.min(radius, Math.min(w, h) / 2));
+function bulgedPath(x, y, w, h, radius, n, bx, by) {  // the rounded rectangle with every edge bowed outward, most at its middle, none at the corners
+  const r = Math.max(0, Math.min(radius, Math.min(w, h) / 2));
   const cx = x + w / 2, cy = y + h / 2, hx = w / 2, hy = h / 2;
+  const points = [];
+  const arc = (ax, ay, from) => { for (let i = 0; i <= 12; i++) { const t = from + (i / 12) * Math.PI / 2; const c = Math.cos(t), sn = Math.sin(t); points.push([ax + r * Math.sign(c) * Math.pow(Math.abs(c), 2 / n), ay + r * Math.sign(sn) * Math.pow(Math.abs(sn), 2 / n)]); } };
+  const edge = (x0, y0, x1, y1) => { for (let i = 0; i <= 24; i++) points.push([x0 + (x1 - x0) * i / 24, y0 + (y1 - y0) * i / 24]); };
+  edge(x + r, y, x + w - r, y); if (r > 0) arc(x + w - r, y + r, -Math.PI / 2);
+  edge(x + w, y + r, x + w, y + h - r); if (r > 0) arc(x + w - r, y + h - r, 0);
+  edge(x + w - r, y + h, x + r, y + h); if (r > 0) arc(x + r, y + h - r, Math.PI / 2);
+  edge(x, y + h - r, x, y + r); if (r > 0) arc(x + r, y + r, Math.PI);
   ctx.beginPath();
-  for (let i = 0; i <= steps * 4; i++) {  // walk the unbulged rounded outline, then push each point outward by the edge bulge
-    const t = i / (steps * 4);
-    let px, py;
-    const a = t * Math.PI * 2;
-    const c = Math.cos(a), sgn = Math.sin(a);
-    const qx = Math.sign(c) * Math.pow(Math.abs(c), 2 / n), qy = Math.sign(sgn) * Math.pow(Math.abs(sgn), 2 / n);
-    px = cx + (hx - r) * Math.sign(c) * Math.min(1, Math.abs(c) * 4) + r * qx * (Math.abs(c) < 0.25 ? 1 : 1);
-    px = cx + Math.max(-hx, Math.min(hx, (hx - r) * Math.sign(c) * (Math.abs(c) > 0.001 ? 1 : 0) * 1 + r * qx)) ;
-    py = cy + Math.max(-hy, Math.min(hy, (hy - r) * Math.sign(sgn) * (Math.abs(sgn) > 0.001 ? 1 : 0) + r * qy));
+  points.forEach(([px, py], i) => {
     const ux = (px - cx) / hx, uy = (py - cy) / hy;
-    px += Math.sign(ux) * bx * Math.max(0, 1 - uy * uy) * Math.abs(ux);
-    py += Math.sign(uy) * by * Math.max(0, 1 - ux * ux) * Math.abs(uy);
-    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-  }
+    const qx = cx + (px - cx) * (1 + bx / hx * Math.max(0, 1 - uy * uy));
+    const qy = cy + (py - cy) * (1 + by / hy * Math.max(0, 1 - ux * ux));
+    if (i === 0) ctx.moveTo(qx, qy); else ctx.lineTo(qx, qy);
+  });
   ctx.closePath();
 }
-
 function selectedRect() {
   const s = state.selected;
   if (!s) return null;
