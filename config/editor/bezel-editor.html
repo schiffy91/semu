@@ -85,7 +85,7 @@
   <h2>Properties</h2>
   <div id="props"></div>
   <div class="muted" style="margin-top:14px">
-    <kbd>arrows</kbd> nudge 1 px, <kbd>⇧</kbd> 10 px, <kbd>⌥</kbd> resizes · <kbd>wheel</kbd> zooms in integer steps · <kbd>space</kbd>+drag pans · <kbd>1</kbd> 100% · <kbd>F</kbd> fit · <kbd>X</kbd> x-ray · <kbd>⌘Z</kbd> undo
+    <kbd>arrows</kbd> nudge 1 px, <kbd>⇧</kbd> 10 px, <kbd>⌥</kbd> resizes · <kbd>wheel</kbd> pans · <kbd>⌃</kbd>/<kbd>⌥</kbd>+wheel zooms in integer steps · <kbd>space</kbd>+drag pans · <kbd>1</kbd> 100% · <kbd>F</kbd> fit · <kbd>X</kbd> x-ray · <kbd>⌘Z</kbd> undo
   </div>
 </aside>
 <div id="menu"></div>
@@ -635,10 +635,23 @@ window.addEventListener("mouseup", () => {
   state.drag = null;
   if (state.cursor) canvas.style.cursor = cursorFor(hit(state.cursor[0], state.cursor[1]));
 });
+let wheelAccumulated = 0;  // smooth trackpad deltas add up to one integer zoom step
 canvas.addEventListener("wheel", event => {
   event.preventDefault();
-  const sx = event.offsetX * devicePixelRatio, sy = event.offsetY * devicePixelRatio;
-  zoomTo(ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, ZOOMS.indexOf(state.zoom) + (event.deltaY < 0 ? 1 : -1)))], sx, sy);
+  const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1;
+  if (event.ctrlKey || event.altKey || event.metaKey) {  // ctrl, alt/option or cmd + wheel zooms at the cursor
+    wheelAccumulated += event.deltaY * scale;
+    if (Math.abs(wheelAccumulated) < 24) return;
+    const direction = wheelAccumulated < 0 ? 1 : -1;
+    wheelAccumulated = 0;
+    const sx = event.offsetX * devicePixelRatio, sy = event.offsetY * devicePixelRatio;
+    zoomTo(ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, ZOOMS.indexOf(state.zoom) + direction))], sx, sy);
+    return;
+  }
+  wheelAccumulated = 0;
+  state.ox -= event.deltaX * scale * devicePixelRatio;  // plain wheel pans: horizontal delta pans sideways
+  state.oy -= event.deltaY * scale * devicePixelRatio;
+  draw();
 }, { passive: false });
 window.addEventListener("keydown", event => {
   if (event.key === "Escape") { hideMenu(); return; }
