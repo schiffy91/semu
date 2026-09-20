@@ -492,8 +492,6 @@ function buildProps() {
       group.appendChild(sliderRow("Strength", current.strength || 0, v => { reflection().strength = v; }));
       group.appendChild(sliderRow("Blur", current.blur === undefined ? 0.95 : current.blur, v => { reflection().blur = v; }));
       group.appendChild(sliderRow("Fade", current.fade === undefined ? 1 : current.fade, v => { reflection().fade = v; }));
-      const reach = current.reach || { x: 0, y: 0 };
-      group.appendChild(field("Reach", numberInput("↔", Math.round(reach.x || 0), v => { reflection().reach = { ...(reflection().reach || {}), x: Math.max(0, Math.round(v)) }; }, 1, 'min="0" title="how far past the bezel outer the reflection keeps going, sideways, canvas px"'), numberInput("↕", Math.round(reach.y || 0), v => { reflection().reach = { ...(reflection().reach || {}), y: Math.max(0, Math.round(v)) }; }, 1, 'min="0" title="how far past the bezel outer the reflection keeps going, up and down, canvas px"')));
     }
     root.appendChild(group);
   });
@@ -578,21 +576,12 @@ function innerContents(screen) {  // what lies inside the bezel's inner edge, sm
   ctx = saved;
   return innerCanvas;
 }
-function reachRect(screen) {  // the bezel outer grown by the reflection's reach: where the reflection ends
-  const o = screen.ring.outer, reach = (screen.reflection && screen.reflection.reach) || { x: 0, y: 0 };
-  return { x: o.x - (reach.x || 0), y: o.y - (reach.y || 0), w: o.w + 2 * (reach.x || 0), h: o.h + 2 * (reach.y || 0) };
-}
-function reachPath(screen) {  // its outline, screen px, with the bezel's corner radius grown along
-  const r = reachRect(screen), reach = (screen.reflection && screen.reflection.reach) || { x: 0, y: 0 }, bulge = bulgeOf(screen, "outer") || { x: 0, y: 0 };
-  const [x0, y0] = toScreen(r.x, r.y), [x1, y1] = toScreen(r.x + r.w, r.y + r.h);
-  shapePath(x0, y0, x1 - x0, y1 - y0, ((radiusOf(screen, "outer") || 0) + Math.min(reach.x || 0, reach.y || 0) * 0.6) * state.zoom, 2, bulge.x * state.zoom, bulge.y * state.zoom);
-}
-function drawReflection(screen, baseAlpha) {  // the picture mirrored across its own edge onto the bezel band and its reach, like Mega Bezel: sharp at the edge, blurrier and fainter further out
-  const look = screen.reflection, image = pictureRect(screen), band = reachRect(screen);
+function drawReflection(screen, baseAlpha) {  // the inside of the bezel mirrored across its inner edge onto the band: sharp at the edge, blurrier and fainter further out
+  const look = screen.reflection, image = screen.ring.inner, band = screen.ring.outer;
   const [ix, iy] = toScreen(image.x, image.y), iw = image.w * state.zoom, ih = image.h * state.zoom;
   const [bx, by] = toScreen(band.x, band.y), bw = Math.ceil(band.w * state.zoom), bh = Math.ceil(band.h * state.zoom);
   if (bw < 2 || bh < 2 || bw * bh > 16000000) return;
-  const card = testCard(256, Math.max(8, Math.round(256 * image.h / image.w)), screen.id === "bottom");
+  const card = innerContents(screen);
   const ox = Math.floor(bx), oy = Math.floor(by), ow = band.w * state.zoom, oh = band.h * state.zoom;
   const mirrors = (o, blur) => {  // left, right, top, bottom, four corners
     o.save(); o.translate(-ox, -oy); o.filter = blur > 0.5 ? `blur(${blur}px)` : "none"; o.imageSmoothingEnabled = true;
@@ -601,9 +590,9 @@ function drawReflection(screen, baseAlpha) {  // the picture mirrored across its
     }
     o.restore();
   };
-  const ramp = (o, alphaAt) => {  // erase by alphaAt(t), t from 0 at the picture edge to 1 at the band's outer edge, on every side
+  const ramp = (o, near, far) => {  // erase with alpha `near` at the picture edge rising to `far` at the band's outer edge, on every side
     o.save(); o.translate(-ox, -oy); o.globalCompositeOperation = "destination-out";
-    const wash = (x0, y0, x1, y1, rx, ry, rw, rh) => { if (rw <= 0 || rh <= 0) return; const g = o.createLinearGradient(x0, y0, x1, y1); for (let i = 0; i <= 8; i++) { const t = i / 8; g.addColorStop(t, `rgba(0,0,0,${Math.max(0, Math.min(1, alphaAt(t)))})`); } o.fillStyle = g; o.fillRect(rx, ry, rw, rh); };
+    const wash = (x0, y0, x1, y1, rx, ry, rw, rh) => { if (rw <= 0 || rh <= 0) return; const g = o.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, `rgba(0,0,0,${near})`); g.addColorStop(1, `rgba(0,0,0,${far})`); o.fillStyle = g; o.fillRect(rx, ry, rw, rh); };
     wash(ix, 0, bx, 0, bx, by, ix - bx, oh); wash(ix + iw, 0, bx + ow, 0, ix + iw, by, bx + ow - ix - iw, oh);
     wash(0, iy, 0, by, bx, by, ow, iy - by); wash(0, iy + ih, 0, by + oh, bx, iy + ih, ow, by + oh - iy - ih);
     o.restore();
@@ -611,18 +600,14 @@ function drawReflection(screen, baseAlpha) {  // the picture mirrored across its
   for (const c of [reflectCanvas, reflectBlurCanvas]) if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; }
   const sharp = reflectCanvas.getContext("2d"), soft = reflectBlurCanvas.getContext("2d");
   sharp.clearRect(0, 0, bw, bh); soft.clearRect(0, 0, bw, bh);
-  const blur = look.blur === undefined ? 0.95 : look.blur, base = 0.6 * state.zoom, wide = Math.max(1, (0.0004 + blur * 0.008) * iw);  // like the shader: a crisp mirror at the edge, slightly softer with the square of the distance
-  mirrors(sharp, base);
-  mirrors(soft, wide);
-  ramp(soft, t => 1 - t * t);  // the softer copy takes over late
+  mirrors(sharp, 0.6 * state.zoom);
+  const blurPx = Math.max(1, (0.002 + (look.blur === undefined ? 0.95 : look.blur) * 0.025) * iw);  // like the shader: a fraction of the picture width
+  mirrors(soft, blurPx);
+  ramp(soft, 1, 0);  // the blurred copy only shows further out
   sharp.drawImage(reflectBlurCanvas, 0, 0);
-  const probeCard = document.createElement("canvas"); probeCard.width = probeCard.height = 1; const pc = probeCard.getContext("2d"); pc.drawImage(card, 0, 0, 1, 1);
-  const [ar, ag, ab] = pc.getImageData(0, 0, 1, 1).data;  // the picture's average colour: the diffused glow
-  sharp.save(); sharp.globalCompositeOperation = "source-over"; sharp.globalAlpha = 0.12; sharp.fillStyle = `rgb(${ar},${ag},${ab})`; sharp.fillRect(0, 0, bw, bh); sharp.restore();
-  const fadeAmount = look.fade === undefined ? 1 : look.fade;
-  ramp(sharp, t => fadeAmount * (1 - Math.pow(1 - t, 1.6)));  // quick falloff from the screen edge, like Mega Bezel
+  ramp(sharp, 0, look.fade === undefined ? 1 : look.fade);  // then the whole thing fades with distance
   ctx.save();
-  reachPath(screen); ctx.clip();
+  rectPath(screen, "outer"); ctx.clip();
   ctx.globalAlpha = baseAlpha * look.strength;
   ctx.drawImage(reflectCanvas, ox, oy);
   ctx.restore();
@@ -721,7 +706,6 @@ function draw() {
         const radiusPx = radiusOf(screen, key);
         const bulge = bulgeOf(screen, key);
         if (radiusPx !== null && bulge) for (const [name, [hx, hy]] of Object.entries(curveMarks(r, bulge))) diamond(hx, hy, name.length === 2 ? COLORS.outer : "#ff9f0a");  // yellow corners curve, orange edges bow
-        if ((key === "outer" || key === "inner") && screen.reflection && screen.reflection.reach && (screen.reflection.reach.x || screen.reflection.reach.y)) { ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = COLORS.outer; ctx.globalAlpha = 0.7; ctx.lineWidth = 1; reachPath(screen); ctx.stroke(); ctx.restore(); }  // dashed: where the reflection ends
       }
     }
   });

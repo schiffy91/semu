@@ -332,18 +332,11 @@ class BezelPackageWriter {
         bool edited = saved != null && saved.isObject() && saved.get("edited") != null && saved.get("edited").isObject();  // saved from the editor: keep the person's values
         if (!edited || reflection == null || !reflection.isObject()) {  // Mega Bezel's reflection: the global amount times its direct and diffused amounts (reflection.inc)
             reflection = JSONValue.makeObject();
-            double amount = geometry.params.get("HSM_REFLECT_GLOBAL_AMOUNT") / 100.0 * (geometry.params.get("HSM_REFLECT_DIRECT_AMOUNT") + geometry.params.get("HSM_REFLECT_DIFFUSED_AMOUNT")) / 100.0 * 0.7;  // as a soft glow, not a mirror
+            double amount = geometry.params.get("HSM_REFLECT_GLOBAL_AMOUNT") / 100.0;  // Mega Bezel's global reflection amount
             reflection.set("strength", JSONValue.makeFloat(BezelNumber.clamp(amount, 0.0, 1.0)));
             reflection.set("blur", JSONValue.makeFloat(BezelNumber.clamp(geometry.params.get("HSM_REFLECT_BLUR_MAX") / 100.0, 0.0, 1.0)));
             reflection.set("fade", JSONValue.makeFloat(BezelNumber.clamp(geometry.params.get("HSM_REFLECT_FADE_AMOUNT") / 100.0, 0.0, 1.0)));
             screen.set("reflection", reflection);
-        }
-        if (reflection.get("reach") == null || !reflection.get("reach").isObject()) {  // the reflection keeps going past the drawn bezel, across the frame region
-            BezelRect frame = geometry.plateRect(placed.frame);
-            JSONValue reach = JSONValue.makeObject();
-            reach.set("x", JSONValue.makeInt((int)((frame.w - bezel.w) / 2.0 + 0.5)));
-            reach.set("y", JSONValue.makeInt((int)((frame.h - bezel.h) / 2.0 + 0.5)));
-            reflection.set("reach", reach);
         }
         screen.set("aspect", JSONValue.makeFloat(placed.aspect));
         screen.set("fit", JSONValue.makeString("aspect"));

@@ -740,13 +740,12 @@ Update this block whenever a milestone criterion changes state.
   (`screens[].reflection`) and only ever lands on a bezel band: the ring,
   which may be unfilled (`ring.color: none`) to mark a painted bezel on a
   plate such as gb-studio; the chrome pass reflects the part of the band
-  outside the opening. The reflection mirrors the picture across its own
-  edge (Mega Bezel masks the black edge out), its strength is the global
-  amount times the direct and diffused amounts (so a 20 % preset is 40 %),
-  and it keeps going past the drawn bezel by `reflection.reach {x,y}` px,
-  defaulted from the preset's frame (HSM_FRM_THICKNESS x 0.0007): the
-  Soqueroeu PSX, Wii, N64 and Dreamcast scenes draw a 16 px bezel and were
-  invisible without it. The compositor GLSL is data since 2026-09-20:
+  outside the opening. A reach past the bezel and a softer direct-plus-diffuse
+  model were tried on 2026-09-20 and rejected by the user; the band-only
+  mirror (strength = the preset's global amount) stays, so the narrow-band
+  Soqueroeu scenes (PSX, Wii, N64, Dreamcast) reflect faintly by design and
+  the Strength slider and the bezel outer handles are the knobs. The
+  compositor GLSL is data since 2026-09-20:
   `config/render/compositor.{vert,frag}` (the launch sets
   `SEMU_RENDER_COMPOSITOR_DIR`), read by the renderer at start and re-read
   once a second while a game runs, so a shader edit shows in the running
