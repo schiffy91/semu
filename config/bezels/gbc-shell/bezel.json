@@ -167,6 +167,9 @@
       },
       "order": 0,
       "visible": true,
+      "follow": "viewport",
+      "blend": "normal",
+      "opacity": 1,
       "rect": {
         "x": -203,
         "y": 1129,
@@ -184,6 +187,9 @@
       },
       "order": 2,
       "visible": true,
+      "follow": "canvas",
+      "blend": "normal",
+      "opacity": 1,
       "rect": {
         "x": 0,
         "y": 0,
@@ -201,6 +207,9 @@
       },
       "order": 3,
       "visible": true,
+      "follow": "canvas",
+      "blend": "add",
+      "opacity": 1,
       "rect": {
         "x": 0,
         "y": 0,
@@ -218,6 +227,9 @@
       },
       "order": 4,
       "visible": true,
+      "follow": "canvas",
+      "blend": "normal",
+      "opacity": 1,
       "rect": {
         "x": 0,
         "y": 0,
@@ -235,6 +247,9 @@
       },
       "order": 9,
       "visible": true,
+      "follow": "canvas",
+      "blend": "normal",
+      "opacity": 1,
       "rect": {
         "x": 0,
         "y": 0,
@@ -245,7 +260,10 @@
     {
       "id": "screens",
       "order": 11,
-      "visible": true
+      "visible": true,
+      "follow": "canvas",
+      "blend": "normal",
+      "opacity": 1
     },
     {
       "id": "top",
@@ -257,6 +275,9 @@
       },
       "order": 12,
       "visible": true,
+      "follow": "canvas",
+      "blend": "normal",
+      "opacity": 1,
       "rect": {
         "x": 0,
         "y": 0,

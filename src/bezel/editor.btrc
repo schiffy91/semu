@@ -116,6 +116,9 @@ class BezelEditor {
                 if (layer == null) { continue; }
                 if (edited.has("visible")) { layer.set("visible", JSONValue.makeBool(SemuJson.boolAt(edited, "visible", true))); }
                 if (edited.has("order")) { layer.set("order", JSONValue.makeFloat(BezelNumber.of(edited.get("order")))); }
+                string blend = SemuJson.textAt(edited, "blend");
+                if (blend.equals("normal") || blend.equals("add") || blend.equals("multiply")) { layer.set("blend", JSONValue.makeString(blend)); }
+                if (edited.has("opacity")) { layer.set("opacity", JSONValue.makeFloat(BezelNumber.clamp(BezelNumber.of(edited.get("opacity")), 0.0, 1.0))); }
                 JSONValue rect = BezelEditor.rounded(edited.get("rect"));
                 if (rect != null) { layer.set("rect", rect); }
             }
@@ -138,6 +141,13 @@ class BezelEditor {
                     kept.set("kind", JSONValue.makeString(kind.equals("squircle") || kind.equals("none") ? kind : "rounded"));
                     kept.set("radius", JSONValue.makeFloat(BezelNumber.clamp(BezelNumber.of(shape.get("radius")), 0.0, 0.5)));
                     kept.set("exponent", JSONValue.makeFloat(BezelNumber.clamp(BezelNumber.of(shape.get("exponent")) < 2.0 ? 4.0 : BezelNumber.of(shape.get("exponent")), 2.0, 32.0)));
+                    JSONValue bulge = shape.get("bulge");
+                    if (bulge != null && bulge.isObject()) {
+                        JSONValue keptBulge = JSONValue.makeObject();
+                        keptBulge.set("x", JSONValue.makeInt((int)(BezelNumber.clamp(BezelNumber.of(bulge.get("x")), 0.0, 100000.0) + 0.5)));
+                        keptBulge.set("y", JSONValue.makeInt((int)(BezelNumber.clamp(BezelNumber.of(bulge.get("y")), 0.0, 100000.0) + 0.5)));
+                        kept.set("bulge", keptBulge);
+                    }
                     screen.set("shape", kept);
                 }
                 JSONValue ring = edited.get("ring");

@@ -30,6 +30,7 @@ int SEMU_RENDER_PASS_BACKGROUND = 0;
 int SEMU_RENDER_PASS_GAME = 1;
 int SEMU_RENDER_PASS_CHROME = 2;
 int SEMU_RENDER_PASS_MENU = 3;
+int SEMU_RENDER_PASS_LAYER = 4;
 
 struct RendererCanvasRect {
     float x;

@@ -16,8 +16,11 @@ int RGL_VERTEX_SHADER = 0x8B31;
 int RGL_FRAGMENT_SHADER = 0x8B30;
 int RGL_LINK_STATUS = 0x8B82;
 int RGL_TRIANGLES = 0x0004;
+int RGL_ZERO = 0;
+int RGL_ONE = 1;
 int RGL_SRC_ALPHA = 0x0302;
 int RGL_ONE_MINUS_SRC_ALPHA = 0x0303;
+int RGL_DST_COLOR = 0x0306;
 int RGL_FUNC_ADD = 0x8006;
 
 int SEMU_LAYOUT_FIXED = 0;
@@ -56,6 +59,8 @@ struct RendererScreenConfig {
     float ring_r;
     float ring_g;
     float ring_b;
+    float bulge_x;  // edge middles bowed outward, fractions of the opening's half width and half height
+    float bulge_y;
     int shape;
     float radius;
     float exponent;
@@ -75,11 +80,25 @@ struct RendererScreenConfig {
     int shader_available;
 };
 
+struct RendererLayerConfig {  // one layer of the package's stack: SEMU_RENDER_LAYER_<n> = file|x,y,w,h or cover|above|blend|opacity
+    int set;
+    struct RendererPath file;
+    struct RendererNormalizedHole rect;
+    int cover;   // follows the viewport: cover-fit like the background plate
+    int above;   // drawn after the screens
+    int blend;   // 0 normal, 1 add, 2 multiply
+    float opacity;
+};
+
 struct RendererVariantConfig {
     int declared;
     struct RendererPath shader_preset;
     struct RendererPath art;
     struct RendererPath background;
+    int canvas_width;   // SEMU_RENDER_CANVAS: the pixel grid the layers and screens are addressed in
+    int canvas_height;
+    int layer_count;
+    struct RendererLayerConfig layers[8];
     int layout;
     int frame_set;
     int frame_around_game;  // ring around the fitted game instead of the opening: an inset bezel inside a device plate
@@ -134,6 +153,10 @@ struct RendererGlResources {
     int art_width[4];
     int art_height[4];
     int art_loaded[4];
+    unsigned int layer_textures[32];  // 4 variants x 8 layers
+    int layer_loaded[32];
+    int layer_width[32];
+    int layer_height[32];
     int background_width[4];
     int background_height[4];
     int background_loaded[4];
@@ -173,6 +196,8 @@ struct RendererGlResources {
     int uniform_ring_look2;
     int uniform_ring_color;
     int uniform_ring_color2;
+    int uniform_layer;
+    int uniform_bulge;
     int uniform_rotation;
     int uniform_pass;
     int uniform_menu_on;
@@ -190,15 +215,18 @@ uniform sampler2D uGame;uniform sampler2D uGame2;uniform sampler2D uBezel;unifor
 uniform vec4 uRect;uniform vec4 uRect2;uniform vec4 uTube;uniform vec4 uTube2;uniform vec4 uShape;uniform vec4 uShape2;uniform vec4 uFx;uniform vec4 uFx2;
 uniform vec4 uSurround;uniform vec4 uSurround2;uniform vec4 uReflect;uniform vec4 uBezelRect;uniform vec4 uBackgroundRect;uniform vec4 uMenuRect;
 uniform vec4 uFlags;uniform vec4 uFrame;uniform vec4 uFrameColor;uniform vec4 uRotation;uniform float uPass;uniform float uMenuOn;
-uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uRingOut2;uniform vec4 uRingLook;uniform vec4 uRingLook2;uniform vec4 uRingColor;uniform vec4 uRingColor2;
+uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uRingOut2;uniform vec4 uRingLook;uniform vec4 uRingLook2;uniform vec4 uRingColor;uniform vec4 uRingColor2;uniform vec4 uLayer;uniform vec4 uBulge;
  bool inside(vec2 p,vec4 r){return p.x>=r.x&&p.x<=r.x+r.z&&p.y>=r.y&&p.y<=r.y+r.w;}
  vec2 uv(vec2 p,vec4 r){return(p-r.xy)/r.zw;}
  vec2 rotatedUv(vec2 q,float r){if(r<0.5)return q;if(r<1.5)return vec2(1.0-q.y,q.x);if(r<2.5)return vec2(1.0-q.x,1.0-q.y);return vec2(q.y,1.0-q.x);}
  vec2 artUv(vec2 p,vec4 r){return vec2((p.x-r.x)/r.z,1.0-(p.y-r.y)/r.w);}
  vec2 curved(vec2 q,float k){vec2 c=q*2.0-1.0;c*=(1.0+k*dot(c,c))/(1.0+k);return c*0.5+0.5;}
- float shapeMask(vec2 p,vec4 r,vec4 s){if(r.z<=0.0||r.w<=0.0)return 0.0;if(s.x<0.5)return inside(p,r)?1.0:0.0;
+ vec2 unbulge(vec2 p,vec4 r,vec2 b){if(b.x<=0.0&&b.y<=0.0)return p;vec2 h=r.zw*0.5;vec2 c=r.xy+h;vec2 u=(p-c)/h;
+  float sx=1.0+b.x*max(0.0,1.0-u.y*u.y);float sy=1.0+b.y*max(0.0,1.0-u.x*u.x);return c+vec2(u.x/sx,u.y/sy)*h;}
+ float shapeMaskB(vec2 p,vec4 r,vec4 s,vec2 b){if(r.z<=0.0||r.w<=0.0)return 0.0;p=unbulge(p,r,b);if(s.x<0.5)return inside(p,r)?1.0:0.0;
   vec2 h=r.zw*0.5;float rad=clamp(s.y,0.0,0.5)*min(r.z,r.w);vec2 d=max(abs(p-(r.xy+h))-(h-rad),0.0);
   float n=s.x>1.5?max(s.z,2.0):2.0;float sd=pow(pow(d.x,n)+pow(d.y,n),1.0/n)-rad;return 1.0-smoothstep(-0.75,0.75,sd);}
+ float shapeMask(vec2 p,vec4 r,vec4 s){return shapeMaskB(p,r,s,vec2(0.0));}
  vec3 blurred(sampler2D t,vec2 q){vec3 s=vec3(0.0);float o=0.035;for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++)s+=texture(t,clamp(q+vec2(float(x),float(y))*o,0.0,1.0)).rgb;return s/9.0;}
  vec3 screenColor(sampler2D t,sampler2D g,vec2 p,vec4 tube,vec4 rect,vec4 fx,vec4 surround,float rot,float reflect,float hasGlass){
   vec2 q0=uv(p,tube);vec2 q1=curved(q0,fx.x);bool on=q1.x>=0.0&&q1.x<=1.0&&q1.y>=0.0&&q1.y<=1.0;
@@ -215,22 +243,25 @@ uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uR
   vec2 h=outer.zw*0.5;vec2 d=abs(p-(outer.xy+h))/h;float edge=max(d.x,d.y);
   float shade=0.7+0.4*smoothstep(0.82,1.0,edge);float bevel=smoothstep(0.985,1.0,edge)*0.22;
   return vec4(uFrameColor.rgb*shade+bevel,ring);}
- vec4 bezelRing(vec2 p,vec4 inner,vec4 outer,vec4 look,vec4 color){if(look.z<0.5)return vec4(0.0);
-  float ring=shapeMask(p,outer,vec4(1.0,look.y,2.0,0.0))*(1.0-shapeMask(p,inner,vec4(1.0,look.x,2.0,0.0)));if(ring<=0.0)return vec4(0.0);
+ vec4 bezelRing(vec2 p,vec4 inner,vec4 outer,vec4 look,vec4 color,vec2 b){if(look.z<0.5)return vec4(0.0);
+  float ring=shapeMaskB(p,outer,vec4(1.0,look.y,2.0,0.0),b)*(1.0-shapeMaskB(p,inner,vec4(1.0,look.x,2.0,0.0),b));if(ring<=0.0)return vec4(0.0);
   vec2 h=outer.zw*0.5;vec2 d=abs(p-(outer.xy+h))/h;float edge=max(d.x,d.y);
   float shade=0.7+0.4*smoothstep(0.82,1.0,edge);float bevel=smoothstep(0.985,1.0,edge)*0.22;
   return vec4(color.rgb*shade+bevel,ring);}
 void main(){
- vec2 p=gl_FragCoord.xy;float dual=uFlags.x;float hasArt=uFlags.y;float hasBg=uFlags.z;
+ vec2 p=gl_FragCoord.xy;float dual=uFlags.x;float hasArt=uFlags.y;float hasBg=uFlags.z;float layered=uFlags.w;
+ if(uPass>3.5){if(!inside(p,uBezelRect))discard;vec4 t=texture(uBezel,artUv(p,uBezelRect));if(uLayer.y>0.5&&uLayer.y<1.5)t.rgb*=t.a;frag=vec4(t.rgb,t.a*uLayer.x);return;}
  if(uPass<0.5){vec3 c=vec3(0.0);if(hasBg>0.5&&inside(p,uBackgroundRect))c=texture(uBackground,artUv(p,uBackgroundRect)).rgb;frag=vec4(c,1.0);return;}
- if(uPass<1.5){float m0=shapeMask(p,uTube,uShape);float m1=dual>0.5?shapeMask(p,uTube2,uShape2):0.0;if(m0<=0.0&&m1<=0.0)discard;
+ if(uPass<1.5){float m0=shapeMaskB(p,uTube,uShape,uBulge.xy);float m1=dual>0.5?shapeMaskB(p,uTube2,uShape2,uBulge.zw):0.0;if(m0<=0.0&&m1<=0.0)discard;
   vec3 c;float a;
   if(m0>=m1){c=screenColor(uGame,uGlass,p,uTube,uRect,uFx,uSurround,uRotation.x,uReflect.x,uReflect.z);a=m0;
    if(uFrame.z>1.5){vec4 f=frameRing(p,uRect,vec4(1.0,uFrame.y,2.0,0.0));c=mix(c,f.rgb,f.a);}
-   vec4 r=bezelRing(p,uRingIn,uRingOut,uRingLook,uRingColor);c=mix(c,r.rgb,r.a);}
+   if(layered>0.5&&uRingLook.z>0.5){if(!inside(p,uRect))c=vec3(0.0);a=min(a,shapeMaskB(p,uRingOut,vec4(1.0,uRingLook.y,2.0,0.0),uBulge.xy));}
+   vec4 r=bezelRing(p,uRingIn,uRingOut,uRingLook,uRingColor,uBulge.xy);c=mix(c,r.rgb,r.a);}
   else{c=screenColor(uGame2,uGlass2,p,uTube2,uRect2,uFx2,uSurround2,uRotation.y,uReflect.y,uReflect.w);a=m1;
    if(uFrame.z>1.5){vec4 f=frameRing(p,uRect2,vec4(1.0,uFrame.y,2.0,0.0));c=mix(c,f.rgb,f.a);}
-   vec4 r=bezelRing(p,uRingIn2,uRingOut2,uRingLook2,uRingColor2);c=mix(c,r.rgb,r.a);}
+   if(layered>0.5&&uRingLook2.z>0.5){if(!inside(p,uRect2))c=vec3(0.0);a=min(a,shapeMaskB(p,uRingOut2,vec4(1.0,uRingLook2.y,2.0,0.0),uBulge.zw));}
+   vec4 r=bezelRing(p,uRingIn2,uRingOut2,uRingLook2,uRingColor2,uBulge.zw);c=mix(c,r.rgb,r.a);}
   frag=vec4(c,a);return;}
  if(uPass<2.5){vec4 c=vec4(0.0);
   if(hasArt>0.5&&inside(p,uBezelRect))c=texture(uBezel,artUv(p,uBezelRect));
@@ -302,6 +333,14 @@ class RendererConfiguration {
             screen->ring_g = RendererConfiguration.clamp01(ringValues[11]);
             screen->ring_b = RendererConfiguration.clamp01(ringValues[12]);
         }
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_BULGE%s", index, suffix);
+        char* bulge = getenv(name);
+        if (bulge == null || sscanf(bulge, "%f,%f", &screen->bulge_x, &screen->bulge_y) != 2) {
+            screen->bulge_x = 0.0f;
+            screen->bulge_y = 0.0f;
+        }
+        screen->bulge_x = RendererConfiguration.clamp01(screen->bulge_x);
+        screen->bulge_y = RendererConfiguration.clamp01(screen->bulge_y);
         snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_LOOK%s", index, suffix);
         char* look = getenv(name);
         float values[10];
@@ -332,6 +371,34 @@ class RendererConfiguration {
         screen->shader_available = RendererFileHash.sha256(screen->shader.value, screen->shader_sha256) ? 1 : 0;
     }
 
+    class bool parseLayer(struct RendererLayerConfig* layer, char* value) {  // file|x,y,w,h or cover|above|blend|opacity
+        memset(layer, 0, sizeof(struct RendererLayerConfig));
+        if (value == null || value[0] == 0) { return false; }
+        char* bar = strchr(value, '|');
+        if (bar == null || bar == value || bar - value > 4095) { return false; }
+        strncpy(layer->file.value, value, (size_t)(bar - value));
+        layer->file.value[bar - value] = 0;
+        char* rest = bar + 1;
+        if (strncmp(rest, "cover", 5) == 0) {
+            layer->cover = 1;
+            rest = rest + 5;
+        } else {
+            if (sscanf(rest, "%f,%f,%f,%f", &layer->rect.x, &layer->rect.y, &layer->rect.width, &layer->rect.height) != 4 || layer->rect.width <= 0.0f || layer->rect.height <= 0.0f) { return false; }
+            layer->rect.set = 1;
+            rest = strchr(rest, '|');
+            if (rest == null) { return false; }
+        }
+        int above = 0;
+        int blend = 0;
+        float opacity = 1.0f;
+        if (sscanf(rest, "|%d|%d|%f", &above, &blend, &opacity) < 2) { return false; }
+        layer->above = above != 0 ? 1 : 0;
+        layer->blend = blend < 0 ? 0 : (blend > 2 ? 2 : blend);
+        layer->opacity = RendererConfiguration.clamp01(opacity);
+        layer->set = 1;
+        return true;
+    }
+
     class int parseLayout(char* value) {
         if (value == null) { return SEMU_LAYOUT_FIXED; }
         if (strcmp(value, "main_right") == 0) { return SEMU_LAYOUT_MAIN_RIGHT; }
@@ -352,6 +419,21 @@ class RendererConfiguration {
         RendererConfiguration.copyEnvironment(&variant->background, name);
         snprintf(name, sizeof(name), "SEMU_RENDER_LAYOUT%s", suffix);
         variant->layout = RendererConfiguration.parseLayout(getenv(name));
+        snprintf(name, sizeof(name), "SEMU_RENDER_CANVAS%s", suffix);
+        char* canvas = getenv(name);
+        if (canvas == null || sscanf(canvas, "%d,%d", &variant->canvas_width, &variant->canvas_height) != 2 || variant->canvas_width < 1 || variant->canvas_height < 1) {
+            variant->canvas_width = 0;
+            variant->canvas_height = 0;
+        }
+        snprintf(name, sizeof(name), "SEMU_RENDER_LAYER_COUNT%s", suffix);
+        char* countText = getenv(name);
+        int declaredLayers = countText == null ? 0 : atoi(countText);
+        if (declaredLayers > 8) { declaredLayers = 8; }
+        variant->layer_count = 0;
+        for (int index = 0; index < declaredLayers; index++) {
+            snprintf(name, sizeof(name), "SEMU_RENDER_LAYER_%d%s", index, suffix);
+            if (RendererConfiguration.parseLayer(&variant->layers[variant->layer_count], getenv(name))) { variant->layer_count++; }
+        }
         snprintf(name, sizeof(name), "SEMU_RENDER_FRAME%s", suffix);
         char* frame = getenv(name);
         float around = 0.0f;
@@ -367,6 +449,7 @@ class RendererConfiguration {
             variant->shader_preset.value, variant->shader_sha256) ? 1 : 0;
         RendererFileHash.sha256(variant->art.value, variant->art_sha256);
         variant->declared = (variant->art.value[0] != 0
+            || variant->layer_count > 0
             || variant->shader_preset.value[0] != 0
             || variant->layout != SEMU_LAYOUT_FIXED
             || variant->screens[0].tube.set != 0) ? 1 : 0;
@@ -699,9 +782,10 @@ class RendererGeometry {
         float singleAspect = frame->presentation_aspect > 0.01f ? frame->presentation_aspect : config->display_aspect;
         bool bezel = config->bezels_enabled != 0;
         bool fixed = variant->layout == SEMU_LAYOUT_FIXED;
+        bool layered = variant->layer_count > 0 && variant->canvas_width > 0;
         if (bezel && fixed) {
             bool tubes = variant->screens[0].tube.set != 0 && (frame->surface_count < 2 || variant->screens[1].tube.set != 0);
-            if (resources->art_loaded[variantIndex] == 0 || !tubes) { bezel = false; }  // a fixed bezel needs its plate and its openings
+            if ((resources->art_loaded[variantIndex] == 0 && !layered) || !tubes) { bezel = false; }  // a fixed bezel needs its plate or its layers, and its openings
         }
         if (bezel && resources->background_loaded[variantIndex] != 0) {
             RendererGeometry.background(geometry, areaWidth, areaHeight,
@@ -717,8 +801,8 @@ class RendererGeometry {
         if (bezel && fixed) {
             struct RendererCanvasRect canvas;
             RendererCompositionContract.contain(areaWidth, areaHeight,
-                resources->art_width[variantIndex],
-                resources->art_height[variantIndex], &canvas);
+                layered ? variant->canvas_width : resources->art_width[variantIndex],
+                layered ? variant->canvas_height : resources->art_height[variantIndex], &canvas);
             geometry->bezel_x = canvas.x;
             geometry->bezel_y = canvas.y;
             geometry->bezel_width = canvas.width;
@@ -1031,6 +1115,8 @@ class RendererResources {
         resources->uniform_ring_look2 = RendererResources.uniform(gl, resources, "uRingLook2");
         resources->uniform_ring_color = RendererResources.uniform(gl, resources, "uRingColor");
         resources->uniform_ring_color2 = RendererResources.uniform(gl, resources, "uRingColor2");
+        resources->uniform_layer = RendererResources.uniform(gl, resources, "uLayer");
+        resources->uniform_bulge = RendererResources.uniform(gl, resources, "uBulge");
         resources->uniform_rotation = RendererResources.uniform(gl, resources, "uRotation");
         resources->uniform_pass = RendererResources.uniform(gl, resources, "uPass");
         resources->uniform_menu_on = RendererResources.uniform(gl, resources, "uMenuOn");
@@ -1054,6 +1140,15 @@ class RendererResources {
                 variant->art.value, &resources->bezel_textures[variantIndex],
                 &resources->art_width[variantIndex],
                 &resources->art_height[variantIndex]) ? 1 : 0;
+            for (int layerIndex = 0; layerIndex < 8; layerIndex++) {
+                int slot = variantIndex * 8 + layerIndex;
+                resources->layer_loaded[slot] = 0;
+                if (layerIndex >= variant->layer_count) { continue; }
+                gl->active_texture((unsigned int)(RGL_TEXTURE0 + 1));
+                resources->layer_loaded[slot] = RendererResources.loadImage(gl,
+                    variant->layers[layerIndex].file.value, &resources->layer_textures[slot],
+                    &resources->layer_width[slot], &resources->layer_height[slot]) ? 1 : 0;
+            }
             gl->active_texture((unsigned int)(RGL_TEXTURE0 + 6));
             resources->background_loaded[variantIndex] = RendererResources.loadImage(gl,
                 variant->background.value, &resources->background_textures[variantIndex],
@@ -1256,9 +1351,16 @@ class RendererAssetContract {
                 SEMU_RENDER_ASSET_MISSING, "shader_preset_missing");
         }
         if (config->bezels_enabled != 0 && variant->layout == SEMU_LAYOUT_FIXED) {
-            if (variant->art.value[0] == 0 || resources->art_loaded[selected] == 0) {
+            bool layered = variant->layer_count > 0 && variant->canvas_width > 0;
+            if (!layered && (variant->art.value[0] == 0 || resources->art_loaded[selected] == 0)) {
                 return RendererResourceFailure.set(resources,
                     SEMU_RENDER_ASSET_MISSING, "bezel_art_missing");
+            }
+            for (int layerIndex = 0; layered && layerIndex < variant->layer_count; layerIndex++) {
+                if (resources->layer_loaded[selected * 8 + layerIndex] == 0) {
+                    return RendererResourceFailure.set(resources,
+                        SEMU_RENDER_ASSET_MISSING, "bezel_layer_missing");
+                }
             }
             bool tubes = variant->screens[0].tube.set != 0 && (surfaceCount < 2 || variant->screens[1].tube.set != 0);
             if (!tubes) {
@@ -1300,6 +1402,62 @@ class RendererCompositor {
 
     class void set4(struct RendererGlApi* gl, int location, float a, float b, float c, float d) {
         if (location >= 0) { gl->uniform_4f(location, a, b, c, d); }
+    }
+
+    class void drawLayers(struct RendererGlApi* gl, struct RendererGlResources* resources,
+                          struct RendererVariantConfig* variant, struct RendererCompositionGeometry* geometry,
+                          int variantIndex, struct SemuRenderFrameGl* frame, bool above) {  // each layer as one textured quad through the layer pass
+        struct RendererCanvasRect canvas;
+        canvas.x = geometry->bezel_x;
+        canvas.y = geometry->bezel_y;
+        canvas.width = geometry->bezel_width;
+        canvas.height = geometry->bezel_height;
+        for (int index = 0; index < variant->layer_count; index++) {
+            struct RendererLayerConfig* layer = &variant->layers[index];
+            int slot = variantIndex * 8 + index;
+            if ((layer->above != 0) != above || resources->layer_loaded[slot] == 0 || layer->opacity <= 0.0f) { continue; }
+            float x = 0.0f;
+            float y = 0.0f;
+            float width = 0.0f;
+            float height = 0.0f;
+            if (layer->cover != 0) {  // cover-fit like the background plate
+                float horizontal = (float)frame->framebuffer_width / (float)resources->layer_width[slot];
+                float vertical = (float)frame->framebuffer_height / (float)resources->layer_height[slot];
+                float scale = horizontal > vertical ? horizontal : vertical;
+                width = scale * (float)resources->layer_width[slot];
+                height = scale * (float)resources->layer_height[slot];
+                x = ((float)frame->framebuffer_width - width) * 0.5f;
+                y = ((float)frame->framebuffer_height - height) * 0.5f;
+            } else {
+                struct RendererPixelRect rect;
+                RendererCompositionContract.aperture(&canvas, layer->rect.x, layer->rect.y, layer->rect.width, layer->rect.height, &rect);
+                x = (float)rect.x;
+                y = (float)rect.y;
+                width = (float)rect.width;
+                height = (float)rect.height;
+            }
+            if (width <= 0.0f || height <= 0.0f) { continue; }
+            gl->active_texture((unsigned int)(RGL_TEXTURE0 + 1));
+            gl->bind_sampler(1, 0);
+            gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->layer_textures[slot]);
+            gl->active_texture((unsigned int)RGL_TEXTURE0);
+            if (resources->uniform_bezel_rect >= 0) { gl->uniform_4f(resources->uniform_bezel_rect, x, y, width, height); }
+            RendererCompositor.set4(gl, resources->uniform_layer, layer->opacity, (float)layer->blend, 0.0f, 0.0f);
+            gl->enable((unsigned int)RGL_BLEND);
+            if (layer->blend == 1) {
+                gl->blend_function_separate((unsigned int)RGL_SRC_ALPHA, (unsigned int)RGL_ONE, (unsigned int)RGL_ZERO, (unsigned int)RGL_ONE);  // add: black adds nothing
+            } else if (layer->blend == 2) {
+                gl->blend_function_separate((unsigned int)RGL_DST_COLOR, (unsigned int)RGL_ONE_MINUS_SRC_ALPHA, (unsigned int)RGL_ZERO, (unsigned int)RGL_ONE);  // multiply
+            } else {
+                gl->blend_function_separate((unsigned int)RGL_SRC_ALPHA, (unsigned int)RGL_ONE_MINUS_SRC_ALPHA, (unsigned int)RGL_SRC_ALPHA, (unsigned int)RGL_ONE_MINUS_SRC_ALPHA);
+            }
+            gl->blend_equation_separate((unsigned int)RGL_FUNC_ADD, (unsigned int)RGL_FUNC_ADD);
+            if (resources->uniform_pass >= 0) { gl->uniform_1f(resources->uniform_pass, (float)SEMU_RENDER_PASS_LAYER); }
+            gl->draw_arrays((unsigned int)RGL_TRIANGLES, 0, 3);
+        }
+        if (resources->uniform_bezel_rect >= 0) {
+            gl->uniform_4f(resources->uniform_bezel_rect, geometry->bezel_x, geometry->bezel_y, geometry->bezel_width, geometry->bezel_height);
+        }
     }
 
     class void drawPass(struct RendererGlApi* gl,
@@ -1443,7 +1601,9 @@ class RendererCompositor {
         gl->bind_vertex_array(resources->vertex_array);
 
         bool bezel = config->bezels_enabled != 0;
-        bool art = bezel && variant->layout == SEMU_LAYOUT_FIXED
+        bool layered = bezel && variant->layout == SEMU_LAYOUT_FIXED && variant->layer_count > 0 && variant->canvas_width > 0
+            && geometry->bezel_width > 0.0f && geometry->bezel_height > 0.0f;
+        bool art = bezel && variant->layout == SEMU_LAYOUT_FIXED && !layered
             && resources->art_loaded[variantIndex] != 0
             && geometry->bezel_width > 0.0f && geometry->bezel_height > 0.0f;
         bool background = bezel && resources->background_loaded[variantIndex] != 0
@@ -1471,22 +1631,32 @@ class RendererCompositor {
                 geometry->background_y, geometry->background_width, geometry->background_height);
         }
         RendererCompositor.set4(gl, resources->uniform_flags,
-            geometry->lane_count > 1 ? 1.0f : 0.0f, art ? 1.0f : 0.0f, background ? 1.0f : 0.0f, 0.0f);
+            geometry->lane_count > 1 ? 1.0f : 0.0f, art ? 1.0f : 0.0f, background ? 1.0f : 0.0f, layered ? 1.0f : 0.0f);
         RendererCompositor.set4(gl, resources->uniform_frame,
             geometry->frame_width, variant->frame_radius, framed ? (float)geometry->framed : 0.0f, 0.0f);
         RendererCompositor.set4(gl, resources->uniform_frame_color,
             variant->frame_r, variant->frame_g, variant->frame_b, 1.0f);
+        RendererCompositor.set4(gl, resources->uniform_bulge,
+            bezel ? variant->screens[0].bulge_x : 0.0f, bezel ? variant->screens[0].bulge_y : 0.0f,
+            bezel ? variant->screens[second].bulge_x : 0.0f, bezel ? variant->screens[second].bulge_y : 0.0f);
         if (resources->uniform_menu_on >= 0) {
             gl->uniform_1f(resources->uniform_menu_on, 0.0f);
         }
         RendererCompositor.drawPass(gl, resources,
             SEMU_RENDER_PASS_BACKGROUND, false);
+        if (layered) { RendererCompositor.drawLayers(gl, resources, variant, geometry, variantIndex, frame, false); }  // the stack under the screens, in its own order
         if (art || framed) {
             RendererCompositor.drawPass(gl, resources,
                 SEMU_RENDER_PASS_CHROME, true);  // plate and frames first, so the screen edge blends over them
         }
         RendererCompositor.drawPass(gl, resources,
             SEMU_RENDER_PASS_GAME, true);  // alpha carries the screen shape mask
+        if (layered) {
+            RendererCompositor.drawLayers(gl, resources, variant, geometry, variantIndex, frame, true);  // glass, top plates and lights over the screens
+            gl->active_texture((unsigned int)(RGL_TEXTURE0 + 1));
+            gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->bezel_textures[variantIndex]);
+            gl->active_texture((unsigned int)RGL_TEXTURE0);
+        }
         bool drew = RendererGlErrors.none(gl);
         if (getenv("SEMU_RENDER_DEBUG") != null && (frame->frame_id % 120ULL) == 1ULL) {
             struct RendererLaneGeometry* lane0 = &geometry->lanes[0];
