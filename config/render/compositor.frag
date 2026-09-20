@@ -34,11 +34,14 @@ uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uR
   return vec4(uFrameColor.rgb*shade+bevel,ring);}
  vec3 ringReflection(sampler2D t,vec2 p,vec4 inner,vec4 rect,vec4 outer,vec3 edge,float rot,vec4 look){vec2 q=uv(p,inner);vec2 o=max(max(-q,q-1.0),vec2(0.0));
   vec2 m=q;if(q.x<0.0)m.x=-q.x;else if(q.x>1.0)m.x=2.0-q.x;if(q.y<0.0)m.y=-q.y;else if(q.y>1.0)m.y=2.0-q.y;m=clamp(m,0.0,1.0);
-  vec2 thick=max((outer.zw-inner.zw)*0.5,vec2(1.0));float d=clamp(length(o*inner.zw/thick),0.0,1.0);float fade=1.0-look.z*smoothstep(0.0,1.0,d);
-  float spread=0.0003+mix(0.0,0.012,look.y)*d*d;vec3 c=vec3(0.0);
+  vec2 thick=max((outer.zw-inner.zw)*0.5,vec2(1.0));float d=clamp(length(o*inner.zw/thick),0.0,1.0);
+  float falloff=pow(1.0-d,1.6);float fade=1.0-look.z*(1.0-falloff);
+  float spread=0.0004+mix(0.0,0.008,look.y)*d*d;vec3 direct=vec3(0.0);
   for(int y=-2;y<=2;y++)for(int x=-2;x<=2;x++){vec2 mp=inner.xy+clamp(m+vec2(float(x),float(y))*spread*0.5,0.0,1.0)*inner.zw;vec2 g=uv(mp,rect);
-   c+=(g.x>=0.0&&g.x<=1.0&&g.y>=0.0&&g.y<=1.0)?texture(t,rotatedUv(g,rot)).rgb:edge;}
-  return c/25.0*look.x*fade;}
+   direct+=(g.x>=0.0&&g.x<=1.0&&g.y>=0.0&&g.y<=1.0)?texture(t,rotatedUv(g,rot)).rgb:edge;}
+  direct/=25.0;vec3 diffused=vec3(0.0);
+  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++)diffused+=texture(t,rotatedUv(vec2(0.5)+vec2(float(x),float(y))*0.3,rot)).rgb;
+  diffused/=9.0;return (direct*0.88+diffused*0.12)*look.x*fade;}
  vec4 reachRect(vec4 outer,vec2 reach){vec2 grow=outer.zw*reach;return vec4(outer.xy-grow,outer.zw+2.0*grow);}
  float reachBand(vec2 p,vec4 outer,vec2 reach,float radius,vec2 b){if(reach.x<=0.0&&reach.y<=0.0)return 0.0;vec4 far=reachRect(outer,reach);
   return shapeMaskB(p,far,vec4(1.0,radius,2.0,0.0),b)*(1.0-shapeMaskB(p,outer,vec4(1.0,radius,2.0,0.0),b));}
