@@ -238,7 +238,7 @@ class BezelGeometry {  // one package: its preset, screens, layers and the canva
             if (texture.equals("DeviceImage")) { device = placed; }
             found.push(layer);
         }
-        BezelLayer screens = BezelLayer("screens", "", "CRT");
+        BezelLayer screens = BezelLayer("cutouts", "", "CRT");
         screens.order = self.params.get("HSM_CRT_LAYER_ORDER");
         found.push(screens);
         while (found.size() > 0) {  // ascending draw order, ties in Mega Bezel's own sequence
@@ -377,7 +377,12 @@ class BezelPackageWriter {
 
     public string plain(string packageId) {  // a Semu-owned plate with no preset: its art is the one layer and the canvas
         JSONValue package = self.repository.package(packageId);
-        if (package == null || package.has("layers")) { return ""; }
+        if (package == null) { return ""; }
+        if (package.has("layers")) {  // already layered: only the cutouts layer's name may need the current spelling
+            JSONValue layers = package.get("layers");
+            for (int index = 0; index < layers.size(); index++) { if (SemuJson.textAt(layers.at(index), "id").equals("screens")) { layers.at(index).set("id", JSONValue.makeString("cutouts")); self.repository.save(packageId, package); } }
+            return "";
+        }
         string art = SemuJson.textAt(package, "art");
         if (art.isEmpty()) { return ""; }
         string path = PathTools.join(self.repository.configRoot, art);
@@ -394,7 +399,7 @@ class BezelPackageWriter {
         layer.viewport = false;
         JSONValue layers = JSONValue.makeArray();
         layers.push(layer.toJson(BezelRect(0.0, 0.0, 1.0, 1.0), canvasWidth, canvasHeight));
-        BezelLayer screens = BezelLayer("screens", "", "CRT");
+        BezelLayer screens = BezelLayer("cutouts", "", "CRT");
         screens.order = 1.0;
         layers.push(screens.toJson(null, canvasWidth, canvasHeight));
         package.set("layers", layers);

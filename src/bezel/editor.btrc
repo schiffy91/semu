@@ -134,6 +134,8 @@ class BezelEditor {
                 JSONValue screen = BezelEditor.find(targets, SemuJson.textAt(edited, "id"));
                 if (screen == null) { continue; }
                 for key in ["tube", "image"] { JSONValue rect = BezelEditor.rounded(edited.get(key)); if (rect != null) { screen.set(key, rect); } }
+                string surround = SemuJson.textAt(edited, "surround");
+                if (surround.len() == 7 && surround.startsWith("#")) { screen.set("surround", JSONValue.makeString(surround)); }
                 JSONValue shape = edited.get("shape");
                 if (shape != null && shape.isObject()) {
                     JSONValue kept = JSONValue.makeObject();

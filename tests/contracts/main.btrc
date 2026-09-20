@@ -451,7 +451,7 @@ class BezelPlacementContract {  // the Mega Bezel port against the last render-b
         BezelRepository repository = BezelRepository(fixture.plan.configRoot);
         BezelGeometry geometry = BezelGeometry(tree, "gb-dmg-shell", repository.package("gb-dmg-shell"), repository.system("gb"));
         contract.expect(geometry.failure.isEmpty() && geometry.canvasLayer != null && geometry.canvasLayer.id.equals("device") && geometry.canvasLayer.width == 3440 && geometry.canvasLayer.height == 6115, "the DMG device layer is the canvas at its own 3440x6115");
-        contract.expect(geometry.layers.size() == 7 && geometry.layer("screens") != null && geometry.layer("top").order > geometry.layer("screens").order, "the DMG stack has seven layers with the top plate above the screens");
+        contract.expect(geometry.layers.size() == 7 && geometry.layer("cutouts") != null && geometry.layer("top").order > geometry.layer("cutouts").order, "the DMG stack has seven layers with the top plate above the cutouts");
         contract.expect(geometry.plateRect(geometry.screens[0].picture).rounded().stringify().equals("{\"x\":1012,\"y\":1512,\"w\":1416,\"h\":1275}"), "the DMG picture lands at Duimon's placement in device pixels");
     }
 }

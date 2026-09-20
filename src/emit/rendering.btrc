@@ -55,14 +55,14 @@ class SemuRenderLayers {  // the package's layer stack for the compositor: file,
         int canvasWidth = SemuJson.intAt(canvas, "w", 0);
         int canvasHeight = SemuJson.intAt(canvas, "h", 0);
         double screensOrder = 0.0;
-        for (int index = 0; index < layers.size(); index++) { if (SemuJson.textAt(layers.at(index), "id").equals("screens")) { screensOrder = atof(SemuRenderEnvironment.numberOr(layers.at(index), "order", "0")); } }
+        for (int index = 0; index < layers.size(); index++) { if (SemuJson.textAt(layers.at(index), "id").equals("cutouts")) { screensOrder = atof(SemuRenderEnvironment.numberOr(layers.at(index), "order", "0")); } }
         int count = 0;
         Vector<string> lines = [];
         Vector<double> orders = [];
         for (int index = 0; index < layers.size(); index++) {
             JSONValue layer = layers.at(index);
             string id = SemuJson.textAt(layer, "id");
-            if (id.equals("screens") || !SemuJson.boolAt(layer, "visible", true)) { continue; }
+            if (id.equals("cutouts") || !SemuJson.boolAt(layer, "visible", true)) { continue; }
             string file = SemuRenderLayers.file(plan, packageId, id, SemuJson.textAt(layer, "file"));
             if (file.isEmpty()) { continue; }  // not bundled and not staged: the renderer skips the layer rather than the launch failing
             double order = atof(SemuRenderEnvironment.numberOr(layer, "order", "0"));
