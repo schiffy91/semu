@@ -504,12 +504,25 @@ class RendererGeometry {
             if (side >= secondWidth) { break; }
             scale--;
         }
-        if (scale < 1) { return false; }
+        bool centered = scale >= 1;
+        if (!centered) {  // no room to center the main screen: keep its largest integer scale and center the pair instead
+            scale = (areaHeight - 2 * frame) / mainHeight;
+            while (scale >= 1) {
+                side = areaWidth - scale * mainWidth - 4 * frame - 3 * gap;
+                if (side >= secondWidth) { break; }
+                scale--;
+            }
+            if (scale < 1) { return false; }
+        }
         float secondScale = (float)side / (float)secondWidth;
         float tall = (float)(scale * mainHeight) / (float)secondHeight;
         if (tall < secondScale) { secondScale = tall; }
         int mainX = (areaWidth - scale * mainWidth) / 2;
         int mainY = (areaHeight - scale * mainHeight) / 2;
+        if (!centered) {
+            int pairWidth = scale * mainWidth + 2 * frame + gap + (int)((float)secondWidth * secondScale + 0.5f);
+            mainX = right ? (areaWidth - pairWidth) / 2 : (areaWidth + pairWidth) / 2 - scale * mainWidth;
+        }
         RendererGeometry.exact(main, mainX, mainY, scale * mainWidth, scale * mainHeight);
         int secondOutWidth = (int)((float)secondWidth * secondScale + 0.5f);
         int secondOutHeight = (int)((float)secondHeight * secondScale + 0.5f);
