@@ -299,11 +299,14 @@ class RenderingContract {
         contract.expect(nesLook && nesTube, "the measured NES tube and its look reach the compositor per screen");
         bool nesImage = false;
         bool nesRing = false;
+        bool nesReflect = false;
         for entry in nesTv {
+            if (entry.equals("SEMU_RENDER_SCREEN_0_REFLECT=0.5,0.95,1")) { nesReflect = true; }  // HSM_REFLECT_GLOBAL_AMOUNT 50, BLUR_MAX 95, FADE_AMOUNT 100
             if (entry.startsWith("SEMU_RENDER_SCREEN_0_IMAGE=0.275781,0.123148,0.448437,0.597685")) { nesImage = true; }  // 1059,266,1722,1291: HSM_NON_INTEGER_SCALE 59.77 at 4:3, POSITION_Y 78
-            if (entry.startsWith("SEMU_RENDER_SCREEN_0_RING=0.273698,0.119444,0.452604,0.605093,0.246354,0.099537,0.507292,0.644907,") && entry.endsWith(",0.0901961,0.0941176,0.0980392")) { nesRing = true; }  // black edge to bezel edge, bezel color #171819
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0_RING=0.273698,0.119444,0.452604,0.605093,0.246354,0.099537,0.507292,0.644907,") && entry.endsWith(",0.0901961,0.0941176,0.0980392,1")) { nesRing = true; }  // black edge to bezel edge, bezel color #171819
         }
         contract.expect(nesImage && nesRing, "the NES picture and bezel ring follow Soqueroeu's preset");
+        contract.expect(nesReflect, "the NES ring reflection strength, blur and fade come from the preset");
         FileSystem.mkdirp(PathTools.join(assets, "share/libretro/shaders/semu/nes"));
         FileSystem.writeText(PathTools.join(assets, "share/libretro/shaders/semu/nes/screen.slangp"), "#reference x\n");
         Vector<string> nesFull = SemuRenderEnvironment.compile(fixture.plan, nes, "retroarch", "/state/retroarch", fixture.diagnostics);

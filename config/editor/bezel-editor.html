@@ -16,10 +16,6 @@
   .seg button:hover { background: rgba(255,255,255,.08); }
   .seg button.on { background: rgba(255,255,255,.16); }
   .seg button:disabled { opacity: .35; cursor: default; }
-  .seg .alpha { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; color: var(--muted); font-size: 12px; }
-  .seg .alpha b { font-weight: 500; min-width: 34px; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
-  .seg .alpha input { width: 90px; accent-color: var(--accent); cursor: ew-resize; }
-  .layer .row-alpha { width: 64px; margin-left: auto; accent-color: var(--accent); cursor: ew-resize; }
   button.primary { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 6px 14px; font: inherit; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
   button.primary:hover { filter: brightness(1.1); }
   select, input[type=number], input[type=text] { font: inherit; color: var(--text); background: rgba(0,0,0,.28); border: 1px solid var(--line-strong); border-radius: 7px; padding: 5px 8px; outline: none; }
@@ -32,31 +28,51 @@
   canvas { display: block; width: 100%; height: 100%; cursor: default; image-rendering: pixelated; }
   #hud { position: absolute; left: 12px; bottom: 12px; background: rgba(28,28,30,.85); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; font: 12px ui-monospace, "SF Mono", Menlo, monospace; color: var(--muted); pointer-events: none; white-space: pre; backdrop-filter: blur(12px); }
   h2 { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 6px 0 8px; }
-  .layer { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; cursor: default; }
+  .layer { display: grid; grid-template-columns: 22px 40px minmax(0, 1fr) auto; align-items: center; gap: 8px; height: 36px; padding: 0 8px; border-radius: 8px; cursor: default; }
   .layer:hover { background: rgba(255,255,255,.05); }
   .layer.active { background: var(--accent-soft); }
   .layer.dragover { box-shadow: 0 -2px 0 var(--accent); }
-  .layer .eye { width: 20px; height: 20px; border: 0; background: transparent; color: var(--text); font-size: 13px; cursor: pointer; border-radius: 5px; opacity: .9; }
-  .layer.hidden .eye { opacity: .3; }
-  .layer.hidden .name { color: var(--muted); }
-  .layer .thumb { width: 44px; height: 26px; border-radius: 4px; background: repeating-conic-gradient(#3a3a3c 0 25%, #2a2a2c 0 50%) 0 0 / 10px 10px; object-fit: contain; flex: none; border: 1px solid var(--line); }
-  .layer .name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .layer .badge { font-size: 10px; color: var(--muted); background: rgba(255,255,255,.06); border-radius: 4px; padding: 1px 5px; }
-  .layer .badge.canvas { color: #fff; background: var(--accent); }
+  .layer .eye { width: 22px; height: 22px; border: 0; background: transparent; color: var(--text); cursor: pointer; border-radius: 5px; padding: 0; display: grid; place-items: center; opacity: .85; }
+  .layer .eye svg { width: 15px; height: 15px; }
+  .layer .eye:hover { background: rgba(255,255,255,.1); }
+  .layer.hidden .eye { opacity: .35; }
+  .layer.hidden .name, .layer.hidden .thumb { opacity: .45; }
+  .layer .thumb { width: 40px; height: 24px; border-radius: 4px; background: repeating-conic-gradient(#3a3a3c 0 25%, #2a2a2c 0 50%) 0 0 / 8px 8px; object-fit: contain; border: 1px solid var(--line); display: grid; place-items: center; font-size: 13px; }
+  .layer .name { min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badges { display: flex; gap: 4px; }
+  .badge { font-size: 10px; line-height: 16px; color: var(--muted); background: rgba(255,255,255,.07); border-radius: 4px; padding: 0 5px; letter-spacing: .02em; white-space: nowrap; }
+  .badge.canvas { color: #fff; background: var(--accent); }
   .group { background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
   .group h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-  .row { display: flex; gap: 8px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  .group .file { font-size: 11px; overflow-wrap: anywhere; margin: -4px 0 8px; }
+  .field { display: grid; grid-template-columns: 62px 1fr 1fr; align-items: center; gap: 6px; margin: 5px 0; }
+  .field.one { grid-template-columns: 62px 1fr; }
+  .field > span { color: var(--muted); font-size: 12px; }
+  .in { display: flex; align-items: center; background: rgba(0,0,0,.28); border: 1px solid var(--line-strong); border-radius: 7px; padding: 0 6px 0 8px; height: 26px; gap: 4px; min-width: 0; }
+  .in:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .in > span { color: var(--muted); font-size: 11px; flex: none; }
+  .in input[type=number], .in select { width: 100%; min-width: 0; border: 0; background: transparent; padding: 0; box-shadow: none; }
+  .in input[type=number] { text-align: right; }
+  .in input:focus, .in select:focus { box-shadow: none; }
+  .chips { display: flex; gap: 4px; margin: 8px 0; }
+  .chip { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; height: 24px; border-radius: 6px; font-size: 11px; color: var(--muted); background: rgba(255,255,255,.05); cursor: default; white-space: nowrap; }
+  .chip:hover { background: rgba(255,255,255,.09); }
+  .chip.active { background: rgba(255,255,255,.14); color: var(--text); }
+  .slider { display: grid; grid-template-columns: 62px 1fr 38px; align-items: center; gap: 8px; margin: 5px 0; }
+  .slider > span { color: var(--muted); font-size: 12px; }
+  .slider b { font-weight: 500; font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+  .swatches { display: flex; gap: 14px; align-items: center; }
+  .swatch { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  .swatch input[type=color] { width: 26px; height: 20px; }
+  .sub { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 10px 0 4px; }
   .curve { background: rgba(0,0,0,.18); border-radius: 8px; padding: 4px 8px; margin: 6px 0; }
-  .curve .line { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
-  .curve .lead { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; width: 58px; flex: none; }
-  .curve label { display: inline-flex; align-items: center; gap: 5px; }
-  .curve input[type=number] { width: 62px; }
-  .row label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
-  .grid2 label { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: var(--muted); font-size: 12px; }
-  .item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 7px; cursor: default; }
-  .item:hover { background: rgba(255,255,255,.05); }
-  .item.active { background: var(--accent-soft); }
+  .curve .line { display: grid; grid-template-columns: 58px 1fr 1fr; align-items: center; gap: 6px; padding: 3px 0; }
+  .curve .lead { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
+  #help { position: fixed; top: 52px; right: 14px; z-index: 9; background: rgba(44,44,46,.96); border: 1px solid var(--line-strong); border-radius: 12px; padding: 10px 14px 12px; box-shadow: 0 12px 40px rgba(0,0,0,.5); backdrop-filter: blur(20px); display: none; font-size: 12px; }
+  #help table { border-collapse: collapse; }
+  #help td { padding: 3px 12px 3px 0; color: var(--muted); vertical-align: middle; }
+  #help td:first-child { color: var(--text); white-space: nowrap; }
   .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; border: 1px solid rgba(0,0,0,.4); }
   .muted { color: var(--muted); font-size: 12px; }
   #status { color: var(--muted); font-size: 12px; min-width: 200px; text-align: right; }
@@ -66,7 +82,7 @@
   #menu .sep { height: 1px; background: var(--line-strong); margin: 4px 6px; padding: 0; }
   #menu .head { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
   #menu .head:hover { background: transparent; color: var(--muted); }
-  kbd { font: 11px ui-monospace, "SF Mono", Menlo, monospace; color: var(--muted); }
+  kbd { font: 11px ui-monospace, "SF Mono", Menlo, monospace; color: var(--text); background: rgba(255,255,255,.1); border-radius: 4px; padding: 1px 5px; }
 </style>
 </head>
 <body>
@@ -76,7 +92,8 @@
   <span class="spacer"></span>
   <div class="seg"><button id="undo" title="Undo (⌘Z)">↶</button><button id="redo" title="Redo (⇧⌘Z)">↷</button></div>
   <div class="seg"><button id="fit" title="Fit (F)">Fit</button><button id="zoom-out" title="Zoom out">−</button><button id="zoom-label" title="100% (1)" style="min-width:56px">100%</button><button id="zoom-in" title="Zoom in">+</button></div>
-  <div class="seg"><button id="xray" title="X-ray: cutouts at 35% or back to solid (X)">X-ray</button><label class="alpha" title="Cutouts opacity: see the plate through the ring and picture ([ and ] step)"><span>▣</span><input id="cutout-alpha" type="range" min="0" max="100" step="5" value="100"><b id="cutout-alpha-label">100%</b></label><button id="show-game" class="on" title="Show the test card in each picture">Test card</button></div>
+  <div class="seg"><button id="xray" title="X-ray: cutouts at 35% or back to solid (X)">X-ray</button><button id="show-game" class="on" title="Show the test card in each picture">Test card</button></div>
+  <div class="seg"><button id="help-btn" title="Shortcuts" style="min-width:30px">?</button></div>
   <span id="status"></span>
   <button id="save" class="primary" title="Save (⌘S)">Save</button>
 </header>
@@ -89,9 +106,6 @@
 <section class="props">
   <h2>Properties</h2>
   <div id="props"></div>
-  <div class="muted" style="margin-top:14px">
-    <kbd>arrows</kbd> nudge 1 px, <kbd>⇧</kbd> 10 px, <kbd>⌥</kbd> resizes · <kbd>wheel</kbd> pans · <kbd>⌃</kbd>/<kbd>⌥</kbd>+wheel zooms in integer steps · <kbd>space</kbd>+drag pans · <kbd>1</kbd> 100% · <kbd>F</kbd> fit · <kbd>X</kbd> x-ray · <kbd>[</kbd> <kbd>]</kbd> cutout opacity · <kbd>⌘Z</kbd> undo · yellow diamond: corner radius · orange diamonds: edge bulge
-  </div>
 </section>
 </aside>
 <main>
@@ -99,13 +113,33 @@
   <div id="hud"></div>
 </main>
 <div id="menu"></div>
+<div id="help">
+  <h2>Shortcuts</h2>
+  <table>
+    <tr><td><kbd>wheel</kbd></td><td>pan</td></tr>
+    <tr><td><kbd>⌃</kbd> / <kbd>⌥</kbd> + wheel</td><td>zoom at the cursor, integer steps</td></tr>
+    <tr><td><kbd>space</kbd> + drag</td><td>pan</td></tr>
+    <tr><td><kbd>1</kbd> <kbd>F</kbd></td><td>100 % · fit</td></tr>
+    <tr><td><kbd>←↑↓→</kbd></td><td>nudge 1 px · <kbd>⇧</kbd> 10 px · <kbd>⌥</kbd> resizes</td></tr>
+    <tr><td><kbd>X</kbd> <kbd>[</kbd> <kbd>]</kbd></td><td>x-ray · cutout preview opacity</td></tr>
+    <tr><td><kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd> <kbd>⌘S</kbd></td><td>undo · redo · save</td></tr>
+    <tr><td>knob</td><td>sizes that corner or edge · <kbd>⇧</kbd> keeps the ratio</td></tr>
+    <tr><td><span style="color:#ffd60a">◆</span> beyond a corner</td><td>drag toward the centre to round it</td></tr>
+    <tr><td><span style="color:#ff9f0a">◆</span> beyond an edge</td><td>drag outward to bow it</td></tr>
+  </table>
+</div>
 <script>
 const ZOOMS = [0.125, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
 const COLORS = { tube: "#ff2d92", image: "#30d158", inner: "#64d2ff", outer: "#ffd60a", layer: "#0a84ff" };
-const NAMES = { tube: "opening", image: "picture", inner: "ring inner", outer: "ring outer" };
+const NAMES = { tube: "opening", image: "picture", inner: "bezel inner", outer: "bezel outer" };  // the reflection lands between bezel inner and bezel outer
 const CUTOUTS = "cutouts";
 const canvas = document.getElementById("view");
-const ctx = canvas.getContext("2d");
+let ctx = canvas.getContext("2d");
+const probe = document.createElement("canvas"); probe.width = probe.height = 1;
+const probeCtx = probe.getContext("2d", { willReadFrequently: true });
+const EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6C3.7 8.6 2 12 2 12s3.5 7 10 7c1.6 0 3-.4 4.3-1"/></svg>';
+const cards = {};
 const hud = document.getElementById("hud");
 const state = { packages: [], current: null, original: null, images: {}, thumbs: {}, zoom: 1, ox: 0, oy: 0, selected: null, hover: null, drag: null, space: false, dirty: false, cursor: null, showGame: true, cutoutAlpha: 1, past: [], future: [] };
 
@@ -221,9 +255,12 @@ async function open(id) {
   }
   status("loading layers…");
   const wanted = new URLSearchParams(location.search).get("select");  // ?select=0:tube opens with that cutout rectangle selected
-  if (wanted && wanted.includes(":")) { const [index, key] = wanted.split(":"); if (state.current.screens[Number(index)] && screenRect(state.current.screens[Number(index)], key)) state.selected = { kind: "screen", screen: Number(index), key }; }
+  if (wanted && wanted.startsWith("layer:")) { if (layerById(wanted.slice(6))) state.selected = { kind: "layer", id: wanted.slice(6) }; }
+  else if (wanted && wanted.includes(":")) { const [index, key] = wanted.split(":"); if (state.current.screens[Number(index)] && screenRect(state.current.screens[Number(index)], key)) state.selected = { kind: "screen", screen: Number(index), key }; }
   buildLayers(); buildProps(); updateHistoryButtons();
   fit();
+  const zoom = Number(new URLSearchParams(location.search).get("zoom")), at = (new URLSearchParams(location.search).get("at") || "").split(",").map(Number);  // ?zoom=4&at=176,105 opens zoomed on a canvas point
+  if (ZOOMS.includes(zoom) && at.length === 2 && at.every(Number.isFinite)) { state.zoom = zoom; state.ox = canvas.width / 2 - at[0] * zoom; state.oy = canvas.height / 2 - at[1] * zoom; draw(); }
 }
 function thumbnail(id, image) {
   const t = document.createElement("canvas"); t.width = 88; t.height = 52;
@@ -246,10 +283,8 @@ function buildLayers() {
     if (layer.follow === "viewport") badges.push('<span class="badge">viewport</span>');
     if (layer.blend && layer.blend !== "normal") badges.push(`<span class="badge">${layer.blend}</span>`);
     if (layer.opacity !== undefined && layer.opacity < 1) badges.push(`<span class="badge">${Math.round(layer.opacity * 100)}%</span>`);
-    const thumb = layer.id === CUTOUTS ? `<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:14px">▣</div>` : `<img class="thumb" src="${state.thumbs[layer.id] || ""}" alt="">`;
-    const alpha = layer.id === CUTOUTS ? `<input class="row-alpha" type="range" min="0" max="100" step="5" value="${Math.round(state.cutoutAlpha * 100)}" title="Cutouts opacity (view only)">` : "";
-    row.innerHTML = `<button class="eye" title="${layer.visible === false ? "show" : "hide"}">${layer.visible === false ? "◌" : "●"}</button>${thumb}<span class="name">${layer.id}</span>${badges.join("")}${alpha}`;
-    if (alpha) { const slider = row.querySelector(".row-alpha"); slider.addEventListener("input", event => setCutoutAlpha(event.target.value / 100)); for (const type of ["mousedown", "click", "dragstart"]) slider.addEventListener(type, event => event.stopPropagation()); }
+    const thumb = layer.id === CUTOUTS ? `<div class="thumb">▣</div>` : `<img class="thumb" src="${state.thumbs[layer.id] || ""}" alt="">`;
+    row.innerHTML = `<button class="eye" title="${layer.visible === false ? "show" : "hide"}">${layer.visible === false ? EYE_OFF : EYE}</button>${thumb}<span class="name" title="${layer.id}">${layer.id}</span><span class="badges">${badges.join("")}</span>`;
     row.querySelector(".eye").addEventListener("click", event => { event.stopPropagation(); record(); layer.visible = layer.visible === false; buildLayers(); draw(); });
     row.addEventListener("click", () => { select(layer.id === CUTOUTS ? { kind: "screen", screen: 0, key: "tube" } : { kind: "layer", id: layer.id }); });
     row.addEventListener("contextmenu", event => { event.preventDefault(); showMenu(event.clientX, event.clientY, layerMenu(layer)); });
@@ -322,8 +357,9 @@ function layerMenu(layer) {
   if (layer.id === CUTOUTS) {
     items.push({ sep: true });
     state.current.screens.forEach(screen => {
-      if (screen.ring) items.push({ label: `${screen.id}: ring colour…`, hint: `<span class="sw" style="background:${screen.ring.color || "#202020"}"></span>`, run: () => pickColor(screen.ring.color, v => { screen.ring.color = v; }) });
-      items.push({ label: `${screen.id}: surround colour…`, hint: `<span class="sw" style="background:${screen.surround || "#000000"}"></span>`, run: () => pickColor(screen.surround, v => { screen.surround = v; }) });
+      if (screen.ring && screen.ring.color !== "none") items.push({ label: `${screen.id}: ring colour…`, hint: `<span class="sw" style="background:${screen.ring.color || "#202020"}"></span>`, run: () => pickColor(screen.ring.color, v => { screen.ring.color = v; }) });
+      if (screen.ring) items.push({ label: `${screen.id}: ${screen.ring.color === "none" ? "fill the ring" : "ring without fill"}`, hint: "reflection band", run: () => { record(); screen.ring.color = screen.ring.color === "none" ? "#202020" : "none"; buildProps(); draw(); } });
+      items.push({ label: `${screen.id}: edge colour…`, hint: `<span class="sw" style="background:${screen.surround || "#000000"}"></span>`, run: () => pickColor(screen.surround, v => { screen.surround = v; }) });
       if (!screen.image) items.push({ label: `${screen.id}: add picture`, run: () => { record(); screen.image = { ...screen.tube }; select({ kind: "screen", screen: state.current.screens.indexOf(screen), key: "image" }); } });
       if (!screen.ring && screen.tube) items.push({ label: `${screen.id}: add ring`, run: () => { record(); const t = screen.tube, inset = Math.round(Math.min(t.w, t.h) * 0.05); screen.ring = { inner: { x: t.x + inset, y: t.y + inset, w: t.w - 2 * inset, h: t.h - 2 * inset }, outer: { ...t }, inner_radius: 0, outer_radius: 0, color: "#202020" }; select({ kind: "screen", screen: state.current.screens.indexOf(screen), key: "inner" }); } });
     });
@@ -335,83 +371,127 @@ function layerMenu(layer) {
 window.addEventListener("click", hideMenu);
 
 // ---- properties panel
-function numberField(label, value, onchange, step = 1, extra = "") {
-  const wrap = document.createElement("label");
-  wrap.innerHTML = `<span>${label}</span><input type="number" step="${step}" value="${value}" ${extra}>`;
+function numberInput(prefix, value, onchange, step = 1, extra = "") {  // a pill with its letter; commits on change
+  const wrap = document.createElement("label"); wrap.className = "in";
+  wrap.innerHTML = `<span>${prefix}</span><input type="number" step="${step}" value="${value}" ${extra}>`;
   const input = wrap.querySelector("input");
-  input.addEventListener("change", () => { const v = parseFloat(input.value); if (Number.isFinite(v)) { record(); onchange(v); buildLayers(); draw(); } });
+  input.addEventListener("change", () => { const v = parseFloat(input.value); if (Number.isFinite(v)) { record(); onchange(v); buildLayers(); buildProps(); draw(); } });
+  return wrap;
+}
+function field(label, ...controls) {
+  const row = document.createElement("div"); row.className = "field" + (controls.length === 1 ? " one" : "");
+  row.innerHTML = `<span>${label}</span>`;
+  controls.forEach(control => row.appendChild(control));
+  return row;
+}
+function sliderRow(label, value, apply, live = true) {  // 0..1 shown as a percentage; records once per drag
+  const row = document.createElement("div"); row.className = "slider";
+  row.innerHTML = `<span>${label}</span><input type="range" min="0" max="100" step="1" value="${Math.round(value * 100)}"><b>${Math.round(value * 100)}%</b>`;
+  const input = row.querySelector("input"), out = row.querySelector("b");
+  input.addEventListener("input", () => { if (live && !row.dataset.recorded) { record(); row.dataset.recorded = "1"; } apply(input.value / 100); out.textContent = `${input.value}%`; draw(); });
+  input.addEventListener("change", () => { delete row.dataset.recorded; buildLayers(); });
+  return row;
+}
+function swatch(label, value, apply) {
+  const wrap = document.createElement("label"); wrap.className = "swatch";
+  wrap.innerHTML = `${label} <input type="color" value="${value}">`;
+  const input = wrap.querySelector("input");
+  input.addEventListener("input", () => { if (!wrap.dataset.recorded) { record(); wrap.dataset.recorded = "1"; } apply(input.value); draw(); });
+  input.addEventListener("change", () => { delete wrap.dataset.recorded; });
   return wrap;
 }
 function rectFields(rect) {
-  const grid = document.createElement("div"); grid.className = "grid2";
-  for (const k of ["x", "y", "w", "h"]) grid.appendChild(numberField(k.toUpperCase(), rect[k], v => { rect[k] = Math.round(v); }));
-  return grid;
+  const frag = document.createDocumentFragment();
+  frag.appendChild(field("Position", numberInput("X", rect.x, v => { rect.x = Math.round(v); }), numberInput("Y", rect.y, v => { rect.y = Math.round(v); })));
+  frag.appendChild(field("Size", numberInput("W", rect.w, v => { rect.w = Math.round(v); }), numberInput("H", rect.h, v => { rect.h = Math.round(v); })));
+  return frag;
 }
+function aspectText(aspect) { for (const [w, h] of [[4, 3], [16, 9], [3, 2], [10, 9], [5, 3], [16, 10], [8, 7]]) if (Math.abs(aspect - w / h) < 0.004) return `${w}:${h}`; return aspect.toFixed(4); }
 function buildProps() {
   const root = document.getElementById("props");
   root.innerHTML = "";
   const s = state.selected;
-  if (!s) { root.innerHTML = `<div class="muted">Select a layer or a cutout rectangle.</div>`; return; }
+  if (!s) { root.innerHTML = `<div class="muted">Select a layer, or click a cutout on the canvas.</div>`; return; }
   if (s.kind === "layer") {
     const layer = layerById(s.id);
-    if (!layer) { root.innerHTML = ""; return; }
+    if (!layer) return;
     const group = document.createElement("div"); group.className = "group";
-    group.innerHTML = `<h3><span class="sw" style="background:${COLORS.layer}"></span>${layer.id}</h3><div class="muted" style="margin-bottom:8px;word-break:break-all">${layer.file || ""}${layer.size ? ` · ${layer.size.w}×${layer.size.h}` : ""}</div>`;
-    if (layer.follow === "viewport") group.innerHTML += `<div class="muted">Follows the viewport: drawn to cover the canvas, no extent of its own.</div>`;
+    const badges = [];
+    if (state.current.canvas_layer === layer.id) badges.push('<span class="badge canvas">canvas</span>');
+    if (layer.follow === "viewport") badges.push('<span class="badge">viewport</span>');
+    group.innerHTML = `<h3><span class="sw" style="background:${COLORS.layer}"></span>${layer.id}<span class="badges" style="margin-left:auto">${badges.join("")}</span></h3><div class="muted file">${(layer.file || "").replace(/^[^:]+:/, "")}${layer.size ? ` <span style="white-space:nowrap">· ${layer.size.w}×${layer.size.h}</span>` : ""}</div>`;
+    if (layer.follow === "viewport") group.innerHTML += `<div class="muted" style="margin:4px 0 8px">Covers the canvas, scaled like the viewport. No extent of its own.</div>`;
     else if (layer.rect) group.appendChild(rectFields(layer.rect));
-    const row = document.createElement("div"); row.className = "row";
-    row.innerHTML = `<label>Blend <select>${["normal", "add", "multiply"].map(b => `<option ${(layer.blend || "normal") === b ? "selected" : ""}>${b}</option>`).join("")}</select></label>`;
-    row.querySelector("select").addEventListener("change", event => { record(); layer.blend = event.target.value; buildLayers(); draw(); });
-    row.appendChild(numberField("Opacity", layer.opacity === undefined ? 1 : layer.opacity, v => { layer.opacity = Math.max(0, Math.min(1, v)); }, 0.05, 'min="0" max="1"'));
-    group.appendChild(row);
+    const blend = document.createElement("label"); blend.className = "in";
+    blend.innerHTML = `<select>${["normal", "add", "multiply"].map(b => `<option ${(layer.blend || "normal") === b ? "selected" : ""}>${b}</option>`).join("")}</select>`;
+    blend.querySelector("select").addEventListener("change", event => { record(); layer.blend = event.target.value; buildLayers(); draw(); });
+    group.appendChild(field("Blend", blend));
+    group.appendChild(sliderRow("Opacity", layer.opacity === undefined ? 1 : layer.opacity, v => { layer.opacity = v; }));
     root.appendChild(group);
     return;
   }
   state.current.screens.forEach((screen, index) => {
     const group = document.createElement("div"); group.className = "group";
-    group.innerHTML = `<h3>Cutout <span class="muted">${screen.id}${screen.aspect ? ` · ${screen.aspect}` : ""}</span></h3>`;
+    group.innerHTML = `<h3>Cutout <span class="muted">${screen.id}${screen.aspect ? ` · ${aspectText(screen.aspect)}` : ""}</span></h3>`;
+    if (index === 0) {  // how see-through the cutouts are drawn here; never saved
+      const preview = sliderRow("Preview", state.cutoutAlpha, v => setCutoutAlpha(v), false);
+      preview.querySelector("input").dataset.cutoutAlpha = "1"; preview.querySelector("b").dataset.cutoutAlphaLabel = "1";
+      group.appendChild(preview);
+    }
+    const swatches = document.createElement("div"); swatches.className = "swatches";
+    if (screen.ring) {
+      const filled = screen.ring.color !== "none";
+      if (filled) swatches.appendChild(swatch("Ring", screen.ring.color || "#202020", v => { screen.ring.color = v; }));
+      const fill = document.createElement("label"); fill.className = "swatch"; fill.title = "Unfilled, the ring only marks the painted bezel the reflection lands on";
+      fill.innerHTML = `<input type="checkbox" ${filled ? "checked" : ""}> ${filled ? "filled" : "ring unfilled"}`;
+      fill.querySelector("input").addEventListener("change", event => { record(); screen.ring.color = event.target.checked ? (screen.ring.lastColor || "#202020") : (screen.ring.lastColor = screen.ring.color, "none"); buildProps(); draw(); });
+      swatches.appendChild(fill);
+    }
+    swatches.appendChild(swatch("Edge", screen.surround || "#000000", v => { screen.surround = v; }));
+    group.appendChild(field("Colours", swatches));
+    const chips = document.createElement("div"); chips.className = "chips";
     for (const key of ["tube", "image", "inner", "outer"]) {
       const r = screenRect(screen, key);
       if (!r) continue;
-      const active = s.screen === index && s.key === key;
-      const item = document.createElement("div"); item.className = "item" + (active ? " active" : "");
-      item.innerHTML = `<span class="sw" style="background:${COLORS[key]}"></span><span style="flex:1;font-weight:500">${NAMES[key]}</span><span class="muted">${r.w}×${r.h}${key === "image" ? " · " + (r.w / r.h).toFixed(4) : ""}</span>`;
-      item.addEventListener("click", () => select({ kind: "screen", screen: index, key }));
-      group.appendChild(item);
-      if (!active) continue;
+      const chip = document.createElement("div"); chip.className = "chip" + (s.screen === index && s.key === key ? " active" : "");
+      chip.innerHTML = `<span class="sw" style="background:${COLORS[key]}"></span>${NAMES[key]}`; chip.title = `${r.w}×${r.h}`;
+      chip.addEventListener("click", () => select({ kind: "screen", screen: index, key }));
+      chips.appendChild(chip);
+    }
+    group.appendChild(chips);
+    const key = s.screen === index ? s.key : null;
+    const r = key ? screenRect(screen, key) : null;
+    if (r) {
       group.appendChild(rectFields(r));
+      if (key === "image") { const note = document.createElement("div"); note.className = "muted"; note.style.margin = "2px 0 6px 68px"; note.textContent = `aspect ${(r.w / r.h).toFixed(4)}`; group.appendChild(note); }
       const radiusPx = radiusOf(screen, key), bulge = bulgeOf(screen, key);
-      if (radiusPx !== null) {  // one Curve row: the yellow corner diamond and the orange edge diamonds, as numbers
-        const row = document.createElement("div"); row.className = "curve";
-        const line = (color, title) => { const l = document.createElement("div"); l.className = "line"; l.innerHTML = `<span class="lead"><span class="sw" style="background:${color};transform:rotate(45deg)"></span>${title}</span>`; row.appendChild(l); return l; };
+      if (radiusPx !== null) {  // one Curve block: the yellow corner diamond and the orange edge diamonds, as numbers
+        const block = document.createElement("div"); block.className = "curve";
+        const line = (color, title) => { const l = document.createElement("div"); l.className = "line"; l.innerHTML = `<span class="lead"><span class="sw" style="background:${color};transform:rotate(45deg)"></span>${title}</span>`; block.appendChild(l); return l; };
         const corner = line(COLORS.outer, "Corner");
-        corner.appendChild(numberField("radius", Math.round(radiusPx * 10) / 10, v => setRadius(screen, key, v)));
+        corner.appendChild(numberInput("r", Math.round(radiusPx * 10) / 10, v => setRadius(screen, key, v)));
         if (key === "tube") {
-          const shape = document.createElement("label");
+          const shape = document.createElement("label"); shape.className = "in";
           shape.innerHTML = `<select><option value="rounded" ${screen.shape && screen.shape.kind !== "squircle" ? "selected" : ""}>round</option><option value="squircle" ${screen.shape && screen.shape.kind === "squircle" ? "selected" : ""}>squircle</option></select>`;
           shape.querySelector("select").addEventListener("change", event => { record(); screen.shape = screen.shape || { kind: "rounded", radius: 0, exponent: 4 }; screen.shape.kind = event.target.value; buildProps(); draw(); });
           corner.appendChild(shape);
-          if (screen.shape && screen.shape.kind === "squircle") corner.appendChild(numberField("n", screen.shape.exponent || 4, v => { screen.shape.exponent = Math.max(2, v); }, 0.5, 'min="2"'));
+          if (screen.shape && screen.shape.kind === "squircle") line("transparent", "").appendChild(numberInput("n", screen.shape.exponent || 4, v => { screen.shape.exponent = Math.max(2, v); }, 0.5, 'min="2"'));
         }
         if (bulge) {  // the orange edge diamonds: sideways and up/down, canvas px
           const edges = line("#ff9f0a", "Bulge");
-          edges.appendChild(numberField("↔", Math.round(bulge.x), v => setBulge(screen, "x", v, key), 1, 'min="0" title="sides bow out this many px"'));
-          edges.appendChild(numberField("↕", Math.round(bulge.y), v => setBulge(screen, "y", v, key), 1, 'min="0" title="top and bottom bow out this many px"'));
+          edges.appendChild(numberInput("↔", Math.round(bulge.x), v => setBulge(screen, "x", v, key), 1, 'min="0" title="sides bow out this many px"'));
+          edges.appendChild(numberInput("↕", Math.round(bulge.y), v => setBulge(screen, "y", v, key), 1, 'min="0" title="top and bottom bow out this many px"'));
         }
-        group.appendChild(row);
+        group.appendChild(block);
       }
-      if (key === "tube") {
-        const colors = document.createElement("div"); colors.className = "row";
-        colors.innerHTML = `<label>Surround <input type="color" value="${screen.surround || "#000000"}"></label>`;
-        colors.querySelector("input").addEventListener("input", event => { if (!colors.dataset.recorded) { record(); colors.dataset.recorded = "1"; } screen.surround = event.target.value; draw(); });
-        group.appendChild(colors);
-      }
-      if ((key === "inner" || key === "outer") && screen.ring) {
-        const colors = document.createElement("div"); colors.className = "row";
-        colors.innerHTML = `<label>Ring colour <input type="color" value="${screen.ring.color || "#202020"}"></label>`;
-        colors.querySelector("input").addEventListener("input", event => { if (!colors.dataset.recorded) { record(); colors.dataset.recorded = "1"; } screen.ring.color = event.target.value; draw(); });
-        group.appendChild(colors);
-      }
+    }
+    if (screen.ring) {  // the picture mirrored onto the ring band, like Mega Bezel's reflection
+      const sub = document.createElement("div"); sub.className = "sub"; sub.textContent = "Reflection"; group.appendChild(sub);
+      const reflection = () => { screen.reflection = screen.reflection || { strength: 0, blur: 0.95, fade: 1 }; return screen.reflection; };
+      const current = screen.reflection || { strength: 0, blur: 0.95, fade: 1 };
+      group.appendChild(sliderRow("Strength", current.strength || 0, v => { reflection().strength = v; }));
+      group.appendChild(sliderRow("Blur", current.blur === undefined ? 0.95 : current.blur, v => { reflection().blur = v; }));
+      group.appendChild(sliderRow("Fade", current.fade === undefined ? 1 : current.fade, v => { reflection().fade = v; }));
     }
     root.appendChild(group);
   });
@@ -445,19 +525,27 @@ function handles(r) {
   const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
   return { nw: [x0, y0], n: [mx, y0], ne: [x1, y0], e: [x1, my], se: [x1, y1], s: [mx, y1], sw: [x0, y1], w: [x0, my] };
 }
-function radiusHandle(r, radiusPx) { return toScreen(r.x + radiusPx, r.y); }
-function bulgeHandles(r, bulge) {  // one diamond at each edge middle, riding on the bowed edge
-  const mx = r.x + r.w / 2, my = r.y + r.h / 2;
-  return { "bulge-top": toScreen(mx, r.y - bulge.y), "bulge-bottom": toScreen(mx, r.y + r.h + bulge.y), "bulge-left": toScreen(r.x - bulge.x, my), "bulge-right": toScreen(r.x + r.w + bulge.x, my) };
+const OUT = { nw: [-1, -1], ne: [1, -1], se: [1, 1], sw: [-1, 1], n: [0, -1], s: [0, 1], w: [-1, 0], e: [1, 0] };  // each knob's outward direction
+const CURVE_REACH = 30, CURVE_MARK = 18;  // screen px: how far beyond a knob its curve zone extends, and where its diamond sits
+function curvingHandles(r, bulge) {  // corners and the bowed edge middles, screen px
+  const h = handles(r), z = state.zoom;
+  return { ...h, n: [h.n[0], h.n[1] - bulge.y * z], s: [h.s[0], h.s[1] + bulge.y * z], w: [h.w[0] - bulge.x * z, h.w[1]], e: [h.e[0] + bulge.x * z, h.e[1]] };
 }
-function bulgeDrag(screen, key, handle, px, py) {  // pointer position in canvas px to that edge's outward distance
-  const r = screenRect(screen, key);
-  if (handle === "bulge-top") setBulge(screen, "y", r.y - py, key);
-  else if (handle === "bulge-bottom") setBulge(screen, "y", py - (r.y + r.h), key);
-  else if (handle === "bulge-left") setBulge(screen, "x", r.x - px, key);
-  else setBulge(screen, "x", px - (r.x + r.w), key);
+function curveMarks(r, bulge) {  // the curve zones' diamonds: a little beyond each knob, outward
+  const marks = {};
+  for (const [name, [hx, hy]] of Object.entries(curvingHandles(r, bulge))) { const [ox, oy] = OUT[name]; marks[name] = [hx + ox * CURVE_MARK, hy + oy * CURVE_MARK]; }
+  return marks;
 }
-function curveHandles(r) { const h = handles(r); return { nw: h.nw, ne: h.ne, se: h.se, sw: h.sw }; }  // curving rectangles resize by corners; their edge middles carry the bulge
+function curvingHit(r, bulge, sx, sy) {  // near a knob sizes; just beyond it the same corner curves (radius) or the same edge bows (bulge)
+  const knobs = curvingHandles(r, bulge);
+  for (const [name, [hx, hy]] of Object.entries(knobs)) if (Math.abs(sx - hx) <= 7 && Math.abs(sy - hy) <= 7) return name;
+  for (const [name, [hx, hy]] of Object.entries(knobs)) {
+    const [ox, oy] = OUT[name], dx = sx - hx, dy = sy - hy;
+    if (name.length === 2) { if (dx * ox > 0 && dy * oy > 0 && Math.max(Math.abs(dx), Math.abs(dy)) <= CURVE_REACH) return "radius-" + name; }
+    else { const out = dx * ox + dy * oy, along = Math.abs(ox ? dy : dx); if (out > 7 && out <= CURVE_REACH && along <= 16) return "bulge-" + name; }
+  }
+  return null;
+}
 
 function drawTestCard(x, y, w, h, hue) {
   ctx.fillStyle = hue ? "#c84830" : "#3060e0"; ctx.fillRect(x, y, w, h * 2 / 3);
@@ -468,18 +556,85 @@ function drawTestCard(x, y, w, h, hue) {
   for (const [cx, cy] of [[x, y], [x + w - cell * 4, y], [x, y + h - cell * 4], [x + w - cell * 4, y + h - cell * 4]])
     for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { ctx.fillStyle = (i + j) % 2 ? "#101010" : "#ffffff"; ctx.fillRect(cx + i * cell, cy + j * cell, cell, cell); }
 }
+function testCard(w, h, hue) {  // an offscreen test card, cached, for the reflection
+  const key = `${w}x${h}${hue ? "b" : "a"}`;
+  if (cards[key]) return cards[key];
+  const off = document.createElement("canvas"); off.width = w; off.height = h;
+  const saved = ctx; ctx = off.getContext("2d"); drawTestCard(0, 0, w, h, hue); ctx = saved;
+  cards[key] = off;
+  return off;
+}
+function rgba(hex, alpha) { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`; }
+const reflectCanvas = document.createElement("canvas"), reflectBlurCanvas = document.createElement("canvas");
+const innerCanvas = document.createElement("canvas");
+function innerContents(screen) {  // what lies inside the bezel's inner edge, small: black edge or edge colour with the test card inside, the thing the bezel reflects
+  const t = screen.ring.inner, picture = pictureRect(screen), w = 256, h = Math.max(8, Math.round(256 * t.h / t.w)), k = w / t.w;
+  innerCanvas.width = w; innerCanvas.height = h;
+  const saved = ctx; ctx = innerCanvas.getContext("2d");
+  ctx.fillStyle = screen.ring.color === "none" ? (screen.surround || "#000") : "#000"; ctx.fillRect(0, 0, w, h);
+  drawTestCard((picture.x - t.x) * k, (picture.y - t.y) * k, picture.w * k, picture.h * k, screen.id === "bottom");
+  ctx = saved;
+  return innerCanvas;
+}
+function drawReflection(screen, baseAlpha) {  // the inside of the bezel mirrored across its inner edge onto the band: sharp at the edge, blurrier and fainter further out
+  const look = screen.reflection, image = screen.ring.inner, band = screen.ring.outer;
+  const [ix, iy] = toScreen(image.x, image.y), iw = image.w * state.zoom, ih = image.h * state.zoom;
+  const [bx, by] = toScreen(band.x, band.y), bw = Math.ceil(band.w * state.zoom), bh = Math.ceil(band.h * state.zoom);
+  if (bw < 2 || bh < 2 || bw * bh > 16000000) return;
+  const card = innerContents(screen);
+  const ox = Math.floor(bx), oy = Math.floor(by), ow = band.w * state.zoom, oh = band.h * state.zoom;
+  const mirrors = (o, blur) => {  // left, right, top, bottom, four corners
+    o.save(); o.translate(-ox, -oy); o.filter = blur > 0.5 ? `blur(${blur}px)` : "none"; o.imageSmoothingEnabled = true;
+    for (const [fx, fy, tx, ty] of [[-1, 1, 0, 0], [-1, 1, 2, 0], [1, -1, 0, 0], [1, -1, 0, 2], [-1, -1, 0, 0], [-1, -1, 2, 0], [-1, -1, 0, 2], [-1, -1, 2, 2]]) {
+      o.save(); o.translate(ix + tx * iw, iy + ty * ih); o.scale(fx, fy); o.drawImage(card, 0, 0, iw, ih); o.restore();
+    }
+    o.restore();
+  };
+  const ramp = (o, near, far) => {  // erase with alpha `near` at the picture edge rising to `far` at the band's outer edge, on every side
+    o.save(); o.translate(-ox, -oy); o.globalCompositeOperation = "destination-out";
+    const wash = (x0, y0, x1, y1, rx, ry, rw, rh) => { if (rw <= 0 || rh <= 0) return; const g = o.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, `rgba(0,0,0,${near})`); g.addColorStop(1, `rgba(0,0,0,${far})`); o.fillStyle = g; o.fillRect(rx, ry, rw, rh); };
+    wash(ix, 0, bx, 0, bx, by, ix - bx, oh); wash(ix + iw, 0, bx + ow, 0, ix + iw, by, bx + ow - ix - iw, oh);
+    wash(0, iy, 0, by, bx, by, ow, iy - by); wash(0, iy + ih, 0, by + oh, bx, iy + ih, ow, by + oh - iy - ih);
+    o.restore();
+  };
+  for (const c of [reflectCanvas, reflectBlurCanvas]) if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; }
+  const sharp = reflectCanvas.getContext("2d"), soft = reflectBlurCanvas.getContext("2d");
+  sharp.clearRect(0, 0, bw, bh); soft.clearRect(0, 0, bw, bh);
+  mirrors(sharp, 0.6 * state.zoom);
+  const blurPx = Math.max(1, (0.002 + (look.blur === undefined ? 0.95 : look.blur) * 0.025) * iw);  // like the shader: a fraction of the picture width
+  mirrors(soft, blurPx);
+  ramp(soft, 1, 0);  // the blurred copy only shows further out
+  sharp.drawImage(reflectBlurCanvas, 0, 0);
+  ramp(sharp, 0, look.fade === undefined ? 1 : look.fade);  // then the whole thing fades with distance
+  ctx.save();
+  rectPath(screen, "outer"); ctx.clip();
+  ctx.globalAlpha = baseAlpha * look.strength;
+  ctx.drawImage(reflectCanvas, ox, oy);
+  ctx.restore();
+}
+function pictureRect(screen) {  // the picture rectangle, or the aspect-fitted picture inside the opening when the package has none
+  if (screen.image) return screen.image;
+  const t = screen.tube, aspect = screen.aspect;
+  if (!aspect) return t;
+  const w = Math.min(t.w, Math.round(t.h * aspect)), h = Math.min(t.h, Math.round(t.w / aspect));
+  return { x: t.x + Math.round((t.w - w) / 2), y: t.y + Math.round((t.h - h) / 2), w, h };
+}
 function drawCutouts(layer) {  // like Mega Bezel: the ring, the black edge inside it, the picture clipped to the opening; the plate shows through everywhere else
   ctx.save();
   ctx.globalAlpha = (layer.opacity === undefined ? 1 : layer.opacity) * state.cutoutAlpha;  // view-only transparency, never saved
   for (const screen of state.current.screens) {
-    const ring = screen.ring, image = screen.image;
+    const ring = screen.ring, image = screen.image, reflecting = screen.reflection && screen.reflection.strength > 0 && state.showGame && screen.tube;
+    const filled = ring && ring.color !== "none";  // a ring without fill only marks a painted bezel
     if (ring && ring.outer && ring.inner) {
-      ctx.fillStyle = ring.color || "#202020"; rectPath(screen, "outer"); ctx.fill();
-      ctx.fillStyle = "#000"; rectPath(screen, "inner"); ctx.fill();
+      if (filled) { ctx.fillStyle = ring.color || "#202020"; rectPath(screen, "outer"); ctx.fill(); }
+      else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
+      if (reflecting) drawReflection(screen, ctx.globalAlpha);
+      if (filled) { ctx.fillStyle = "#000"; rectPath(screen, "inner"); ctx.fill(); }
     } else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
-    if (image && state.showGame) {
+    if (screen.tube && state.showGame) {
+      const picture = pictureRect(screen);
       ctx.save(); rectPath(screen, "tube"); ctx.clip();
-      const [x, y] = toScreen(image.x, image.y); drawTestCard(x, y, image.w * state.zoom, image.h * state.zoom, screen.id === "bottom");
+      const [x, y] = toScreen(picture.x, picture.y); drawTestCard(x, y, picture.w * state.zoom, picture.h * state.zoom, screen.id === "bottom");
       ctx.restore();
     }
   }
@@ -524,7 +679,7 @@ function draw() {
   const s = state.selected, hover = state.hover;
   const diamond = (hx, hy, fill) => { ctx.fillStyle = fill; ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(hx, hy - 7); ctx.lineTo(hx + 7, hy); ctx.lineTo(hx, hy + 7); ctx.lineTo(hx - 7, hy); ctx.closePath(); ctx.fill(); ctx.stroke(); };
   const label = (text, color, r) => { const [x0, y0] = toScreen(r.x, r.y); ctx.font = "600 12px -apple-system, system-ui, sans-serif"; const w = ctx.measureText(text).width + 12; ctx.fillStyle = "rgba(0,0,0,.7)"; ctx.fillRect(x0, y0 - 22, w, 18); ctx.fillStyle = color; ctx.fillText(text, x0 + 6, y0 - 9); };
-  const knobs = (r, active, color, cornersOnly = false) => { for (const [, [hx, hy]] of Object.entries(cornersOnly ? curveHandles(r) : handles(r))) { const size = active ? 4 : 2.5; ctx.fillStyle = active ? "#fff" : color; ctx.fillRect(hx - size, hy - size, size * 2, size * 2); ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.strokeRect(hx - size - 0.5, hy - size - 0.5, size * 2 + 1, size * 2 + 1); } };
+  const knobs = (r, active, color, bulge = null) => { for (const [, [hx, hy]] of Object.entries(bulge ? curvingHandles(r, bulge) : handles(r))) { const size = active ? 4 : 2.5; ctx.fillStyle = active ? "#fff" : color; ctx.fillRect(hx - size, hy - size, size * 2, size * 2); ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.strokeRect(hx - size - 0.5, hy - size - 0.5, size * 2 + 1, size * 2 + 1); } };
   if (s && s.kind === "layer") {
     const layer = layerById(s.id);
     if (layer && layer.rect && layer.follow !== "viewport") {
@@ -545,13 +700,12 @@ function draw() {
       ctx.strokeStyle = COLORS[key]; ctx.lineWidth = active ? 2 : 1; ctx.globalAlpha = active || hovered || screensSelected ? 1 : 0.55;
       rectPath(screen, key); ctx.stroke();
       ctx.globalAlpha = 1;
-      if (screensSelected) knobs(r, active, COLORS[key], bulgeOf(screen, key) !== null);
+      if (screensSelected) knobs(r, active, COLORS[key], bulgeOf(screen, key));
       if (active || hovered) label(`${screen.id} ${NAMES[key]} ${r.x},${r.y} ${r.w}×${r.h}`, COLORS[key], r);
       if (active) {
         const radiusPx = radiusOf(screen, key);
-        if (radiusPx !== null) { const [hx, hy] = radiusHandle(r, radiusPx); diamond(hx, hy, COLORS.outer); }
         const bulge = bulgeOf(screen, key);
-        if (bulge) for (const [hx, hy] of Object.values(bulgeHandles(r, bulge))) diamond(hx, hy, "#ff9f0a");
+        if (radiusPx !== null && bulge) for (const [name, [hx, hy]] of Object.entries(curveMarks(r, bulge))) diamond(hx, hy, name.length === 2 ? COLORS.outer : "#ff9f0a");  // yellow corners curve, orange edges bow
       }
     }
   });
@@ -566,13 +720,10 @@ function hit(sx, sy) {
   const current = selectedRect();
   if (current && state.selected.kind === "screen") {
     const screen = state.current.screens[state.selected.screen];
-    const radiusPx = radiusOf(screen, state.selected.key);
-    if (radiusPx !== null) { const [hx, hy] = radiusHandle(current, radiusPx); if (Math.abs(sx - hx) <= 8 && Math.abs(sy - hy) <= 8) return { ...state.selected, handle: "radius" }; }
     const bulge = bulgeOf(screen, state.selected.key);
-    if (bulge) for (const [name, [hx, hy]] of Object.entries(bulgeHandles(current, bulge))) if (Math.abs(sx - hx) <= 8 && Math.abs(sy - hy) <= 8) return { ...state.selected, handle: name };
+    if (bulge && radiusOf(screen, state.selected.key) !== null) { const handle = curvingHit(current, bulge, sx, sy); if (handle) return { ...state.selected, handle }; }
   }
-  const curving = current && state.selected.kind === "screen" && bulgeOf(state.current.screens[state.selected.screen], state.selected.key) !== null;
-  if (current) for (const [name, [hx, hy]] of Object.entries(curving ? curveHandles(current) : handles(current))) if (Math.abs(sx - hx) <= 6 && Math.abs(sy - hy) <= 6) return { ...state.selected, handle: name };
+  if (current) for (const [name, [hx, hy]] of Object.entries(handles(current))) if (Math.abs(sx - hx) <= 6 && Math.abs(sy - hy) <= 6) return { ...state.selected, handle: name };
   const cutouts = cutoutsLayer();
   if (cutouts && cutouts.visible !== false && state.selected && state.selected.kind === "screen") {
     for (let index = 0; index < state.current.screens.length; index++) for (const key of ["tube", "outer", "inner", "image"]) {
@@ -589,6 +740,37 @@ function hit(sx, sy) {
     if (best) return best;
   }
   if (current && state.selected.kind === "layer" && px >= current.x && px <= current.x + current.w && py >= current.y && py <= current.y + current.h) return { ...state.selected, handle: "move" };
+  return stackHit(px, py);
+}
+function layerExtent(layer, image) {  // where a plate is drawn, canvas px
+  const c = state.current.canvas;
+  if (layer.follow === "viewport" && !(layer.size && layer.size.w === c.w && layer.size.h === c.h)) {
+    const scale = Math.max(c.w / image.width, c.h / image.height), w = image.width * scale, h = image.height * scale;
+    return { x: (c.w - w) / 2, y: (c.h - h) / 2, w, h, clipped: true };
+  }
+  return layer.rect ? { ...layer.rect, clipped: false } : null;
+}
+function stackHit(px, py) {  // the topmost thing painted under a canvas point: a cutout, or a plate with a visible pixel there
+  const c = state.current.canvas;
+  for (const layer of layersTopFirst()) {
+    if (layer.visible === false || layer.opacity === 0) continue;
+    if (layer.id === CUTOUTS) {
+      if (state.cutoutAlpha <= 0) continue;
+      let best = null;
+      state.current.screens.forEach((screen, index) => { const r = screen.tube; if (r && px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h && (!best || r.w * r.h < best.area)) best = { kind: "screen", screen: index, key: "tube", handle: "move", area: r.w * r.h }; });
+      if (best) return best;
+      continue;
+    }
+    const image = state.images[layer.id];
+    const extent = image ? layerExtent(layer, image) : null;
+    if (!extent) continue;
+    if (extent.clipped && (px < 0 || py < 0 || px >= c.w || py >= c.h)) continue;
+    if (px < extent.x || py < extent.y || px >= extent.x + extent.w || py >= extent.y + extent.h) continue;
+    probeCtx.clearRect(0, 0, 1, 1);
+    probeCtx.drawImage(image, Math.floor((px - extent.x) / extent.w * image.width), Math.floor((py - extent.y) / extent.h * image.height), 1, 1, 0, 0, 1, 1);
+    const [r, g, b, a] = probeCtx.getImageData(0, 0, 1, 1).data;
+    if (layer.blend === "add" ? a > 8 && Math.max(r, g, b) > 8 : a > 8) return { kind: "layer", id: layer.id, handle: layer.follow === "viewport" || !layer.rect ? "select" : "move" };  // an additive black pixel adds nothing
+  }
   return null;
 }
 const CURVE_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M4 18 C 4 8, 8 4, 18 4" fill="none" stroke="black" stroke-width="4"/><path d="M4 18 C 4 8, 8 4, 18 4" fill="none" stroke="white" stroke-width="2"/><circle cx="18" cy="4" r="3" fill="white" stroke="black"/></svg>')}") 12 12, pointer`;
@@ -596,8 +778,9 @@ function cursorFor(target) {
   if (state.space) return state.drag ? "grabbing" : "grab";
   if (!target) return "default";
   const h = target.handle;
-  if (h === "radius" || (h && h.startsWith("bulge-"))) return CURVE_CURSOR;
+  if (h && (h.startsWith("radius-") || h.startsWith("bulge-"))) return CURVE_CURSOR;
   if (h === "move") return "move";
+  if (h === "select") return "default";
   if (h === "nw" || h === "se") return "nwse-resize";
   if (h === "ne" || h === "sw") return "nesw-resize";
   if (h === "n" || h === "s") return "ns-resize";
@@ -612,9 +795,11 @@ canvas.addEventListener("mousedown", event => {
   if (event.button === 1 || state.space) { state.drag = { pan: true, sx, sy, ox: state.ox, oy: state.oy }; canvas.style.cursor = "grabbing"; event.preventDefault(); return; }
   const target = hit(sx, sy);
   if (!target) { state.drag = { pan: true, sx, sy, ox: state.ox, oy: state.oy }; canvas.style.cursor = "grabbing"; return; }
+  if (target.handle === "select") { state.selected = { kind: "layer", id: target.id }; state.drag = null; buildLayers(); buildProps(); draw(); return; }  // a plate without an extent of its own
   state.selected = { kind: target.kind, id: target.id, screen: target.screen, key: target.key };
   record();
-  state.drag = { handle: target.handle, sx, sy, start: { ...selectedRect() }, moved: false };
+  const dragged = target.kind === "screen" ? state.current.screens[target.screen] : null;
+  state.drag = { handle: target.handle, sx, sy, start: { ...selectedRect() }, moved: false, radius: dragged ? radiusOf(dragged, target.key) : null, bulge: dragged ? bulgeOf(dragged, target.key) : null };
   buildLayers(); buildProps(); draw();
 });
 canvas.addEventListener("contextmenu", event => {
@@ -641,8 +826,17 @@ canvas.addEventListener("mousemove", event => {
   const dx = Math.round((sx - state.drag.sx) / state.zoom), dy = Math.round((sy - state.drag.sy) / state.zoom);
   const s = state.drag.start, h = state.drag.handle;
   const screen = state.selected.kind === "screen" ? state.current.screens[state.selected.screen] : null;
-  if (h === "radius") { const [px] = toPlate(sx, sy); setRadius(screen, state.selected.key, px - s.x); state.dirty = true; state.drag.moved = true; buildProps(); draw(); return; }
-  if (h && h.startsWith("bulge-")) { const [px, py] = toPlate(sx, sy); bulgeDrag(screen, state.selected.key, h, px, py); state.dirty = true; state.drag.moved = true; buildProps(); draw(); return; }
+  const dxs = sx - state.drag.sx, dys = sy - state.drag.sy;
+  if (h && h.startsWith("radius-")) {  // toward the centre rounds the corner more, outward less
+    const [ox, oy] = OUT[h.slice(7)];
+    setRadius(screen, state.selected.key, state.drag.radius - (dxs * ox + dys * oy) / 2 / state.zoom);
+    state.dirty = true; state.drag.moved = true; buildProps(); draw(); return;
+  }
+  if (h && h.startsWith("bulge-")) {  // outward bows the edge out
+    const [ox, oy] = OUT[h.slice(6)];
+    setBulge(screen, ox ? "x" : "y", (ox ? state.drag.bulge.x : state.drag.bulge.y) + (dxs * ox + dys * oy) / state.zoom, state.selected.key);
+    state.dirty = true; state.drag.moved = true; buildProps(); draw(); return;
+  }
   let x = s.x, y = s.y, w = s.w, hh = s.h;
   if (h === "move") { x += dx; y += dy; }
   else {
@@ -650,6 +844,12 @@ canvas.addEventListener("mousemove", event => {
     if (h === "e" || h === "ne" || h === "se") { w += dx; }
     if (h === "n" || h === "nw" || h === "ne") { y += dy; hh -= dy; }
     if (h === "s" || h === "sw" || h === "se") { hh += dy; }
+    if (event.shiftKey && s.w > 0 && s.h > 0 && w > 0 && hh > 0) {  // keep the ratio: edges scale the other axis about its centre, corners anchor the opposite corner
+      const ratio = s.w / s.h;
+      if (h === "n" || h === "s") { w = Math.round(hh * ratio); x = s.x + Math.round((s.w - w) / 2); }
+      else if (h === "e" || h === "w") { hh = Math.round(w / ratio); y = s.y + Math.round((s.h - hh) / 2); }
+      else { const scale = Math.max(w / s.w, hh / s.h); w = Math.round(s.w * scale); hh = Math.round(s.h * scale); if (h === "nw" || h === "ne") y = s.y + s.h - hh; if (h === "nw" || h === "sw") x = s.x + s.w - w; }
+    }
   }
   if (w < 1 || hh < 1) return;
   setSelectedRect({ x, y, w, h: hh });
@@ -711,14 +911,14 @@ window.addEventListener("keyup", event => { if (event.code === "Space") { state.
 
 function setCutoutAlpha(value) {  // the toolbar slider, X and the bracket keys all land here
   state.cutoutAlpha = Math.max(0, Math.min(1, Math.round(value * 20) / 20));
-  document.getElementById("cutout-alpha").value = Math.round(state.cutoutAlpha * 100);
-  document.getElementById("cutout-alpha-label").textContent = `${Math.round(state.cutoutAlpha * 100)}%`;
-  for (const slider of document.querySelectorAll(".row-alpha")) slider.value = Math.round(state.cutoutAlpha * 100);
+  for (const slider of document.querySelectorAll("[data-cutout-alpha]")) slider.value = Math.round(state.cutoutAlpha * 100);
+  for (const label of document.querySelectorAll("[data-cutout-alpha-label]")) label.textContent = `${Math.round(state.cutoutAlpha * 100)}%`;
   document.getElementById("xray").classList.toggle("on", state.cutoutAlpha < 1);
   draw();
 }
 function toggleXray() { setCutoutAlpha(state.cutoutAlpha < 1 ? 1 : 0.35); }
-document.getElementById("cutout-alpha").addEventListener("input", event => setCutoutAlpha(event.target.value / 100));
+document.getElementById("help-btn").addEventListener("click", event => { event.stopPropagation(); const help = document.getElementById("help"); help.style.display = help.style.display === "block" ? "none" : "block"; });
+window.addEventListener("click", () => { document.getElementById("help").style.display = "none"; });
 document.getElementById("package").addEventListener("change", event => open(event.target.value));
 document.getElementById("fit").addEventListener("click", fit);
 document.getElementById("zoom-in").addEventListener("click", () => zoomTo(ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(state.zoom) + 1)], canvas.width / 2, canvas.height / 2));
@@ -733,7 +933,7 @@ async function save() {
   const payload = {
     id: state.current.id, canvas_layer: state.current.canvas_layer,
     layers: state.current.layers.map(l => ({ id: l.id, visible: l.visible !== false, order: l.order, rect: l.rect, blend: l.blend || "normal", opacity: l.opacity === undefined ? 1 : l.opacity })),
-    screens: state.current.screens.map(s => ({ id: s.id, tube: s.tube, image: s.image, surround: s.surround, shape: s.shape || null, ring: s.ring ? { inner: s.ring.inner, outer: s.ring.outer, inner_radius: s.ring.inner_radius || 0, outer_radius: s.ring.outer_radius || 0, color: s.ring.color || "#202020" } : null })),
+    screens: state.current.screens.map(s => ({ id: s.id, tube: s.tube, image: s.image, surround: s.surround, shape: s.shape || null, ring: s.ring ? { inner: s.ring.inner, outer: s.ring.outer, inner_radius: s.ring.inner_radius || 0, outer_radius: s.ring.outer_radius || 0, color: s.ring.color || "#202020" } : null, reflection: s.reflection || null })),
   };
   const response = await fetch("/api/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   const result = await response.json().catch(() => ({ error: "bad response" }));

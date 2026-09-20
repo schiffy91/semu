@@ -123,6 +123,11 @@
           "HSM_TUBE_EMPTY_THICKNESS_X_SCALE": "100",
           "HSM_TUBE_EXPLICIT_ASPECT": "1.3332999999999999"
         }
+      },
+      "reflection": {
+        "strength": 0.5,
+        "blur": 0.94999999999999996,
+        "fade": 1
       }
     }
   ],

@@ -156,7 +156,12 @@
         }
       },
       "inset": null,
-      "measurement": null
+      "measurement": null,
+      "reflection": {
+        "strength": 0.40000000000000002,
+        "blur": 0.94999999999999996,
+        "fade": 1
+      }
     },
     {
       "id": "bottom",
@@ -302,7 +307,12 @@
         }
       },
       "inset": null,
-      "measurement": null
+      "measurement": null,
+      "reflection": {
+        "strength": 0.40000000000000002,
+        "blur": 0.94999999999999996,
+        "fade": 1
+      }
     }
   ],
   "doc": {

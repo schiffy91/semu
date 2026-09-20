@@ -24,19 +24,41 @@
       "inset": 0,
       "shape": {
         "kind": "rounded",
-        "radius": 0.033599999999999998,
+        "radius": 0.0336,
         "exponent": 4
       },
       "surround": "#3c4632",
       "curvature": 0,
-      "vignette": 0.059999999999999998,
+      "vignette": 0.06,
       "bloom": 0,
-      "glow": 0.080000000000000002,
+      "glow": 0.08,
       "glass": null,
       "shader": null,
       "measurement": {
         "tool": "legacy",
         "mode": "aspect_constrained_lens_fit"
+      },
+      "reflection": {
+        "strength": 0.25,
+        "blur": 0.95,
+        "fade": 1
+      },
+      "ring": {
+        "inner": {
+          "x": 258,
+          "y": 260,
+          "w": 594,
+          "h": 535
+        },
+        "outer": {
+          "x": 221,
+          "y": 223,
+          "w": 668,
+          "h": 609
+        },
+        "inner_radius": 18.0,
+        "outer_radius": 40.2,
+        "color": "none"
       }
     }
   ],

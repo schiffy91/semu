@@ -8,16 +8,6 @@
       "id": "tv",
       "label": "Living room CRT",
       "bezel": "tv-soqueroeu-ps2"
-    },
-    {
-      "id": "premium",
-      "label": "Premium 4:3 CRT",
-      "bezel": "crt-premium-4x3"
-    },
-    {
-      "id": "silver",
-      "label": "Silver 4:3 CRT",
-      "bezel": "crt-silver-4x3"
     }
   ]
 }

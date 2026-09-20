@@ -22,78 +22,7 @@
       "nar_hash": "sha256-8IoaMLw7i4TttFR08Ycji6COuaxaeNeBwPCLyfyTD90="
     }
   },
-  "generic": {
-    "doc": {
-      "note": "The generic fallback table for systems without bezels.json: asset_profile -> art + hole. Unknown profiles resolve as crt4x3."
-    },
-    "profiles": {
-      "crt4x3": {
-        "art": "assets/bezels/tv/crt-4x3.png",
-        "hole": {
-          "x": 0.25,
-          "y": 0.1616161616161616,
-          "w": 0.5,
-          "h": 0.6
-        }
-      },
-      "handheld": {
-        "art": "assets/bezels/tv/crt-4x3.png",
-        "hole": {
-          "x": 0.25,
-          "y": 0.1616161616161616,
-          "w": 0.5,
-          "h": 0.6
-        }
-      },
-      "wide16x9": {
-        "art": "assets/bezels/tv/crt-16x9.png",
-        "hole": {
-          "x": 0.1375,
-          "y": 0.13125,
-          "w": 0.725,
-          "h": 0.6525
-        }
-      },
-      "dual": {
-        "art": "assets/bezels/generic/bezel-3ds.png",
-        "hole": {
-          "x": 0.33,
-          "y": 0.04,
-          "w": 0.34,
-          "h": 0.92
-        }
-      }
-    }
-  },
   "assets": {
-    "assets/bezels/tv/crt-4x3.png": {
-      "type": "local",
-      "path": "config/assets/bezels/tv/crt-4x3.png",
-      "output": {
-        "width": 1584,
-        "height": 990,
-        "bit_depth": 8,
-        "color_type": 2,
-        "sha256": "6376be22472594ce6fe07c5b8bfb70926224f0632dd3f5221ba7bc130838899a"
-      },
-      "doc": {
-        "provenance": "Semu-owned charcoal 4:3 CRT render. The continuous 792x594 source-pixel opening is declared by the central policy and each CRT system."
-      }
-    },
-    "assets/bezels/tv/crt-16x9.png": {
-      "type": "local",
-      "path": "config/assets/bezels/tv/crt-16x9.png",
-      "output": {
-        "width": 1280,
-        "height": 800,
-        "bit_depth": 8,
-        "color_type": 2,
-        "sha256": "6464318284eb9f3f91f0fcb14e7040df7f959a10531c564fe9d1102a3ed29649"
-      },
-      "doc": {
-        "provenance": "Semu-owned charcoal 16:9 CRT render. The continuous 928x522 source-pixel opening is declared by the central policy and widescreen-capable CRT systems."
-      }
-    },
     "assets/bezels/gb/classic.png": {
       "type": "local",
       "path": "config/assets/bezels/gb/classic.png",
@@ -162,22 +91,6 @@
       ],
       "doc": {
         "why": "Duimon vertical 3DS clamshell: device and decal plates flattened"
-      }
-    },
-    "assets/bezels/tv/crt-4x3-silver.png": {
-      "type": "recolor",
-      "base": "assets/bezels/tv/crt-4x3.png",
-      "color": "#d9d9d9",
-      "brightness": 320,
-      "doc": {
-        "provenance": "Semu-owned recolor of the charcoal 4:3 CRT: a silver consumer set with the same lens geometry."
-      },
-      "output": {
-        "width": 1584,
-        "height": 990,
-        "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "3eb49e7e9e2b24c00bb876c58a6fca58776f40a732403cebb3d2f2e2fa561960"
       }
     },
     "assets/bezels/gbc/berry.png": {

@@ -327,6 +327,14 @@ class BezelPackageWriter {
             ring.set("color", JSONValue.makeString(geometry.placement.bezelColor()));
             screen.set("ring", ring);
         } else if (screen.has("ring")) { screen.set("ring", JSONValue.makeNull()); }
+        JSONValue reflection = screen.get("reflection");
+        if (reflection == null || !reflection.isObject()) {  // Mega Bezel's reflection amounts, as fractions; an edit is kept
+            reflection = JSONValue.makeObject();
+            reflection.set("strength", JSONValue.makeFloat(BezelNumber.clamp(geometry.params.get("HSM_REFLECT_GLOBAL_AMOUNT") / 100.0, 0.0, 1.0)));
+            reflection.set("blur", JSONValue.makeFloat(BezelNumber.clamp(geometry.params.get("HSM_REFLECT_BLUR_MAX") / 100.0, 0.0, 1.0)));
+            reflection.set("fade", JSONValue.makeFloat(BezelNumber.clamp(geometry.params.get("HSM_REFLECT_FADE_AMOUNT") / 100.0, 0.0, 1.0)));
+            screen.set("reflection", reflection);
+        }
         screen.set("aspect", JSONValue.makeFloat(placed.aspect));
         screen.set("fit", JSONValue.makeString("aspect"));
         if (opening.equals("bezel_outer") || screen.get("shape") == null || !screen.get("shape").isObject()) {
@@ -367,7 +375,7 @@ class BezelPackageWriter {
         JSONValue screens = package.get("screens");
         JSONValue source = base.get("screens");
         for (int index = 0; index < screens.size() && index < source.size(); index++) {
-            for key in ["tube", "image", "ring", "aspect", "shape", "surround", "provenance"] { if (source.at(index).has(key)) { screens.at(index).set(key, source.at(index).get(key)); } }
+            for key in ["tube", "image", "ring", "reflection", "aspect", "shape", "surround", "provenance"] { if (source.at(index).has(key)) { screens.at(index).set(key, source.at(index).get(key)); } }
             screens.at(index).set("inset", JSONValue.makeNull());
             screens.at(index).set("measurement", JSONValue.makeNull());
         }
