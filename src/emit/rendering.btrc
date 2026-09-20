@@ -175,7 +175,9 @@ class SemuRenderEnvironment {
         double innerRadius = atof(SemuRenderEnvironment.numberOr(ring, "inner_radius", "0"));
         double outerRadius = atof(SemuRenderEnvironment.numberOr(ring, "outer_radius", "0"));
         string radii = f"{SemuRenderEnvironment.fraction(innerSide > 0.0 ? innerRadius / innerSide : 0.0)},{SemuRenderEnvironment.fraction(outerSide > 0.0 ? outerRadius / outerSide : 0.0)}";
-        return f"{inner},{outer},{radii},{SemuRenderEnvironment.color(SemuJson.textAt(ring, "color"), "0.1,0.1,0.1")}";
+        string color = SemuJson.textAt(ring, "color");
+        if (color.equals("none")) { return f"{inner},{outer},{radii},0,0,0,0"; }  // the band marks a painted bezel: reflection only, no fill
+        return f"{inner},{outer},{radii},{SemuRenderEnvironment.color(color, "0.1,0.1,0.1")},1";
     }
 
     class string color(string hex, string fallback) {  // #rrggbb -> r,g,b in 0..1
@@ -205,6 +207,14 @@ class SemuRenderEnvironment {
         double y = atof(SemuRenderEnvironment.numberOr(bulge, "y", "0"));
         if (w <= 0.0 || h <= 0.0 || (x <= 0.0 && y <= 0.0)) { return ""; }
         return f"{SemuRenderEnvironment.fraction(x / (w / 2.0))},{SemuRenderEnvironment.fraction(y / (h / 2.0))}";
+    }
+
+    class string reflect(JSONValue screen) {  // strength,blur,fade of the picture mirrored onto the ring, or onto the plate around the opening
+        JSONValue reflection = screen.get("reflection");
+        if (reflection == null || !reflection.isObject()) { return ""; }
+        double strength = atof(SemuRenderEnvironment.numberOr(reflection, "strength", "0"));
+        if (strength <= 0.0) { return ""; }
+        return f"{SemuRenderEnvironment.fraction(strength)},{SemuRenderEnvironment.fraction(atof(SemuRenderEnvironment.numberOr(reflection, "blur", "0")))},{SemuRenderEnvironment.fraction(atof(SemuRenderEnvironment.numberOr(reflection, "fade", "0")))}";
     }
 
     class string look(JSONValue screen) {  // shape,radius,exponent,fit,inset,curvature,vignette,bloom,glow,reflect
@@ -279,6 +289,7 @@ class SemuRenderEnvironment {
                 env.set(f"SEMU_RENDER_SCREEN_{index}_RING{suffix}", SemuRenderEnvironment.ring(screen, package.get("canvas")));  // the upstream preset's drawn bezel between the black edge and the opening
                 env.set(f"SEMU_RENDER_SCREEN_{index}_LOOK{suffix}", SemuRenderEnvironment.look(screen));
                 env.set(f"SEMU_RENDER_SCREEN_{index}_BULGE{suffix}", SemuRenderEnvironment.bulge(screen));  // each edge's middle bowed outward, like a CRT tube
+                env.set(f"SEMU_RENDER_SCREEN_{index}_REFLECT{suffix}", SemuRenderEnvironment.reflect(screen));  // the picture glowing on the ring
                 env.set(f"SEMU_RENDER_SCREEN_{index}_SURROUND{suffix}", SemuRenderEnvironment.color(SemuJson.textAt(screen, "surround"), "0,0,0"));
                 JSONValue glass = screen.get("glass");
                 if (glass != null && glass.isObject()) { env.set(f"SEMU_RENDER_SCREEN_{index}_GLASS{suffix}", SemuRenderAssets.image(plan, SemuJson.textAt(glass, "asset"))); }

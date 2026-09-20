@@ -13,16 +13,6 @@
       "id": "tv_wide",
       "label": "Living room CRT (widescreen)",
       "bezel": "tv-soqueroeu-wii-16x9"
-    },
-    {
-      "id": "premium",
-      "label": "Premium 4:3 CRT",
-      "bezel": "crt-premium-4x3"
-    },
-    {
-      "id": "silver",
-      "label": "Silver 4:3 CRT",
-      "bezel": "crt-silver-4x3"
     }
   ]
 }

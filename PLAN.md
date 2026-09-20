@@ -726,7 +726,26 @@ Update this block whenever a milestone criterion changes state.
   surround colours, add picture or ring, reset), undo/redo covers every
   edit, the wheel pans (horizontal deltas sideways) and ctrl/alt+wheel zooms
   at the cursor, and the layout is toolbar, layers with thumbnails and
-  badges, canvas, inspector. Still open: bundling the upstream layer files into
+  badges, canvas, inspector. Later the same day: the sidebar became an
+  inspector (Position/Size pills, chips for the four cutout rectangles, one
+  Curve block, a Preview opacity slider next to the Ring and Edge colours,
+  a `?` shortcuts popover), clicking a plate on the canvas selects it
+  (alpha-tested, additive black ignored), orange bulge diamonds sit on all
+  four edges of the opening and both ring rectangles, and packages carry
+  `ring.reflection {strength, blur, fade}` from `HSM_REFLECT_GLOBAL_AMOUNT`,
+  `HSM_REFLECT_BLUR_MAX` and `HSM_REFLECT_FADE_AMOUNT`: the renderer mirrors
+  the picture across its edges onto the ring (`SEMU_RENDER_SCREEN_<n>_REFLECT`,
+  screen blend, blur and fade growing with distance) and the editor previews
+  it with the test card. Reflection then moved from the ring to the cutout
+  (`screens[].reflection`) and only ever lands on a bezel band: the ring,
+  which may be unfilled (`ring.color: none`) to mark a painted bezel on a
+  plate such as gb-studio; the chrome pass reflects the part of the band
+  outside the opening. The crt-premium / crt-silver plates were deleted on
+  2026-09-20 (the user did not want them; every TV system has its Soqueroeu
+  scene, Switch and Wii U stay bezel-free by design). Cutout handles became zones: the knob at a corner or
+  edge middle sizes (Shift keeps the ratio), and just beyond it the same
+  corner rounds (yellow diamond, drag toward the centre) or the same edge
+  bows (orange diamond, drag outward). Still open: bundling the upstream layer files into
   the asset tree (today they resolve through `build/bezel/shaders`, so only
   a launch from the repository checkout reaches them; the installed bundle
   falls back to the flat plate), the DS/3DS/PSP captures, the fast/real

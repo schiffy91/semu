@@ -159,7 +159,14 @@ class BezelEditor {
                     for key in ["inner", "outer"] { JSONValue rect = BezelEditor.rounded(ring.get(key)); if (rect != null) { target.set(key, rect); } }
                     for key in ["inner_radius", "outer_radius"] { if (ring.has(key)) { target.set(key, JSONValue.makeFloat(BezelNumber.of(ring.get(key)))); } }
                     string color = SemuJson.textAt(ring, "color");
-                    if (color.len() == 7 && color.startsWith("#")) { target.set("color", JSONValue.makeString(color)); }
+                    if ((color.len() == 7 && color.startsWith("#")) || color.equals("none")) { target.set("color", JSONValue.makeString(color)); }
+
+                }
+                JSONValue reflection = edited.get("reflection");
+                if (reflection != null && reflection.isObject()) {
+                    JSONValue kept = JSONValue.makeObject();
+                    for key in ["strength", "blur", "fade"] { kept.set(key, JSONValue.makeFloat(BezelNumber.clamp(BezelNumber.of(reflection.get(key)), 0.0, 1.0))); }
+                    screen.set("reflection", kept);
                 }
                 JSONValue provenance = screen.get("provenance");
                 if (provenance == null || !provenance.isObject()) { provenance = JSONValue.makeObject(); screen.set("provenance", provenance); }
