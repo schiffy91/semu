@@ -16,6 +16,10 @@
   .seg button:hover { background: rgba(255,255,255,.08); }
   .seg button.on { background: rgba(255,255,255,.16); }
   .seg button:disabled { opacity: .35; cursor: default; }
+  .seg .alpha { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; color: var(--muted); font-size: 12px; }
+  .seg .alpha b { font-weight: 500; min-width: 34px; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+  .seg .alpha input { width: 90px; accent-color: var(--accent); cursor: ew-resize; }
+  .layer .row-alpha { width: 64px; margin-left: auto; accent-color: var(--accent); cursor: ew-resize; }
   button.primary { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 6px 14px; font: inherit; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
   button.primary:hover { filter: brightness(1.1); }
   select, input[type=number], input[type=text] { font: inherit; color: var(--text); background: rgba(0,0,0,.28); border: 1px solid var(--line-strong); border-radius: 7px; padding: 5px 8px; outline: none; }
@@ -68,7 +72,7 @@
   <span class="spacer"></span>
   <div class="seg"><button id="undo" title="Undo (⌘Z)">↶</button><button id="redo" title="Redo (⇧⌘Z)">↷</button></div>
   <div class="seg"><button id="fit" title="Fit (F)">Fit</button><button id="zoom-out" title="Zoom out">−</button><button id="zoom-label" title="100% (1)" style="min-width:56px">100%</button><button id="zoom-in" title="Zoom in">+</button></div>
-  <div class="seg"><button id="xray" title="X-ray: see the plate through the cutouts (X)">X-ray</button><button id="show-game" class="on" title="Show the test card in each picture">Test card</button></div>
+  <div class="seg"><button id="xray" title="X-ray: cutouts at 35% or back to solid (X)">X-ray</button><label class="alpha" title="Cutouts opacity: see the plate through the ring and picture ([ and ] step)"><span>▣</span><input id="cutout-alpha" type="range" min="0" max="100" step="5" value="100"><b id="cutout-alpha-label">100%</b></label><button id="show-game" class="on" title="Show the test card in each picture">Test card</button></div>
   <span id="status"></span>
   <button id="save" class="primary" title="Save (⌘S)">Save</button>
 </header>
@@ -85,7 +89,7 @@
   <h2>Properties</h2>
   <div id="props"></div>
   <div class="muted" style="margin-top:14px">
-    <kbd>arrows</kbd> nudge 1 px, <kbd>⇧</kbd> 10 px, <kbd>⌥</kbd> resizes · <kbd>wheel</kbd> pans · <kbd>⌃</kbd>/<kbd>⌥</kbd>+wheel zooms in integer steps · <kbd>space</kbd>+drag pans · <kbd>1</kbd> 100% · <kbd>F</kbd> fit · <kbd>X</kbd> x-ray · <kbd>⌘Z</kbd> undo
+    <kbd>arrows</kbd> nudge 1 px, <kbd>⇧</kbd> 10 px, <kbd>⌥</kbd> resizes · <kbd>wheel</kbd> pans · <kbd>⌃</kbd>/<kbd>⌥</kbd>+wheel zooms in integer steps · <kbd>space</kbd>+drag pans · <kbd>1</kbd> 100% · <kbd>F</kbd> fit · <kbd>X</kbd> x-ray · <kbd>[</kbd> <kbd>]</kbd> cutout opacity · <kbd>⌘Z</kbd> undo
   </div>
 </aside>
 <div id="menu"></div>
@@ -97,7 +101,7 @@ const CUTOUTS = "cutouts";
 const canvas = document.getElementById("view");
 const ctx = canvas.getContext("2d");
 const hud = document.getElementById("hud");
-const state = { packages: [], current: null, original: null, images: {}, thumbs: {}, zoom: 1, ox: 0, oy: 0, selected: null, hover: null, drag: null, space: false, dirty: false, cursor: null, showGame: true, xray: false, past: [], future: [] };
+const state = { packages: [], current: null, original: null, images: {}, thumbs: {}, zoom: 1, ox: 0, oy: 0, selected: null, hover: null, drag: null, space: false, dirty: false, cursor: null, showGame: true, cutoutAlpha: 1, past: [], future: [] };
 
 function status(text) { document.getElementById("status").textContent = text; }
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
@@ -185,6 +189,8 @@ async function loadPackages() {
   const select = document.getElementById("package");
   select.innerHTML = state.packages.map(p => `<option value="${p.id}">${p.id}${p.geometry_from ? " · inherits " + p.geometry_from : ""}</option>`).join("");
   const wanted = state.packages.some(p => p.id === location.hash.slice(1)) ? location.hash.slice(1) : state.packages[0].id;
+  const cutout = new URLSearchParams(location.search).get("cutout");  // ?cutout=40 opens with see-through cutouts
+  if (cutout !== null) setCutoutAlpha(Number(cutout) / 100);
   select.value = wanted;
   await open(wanted);
 }
@@ -231,7 +237,9 @@ function buildLayers() {
     if (layer.blend && layer.blend !== "normal") badges.push(`<span class="badge">${layer.blend}</span>`);
     if (layer.opacity !== undefined && layer.opacity < 1) badges.push(`<span class="badge">${Math.round(layer.opacity * 100)}%</span>`);
     const thumb = layer.id === CUTOUTS ? `<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:14px">▣</div>` : `<img class="thumb" src="${state.thumbs[layer.id] || ""}" alt="">`;
-    row.innerHTML = `<button class="eye" title="${layer.visible === false ? "show" : "hide"}">${layer.visible === false ? "◌" : "●"}</button>${thumb}<span class="name">${layer.id}</span>${badges.join("")}`;
+    const alpha = layer.id === CUTOUTS ? `<input class="row-alpha" type="range" min="0" max="100" step="5" value="${Math.round(state.cutoutAlpha * 100)}" title="Cutouts opacity (view only)">` : "";
+    row.innerHTML = `<button class="eye" title="${layer.visible === false ? "show" : "hide"}">${layer.visible === false ? "◌" : "●"}</button>${thumb}<span class="name">${layer.id}</span>${badges.join("")}${alpha}`;
+    if (alpha) { const slider = row.querySelector(".row-alpha"); slider.addEventListener("input", event => setCutoutAlpha(event.target.value / 100)); for (const type of ["mousedown", "click", "dragstart"]) slider.addEventListener(type, event => event.stopPropagation()); }
     row.querySelector(".eye").addEventListener("click", event => { event.stopPropagation(); record(); layer.visible = layer.visible === false; buildLayers(); draw(); });
     row.addEventListener("click", () => { select(layer.id === CUTOUTS ? { kind: "screen", screen: 0, key: "tube" } : { kind: "layer", id: layer.id }); });
     row.addEventListener("contextmenu", event => { event.preventDefault(); showMenu(event.clientX, event.clientY, layerMenu(layer)); });
@@ -439,7 +447,7 @@ function drawTestCard(x, y, w, h, hue) {
 }
 function drawCutouts(layer) {  // like Mega Bezel: the ring, the black edge inside it, the picture clipped to the opening; the plate shows through everywhere else
   ctx.save();
-  ctx.globalAlpha = (layer.opacity === undefined ? 1 : layer.opacity) * (state.xray ? 0.35 : 1);
+  ctx.globalAlpha = (layer.opacity === undefined ? 1 : layer.opacity) * state.cutoutAlpha;  // view-only transparency, never saved
   for (const screen of state.current.screens) {
     const ring = screen.ring, image = screen.image;
     if (ring && ring.outer && ring.inner) {
@@ -664,6 +672,8 @@ window.addEventListener("keydown", event => {
   if (event.key === "1") { zoomTo(1, canvas.width / 2, canvas.height / 2); return; }
   if (event.key.toLowerCase() === "f") { fit(); return; }
   if (event.key.toLowerCase() === "x") { toggleXray(); return; }
+  if (event.key === "[") { setCutoutAlpha(state.cutoutAlpha - 0.1); return; }
+  if (event.key === "]") { setCutoutAlpha(state.cutoutAlpha + 0.1); return; }
   const current = selectedRect();
   if (!current) return;
   const step = event.shiftKey ? 10 : 1, r = { ...current }, resizing = event.altKey;
@@ -678,7 +688,16 @@ window.addEventListener("keydown", event => {
 });
 window.addEventListener("keyup", event => { if (event.code === "Space") { state.space = false; if (state.cursor) canvas.style.cursor = cursorFor(hit(state.cursor[0], state.cursor[1])); } });
 
-function toggleXray() { state.xray = !state.xray; document.getElementById("xray").classList.toggle("on", state.xray); draw(); }
+function setCutoutAlpha(value) {  // the toolbar slider, X and the bracket keys all land here
+  state.cutoutAlpha = Math.max(0, Math.min(1, Math.round(value * 20) / 20));
+  document.getElementById("cutout-alpha").value = Math.round(state.cutoutAlpha * 100);
+  document.getElementById("cutout-alpha-label").textContent = `${Math.round(state.cutoutAlpha * 100)}%`;
+  for (const slider of document.querySelectorAll(".row-alpha")) slider.value = Math.round(state.cutoutAlpha * 100);
+  document.getElementById("xray").classList.toggle("on", state.cutoutAlpha < 1);
+  draw();
+}
+function toggleXray() { setCutoutAlpha(state.cutoutAlpha < 1 ? 1 : 0.35); }
+document.getElementById("cutout-alpha").addEventListener("input", event => setCutoutAlpha(event.target.value / 100));
 document.getElementById("package").addEventListener("change", event => open(event.target.value));
 document.getElementById("fit").addEventListener("click", fit);
 document.getElementById("zoom-in").addEventListener("click", () => zoomTo(ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(state.zoom) + 1)], canvas.width / 2, canvas.height / 2));
