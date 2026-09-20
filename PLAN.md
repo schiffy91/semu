@@ -719,7 +719,14 @@ Update this block whenever a milestone criterion changes state.
   covers the canvas with viewport-following plates, draws canvas-sized
   plates at the canvas, exposes per-axis edge bulge handles (the opening's
   sides bow out like a tube; `shape.bulge` in px, the ring follows) and
-  design-tool cursors. Still open: bundling the upstream layer files into
+  design-tool cursors. Editor pass (2026-09-20): the `cutouts` layer (was
+  `screens`) fills ring, black edge and picture through the same rounded and
+  bulged outline the handles edit, X-ray dims it while aligning, right-click
+  menus edit a layer (visibility, order, canvas, blend, opacity, ring and
+  surround colours, add picture or ring, reset), undo/redo covers every
+  edit, the wheel pans (horizontal deltas sideways) and ctrl/alt+wheel zooms
+  at the cursor, and the layout is toolbar, layers with thumbnails and
+  badges, canvas, inspector. Still open: bundling the upstream layer files into
   the asset tree (today they resolve through `build/bezel/shaders`, so only
   a launch from the repository checkout reaches them; the installed bundle
   falls back to the flat plate), the DS/3DS/PSP captures, the fast/real
