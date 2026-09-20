@@ -21,6 +21,7 @@ import ./launch/supervisor.btrc;
 import ./sync/syncthing.btrc;
 import ./steam/shortcuts.btrc;
 import ./steam/input_template.btrc;
+import ./bezel/editor.btrc;
 
 class SemuCli {
     public CLIArgs args;
@@ -47,6 +48,7 @@ class SemuCli {
         help.item("sync start | stop | run | status | device-id | enabled", "Syncthing for saves: detach, run in the foreground, inspect, print this device's id.");
         help.item("steam shortcuts [--steam-root DIR] [--force] | status", "Add or refresh the Semu non-Steam shortcut in every Steam profile.");
         help.item("steam input [--output DIR] [--icons DIR]", "Write the target's Steam Input templates (Deck trackpad radials) and their icons.");
+        help.item("bezel resolve | emit | edit [--packages a,b] [--port N]", "Mega Bezel presets: print their resolved chains, write the packages' layers and screens, or serve the bezel editor.");
         help.item("version", "Print the Semu version.");
         help.section("Common options");
         help.item("--target T", "Target id (default: $SEMU_TARGET or linux-desktop).");
@@ -237,6 +239,45 @@ class SemuCli {
         return self.usage(64);
     }
 
+    public int bezel() {  // bezel resolve | emit [--packages a,b] | edit [--port 8765]
+        string action = self.line.operand(1, "");
+        string configRoot = self.configRoot();
+        BezelRepository repository = BezelRepository(configRoot);
+        MegaBezelTree tree = MegaBezelTree(configRoot, PathTools.join(PathTools.dirname(configRoot), "build/bezel"));
+        if (!tree.ready) { Console.error("bezel: " + tree.failure); return 1; }
+        Vector<string> wanted = self.option("packages", "").isEmpty() ? repository.upstreamIds() : Strings.split(self.option("packages", ""), ",");
+        if (action.equals("edit")) { return BezelEditor(repository, tree).serve(Strings.toInt(self.option("port", "8765"))); }
+        if (action.equals("resolve")) {
+            for id in wanted {
+                JSONValue package = repository.package(id);
+                if (package == null) { Console.error(f"{id}: no such package"); continue; }
+                MegaBezelPreset preset = MegaBezelPreset(tree.presetPath(SemuJson.textAt(package, "upstream.preset")));
+                Console.log(f"{id}: {preset.chain.size()} files, {preset.values.size()} values, {preset.textures.size()} textures" + (preset.missing.size() > 0 ? ", MISSING " + Strings.join(preset.missing, ", ") : ""));
+                for name in ["HSM_NON_INTEGER_SCALE", "HSM_ASPECT_RATIO_MODE", "HSM_SCREEN_POSITION_X", "HSM_SCREEN_POSITION_Y", "HSM_DUALSCREEN_MODE", "HSM_FLIP_VIEWPORT_VERTICAL", "HSM_BZL_WIDTH", "HSM_BZL_HEIGHT", "HSM_TUBE_BLACK_EDGE_THICKNESS", "HSM_DEVICE_SCALE", "HSM_DEVICE_POS_Y"] {
+                    if (preset.has(name)) { Console.log(f"    {name} = {preset.value(name)}"); }
+                }
+                for texture in preset.textures.keys().sorted() { Console.log(f"    {texture}: {tree.reference(preset.texture(texture))}"); }
+            }
+            return 0;
+        }
+        if (action.equals("emit")) {
+            BezelPackageWriter writer = BezelPackageWriter(repository, tree);
+            int failures = 0;
+            for id in wanted {
+                string failure = writer.emit(id);
+                if (failure.isEmpty()) { Console.log(f"{id}: written"); } else { Console.error(f"{id}: {failure}"); failures++; }
+            }
+            for id in repository.packageIds() {
+                JSONValue package = repository.package(id);
+                if (package == null) { continue; }
+                if (!SemuJson.textAt(package, "geometry_from").isEmpty()) { string failure = writer.inherit(id); Console.log(failure.isEmpty() ? f"{id}: geometry inherited" : f"{id}: {failure}"); }
+                else if (package.get("upstream") == null || !package.get("upstream").isObject()) { string failure = writer.plain(id); if (!failure.isEmpty()) { Console.error(f"{id}: {failure}"); failures++; } }
+            }
+            return failures == 0 ? 0 : 1;
+        }
+        return self.usage(64);
+    }
+
     public int doctor() {
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
@@ -280,6 +321,7 @@ class SemuCli {
         if (command.equals("settings")) { return self.settings(); }
         if (command.equals("sync")) { return self.sync(); }
         if (command.equals("steam")) { return self.steam(); }
+        if (command.equals("bezel")) { return self.bezel(); }
         if (command.equals("version")) {
             Console.log(SemuCli.version());
             return 0;

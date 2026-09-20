@@ -1,0 +1,489 @@
+// Mega Bezel's closed-form placement, ported from shaders/base/cache-info.inc (screen scale, crop,
+// aspect, tube scales), common/common-functions.inc (position offsets), common-functions-bezel.inc
+// (bezel edge) and bezel-images.inc (layer transforms). Everything is in viewport fractions before
+// zoom, pan and the viewport flips; toScreen applies those for what a monitor shows.
+import Library.JSON;
+import Library.Map;
+import Library.Math;
+import Library.Strings;
+import Library.Vector;
+import ./preset.btrc;
+
+class BezelRect {
+    public double x;
+    public double y;
+    public double w;
+    public double h;
+
+    public BezelRect(double x, double y, double w, double h) { self.x = x; self.y = y; self.w = w; self.h = h; }
+
+    class BezelRect centered(double cx, double cy, double w, double h) { return BezelRect(cx - w / 2.0, cy - h / 2.0, w, h); }
+
+    public BezelRect scaled(double sx, double sy) { return BezelRect(self.x * sx, self.y * sy, self.w * sx, self.h * sy); }
+
+    public BezelRect mapped(BezelRect frame, double width, double height) {  // this rect inside frame -> pixels of a width x height plate
+        return BezelRect((self.x - frame.x) / frame.w * width, (self.y - frame.y) / frame.h * height, self.w / frame.w * width, self.h / frame.h * height);
+    }
+
+    public bool contains(BezelRect other, double slack) {
+        return self.x - slack <= other.x && self.y - slack <= other.y && other.x + other.w <= self.x + self.w + slack && other.y + other.h <= self.y + self.h + slack;
+    }
+
+    public JSONValue rounded() {  // integer pixels: edges rounded, so width follows the edges
+        int x0 = Math.round((float)self.x);
+        int y0 = Math.round((float)self.y);
+        JSONValue value = JSONValue.makeObject();
+        value.set("x", JSONValue.makeInt(x0));
+        value.set("y", JSONValue.makeInt(y0));
+        value.set("w", JSONValue.makeInt(Math.round((float)(self.x + self.w)) - x0));
+        value.set("h", JSONValue.makeInt(Math.round((float)(self.y + self.h)) - y0));
+        return value;
+    }
+
+    class BezelRect fromJson(JSONValue value) {
+        if (value == null || !value.isObject()) { return null; }
+        return BezelRect(BezelNumber.of(value.get("x")), BezelNumber.of(value.get("y")), BezelNumber.of(value.get("w")), BezelNumber.of(value.get("h")));
+    }
+}
+
+class BezelNumber {
+    class double of(JSONValue value) { return value != null && value.isNumber() ? value.asFloat() : 0.0; }
+
+    class double parse(string text, double fallback) {
+        JSONValue value = JSONValue.parse(text.trim());
+        return value != null && value.isNumber() ? value.asFloat() : fallback;
+    }
+
+    class double floor(double value) { return Math.floorDouble(value); }
+
+    class double clamp(double value, double low, double high) { return value < low ? low : (value > high ? high : value); }
+
+    class double absDouble(double value) { return value < 0.0 ? -value : value; }
+}
+
+class MegaBezelParams {  // converted the way params-0-screen-scale.inc, params-2-bezel.inc and params-4-image-layers.inc convert them
+    public MegaBezelPreset preset;
+    public Map<string, double> defaults;
+    public Map<string, string> used;
+
+    public MegaBezelParams(MegaBezelPreset preset, Map<string, double> defaults) {
+        self.preset = preset;
+        self.defaults = defaults;
+        self.used = {};
+    }
+
+    class double conversion(string name) {
+        if (name.equals("HSM_VIEWPORT_ZOOM") || name.equals("HSM_NON_INTEGER_SCALE") || name.equals("HSM_NON_INTEGER_SCALE_OFFSET") || name.equals("HSM_INT_SCALE_MAX_HEIGHT")
+            || name.equals("HSM_SNAP_TO_CLOSEST_INT_SCALE_TOLERANCE") || name.equals("HSM_2ND_SCREEN_SCALE_OFFSET") || name.equals("HSM_TUBE_EMPTY_THICKNESS_X_SCALE")
+            || name.equals("HSM_TUBE_BLACK_EDGE_THICKNESS_X_SCALE") || name.equals("HSM_TUBE_BLACK_EDGE_CORNER_RADIUS_SCALE") || name.equals("HSM_SCREEN_CORNER_RADIUS_SCALE")
+            || name.equals("HSM_BZL_INNER_CORNER_RADIUS_SCALE") || name.equals("HSM_BZL_SCALE_OFFSET") || name.equals("HSM_BZL_INDEPENDENT_SCALE") || name.equals("HSM_BZL_OPACITY")
+            || name.equals("HSM_BZL_COLOR_SATURATION") || name.equals("HSM_BZL_COLOR_VALUE") || name.equals("HSM_BZL_BRIGHTNESS") || name.equals("HSM_BZL_NOISE")
+            || name.equals("HSM_BZL_BRIGHTNESS_MULT_SIDES") || name.equals("HSM_BZL_BRIGHTNESS_MULT_SIDE_LEFT") || name.equals("HSM_BZL_BRIGHTNESS_MULT_SIDE_RIGHT")
+            || name.equals("HSM_BZL_BRIGHTNESS_MULT_TOP") || name.equals("HSM_BZL_BRIGHTNESS_MULT_BOTTOM") || name.endsWith("_CROP_PERCENT_ZOOM") || name.endsWith("_CROP_PERCENT_TOP")
+            || name.endsWith("_CROP_PERCENT_BOTTOM") || name.endsWith("_CROP_PERCENT_LEFT") || name.endsWith("_CROP_PERCENT_RIGHT") || name.endsWith("_OPACITY")) { return 0.01; }
+        if (name.equals("HSM_VIEWPORT_POSITION_X") || name.equals("HSM_VIEWPORT_POSITION_Y") || name.equals("HSM_SCREEN_POSITION_Y")) { return -0.001; }
+        if (name.equals("HSM_SCREEN_POSITION_X") || name.equals("HSM_DUALSCREEN_CORE_IMAGE_SPLIT_OFFSET") || name.equals("HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION")
+            || name.equals("HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS") || name.equals("HSM_2ND_SCREEN_POS_X") || name.equals("HSM_2ND_SCREEN_POS_Y")) { return 0.001; }
+        if (name.equals("HSM_TUBE_EMPTY_THICKNESS") || name.equals("HSM_TUBE_BLACK_EDGE_THICKNESS")) { return 0.007; }
+        if (name.equals("HSM_BZL_OUTER_CORNER_RADIUS_SCALE")) { return 0.009; }
+        if (name.equals("HSM_BZL_WIDTH")) { return 0.0008624; }
+        if (name.equals("HSM_BZL_HEIGHT")) { return 0.0008732; }
+        if (name.equals("HSM_BZL_OUTER_POSITION_Y")) { return 0.0005; }
+        if (name.equals("HSM_BZL_COLOR_HUE")) { return 1.0 / 360.0; }
+        if (name.endsWith("_SCALE") || name.endsWith("_SCALE_X") || name.endsWith("_POS_Y")) { return 0.01; }  // image layers
+        if (name.endsWith("_POS_X")) { return -0.01; }
+        return 1.0;
+    }
+
+    public double raw(string name) {
+        if (self.preset.has(name)) {
+            JSONValue value = JSONValue.parse(self.preset.value(name).trim());
+            if (value != null && value.isNumber()) { return value.asFloat(); }
+        }
+        if (!self.defaults.has(name)) { return 0.0; }
+        return self.defaults.get(name);
+    }
+
+    public bool known(string name) { return self.preset.has(name) || self.defaults.has(name); }
+
+    public double get(string name) {
+        self.used.put(name, self.preset.has(name) ? self.preset.value(name) : (self.defaults.has(name) ? SemuNumberText.text(self.defaults.get(name)) : "0"));
+        return self.raw(name) * MegaBezelParams.conversion(name);
+    }
+
+    public bool flag(string name) { return self.raw(name) >= 0.5; }
+
+    public int mode(string name) { return (int)(self.raw(name) + 0.5); }
+}
+
+class SemuNumberText {
+    class string text(double value) {  // shortest text that survives a round trip through the shader's floats
+        JSONValue number = JSONValue.makeFloat(value);
+        return number.stringify();
+    }
+}
+
+class MegaBezelScreen {  // one screen's rectangles in viewport fractions
+    public int index;
+    public double aspect;
+    public double croppedWidth;
+    public double croppedHeight;
+    public BezelRect picture;
+    public BezelRect diffuse;
+    public BezelRect tube;
+    public BezelRect bezel;
+    public double pictureRadius;  // viewport-height fractions, like the rects
+    public double tubeRadius;
+    public double bezelRadius;
+
+    public MegaBezelScreen() { self.index = 0; self.aspect = 1.0; self.croppedWidth = 0.0; self.croppedHeight = 0.0; self.pictureRadius = 0.0; self.tubeRadius = 0.0; self.bezelRadius = 0.0; }
+}
+
+class MegaBezelLayerRect {
+    public BezelRect rect;
+    public bool zoomed;
+    public MegaBezelLayerRect(BezelRect rect, bool zoomed) { self.rect = rect; self.zoomed = zoomed; }
+}
+
+class MegaBezelPlacement {
+    public MegaBezelParams p;
+    public double coreWidth;
+    public double coreHeight;
+    public double viewportWidth;
+    public double viewportHeight;
+    public double outputAspect;
+    public string failure;
+
+    public MegaBezelPlacement(MegaBezelParams params, int coreWidth, int coreHeight, int viewportWidth, int viewportHeight) {
+        self.p = params;
+        self.coreWidth = coreWidth;
+        self.coreHeight = coreHeight;
+        self.viewportWidth = viewportWidth;
+        self.viewportHeight = viewportHeight;
+        self.outputAspect = (double)viewportWidth / (double)viewportHeight;
+        self.failure = self.p.get("HSM_ROTATE_CORE_IMAGE") != 0.0 ? "rotated cores are not ported" : "";
+    }
+
+    public int dual() { return self.p.mode("HSM_DUALSCREEN_MODE"); }
+
+    public int splitDirection() {  // 1 splits the core image top/bottom, 2 left/right
+        int mode = self.p.mode("HSM_DUALSCREEN_CORE_IMAGE_SPLIT_MODE");
+        if (mode == 0) { return self.dual() == 2 ? 2 : 1; }
+        return mode;
+    }
+
+    public double preppedAspect() {
+        double w = self.coreWidth;
+        double h = self.coreHeight;
+        if (self.dual() > 0) { if (self.splitDirection() == 1) { h = h * 0.5; } else { w = w * 0.5; } }
+        return w / h;
+    }
+
+    public Vector<double> cropped(int index) {  // HSM_GetCroppedRotatedSizeAndPixelSampleAreaStart with negative crop disabled: [w, h, left, top]
+        double w = self.coreWidth;
+        double h = self.coreHeight;
+        double left = BezelNumber.floor(self.p.get("HSM_CROP_PERCENT_LEFT") * w);
+        double top = BezelNumber.floor(self.p.get("HSM_CROP_PERCENT_TOP") * h);
+        double right = BezelNumber.floor(self.p.get("HSM_CROP_PERCENT_RIGHT") * w);
+        double bottom = BezelNumber.floor(self.p.get("HSM_CROP_PERCENT_BOTTOM") * h);
+        double zoom = self.p.get("HSM_CROP_PERCENT_ZOOM");
+        double zl = BezelNumber.floor(zoom * w);
+        double zt = BezelNumber.floor(zoom * h);
+        double zr = zl;
+        double zb = zt;
+        double dl = 0.0;
+        double dt = 0.0;
+        double dr = 0.0;
+        double db = 0.0;
+        double l = 0.0;
+        double t = 0.0;
+        double r = 0.0;
+        double b = 0.0;
+        if (self.dual() > 0) {
+            double offset = self.p.get("HSM_DUALSCREEN_CORE_IMAGE_SPLIT_OFFSET");
+            if (index == 2) {
+                left = BezelNumber.floor(self.p.get("HSM_2ND_SCREEN_CROP_PERCENT_LEFT") * w);
+                top = BezelNumber.floor(self.p.get("HSM_2ND_SCREEN_CROP_PERCENT_TOP") * h);
+                right = BezelNumber.floor(self.p.get("HSM_2ND_SCREEN_CROP_PERCENT_RIGHT") * w);
+                bottom = BezelNumber.floor(self.p.get("HSM_2ND_SCREEN_CROP_PERCENT_BOTTOM") * h);
+                zoom = self.p.get("HSM_2ND_SCREEN_CROP_PERCENT_ZOOM");
+                if (self.splitDirection() == 1) { dt = BezelNumber.floor(h * (0.5 - offset)); top = BezelNumber.floor(top / 2.0); bottom = BezelNumber.floor(bottom / 2.0); }
+                else { dl = BezelNumber.floor(w * (0.5 - offset)); left = BezelNumber.floor(left / 2.0); right = BezelNumber.floor(right / 2.0); }
+            } else {
+                if (self.splitDirection() == 1) { db = BezelNumber.floor(h * (0.5 + offset)); top = BezelNumber.floor(top / 2.0); bottom = BezelNumber.floor(bottom / 2.0); }
+                else { dr = BezelNumber.floor(w * (0.5 + offset)); left = BezelNumber.floor(left / 2.0); right = BezelNumber.floor(right / 2.0); }
+            }
+            if (self.splitDirection() == 1) { zt = BezelNumber.floor(w * zoom / 2.0); } else { zl = BezelNumber.floor(h * zoom / 2.0); }  // Mega Bezel measures the vertical zoom crop from the width
+            zr = zl;
+            zb = zt;
+            l = dl + left + zl; t = dt + top + zt; r = dr + right + zr; b = db + bottom + zb;
+        } else if (self.p.mode("HSM_CROP_MODE") != 0) {  // CROP ANY; CROP BLACK ONLY is content-dependent and can at most reach the same crop
+            l = left + zl; t = top + zt; r = right + zr; b = bottom + zb;
+        }
+        if (l < 0.0) { l = 0.0; }
+        if (t < 0.0) { t = 0.0; }
+        if (r < 0.0) { r = 0.0; }
+        if (b < 0.0) { b = 0.0; }
+        return [w - l - r, h - t - b, l, t];
+    }
+
+    class bool native(double w, double h) {  // HSM_GetScreenAspect's table of handheld and console resolutions kept at their own aspect
+        return (w == 480.0 && h == 272.0) || (w == 240.0 && h == 160.0) || (w == 160.0 && h == 144.0) || (w == 256.0 && h == 192.0) || (w == 256.0 && h == 384.0) || (w == 512.0 && h == 192.0)
+            || (w == 400.0 && h == 240.0) || (w == 320.0 && h == 240.0) || (w == 400.0 && h == 480.0) || (w == 720.0 && h == 240.0) || (w == 160.0 && h == 102.0);
+    }
+
+    class bool fourThirds(double w, double h) {
+        return (w == 160.0 && h == 228.0) || (w == 152.0 && h == 228.0) || (w == 320.0 && h == 480.0) || (w == 512.0 && h == 480.0);
+    }
+
+    public double screenAspect(int index, double croppedWidth, double croppedHeight) {  // HSM_GetScreenAspect
+        double ow = self.coreWidth;
+        double oh = self.coreHeight;
+        double coreAspect = ow / oh;
+        double horizontalCore = coreAspect < 1.0 ? 1.0 / coreAspect : coreAspect;
+        int mode = self.p.mode("HSM_ASPECT_RATIO_MODE");
+        double explicit = self.p.get("HSM_ASPECT_RATIO_EXPLICIT");
+        double aspect = explicit;
+        if (mode == 0) {
+            if (oh > 580.0 || MegaBezelPlacement.native(ow, oh)) { aspect = horizontalCore; }
+            else if (MegaBezelPlacement.fourThirds(ow, oh) || oh == 448.0) { aspect = 1.333; }
+        } else if (mode == 1) { aspect = explicit; }
+        else if (mode == 2) { aspect = 1.3333; }
+        else if (mode == 3) { aspect = 1.5; }
+        else if (mode == 4) { aspect = 1.7777; }
+        else if (mode == 5) { aspect = croppedWidth / croppedHeight; }
+        else if (mode == 6) { aspect = self.outputAspect; }
+        else { aspect = 1.333; }
+        int orientation = self.p.mode("HSM_ASPECT_RATIO_ORIENTATION");
+        if (orientation == 0) {
+            bool forced = MegaBezelPlacement.fourThirds(ow, oh) || (ow == 352.0 && oh == 480.0) || oh == 448.0;
+            orientation = forced || self.preppedAspect() >= 1.0 ? 1 : 2;
+        }
+        return orientation == 1 ? aspect : 1.0 / aspect;
+    }
+
+    public bool verticalScanlines(double aspect) {
+        double direction = self.p.get("HSM_SCANLINE_DIRECTION");
+        if (direction < 1.0) { return aspect < 1.0; }
+        return direction > 1.5;
+    }
+
+    public Vector<double> screenScale(double aspect, double croppedWidth, double croppedHeight) {  // HSM_GetScreenScale
+        double vw = self.viewportWidth;
+        double vh = self.viewportHeight;
+        double oa = self.outputAspect;
+        if (self.p.get("HSM_ASPECT_RATIO_MODE") > 5.5) { return [1.0, 1.0]; }
+        bool vertical = self.p.flag("HSM_VERTICAL_PRESET") || vw < vh;
+        double height = self.p.get("HSM_NON_INTEGER_SCALE") * (vertical ? (0.8297 - 0.4792) / 0.8297 : 1.0);
+        if (self.dual() > 0) { height = height * 0.5; }
+        int intMode = self.p.mode("HSM_INT_SCALE_MODE");
+        if (intMode == 0) {
+            if (self.p.flag("HSM_USE_PHYSICAL_SIZE_FOR_NON_INTEGER")) {
+                double monitorAspect = vertical ? 1.0 / self.p.get("HSM_PHYSICAL_MONITOR_ASPECT_RATIO") : self.p.get("HSM_PHYSICAL_MONITOR_ASPECT_RATIO");
+                double monitorHeight = self.p.get("HSM_PHYSICAL_MONITOR_DIAGONAL_SIZE") / (double)Math.sqrt((float)(monitorAspect * monitorAspect + 1.0));
+                double simHeight = self.p.get("HSM_PHYSICAL_SIM_TUBE_DIAGONAL_SIZE") / (double)Math.sqrt((float)(aspect * aspect + 1.0));
+                height = 0.012 + simHeight / monitorHeight;
+            }
+            height = height * self.p.get("HSM_NON_INTEGER_SCALE_OFFSET");
+            double tolerance = self.p.flag("HSM_USE_SNAP_TO_CLOSEST_INT_SCALE") ? self.p.get("HSM_SNAP_TO_CLOSEST_INT_SCALE_TOLERANCE") : 0.0;
+            if (tolerance > 0.0) {
+                double multiple = height * vh / croppedHeight;
+                double remainder = multiple - BezelNumber.floor(multiple);
+                if (remainder > 1.0 - remainder) { remainder = 1.0 - remainder; }
+                if ((remainder * croppedHeight) / (height * vh) < tolerance) { height = (double)Math.round((float)multiple) * croppedHeight / vh; }
+            }
+            return [aspect / oa * height, height];
+        }
+        double maxHeight = self.p.get("HSM_INT_SCALE_MAX_HEIGHT");
+        double resY = vh - (1.0 - maxHeight) * vh;
+        double resX = vw - (1.0 - maxHeight) * vw;
+        if (self.dual() == 1) { resY = vh / 2.0 - 0.5 * (1.0 - maxHeight) * vh; }
+        if (self.dual() == 2) { resX = resX * (vw / 2.0 - 0.5 * (1.0 - maxHeight) * vw); }
+        if (vw < vh) { resY = resX / aspect; }
+        if (resY * aspect > vw) { resY = (1.0 - 2.0 * (1.0 - maxHeight)) * vw / aspect; }
+        double multipleVert = BezelNumber.clamp(BezelNumber.floor(resY / croppedHeight) + self.p.get("HSM_INT_SCALE_MULTIPLE_OFFSET"), 1.0, 100.0);
+        double scaleVert = multipleVert * croppedHeight / vh;
+        double multipleHorz = aspect / oa * scaleVert * vw / croppedWidth;
+        if (intMode > 0 && (self.verticalScanlines(aspect) || intMode == 2)) { multipleHorz = (double)Math.round((float)multipleHorz); intMode = 2; }
+        if (intMode == 2) {
+            double offset = self.p.get("HSM_INT_SCALE_MULTIPLE_OFFSET_LONG");
+            if (aspect < 1.0) { multipleVert = multipleVert + offset; } else { multipleHorz = multipleHorz + offset; }
+        }
+        return [multipleHorz * croppedWidth / vw, multipleVert * croppedHeight / vh];
+    }
+
+    public Vector<double> secondScale(Vector<double> first, double aspect) {  // HSM_GetScreenScaleFor2ndScreen
+        double oa = self.outputAspect;
+        Vector<double> scale = self.p.flag("HSM_2ND_SCREEN_INDEPENDENT_SCALE") ? [0.8296 * 0.5 * aspect / oa, 0.8296 * 0.5] : [first[1] * aspect / oa, first[1]];
+        double offset = self.p.get("HSM_2ND_SCREEN_SCALE_OFFSET");
+        return [scale[0] * offset, scale[1] * offset];
+    }
+
+    public Vector<double> position(int index, Vector<double> scale) {  // HSM_GetScreenPositionOffset without image placement
+        double oa = self.outputAspect;
+        double x = index == 1 ? self.p.get("HSM_SCREEN_POSITION_X") / oa : self.p.get("HSM_2ND_SCREEN_POS_X") / oa;
+        double y = index == 1 ? self.p.get("HSM_SCREEN_POSITION_Y") : self.p.get("HSM_2ND_SCREEN_POS_Y");
+        double sign = index == 1 ? -1.0 : 1.0;
+        double split = self.p.get("HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION");
+        double between = self.p.get("HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS");
+        bool shift = self.p.flag("HSM_DUALSCREEN_SHIFT_POSITION_WITH_SCALE");
+        if (self.dual() == 1) {
+            y = y + (shift ? split + sign * scale[1] * 1.17 / 2.0 : sign * 0.25);
+            y = y + sign * between;
+        }
+        if (self.dual() == 2) {
+            x = x + (shift ? split / oa + sign * scale[0] * 1.17 / 2.0 : sign * 0.25 / oa);
+            x = x + sign * between / oa;
+        }
+        return [x, y];
+    }
+
+    public Vector<double> withEdge(double edgeX, double edgeY, Vector<double> scale) {  // HSM_GetScreenScaleWithEdgeHeight
+        double ratio = scale[0] / scale[1];
+        return [scale[0] * (1.0 + (edgeX / scale[1]) / ratio / self.outputAspect), scale[1] * (1.0 + edgeY / scale[1])];
+    }
+
+    public Vector<double> tubeScale(Vector<double> scale, double edgeX, double edgeY) {  // HSM_GetTubeScale
+        Vector<double> base = scale;
+        if (self.p.flag("HSM_BZL_USE_INDEPENDENT_SCALE")) {
+            double independent = self.p.get("HSM_BZL_INDEPENDENT_SCALE");
+            base = [scale[0] / scale[1] * independent, independent];
+        }
+        double normalized = base[1] / 0.8296;
+        double offset = self.p.get("HSM_BZL_SCALE_OFFSET");
+        return self.withEdge(edgeX * 1.2 / 100.0 * normalized, edgeY * 1.2 / 100.0 * normalized, [base[0] * offset, base[1] * offset]);
+    }
+
+    public MegaBezelScreen screen(int index) {  // everything about one screen, in viewport fractions before zoom, pan and flip
+        Vector<double> first = self.cropped(1);
+        Vector<double> cropped = self.cropped(index);
+        double aspect1 = self.screenAspect(1, first[0], first[1]);
+        Vector<double> scale1 = self.screenScale(aspect1, first[0], first[1]);
+        double aspect = aspect1;
+        Vector<double> scale = scale1;
+        if (index != 1) {
+            aspect = self.p.mode("HSM_2ND_SCREEN_ASPECT_RATIO_MODE") == 1 ? cropped[0] / cropped[1] : aspect1;
+            scale = self.secondScale(scale1, aspect);
+        }
+        Vector<double> offset = self.position(index, scale);
+        double empty = self.p.get("HSM_TUBE_EMPTY_THICKNESS");
+        Vector<double> diffuse = self.tubeScale(scale, empty * self.p.get("HSM_TUBE_EMPTY_THICKNESS_X_SCALE"), empty);
+        int force = self.p.mode("HSM_TUBE_DIFFUSE_FORCE_ASPECT");
+        if (force > 0) {
+            double explicitTube = self.p.get("HSM_TUBE_EXPLICIT_ASPECT");
+            double diffuseAspect = force == 1 ? aspect : (aspect > 1.0 ? explicitTube : 1.0 / explicitTube);
+            diffuse = [diffuse[1] * diffuseAspect / self.outputAspect, diffuse[1]];
+        }
+        double black = self.p.get("HSM_TUBE_BLACK_EDGE_THICKNESS");
+        Vector<double> tube = self.tubeScale(diffuse, black * self.p.get("HSM_TUBE_BLACK_EDGE_THICKNESS_X_SCALE"), black);
+        Vector<double> bezel = [tube[0] * (self.p.get("HSM_BZL_WIDTH") / aspect + 1.0), tube[1] * (self.p.get("HSM_BZL_HEIGHT") + 1.0)];
+        if (self.p.get("HSM_BZL_OUTER_POSITION_Y") != 0.0) { self.failure = "HSM_BZL_OUTER_POSITION_Y is not ported"; }
+        double cx = 0.5 + offset[0];
+        double cy = 0.5 + offset[1];
+        double radius = self.p.get("HSM_GLOBAL_CORNER_RADIUS") / 1000.0;
+        MegaBezelScreen result = MegaBezelScreen();
+        result.index = index;
+        result.aspect = aspect;
+        result.croppedWidth = cropped[0];
+        result.croppedHeight = cropped[1];
+        result.picture = BezelRect.centered(cx, cy, scale[0], scale[1]);
+        result.diffuse = BezelRect.centered(cx, cy, diffuse[0], diffuse[1]);
+        result.tube = BezelRect.centered(cx, cy, tube[0], tube[1]);
+        result.bezel = BezelRect.centered(cx, cy, bezel[0], bezel[1]);
+        result.pictureRadius = radius * self.p.get("HSM_SCREEN_CORNER_RADIUS_SCALE") * scale[1];
+        result.tubeRadius = radius * self.p.get("HSM_BZL_INNER_CORNER_RADIUS_SCALE") * tube[1];
+        result.bezelRadius = radius * self.p.get("HSM_BZL_OUTER_CORNER_RADIUS_SCALE") * bezel[1];
+        return result;
+    }
+
+    public MegaBezelLayerRect layer(string prefix, double textureAspect, MegaBezelScreen screen, MegaBezelLayerRect background, MegaBezelLayerRect device) {  // HSM_GetScaledCoord: where a BG, DEVICE, DECAL, CAB_GLASS, TOP or LED texture lands
+        double oa = self.outputAspect;
+        int follow = self.p.mode("HSM_" + prefix + "_FOLLOW_LAYER");
+        int mode = self.p.mode("HSM_" + prefix + "_FOLLOW_MODE");
+        double scaleX = self.p.get("HSM_" + prefix + "_SCALE") * self.p.get("HSM_" + prefix + "_SCALE_X");
+        double scaleY = self.p.get("HSM_" + prefix + "_SCALE");
+        double posX = self.p.get("HSM_" + prefix + "_POS_X");
+        double posY = self.p.get("HSM_" + prefix + "_POS_Y");
+        int fill = self.p.mode("HSM_" + prefix + "_FILL_MODE");
+        bool zoomed = true;
+        double inheritedW = 1.0;
+        double inheritedH = 1.0;
+        double centerX = 0.5;
+        double centerY = 0.5;
+        double defaultX = 1.0;
+        double defaultY = 1.0;
+        if (follow == 1) {
+            inheritedW = screen.diffuse.w;
+            inheritedH = screen.diffuse.h;
+            centerX = screen.diffuse.x + screen.diffuse.w / 2.0;
+            centerY = screen.diffuse.y + screen.diffuse.h / 2.0;
+            defaultX = textureAspect / (1.10585 / 0.8296) / 0.8296;
+            defaultY = 1.0 / 0.8296;
+        } else if (follow == 3 && background != null) {
+            inheritedW = background.rect.w; inheritedH = background.rect.h; centerX = background.rect.x + background.rect.w / 2.0; centerY = background.rect.y + background.rect.h / 2.0;
+        } else if (follow == 4 && device != null) {
+            inheritedW = device.rect.w; inheritedH = device.rect.h; centerX = device.rect.x + device.rect.w / 2.0; centerY = device.rect.y + device.rect.h / 2.0;
+        } else {
+            zoomed = self.p.flag("HSM_" + prefix + "_FOLLOW_FULL_USES_ZOOM");
+        }
+        double placementW = inheritedW * scaleX;
+        double placementH = inheritedH * scaleY;
+        if (mode != 1) {
+            double offsetX = scaleX * defaultX;
+            double offsetY = scaleY * defaultY;
+            double inheritedAspect = inheritedW / inheritedH * defaultX / defaultY * oa;
+            double difference = fill == 0 ? textureAspect / inheritedAspect : 1.0;
+            placementW = inheritedW * difference * offsetX;
+            placementH = inheritedH * offsetY;
+        }
+        return MegaBezelLayerRect(BezelRect.centered(centerX - posX * inheritedW, centerY - posY * inheritedH, placementW, placementH), zoomed);
+    }
+
+    public BezelRect toScreen(BezelRect rect, double zoom) {  // after HSM_VIEWPORT_ZOOM, pan and the viewport flips: what the monitor shows
+        double factor = zoom > 0.0 ? zoom : self.p.get("HSM_VIEWPORT_ZOOM");
+        double panX = self.p.get("HSM_VIEWPORT_POSITION_X");
+        double panY = self.p.get("HSM_VIEWPORT_POSITION_Y");
+        double x = (rect.x - panX - 0.5) * factor + 0.5;
+        double y = (rect.y - panY - 0.5) * factor + 0.5;
+        double w = rect.w * factor;
+        double h = rect.h * factor;
+        if (self.p.flag("HSM_FLIP_VIEWPORT_HORIZONTAL")) { x = 1.0 - x - w; }
+        if (self.p.flag("HSM_FLIP_VIEWPORT_VERTICAL")) { y = 1.0 - y - h; }
+        return BezelRect(x, y, w, h);
+    }
+
+    public bool flippedVertical() { return self.p.flag("HSM_FLIP_VIEWPORT_VERTICAL"); }
+
+    public bool flippedHorizontal() { return self.p.flag("HSM_FLIP_VIEWPORT_HORIZONTAL"); }
+
+    public string bezelColor() {  // bezel-images.inc: the sides color of the drawn bezel, noise averaged, back in sRGB
+        double hue = self.p.get("HSM_BZL_COLOR_HUE");
+        double saturation = self.p.get("HSM_BZL_COLOR_SATURATION");
+        double value = self.p.get("HSM_BZL_COLOR_VALUE");
+        double noise = 1.0 - 0.25 * self.p.get("HSM_BZL_NOISE");
+        double gain = self.p.get("HSM_BZL_BRIGHTNESS") * self.p.get("HSM_BZL_BRIGHTNESS_MULT_SIDES") * noise;
+        Vector<double> offsets = [1.0, 2.0 / 3.0, 1.0 / 3.0];
+        string hex = "#";
+        for offset in offsets {
+            double q = hue + offset;
+            q = q - BezelNumber.floor(q);
+            q = q * 6.0 - 3.0;
+            if (q < 0.0) { q = -q; }
+            double channel = value * (1.0 + (BezelNumber.clamp(q - 1.0, 0.0, 1.0) - 1.0) * saturation);
+            double linear = BezelNumber.clamp(MegaBezelPlacement.power(channel, 2.2) * gain, 0.0, 1.0);
+            hex = hex + MegaBezelPlacement.hexByte((int)(MegaBezelPlacement.power(linear, 1.0 / 2.2) * 255.0 + 0.5));
+        }
+        return hex;
+    }
+
+    class double power(double base, double exponent) {  // exp(exponent * ln(base)) through Math's float primitives
+        if (base <= 0.0) { return 0.0; }
+        return (double)Math.exp((float)(exponent * (double)Math.log((float)base)));
+    }
+
+    class string hexByte(int value) {
+        string digits = "0123456789abcdef";
+        int clamped = value < 0 ? 0 : (value > 255 ? 255 : value);
+        return digits.substring(clamped / 16, 1) + digits.substring(clamped % 16, 1);
+    }
+}

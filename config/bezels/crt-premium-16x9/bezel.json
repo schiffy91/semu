@@ -21,17 +21,17 @@
         "h": 522
       },
       "fit": "aspect",
-      "inset": 0.0,
+      "inset": 0,
       "shape": {
         "kind": "rounded",
-        "radius": 0.045,
-        "exponent": 4.0
+        "radius": 0.044999999999999998,
+        "exponent": 4
       },
       "surround": "#000000",
-      "curvature": 0.035,
-      "vignette": 0.2,
-      "bloom": 0.18,
-      "glow": 0.2,
+      "curvature": 0.035000000000000003,
+      "vignette": 0.20000000000000001,
+      "bloom": 0.17999999999999999,
+      "glow": 0.20000000000000001,
       "glass": {
         "asset": "assets/bezels/tv/tube-reflection.png",
         "reflect": 0.12
@@ -42,5 +42,29 @@
         "mode": "measured_continuous_opening"
       }
     }
-  ]
+  ],
+  "layers": [
+    {
+      "id": "art",
+      "file": "semu:assets/bezels/tv/crt-16x9.png",
+      "size": {
+        "w": 1280,
+        "h": 800
+      },
+      "order": 0,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 1280,
+        "h": 800
+      }
+    },
+    {
+      "id": "screens",
+      "order": 1,
+      "visible": true
+    }
+  ],
+  "canvas_layer": "art"
 }

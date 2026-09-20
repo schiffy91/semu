@@ -40,6 +40,7 @@
   <nav id="consoles"></nav>
   <select id="mode" title="Renderer"><option value="real">Real renderer</option><option value="fake">Fast preview</option></select>
   <select id="config" title="Screen configuration"></select>
+  <span id="sheets"></span>
 </header>
 <main id="main"></main>
 <footer id="footer"></footer>
@@ -58,7 +59,7 @@ function remember(key, value) { try { localStorage.setItem(key, value); } catch 
 
 function screenRows(screens) {
   if (!screens) return "";
-  return screens.map(s => `<tr><td><code>${s.id}</code></td><td>${rect(s.tube)}</td><td>${s.shape ? s.shape.kind + (s.shape.kind === "squircle" ? ` n=${s.shape.exponent}` : "") + " r=" + fmt(s.shape.radius) : "none"}</td><td>${s.fit}${s.inset ? ` inset ${fmt(s.inset)}` : ""}</td><td><span style="display:inline-block;width:12px;height:12px;background:${s.surround};border:1px solid #555;vertical-align:middle"></span> ${s.surround}</td><td>curve ${fmt(s.curvature)} · vignette ${fmt(s.vignette)} · bloom ${fmt(s.bloom)} · glow ${fmt(s.glow)}${s.glass ? ` · glass ${fmt(s.glass.reflect)}` : ""}</td><td>${s.shader ? `<code>${s.shader}</code>` : "system default"}</td></tr>`).join("");
+  return screens.map(s => `<tr><td><code>${s.id}</code></td><td>${rect(s.tube)}<br><small>picture ${rect(s.image)}${s.ring ? ` · ring ${rect(s.ring.inner)} → ${rect(s.ring.outer)} ${s.ring.color}` : ""}</small></td><td>${s.shape ? s.shape.kind + (s.shape.kind === "squircle" ? ` n=${s.shape.exponent}` : "") + " r=" + fmt(s.shape.radius) : "none"}</td><td>${s.fit}${s.inset ? ` inset ${fmt(s.inset)}` : ""}</td><td><span style="display:inline-block;width:12px;height:12px;background:${s.surround};border:1px solid #555;vertical-align:middle"></span> ${s.surround}</td><td>curve ${fmt(s.curvature)} · vignette ${fmt(s.vignette)} · bloom ${fmt(s.bloom)} · glow ${fmt(s.glow)}${s.glass ? ` · glass ${fmt(s.glass.reflect)}` : ""}</td><td>${s.shader ? `<code>${s.shader}</code>` : "system default"}</td></tr>`).join("");
 }
 
 function plate(label, p) {
@@ -73,13 +74,17 @@ function render() {
   remember("semu-gallery-system", system.id); remember("semu-gallery-config", config); remember("semu-gallery-mode", state.mode);
   modeSelect.value = state.mode;
   [...consoles.children].forEach(button => button.classList.toggle("active", button.dataset.id === system.id));
+  document.getElementById("sheets").innerHTML = manifest.sheets ? `<a href="${manifest.sheets.dimensions}" style="color:var(--accent)">Dimensions</a> · <a href="${manifest.sheets.overlay}" style="color:var(--accent)">Overlays</a>` : "";
   configSelect.value = config;
   const screens = system.screens.map(s => `${s.id} ${s.native.w}x${s.native.h}`).join(", ");
-  let html = `<div class="system">${system.name} · screens: ${screens} · shader default: <code>${system.shader_default || "none"}</code> (${system.shader_variants.join(", ") || "none"})</div>`;
+  const failing = manifest.systems.flatMap(s => s.variants.flatMap(v => Object.entries(v.checks || {}).flatMap(([cfg, items]) => items.filter(i => !i.ok).map(i => `${s.id}/${v.id} @ ${cfg} screen ${i.screen}`))));
+  let html = failing.length ? `<div class="system" style="color:#ff7b72">Geometry checks failing: ${failing.join("; ")}</div>` : "";
+  html += `<div class="system">${system.name} · screens: ${screens} · shader default: <code>${system.shader_default || "none"}</code> (${system.shader_variants.join(", ") || "none"})</div>`;
   for (const v of system.variants) {
     html += `<section class="variant">
       <h2>${v.label}${v.default ? '<span class="badge">default</span>' : ""}<small>${v.bezel ? `<code>${v.bezel}</code> · ${v.family} · ${v.layout}` : "bezels off"}</small></h2>
       ${(() => { const c = v.captures[config] || {}; const src = c[state.mode] || c.real || c.fake; const other = c[state.mode] ? "" : ` (showing ${c.real ? "real" : "fast"} render: no ${state.mode === "real" ? "real" : "fast"} render yet)`; return src ? `<div class="capture"><img loading="lazy" src="${src}" alt="${system.id} ${v.id} ${config}"></div><div class="system">${state.mode === "real" ? "Real renderer" : "Fast preview"}${other}</div>` : `<div class="system">no render</div>`; })()}
+      ${(() => { const items = (v.checks || {})[config]; if (!items) return ""; return `<div class="system">Renderer check: ${items.map(i => `screen ${i.screen} ${i.ok ? "ok" : "OFF"} (dx ${i.delta ? i.delta.join(", ") : "n/a"})`).join(" · ")}</div>`; })()}
       <div class="plates">${plate("Art plate", v.art)}${plate("Background", v.background)}</div>
       <details><summary>Package facts</summary>
         ${v.frame ? `<div>Drawn frame: width ${fmt(v.frame.width)} · radius ${fmt(v.frame.radius)} · ${v.frame.color}</div>` : ""}

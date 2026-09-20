@@ -100,6 +100,26 @@ class SemuRenderEnvironment {
         return opening.isEmpty() ? SemuRenderEnvironment.rect(screen.get("image"), canvas) : opening;
     }
 
+    class double shortSide(JSONValue rect) {
+        double w = atof(SemuRenderEnvironment.numberOr(rect, "w", "0"));
+        double h = atof(SemuRenderEnvironment.numberOr(rect, "h", "0"));
+        return w < h ? w : h;
+    }
+
+    class string ring(JSONValue screen, JSONValue canvas) {  // inner rect, outer rect, corner radii as fractions of each rect's short side, r,g,b
+        JSONValue ring = screen.get("ring");
+        if (ring == null || !ring.isObject()) { return ""; }
+        string inner = SemuRenderEnvironment.rect(ring.get("inner"), canvas);
+        string outer = SemuRenderEnvironment.rect(ring.get("outer"), canvas);
+        if (inner.isEmpty() || outer.isEmpty()) { return ""; }
+        double innerSide = SemuRenderEnvironment.shortSide(ring.get("inner"));
+        double outerSide = SemuRenderEnvironment.shortSide(ring.get("outer"));
+        double innerRadius = atof(SemuRenderEnvironment.numberOr(ring, "inner_radius", "0"));
+        double outerRadius = atof(SemuRenderEnvironment.numberOr(ring, "outer_radius", "0"));
+        string radii = f"{SemuRenderEnvironment.fraction(innerSide > 0.0 ? innerRadius / innerSide : 0.0)},{SemuRenderEnvironment.fraction(outerSide > 0.0 ? outerRadius / outerSide : 0.0)}";
+        return f"{inner},{outer},{radii},{SemuRenderEnvironment.color(SemuJson.textAt(ring, "color"), "0.1,0.1,0.1")}";
+    }
+
     class string color(string hex, string fallback) {  // #rrggbb -> r,g,b in 0..1
         if (hex.len() != 7 || !hex.startsWith("#")) { return fallback; }
         int channels[3];
@@ -184,6 +204,7 @@ class SemuRenderEnvironment {
             if (screen.isObject()) {
                 env.set(f"SEMU_RENDER_SCREEN_{index}{suffix}", SemuRenderEnvironment.tube(screen, package.get("canvas")));
                 env.set(f"SEMU_RENDER_SCREEN_{index}_IMAGE{suffix}", SemuRenderEnvironment.rect(screen.get("image"), package.get("canvas")));  // where the upstream preset puts the picture inside the opening
+                env.set(f"SEMU_RENDER_SCREEN_{index}_RING{suffix}", SemuRenderEnvironment.ring(screen, package.get("canvas")));  // the upstream preset's drawn bezel between the black edge and the opening
                 env.set(f"SEMU_RENDER_SCREEN_{index}_LOOK{suffix}", SemuRenderEnvironment.look(screen));
                 env.set(f"SEMU_RENDER_SCREEN_{index}_SURROUND{suffix}", SemuRenderEnvironment.color(SemuJson.textAt(screen, "surround"), "0,0,0"));
                 JSONValue glass = screen.get("glass");

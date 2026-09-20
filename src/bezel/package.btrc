@@ -1,0 +1,391 @@
+// Bezel packages from the resolved presets: every texture the preset draws becomes a layer with
+// its Mega Bezel draw order, visibility and placement; one layer is the canvas (the addressable
+// pixel grid every rectangle is expressed in); the screens layer carries the picture, black edge,
+// bezel ring and opening per screen. Writes config/bezels/<id>/bezel.json and keeps what a
+// measurement or the editor already put there when the math agrees with it.
+import Library.Bytes;
+import Library.Console;
+import Library.Datetime;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Map;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ./preset.btrc;
+import ./placement.btrc;
+
+class ImageSize {  // pixel dimensions from a PNG IHDR or a JPEG start-of-frame, without decoding
+    public int w;
+    public int h;
+
+    public ImageSize(int w, int h) { self.w = w; self.h = h; }
+
+    class int be16(Bytes data, int at) { return data.get(at) * 256 + data.get(at + 1); }
+
+    class int be32(Bytes data, int at) { return ((data.get(at) * 256 + data.get(at + 1)) * 256 + data.get(at + 2)) * 256 + data.get(at + 3); }
+
+    class ImageSize of(string path) {
+        Bytes data = FileSystem.readBytes(path);
+        if (data.len >= 24 && data.get(0) == 137 && data.get(1) == 80 && data.get(2) == 78 && data.get(3) == 71) { return ImageSize(ImageSize.be32(data, 16), ImageSize.be32(data, 20)); }
+        if (data.len >= 4 && data.get(0) == 255 && data.get(1) == 216) {
+            int at = 2;
+            while (at + 9 < data.len) {
+                if (data.get(at) != 255) { at++; continue; }
+                int marker = data.get(at + 1);
+                if (marker == 255) { at++; continue; }
+                int length = ImageSize.be16(data, at + 2);
+                if ((marker >= 192 && marker <= 195) || (marker >= 197 && marker <= 199) || (marker >= 201 && marker <= 203) || (marker >= 205 && marker <= 207)) {
+                    return ImageSize(ImageSize.be16(data, at + 7), ImageSize.be16(data, at + 5));
+                }
+                at = at + 2 + length;
+            }
+        }
+        return ImageSize(0, 0);
+    }
+}
+
+class BezelLayer {  // one layer of a package: a texture the preset draws, or the screens themselves
+    public string id;
+    public string texture;   // Mega Bezel texture key, "" for the screens
+    public string prefix;    // Mega Bezel parameter prefix
+    public string file;      // "upstream:relative" or "semu:config-relative"
+    public string path;      // absolute file
+    public int width;
+    public int height;
+    public double order;
+    public bool visible;
+    public BezelRect rect;   // viewport fractions; null for the screens
+
+    public BezelLayer(string id, string texture, string prefix) {
+        self.id = id;
+        self.texture = texture;
+        self.prefix = prefix;
+        self.file = "";
+        self.path = "";
+        self.width = 0;
+        self.height = 0;
+        self.order = 0.0;
+        self.visible = true;
+        self.rect = null;
+    }
+
+    public JSONValue toJson(BezelRect frame, int canvasWidth, int canvasHeight) {
+        JSONValue value = JSONValue.makeObject();
+        value.set("id", JSONValue.makeString(self.id));
+        if (!self.texture.isEmpty()) { value.set("texture", JSONValue.makeString(self.texture)); }
+        if (!self.file.isEmpty()) {
+            value.set("file", JSONValue.makeString(self.file));
+            JSONValue size = JSONValue.makeObject();
+            size.set("w", JSONValue.makeInt(self.width));
+            size.set("h", JSONValue.makeInt(self.height));
+            value.set("size", size);
+        }
+        value.set("order", JSONValue.makeFloat(self.order));
+        value.set("visible", JSONValue.makeBool(self.visible));
+        if (self.rect != null && frame != null) { value.set("rect", self.rect.mapped(frame, (double)canvasWidth, (double)canvasHeight).rounded()); }
+        return value;
+    }
+}
+
+class BezelRepository {  // the packages and the systems that bind them
+    public string configRoot;
+
+    public BezelRepository(string configRoot) { self.configRoot = configRoot; }
+
+    public string packagePath(string id) { return PathTools.join(PathTools.join(PathTools.join(self.configRoot, "bezels"), id), "bezel.json"); }
+
+    public JSONValue package(string id) {
+        if (id.isEmpty() || id.contains("/") || id.contains("..") || !FileSystem.isFile(self.packagePath(id))) { return null; }
+        return JSONValue.readFile(self.packagePath(id));
+    }
+
+    public Vector<string> packageIds() {
+        Vector<string> ids = [];
+        for name in FileSystem.listDir(PathTools.join(self.configRoot, "bezels")).sorted() { if (FileSystem.isFile(self.packagePath(name))) { ids.push(name); } }
+        return ids;
+    }
+
+    public JSONValue system(string id) {
+        string path = PathTools.join(PathTools.join(PathTools.join(self.configRoot, "systems"), id), "system.json");
+        return FileSystem.isFile(path) ? JSONValue.readFile(path) : null;
+    }
+
+    public Map<string, Vector<string>> bindings() {  // package id -> system ids, in system order
+        Map<string, Vector<string>> found = {};
+        for system in FileSystem.listDir(PathTools.join(self.configRoot, "systems")).sorted() {
+            string path = PathTools.join(PathTools.join(PathTools.join(self.configRoot, "systems"), system), "bezels.json");
+            if (!FileSystem.isFile(path)) { continue; }
+            JSONValue variants = JSONValue.readFile(path).get("variants");
+            if (variants == null || !variants.isArray()) { continue; }
+            for (int index = 0; index < variants.size(); index++) {
+                string bezel = SemuJson.textAt(variants.at(index), "bezel");
+                if (bezel.isEmpty()) { continue; }
+                if (!found.has(bezel)) { Vector<string> systems = []; found.put(bezel, systems); }
+                found.get(bezel).push(system);
+            }
+        }
+        return found;
+    }
+
+    public Vector<string> upstreamIds() {
+        Vector<string> ids = [];
+        for id in self.packageIds() { JSONValue package = self.package(id); if (package != null && package.get("upstream") != null && package.get("upstream").isObject()) { ids.push(id); } }
+        return ids;
+    }
+
+    public void save(string id, JSONValue package) { FileSystem.writeText(self.packagePath(id), package.stringifyPretty(2) + "\n"); }
+}
+
+class BezelGeometry {  // one package: its preset, screens, layers and the canvas they map into
+    public MegaBezelTree tree;
+    public string packageId;
+    public JSONValue package;
+    public JSONValue system;
+    public MegaBezelPreset preset;
+    public MegaBezelParams params;
+    public MegaBezelPlacement placement;
+    public int count;
+    public Vector<MegaBezelScreen> screens;
+    public Vector<BezelLayer> layers;
+    public BezelLayer canvasLayer;
+    public string failure;
+
+    public BezelGeometry(MegaBezelTree tree, string packageId, JSONValue package, JSONValue system) {
+        self.tree = tree;
+        self.packageId = packageId;
+        self.package = package;
+        self.system = system;
+        self.screens = [];
+        self.layers = [];
+        self.canvasLayer = null;
+        self.failure = "";
+        JSONValue displayScreens = SemuJson.get(system, "display.screens");
+        self.count = displayScreens != null && displayScreens.isArray() ? displayScreens.size() : 1;
+        int coreWidth = 0;
+        int coreHeight = 0;
+        for (int index = 0; index < self.count; index++) {  // the frame the core hands RetroArch: one screen, or the screens stacked
+            JSONValue native = displayScreens.at(index).get("native");
+            int w = SemuJson.intAt(native, "w", 0);
+            int h = SemuJson.intAt(native, "h", 0);
+            if (w > coreWidth) { coreWidth = w; }
+            coreHeight = coreHeight + h;
+        }
+        self.preset = MegaBezelPreset(tree.presetPath(SemuJson.textAt(package, "upstream.preset")));
+        if (self.preset.chain.size() == 0) { self.failure = "preset not found: " + SemuJson.textAt(package, "upstream.preset"); return; }
+        if (self.preset.missing.size() > 0) { self.failure = "missing textures: " + Strings.join(self.preset.missing, ", "); return; }
+        self.params = MegaBezelParams(self.preset, tree.defaults);
+        self.placement = MegaBezelPlacement(self.params, coreWidth, coreHeight, 3840, 2160);
+        for (int index = 1; index <= self.count; index++) { self.screens.push(self.placement.screen(index)); }
+        if (!self.placement.failure.isEmpty()) { self.failure = self.placement.failure; return; }
+        self.stack();
+    }
+
+    class Vector<string> textureKeys() { return ["BackgroundImage", "DeviceImage", "DecalImage", "CabinetGlassImage", "TopLayerImage", "LEDImage", "DeviceLEDImage"]; }
+
+    class string layerId(string texture) {
+        if (texture.equals("BackgroundImage")) { return "background"; }
+        if (texture.equals("DeviceImage")) { return "device"; }
+        if (texture.equals("DecalImage")) { return "decal"; }
+        if (texture.equals("CabinetGlassImage")) { return "glass"; }
+        if (texture.equals("TopLayerImage")) { return "top"; }
+        if (texture.equals("LEDImage")) { return "led"; }
+        return "device_led";
+    }
+
+    class string prefix(string texture) {
+        if (texture.equals("BackgroundImage")) { return "BG"; }
+        if (texture.equals("DeviceImage")) { return "DEVICE"; }
+        if (texture.equals("DecalImage")) { return "DECAL"; }
+        if (texture.equals("CabinetGlassImage")) { return "CAB_GLASS"; }
+        if (texture.equals("TopLayerImage")) { return "TOP"; }
+        if (texture.equals("LEDImage")) { return "LED"; }
+        return "DEVICELED";
+    }
+
+    public void stack() {  // the textures the preset draws, placed like bezel-images.inc places them, ordered like its LAYER_ORDER parameters
+        MegaBezelLayerRect background = null;
+        MegaBezelLayerRect device = null;
+        Vector<BezelLayer> found = [];
+        for texture in BezelGeometry.textureKeys() {
+            string path = self.preset.texture(texture);
+            if (path.isEmpty()) { continue; }
+            ImageSize size = ImageSize.of(path);
+            if (size.w <= 16 || size.h <= 16) { continue; }  // Mega Bezel's placeholders are 16x16
+            BezelLayer layer = BezelLayer(BezelGeometry.layerId(texture), texture, BezelGeometry.prefix(texture));
+            layer.file = self.tree.reference(path);
+            layer.path = path;
+            layer.width = size.w;
+            layer.height = size.h;
+            layer.order = self.params.get("HSM_" + layer.prefix + "_LAYER_ORDER");
+            layer.visible = self.params.get("HSM_" + layer.prefix + "_OPACITY") > 0.0;
+            MegaBezelLayerRect placed = self.placement.layer(layer.prefix, (double)size.w / (double)size.h, self.screens[0], background, device);
+            layer.rect = placed.rect;
+            if (texture.equals("BackgroundImage")) { background = placed; }
+            if (texture.equals("DeviceImage")) { device = placed; }
+            found.push(layer);
+        }
+        BezelLayer screens = BezelLayer("screens", "", "CRT");
+        screens.order = self.params.get("HSM_CRT_LAYER_ORDER");
+        found.push(screens);
+        while (found.size() > 0) {  // ascending draw order, ties in Mega Bezel's own sequence
+            int best = 0;
+            for (int index = 1; index < found.size(); index++) { if (found[index].order < found[best].order) { best = index; } }
+            self.layers.push(found[best]);
+            Vector<BezelLayer> rest = [];
+            for (int index = 0; index < found.size(); index++) { if (index != best) { rest.push(found[index]); } }
+            found = rest;
+        }
+        for layer in self.layers { if (layer.id.equals("device") && layer.visible) { self.canvasLayer = layer; } }
+        if (self.canvasLayer == null) { for layer in self.layers { if (layer.id.equals("background")) { self.canvasLayer = layer; } } }
+        if (self.canvasLayer == null) { self.failure = "the preset draws no background or device layer to hold the canvas"; }
+    }
+
+    public BezelRect frame() { return self.canvasLayer.rect; }
+
+    public BezelRect plateRect(BezelRect rect) { return rect.mapped(self.frame(), (double)self.canvasLayer.width, (double)self.canvasLayer.height); }
+
+    public double plateRadius(double fraction) { return fraction * (double)self.canvasLayer.height / self.frame().h; }
+
+    public BezelLayer layer(string id) {
+        for layer in self.layers { if (layer.id.equals(id)) { return layer; } }
+        return null;
+    }
+}
+
+class BezelPackageWriter {
+    public BezelRepository repository;
+    public MegaBezelTree tree;
+
+    public BezelPackageWriter(BezelRepository repository, MegaBezelTree tree) {
+        self.repository = repository;
+        self.tree = tree;
+    }
+
+    class JSONValue rectJson(BezelRect rect) { return rect.rounded(); }
+
+    class double shortSide(JSONValue rect) {
+        double w = BezelNumber.of(rect.get("w"));
+        double h = BezelNumber.of(rect.get("h"));
+        return w < h ? w : h;
+    }
+
+    public string emit(string packageId) {  // "" on success, else why
+        JSONValue package = self.repository.package(packageId);
+        if (package == null) { return "no such package"; }
+        Map<string, Vector<string>> bindings = self.repository.bindings();
+        if (!bindings.has(packageId)) { return "bound by no system"; }
+        JSONValue system = self.repository.system(bindings.get(packageId)[0]);
+        BezelGeometry geometry = BezelGeometry(self.tree, packageId, package, system);
+        if (!geometry.failure.isEmpty()) { return geometry.failure; }
+        JSONValue canvas = JSONValue.makeObject();
+        canvas.set("w", JSONValue.makeInt(geometry.canvasLayer.width));
+        canvas.set("h", JSONValue.makeInt(geometry.canvasLayer.height));
+        package.set("canvas", canvas);
+        package.set("canvas_layer", JSONValue.makeString(geometry.canvasLayer.id));
+        JSONValue layers = JSONValue.makeArray();
+        for layer in geometry.layers { layers.push(layer.toJson(geometry.frame(), geometry.canvasLayer.width, geometry.canvasLayer.height)); }
+        package.set("layers", layers);
+        package.set("frame", JSONValue.makeNull());  // the computed ring replaces any drawn frame
+        JSONValue screens = package.get("screens");
+        if (screens == null || !screens.isArray() || screens.size() != geometry.count) { return f"{geometry.count} screens on the system, {screens == null ? 0 : screens.size()} in the package"; }
+        for (int index = 0; index < geometry.count; index++) { self.screen(geometry, index, screens.at(index)); }
+        self.repository.save(packageId, package);
+        return "";
+    }
+
+    public void screen(BezelGeometry geometry, int index, JSONValue screen) {
+        MegaBezelScreen placed = geometry.screens[index];
+        BezelRect image = geometry.plateRect(placed.picture);
+        BezelRect edge = geometry.plateRect(placed.tube);
+        BezelRect bezel = geometry.plateRect(placed.bezel);
+        BezelRect existing = BezelRect.fromJson(screen.get("tube"));
+        string opening = "bezel_outer";
+        BezelRect tube = bezel;
+        if (existing != null && existing.contains(bezel, 2.0) && existing.w < bezel.w * 1.6 && existing.h < bezel.h * 1.6) { tube = existing; opening = "kept"; }  // a measured hole or lens, or the editor's own edit, that holds the drawn bezel
+        screen.set("image", BezelPackageWriter.rectJson(image));
+        screen.set("tube", BezelPackageWriter.rectJson(tube));
+        if (geometry.params.get("HSM_BZL_OPACITY") > 0.0) {
+            JSONValue ring = JSONValue.makeObject();
+            ring.set("inner", BezelPackageWriter.rectJson(edge));
+            ring.set("outer", BezelPackageWriter.rectJson(bezel));
+            ring.set("inner_radius", JSONValue.makeFloat(geometry.plateRadius(placed.tubeRadius)));
+            ring.set("outer_radius", JSONValue.makeFloat(geometry.plateRadius(placed.bezelRadius)));
+            ring.set("color", JSONValue.makeString(geometry.placement.bezelColor()));
+            screen.set("ring", ring);
+        } else if (screen.has("ring")) { screen.set("ring", JSONValue.makeNull()); }
+        screen.set("aspect", JSONValue.makeFloat(placed.aspect));
+        screen.set("fit", JSONValue.makeString("aspect"));
+        if (opening.equals("bezel_outer") || screen.get("shape") == null || !screen.get("shape").isObject()) {
+            JSONValue shape = JSONValue.makeObject();
+            shape.set("kind", JSONValue.makeString("rounded"));
+            double side = tube.w < tube.h ? tube.w : tube.h;
+            shape.set("radius", JSONValue.makeFloat(side > 0.0 ? geometry.plateRadius(placed.bezelRadius) / side : 0.0));
+            shape.set("exponent", JSONValue.makeFloat(4.0));
+            screen.set("shape", shape);
+        }
+        if (SemuJson.textAt(screen, "surround").isEmpty()) { screen.set("surround", JSONValue.makeString("#000000")); }
+        screen.set("inset", JSONValue.makeNull());
+        screen.set("measurement", JSONValue.makeNull());
+        JSONValue provenance = JSONValue.makeObject();
+        provenance.set("tool", JSONValue.makeString("semu bezel emit"));
+        provenance.set("preset", JSONValue.makeString(SemuJson.textAt(geometry.package, "upstream.preset")));
+        provenance.set("viewport", JSONValue.makeString("3840x2160"));
+        provenance.set("core", JSONValue.makeString(f"{(int)geometry.placement.coreWidth}x{(int)geometry.placement.coreHeight}"));
+        provenance.set("screen", JSONValue.makeInt(index + 1));
+        JSONValue flip = JSONValue.makeArray();
+        flip.push(JSONValue.makeBool(geometry.placement.flippedVertical()));
+        flip.push(JSONValue.makeBool(geometry.placement.flippedHorizontal()));
+        provenance.set("flip", flip);
+        provenance.set("canvas_layer", JSONValue.makeString(geometry.canvasLayer.id));
+        provenance.set("opening", JSONValue.makeString(opening));
+        JSONValue parameters = JSONValue.makeObject();
+        for name in geometry.params.used.keys().sorted() { parameters.set(name, JSONValue.makeString(geometry.params.used.get(name))); }
+        provenance.set("parameters", parameters);
+        screen.set("provenance", provenance);
+    }
+
+    public string inherit(string packageId) {  // recolors and re-cuts share their base's geometry
+        JSONValue package = self.repository.package(packageId);
+        string baseId = SemuJson.textAt(package, "geometry_from");
+        JSONValue base = self.repository.package(baseId);
+        if (base == null) { return "geometry_from names no package: " + baseId; }
+        for key in ["canvas", "canvas_layer", "layers", "frame"] { if (base.has(key)) { package.set(key, base.get(key)); } }
+        JSONValue screens = package.get("screens");
+        JSONValue source = base.get("screens");
+        for (int index = 0; index < screens.size() && index < source.size(); index++) {
+            for key in ["tube", "image", "ring", "aspect", "shape", "surround", "provenance"] { if (source.at(index).has(key)) { screens.at(index).set(key, source.at(index).get(key)); } }
+            screens.at(index).set("inset", JSONValue.makeNull());
+            screens.at(index).set("measurement", JSONValue.makeNull());
+        }
+        self.repository.save(packageId, package);
+        return "";
+    }
+
+    public string plain(string packageId) {  // a Semu-owned plate with no preset: its art is the one layer and the canvas
+        JSONValue package = self.repository.package(packageId);
+        if (package == null || package.has("layers")) { return ""; }
+        string art = SemuJson.textAt(package, "art");
+        if (art.isEmpty()) { return ""; }
+        string path = PathTools.join(self.repository.configRoot, art);
+        ImageSize size = ImageSize.of(path);
+        if (size.w <= 0) { return "unreadable art " + art; }
+        JSONValue canvas = package.get("canvas");
+        int canvasWidth = SemuJson.intAt(canvas, "w", size.w);
+        int canvasHeight = SemuJson.intAt(canvas, "h", size.h);
+        BezelLayer layer = BezelLayer("art", "", "");
+        layer.file = "semu:" + art;
+        layer.width = size.w;
+        layer.height = size.h;
+        layer.rect = BezelRect(0.0, 0.0, 1.0, 1.0);
+        JSONValue layers = JSONValue.makeArray();
+        layers.push(layer.toJson(BezelRect(0.0, 0.0, 1.0, 1.0), canvasWidth, canvasHeight));
+        BezelLayer screens = BezelLayer("screens", "", "CRT");
+        screens.order = 1.0;
+        layers.push(screens.toJson(null, canvasWidth, canvasHeight));
+        package.set("layers", layers);
+        package.set("canvas_layer", JSONValue.makeString("art"));
+        self.repository.save(packageId, package);
+        return "";
+    }
+}

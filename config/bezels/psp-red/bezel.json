@@ -1,16 +1,12 @@
 {
   "schema_version": 1,
   "id": "psp-red",
-  "label": "PSP \u00b7 Deep Red",
+  "label": "PSP · Deep Red",
   "family": "handheld",
   "layout": "fixed",
   "art": "assets/bezels/psp/red.png",
   "background": "assets/bezels/backgrounds/desk-night.png",
-  "frame": {
-    "width": 0.035,
-    "radius": 0.02,
-    "color": "#0c0c0c"
-  },
+  "frame": null,
   "canvas": {
     "w": 5335,
     "h": 2160
@@ -19,51 +15,158 @@
     {
       "id": "main",
       "tube": {
-        "x": 1406,
-        "y": 419,
-        "w": 2523,
-        "h": 1420
+        "x": 1282,
+        "y": 191,
+        "w": 2771,
+        "h": 1610
       },
       "fit": "aspect",
-      "inset": 0.0,
       "shape": {
         "kind": "rounded",
-        "radius": 0.0099,
-        "exponent": 4.0
+        "radius": 0.0054000000000000003,
+        "exponent": 4
       },
-      "surround": "#101010",
-      "curvature": 0.0,
-      "vignette": 0.06,
-      "bloom": 0.0,
-      "glow": 0.08,
+      "surround": "#2c2c2c",
+      "curvature": 0,
+      "vignette": 0.059999999999999998,
+      "bloom": 0,
+      "glow": 0.080000000000000002,
       "glass": {
         "asset": "assets/bezels/tv/tube-reflection.png",
-        "reflect": 0.18
+        "reflect": 0.17999999999999999
       },
       "shader": null,
-      "measurement": {
-        "tool": "physical_proportions",
-        "device_bbox": {
-          "x": 186,
-          "y": 30,
-          "w": 4963,
-          "h": 2106
+      "image": {
+        "x": 1338,
+        "y": 248,
+        "w": 2659,
+        "h": 1496
+      },
+      "ring": {
+        "inner": {
+          "x": 1330,
+          "y": 241,
+          "w": 2675,
+          "h": 1511
         },
-        "device_mm": {
-          "w": 172,
-          "h": 73
+        "outer": {
+          "x": 1282,
+          "y": 191,
+          "w": 2771,
+          "h": 1610
         },
-        "screen_mm": {
-          "w": 95.2,
-          "h": 53.6
-        },
-        "screen_center": {
-          "x": 0.5,
-          "y": 0.48
-        },
-        "note": "PSP-E1000 art has no drawn screen edge; the panel is placed from the device's real proportions between the controls"
-      }
+        "inner_radius": 12.087345575959935,
+        "outer_radius": 8.6932884404674464,
+        "color": "#0f0f0f"
+      },
+      "aspect": 1.7777000000000001,
+      "provenance": {
+        "tool": "semu bezel emit",
+        "preset": "Presets/Standard/SONY_PSP/PSP-[STD]-[Guest].slangp",
+        "viewport": "3840x2160",
+        "core": "480x272",
+        "screen": 1,
+        "flip": [
+          false,
+          false
+        ],
+        "canvas_layer": "device",
+        "opening": "kept",
+        "parameters": {
+          "HSM_ASPECT_RATIO_EXPLICIT": "1.3332999999999999",
+          "HSM_ASPECT_RATIO_MODE": "4.000000",
+          "HSM_BG_LAYER_ORDER": "0",
+          "HSM_BG_OPACITY": "100",
+          "HSM_BG_POS_X": "0",
+          "HSM_BG_POS_Y": "0",
+          "HSM_BG_SCALE": "100",
+          "HSM_BG_SCALE_X": "100",
+          "HSM_BZL_BRIGHTNESS": "30",
+          "HSM_BZL_BRIGHTNESS_MULT_SIDES": "100",
+          "HSM_BZL_COLOR_HUE": "0",
+          "HSM_BZL_COLOR_SATURATION": "0",
+          "HSM_BZL_COLOR_VALUE": "10",
+          "HSM_BZL_HEIGHT": "75.000000",
+          "HSM_BZL_INNER_CORNER_RADIUS_SCALE": "80",
+          "HSM_BZL_NOISE": "10.000000",
+          "HSM_BZL_OPACITY": "100",
+          "HSM_BZL_OUTER_CORNER_RADIUS_SCALE": "60",
+          "HSM_BZL_OUTER_POSITION_Y": "0",
+          "HSM_BZL_SCALE_OFFSET": "100",
+          "HSM_BZL_WIDTH": "75.000000",
+          "HSM_CROP_PERCENT_BOTTOM": "0",
+          "HSM_CROP_PERCENT_LEFT": "0",
+          "HSM_CROP_PERCENT_RIGHT": "0",
+          "HSM_CROP_PERCENT_TOP": "0",
+          "HSM_CROP_PERCENT_ZOOM": "0",
+          "HSM_CRT_LAYER_ORDER": "5",
+          "HSM_DEVICE_LAYER_ORDER": "3",
+          "HSM_DEVICE_OPACITY": "100",
+          "HSM_DEVICE_POS_X": "0",
+          "HSM_DEVICE_POS_Y": "-5.600000",
+          "HSM_DEVICE_SCALE": "119.800000",
+          "HSM_DEVICE_SCALE_X": "100",
+          "HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS": "0",
+          "HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION": "0",
+          "HSM_GLOBAL_CORNER_RADIUS": "10",
+          "HSM_NON_INTEGER_SCALE": "69.170212",
+          "HSM_NON_INTEGER_SCALE_OFFSET": "100",
+          "HSM_ROTATE_CORE_IMAGE": "0",
+          "HSM_SCREEN_CORNER_RADIUS_SCALE": "100",
+          "HSM_SCREEN_POSITION_X": "0",
+          "HSM_SCREEN_POSITION_Y": "38.000000",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS": "100",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EMPTY_THICKNESS": "0",
+          "HSM_TUBE_EMPTY_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EXPLICIT_ASPECT": "1.3332999999999999"
+        }
+      },
+      "inset": null,
+      "measurement": null
     }
   ],
-  "calibrate_like": "psp-e1000"
+  "geometry_from": "psp-e1000",
+  "canvas_layer": "device",
+  "layers": [
+    {
+      "id": "background",
+      "texture": "BackgroundImage",
+      "file": "duimon_mega_bezel:Graphics/_Backgrounds/Canvas_Background.jpg",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "order": 0,
+      "visible": true,
+      "rect": {
+        "x": 745,
+        "y": -3,
+        "w": 3845,
+        "h": 2163
+      }
+    },
+    {
+      "id": "device",
+      "texture": "DeviceImage",
+      "file": "duimon_mega_bezel:Graphics/SONY_PSP/PSP_Wide.png",
+      "size": {
+        "w": 5335,
+        "h": 2160
+      },
+      "order": 3,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 5335,
+        "h": 2160
+      }
+    },
+    {
+      "id": "screens",
+      "order": 5,
+      "visible": true
+    }
+  ]
 }

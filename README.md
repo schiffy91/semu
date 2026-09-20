@@ -120,13 +120,17 @@ Flycast, PPSSPP and Dolphin today). The launcher passes the system's shader pres
 selected bezel package (`config/bezels/<id>/bezel.json`: plate, background,
 layout, frame and per-screen tube, shape, look, glass and shader) through
 `SEMU_RENDER_*`, bound by `config/systems/<id>/{shaders,bezels}.json`.
-Screen openings are measured with `tools/bezel-measure.py`, and the picture
-rectangle inside each opening comes from `tools/bezel-calibrate.py`, which
-renders the package's upstream Mega Bezel preset (Duimon, Soqueroeu) in real
-RetroArch with the synthetic core lighting one flat screen at a time and reads
-the lit rectangle back into the package as `screens[].image`; art is rendered
-from pinned upstream layers by `nix build .#bezel-generate` and baked into
-`config/assets`. `tools/bezel-gallery.py build/bezel-gallery` renders every
+Package geometry comes from the pinned Mega Bezel presets, not from a render:
+`semu bezel resolve` follows a package's upstream preset chain the way
+RetroArch does, `semu bezel emit` ports Mega Bezel's own placement math to
+write each screen's picture, black edge, bezel ring and opening plus the
+preset's texture stack as layers (`layers`, `canvas_layer`), and `semu bezel
+edit` serves an editor on `http://127.0.0.1:8765/` where every layer can be
+hidden, reordered or made the canvas and every rectangle and corner radius
+dragged at integer zoom, with Save writing the package back. Openings
+measured with `tools/bezel-measure.py` are kept when they hold the drawn
+bezel; art is rendered from pinned upstream layers by `nix build
+.#bezel-generate` and baked into `config/assets`. `tools/bezel-gallery.py build/bezel-gallery` renders every
 system's bezel variants for the Steam Deck (1280x800) and a 4K PC (3840x2160)
 and writes a static site (`index.html`: consoles across the top, renderer and
 screen configuration top right, one section per variant with the composed

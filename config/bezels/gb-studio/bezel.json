@@ -21,17 +21,17 @@
         "h": 535
       },
       "fit": "aspect",
-      "inset": 0.0,
+      "inset": 0,
       "shape": {
         "kind": "rounded",
-        "radius": 0.0336,
-        "exponent": 4.0
+        "radius": 0.033599999999999998,
+        "exponent": 4
       },
       "surround": "#3c4632",
-      "curvature": 0.0,
-      "vignette": 0.06,
-      "bloom": 0.0,
-      "glow": 0.08,
+      "curvature": 0,
+      "vignette": 0.059999999999999998,
+      "bloom": 0,
+      "glow": 0.080000000000000002,
       "glass": null,
       "shader": null,
       "measurement": {
@@ -39,5 +39,29 @@
         "mode": "aspect_constrained_lens_fit"
       }
     }
-  ]
+  ],
+  "layers": [
+    {
+      "id": "art",
+      "file": "semu:assets/bezels/gb/classic.png",
+      "size": {
+        "w": 1065,
+        "h": 1477
+      },
+      "order": 0,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 1065,
+        "h": 1477
+      }
+    },
+    {
+      "id": "screens",
+      "order": 1,
+      "visible": true
+    }
+  ],
+  "canvas_layer": "art"
 }

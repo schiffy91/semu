@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "gba-arctic",
-  "label": "Game Boy Advance \u00b7 Arctic",
+  "label": "Game Boy Advance · Arctic",
   "family": "handheld",
   "layout": "fixed",
   "art": "assets/bezels/gba/arctic.png",
@@ -21,32 +21,270 @@
         "h": 1890
       },
       "fit": "aspect",
-      "inset": 0.11,
       "shape": {
         "kind": "squircle",
-        "radius": 0.2939,
-        "exponent": 4.0
+        "radius": 0.29389999999999999,
+        "exponent": 4
       },
-      "surround": "#26264a",
-      "curvature": 0.0,
-      "vignette": 0.06,
-      "bloom": 0.0,
-      "glow": 0.08,
+      "surround": "#1a1a1a",
+      "curvature": 0,
+      "vignette": 0.059999999999999998,
+      "bloom": 0,
+      "glow": 0.080000000000000002,
       "glass": {
         "asset": "assets/bezels/gba/glass.png",
-        "reflect": 0.3
+        "reflect": 0.29999999999999999
       },
       "shader": null,
-      "measurement": {
-        "tool": "tools/bezel-measure.py",
-        "mode": "opaque",
-        "layer": "GBA_Glass.png",
-        "corner_radius_px": 555.4
-      }
+      "image": {
+        "x": 1310,
+        "y": 555,
+        "w": 1780,
+        "h": 1187
+      },
+      "ring": {
+        "inner": {
+          "x": 1304,
+          "y": 549,
+          "w": 1792,
+          "h": 1199
+        },
+        "outer": {
+          "x": 1283,
+          "y": 528,
+          "w": 1834,
+          "h": 1241
+        },
+        "inner_radius": 9.5933295774647895,
+        "outer_radius": 6.7016736402388739,
+        "color": "#141414"
+      },
+      "aspect": 1.5,
+      "provenance": {
+        "tool": "semu bezel emit",
+        "preset": "Presets/Advanced/Nintendo_GBA/GBA-[ADV]-[LCD-GRID].slangp",
+        "viewport": "3840x2160",
+        "core": "240x160",
+        "screen": 1,
+        "flip": [
+          false,
+          false
+        ],
+        "canvas_layer": "device",
+        "opening": "kept",
+        "parameters": {
+          "HSM_ASPECT_RATIO_EXPLICIT": "1.3332999999999999",
+          "HSM_ASPECT_RATIO_MODE": "3.000000",
+          "HSM_BG_LAYER_ORDER": "0",
+          "HSM_BG_OPACITY": "100",
+          "HSM_BG_POS_X": "0",
+          "HSM_BG_POS_Y": "0",
+          "HSM_BG_SCALE": "100",
+          "HSM_BG_SCALE_X": "100",
+          "HSM_BZL_BRIGHTNESS": "30",
+          "HSM_BZL_BRIGHTNESS_MULT_SIDES": "100",
+          "HSM_BZL_COLOR_HUE": "0",
+          "HSM_BZL_COLOR_SATURATION": "0",
+          "HSM_BZL_COLOR_VALUE": "14.000000",
+          "HSM_BZL_HEIGHT": "40.000000",
+          "HSM_BZL_INNER_CORNER_RADIUS_SCALE": "80",
+          "HSM_BZL_NOISE": "10.000000",
+          "HSM_BZL_OPACITY": "100",
+          "HSM_BZL_OUTER_CORNER_RADIUS_SCALE": "60",
+          "HSM_BZL_OUTER_POSITION_Y": "0",
+          "HSM_BZL_SCALE_OFFSET": "100",
+          "HSM_BZL_WIDTH": "40.000000",
+          "HSM_CAB_GLASS_LAYER_ORDER": "6.000000",
+          "HSM_CAB_GLASS_OPACITY": "100",
+          "HSM_CAB_GLASS_POS_X": "0",
+          "HSM_CAB_GLASS_POS_Y": "0",
+          "HSM_CAB_GLASS_SCALE": "100",
+          "HSM_CAB_GLASS_SCALE_X": "100",
+          "HSM_CROP_PERCENT_BOTTOM": "0",
+          "HSM_CROP_PERCENT_LEFT": "0",
+          "HSM_CROP_PERCENT_RIGHT": "0",
+          "HSM_CROP_PERCENT_TOP": "0",
+          "HSM_CROP_PERCENT_ZOOM": "0",
+          "HSM_CRT_LAYER_ORDER": "9.000000",
+          "HSM_DECAL_LAYER_ORDER": "2.000000",
+          "HSM_DECAL_OPACITY": "100",
+          "HSM_DECAL_POS_X": "0",
+          "HSM_DECAL_POS_Y": "0",
+          "HSM_DECAL_SCALE": "100",
+          "HSM_DECAL_SCALE_X": "100",
+          "HSM_DEVICELED_LAYER_ORDER": "4",
+          "HSM_DEVICELED_OPACITY": "100",
+          "HSM_DEVICELED_POS_X": "0",
+          "HSM_DEVICELED_POS_Y": "0",
+          "HSM_DEVICELED_SCALE": "100",
+          "HSM_DEVICELED_SCALE_X": "100",
+          "HSM_DEVICE_LAYER_ORDER": "3.000000",
+          "HSM_DEVICE_OPACITY": "100",
+          "HSM_DEVICE_POS_X": "0",
+          "HSM_DEVICE_POS_Y": "-10.200000",
+          "HSM_DEVICE_SCALE": "177.500000",
+          "HSM_DEVICE_SCALE_X": "100",
+          "HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS": "0",
+          "HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION": "0",
+          "HSM_GLOBAL_CORNER_RADIUS": "10",
+          "HSM_LED_LAYER_ORDER": "1.000000",
+          "HSM_LED_OPACITY": "100.000000",
+          "HSM_LED_POS_X": "0",
+          "HSM_LED_POS_Y": "0",
+          "HSM_LED_SCALE": "100",
+          "HSM_LED_SCALE_X": "100",
+          "HSM_NON_INTEGER_SCALE": "57.570000",
+          "HSM_NON_INTEGER_SCALE_OFFSET": "100",
+          "HSM_ROTATE_CORE_IMAGE": "0",
+          "HSM_SCREEN_CORNER_RADIUS_SCALE": "100",
+          "HSM_SCREEN_POSITION_X": "0",
+          "HSM_SCREEN_POSITION_Y": "0.000000",
+          "HSM_TOP_LAYER_ORDER": "7.000000",
+          "HSM_TOP_OPACITY": "100",
+          "HSM_TOP_POS_X": "0",
+          "HSM_TOP_POS_Y": "0",
+          "HSM_TOP_SCALE": "100",
+          "HSM_TOP_SCALE_X": "100",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS": "100",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EMPTY_THICKNESS": "0",
+          "HSM_TUBE_EMPTY_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EXPLICIT_ASPECT": "1.3332999999999999"
+        }
+      },
+      "inset": null,
+      "measurement": null
     }
   ],
   "doc": {
     "lens": "the AGB-001 lens is a squircle; the 3:2 LCD sits inside it with the measured surround margin"
   },
-  "calibrate_like": "gba-shell"
+  "geometry_from": "gba-shell",
+  "canvas_layer": "device",
+  "layers": [
+    {
+      "id": "background",
+      "texture": "BackgroundImage",
+      "file": "duimon_mega_bezel:Graphics/_Backgrounds/Canvas_Background.jpg",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "order": 0,
+      "visible": true,
+      "rect": {
+        "x": 367,
+        "y": 118,
+        "w": 3666,
+        "h": 2062
+      }
+    },
+    {
+      "id": "led",
+      "texture": "LEDImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_GBA/GBA_LED.png",
+      "size": {
+        "w": 4400,
+        "h": 2540
+      },
+      "order": 1,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 4400,
+        "h": 2540
+      }
+    },
+    {
+      "id": "decal",
+      "texture": "DecalImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_GBA/GBA_Decal.png",
+      "size": {
+        "w": 4400,
+        "h": 2540
+      },
+      "order": 2,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 4400,
+        "h": 2540
+      }
+    },
+    {
+      "id": "device",
+      "texture": "DeviceImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_GBA/GBA_Device.png",
+      "size": {
+        "w": 4400,
+        "h": 2540
+      },
+      "order": 3,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 4400,
+        "h": 2540
+      }
+    },
+    {
+      "id": "device_led",
+      "texture": "DeviceLEDImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_GBA/GBA_Device_LED.png",
+      "size": {
+        "w": 4400,
+        "h": 2540
+      },
+      "order": 4,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 4400,
+        "h": 2540
+      }
+    },
+    {
+      "id": "glass",
+      "texture": "CabinetGlassImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_GBA/GBA_Glass.png",
+      "size": {
+        "w": 4400,
+        "h": 2540
+      },
+      "order": 6,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 4400,
+        "h": 2540
+      }
+    },
+    {
+      "id": "top",
+      "texture": "TopLayerImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_GBA/GBA_Top.png",
+      "size": {
+        "w": 4400,
+        "h": 2540
+      },
+      "order": 7,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 4400,
+        "h": 2540
+      }
+    },
+    {
+      "id": "screens",
+      "order": 9,
+      "visible": true
+    }
+  ]
 }

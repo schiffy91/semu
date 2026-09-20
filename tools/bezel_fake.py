@@ -14,6 +14,7 @@ class Lane:
         self.native_w, self.native_h = native_w, native_h
         self.out = (0, 0, 0, 0)
         self.tube = (0, 0, 0, 0)
+        self.ring = None  # (inner, outer) pixel rects of the drawn bezel
 
 
 class Screen:  # one SEMU_RENDER_SCREEN_<n>* group
@@ -32,6 +33,9 @@ class Screen:  # one SEMU_RENDER_SCREEN_<n>* group
         self.surround = tuple(float(v) for v in surround.split(",")) if surround else (0.0, 0.0, 0.0)
         self.glass = key("_GLASS")
         self.shader = key("_SHADER")
+        ring = key("_RING")
+        parts = [float(v) for v in ring.split(",")] if ring else []
+        self.ring = {"inner": tuple(parts[0:4]), "outer": tuple(parts[4:8]), "inner_radius": parts[8], "outer_radius": parts[9], "color": tuple(parts[10:13])} if len(parts) == 13 else None
 
 
 class Package:  # one variant's environment (suffix "" is the primary, "_B" the widescreen alternate)
@@ -198,6 +202,10 @@ class FakeCompositor:
                     ix, iy, iw, ih = p.screens[index].image
                     image = (round(cx + ix * cw), round(cy + iy * ch), round(iw * cw), round(ih * ch))
                 Geometry.place_in_tube(lane, p.screens[index], tube, self.aspect if len(self.lanes) == 1 else None, False, image)
+                ring = p.screens[index].ring
+                if ring:
+                    place = lambda r: (round(cx + r[0] * cw), round(cy + r[1] * ch), round(r[2] * cw), round(r[3] * ch))
+                    lane.ring = (place(ring["inner"]), place(ring["outer"]))
             return
         if len(self.lanes) == 1:
             margin = layout_frame if bezel and p.frame else 0
@@ -314,6 +322,18 @@ class FakeCompositor:
             if look and screen.glass and screen.reflect > 0:
                 glass = np.asarray(Image.open(screen.glass).convert("RGBA").resize((tw, th), Image.LANCZOS), dtype=np.float32) / 255.0
                 region = 1.0 - (1.0 - region) * (1.0 - glass[..., :3] * glass[..., 3:4] * min(screen.reflect, 1.0))
+            if look and lane.ring and screen.ring:  # the upstream preset's bezel between the black edge and the opening
+                ly, lx = np.mgrid[0:th, 0:tw].astype(np.float32)
+                inner = (lane.ring[0][0] - tx, lane.ring[0][1] - ty, lane.ring[0][2], lane.ring[0][3])
+                outer = (lane.ring[1][0] - tx, lane.ring[1][1] - ty, lane.ring[1][2], lane.ring[1][3])
+                ring = self.shape_mask(lx, ly, outer, 1, screen.ring["outer_radius"], 2.0) * (1.0 - self.shape_mask(lx, ly, inner, 1, screen.ring["inner_radius"], 2.0))
+                ex = np.abs(lx - (outer[0] + outer[2] / 2)) / (outer[2] / 2)
+                ey = np.abs(ly - (outer[1] + outer[3] / 2)) / (outer[3] / 2)
+                edge = np.maximum(ex, ey)
+                shade = 0.7 + 0.4 * np.clip((edge - 0.82) / 0.18, 0, 1) ** 2
+                bevel = np.clip((edge - 0.985) / 0.015, 0, 1) * 0.22
+                color = np.array(screen.ring["color"], dtype=np.float32)[None, None, :] * shade[..., None] + bevel[..., None]
+                region = region * (1 - ring[..., None]) + color * ring[..., None]
             mask = tube_masks[index][ty:ty + th, tx:tx + tw, None]
             patch = base[ty:ty + th, tx:tx + tw]
             base[ty:ty + th, tx:tx + tw] = patch * (1 - mask) + region[: patch.shape[0], : patch.shape[1]] * mask
