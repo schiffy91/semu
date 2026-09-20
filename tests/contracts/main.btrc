@@ -301,7 +301,7 @@ class RenderingContract {
         bool nesRing = false;
         bool nesReflect = false;
         for entry in nesTv {
-            if (entry.startsWith("SEMU_RENDER_SCREEN_0_REFLECT=1,0.95,1,")) { nesReflect = true; }  // GLOBAL_AMOUNT 50 x (DIRECT 150 + DIFFUSED 50) clamps to 1, BLUR_MAX 95, FADE_AMOUNT 100, then the frame reach
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0_REFLECT=0.7,0.95,1,")) { nesReflect = true; }  // GLOBAL_AMOUNT 50 x (DIRECT 150 + DIFFUSED 50) x 0.7, BLUR_MAX 95, FADE_AMOUNT 100, then the frame reach
             if (entry.startsWith("SEMU_RENDER_SCREEN_0_IMAGE=0.275781,0.123148,0.448437,0.597685")) { nesImage = true; }  // 1059,266,1722,1291: HSM_NON_INTEGER_SCALE 59.77 at 4:3, POSITION_Y 78
             if (entry.startsWith("SEMU_RENDER_SCREEN_0_RING=0.273698,0.119444,0.452604,0.605093,0.246354,0.099537,0.507292,0.644907,") && entry.endsWith(",0.0901961,0.0941176,0.0980392,1")) { nesRing = true; }  // black edge to bezel edge, bezel color #171819
         }
