@@ -44,5 +44,10 @@
         "corner_radius_px": 82.8
       }
     }
-  ]
+  ],
+  "upstream": {
+    "kind": "device",
+    "preset": "Presets/Advanced/Nintendo_Game_Boy_Color/GBC-[ADV]-[LCD-GRID].slangp",
+    "silhouette": "Graphics/Nintendo_Game_Boy_Color/GBC_Device.png"
+  }
 }

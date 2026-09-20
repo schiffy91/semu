@@ -47,5 +47,6 @@
   ],
   "doc": {
     "lens": "the AGB-001 lens is a squircle; the 3:2 LCD sits inside it with the measured surround margin"
-  }
+  },
+  "calibrate_like": "gba-shell"
 }

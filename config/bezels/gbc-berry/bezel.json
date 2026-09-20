@@ -44,5 +44,6 @@
         "corner_radius_px": 82.8
       }
     }
-  ]
+  ],
+  "calibrate_like": "gbc-shell"
 }

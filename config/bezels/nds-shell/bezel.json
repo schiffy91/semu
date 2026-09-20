@@ -19,20 +19,13 @@
   "screens": [
     {
       "id": "top",
-      "tube": {
-        "x": 11,
-        "y": 235,
-        "w": 2650,
-        "h": 1502
-      },
       "fit": "aspect",
-      "inset": 0.02,
       "shape": {
         "kind": "rounded",
         "radius": 0.0067,
         "exponent": 4.0
       },
-      "surround": "#1b1b1b",
+      "surround": "#282828",
       "curvature": 0.0,
       "vignette": 0.05,
       "bloom": 0.0,
@@ -43,26 +36,41 @@
       },
       "shader": null,
       "measurement": {
-        "tool": "luma_profile",
-        "note": "dark outline minima at x=7, y=231, y=1740; the right edge has no drawn line and mirrors the left margin"
+        "tool": "tools/bezel-calibrate.py",
+        "preset": "Presets/Advanced/Nintendo_NDS/NDS-[ADV]-[Guest].slangp",
+        "viewport": "3840x2160",
+        "cards_px": [
+          [
+            74,
+            299,
+            1809,
+            1377
+          ],
+          [
+            1957,
+            298,
+            1809,
+            1378
+          ]
+        ],
+        "screen": 0
+      },
+      "image": {
+        "x": 74,
+        "y": 299,
+        "w": 1809,
+        "h": 1377
       }
     },
     {
       "id": "bottom",
-      "tube": {
-        "x": 2728,
-        "y": 1120,
-        "w": 1100,
-        "h": 630
-      },
       "fit": "aspect",
-      "inset": 0.02,
       "shape": {
         "kind": "rounded",
         "radius": 0.0127,
         "exponent": 4.0
       },
-      "surround": "#1b1b1b",
+      "surround": "#282828",
       "curvature": 0.0,
       "vignette": 0.05,
       "bloom": 0.0,
@@ -73,12 +81,38 @@
       },
       "shader": null,
       "measurement": {
-        "tool": "luma_profile",
-        "note": "outline minima at x=2724, x=3832, y=1116, y=1753"
+        "tool": "tools/bezel-calibrate.py",
+        "preset": "Presets/Advanced/Nintendo_NDS/NDS-[ADV]-[Guest].slangp",
+        "viewport": "3840x2160",
+        "cards_px": [
+          [
+            74,
+            299,
+            1809,
+            1377
+          ],
+          [
+            1957,
+            298,
+            1809,
+            1378
+          ]
+        ],
+        "screen": 1
+      },
+      "image": {
+        "x": 1957,
+        "y": 298,
+        "w": 1809,
+        "h": 1378
       }
     }
   ],
   "doc": {
-    "frame": "the Duimon openings are wider than the screens; an inset drawn bezel around the fitted game turns the leftover into a real-looking inner frame, as Duimon's own presets draw"
+    "plate": "Duimon face with the decal windows; openings and images come from calibrating Duimon's own preset"
+  },
+  "upstream": {
+    "kind": "scene",
+    "preset": "Presets/Advanced/Nintendo_NDS/NDS-[ADV]-[Guest].slangp"
   }
 }

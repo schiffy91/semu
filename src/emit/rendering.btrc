@@ -81,8 +81,7 @@ class SemuRenderEnvironment {
         return __btrc_str_track(buffer);
     }
 
-    class string tube(JSONValue screen, JSONValue canvas) {  // canvas pixels -> normalized top-left rectangle
-        JSONValue rect = screen == null ? null : screen.get("tube");
+    class string rect(JSONValue rect, JSONValue canvas) {  // canvas pixels -> normalized top-left rectangle
         if (rect == null || !rect.isObject() || canvas == null || !canvas.isObject()) { return ""; }
         double width = atof(SemuRenderEnvironment.numberOr(canvas, "w", "0"));
         double height = atof(SemuRenderEnvironment.numberOr(canvas, "h", "0"));
@@ -93,6 +92,12 @@ class SemuRenderEnvironment {
         double h = atof(SemuRenderEnvironment.numberOr(rect, "h", "0"));
         if (x < 0.0 || y < 0.0 || w <= 0.0 || h <= 0.0 || x + w > width + 0.5 || y + h > height + 0.5) { return ""; }
         return f"{SemuRenderEnvironment.fraction(x / width)},{SemuRenderEnvironment.fraction(y / height)},{SemuRenderEnvironment.fraction(w / width)},{SemuRenderEnvironment.fraction(h / height)}";
+    }
+
+    class string tube(JSONValue screen, JSONValue canvas) {  // the opening; a calibrated image rectangle stands in when no opening was measured
+        if (screen == null) { return ""; }
+        string opening = SemuRenderEnvironment.rect(screen.get("tube"), canvas);
+        return opening.isEmpty() ? SemuRenderEnvironment.rect(screen.get("image"), canvas) : opening;
     }
 
     class string color(string hex, string fallback) {  // #rrggbb -> r,g,b in 0..1
@@ -178,6 +183,7 @@ class SemuRenderEnvironment {
             JSONValue screen = bezel ? SemuBezelPackage.screen(package, id) : JSONValue.makeNull();
             if (screen.isObject()) {
                 env.set(f"SEMU_RENDER_SCREEN_{index}{suffix}", SemuRenderEnvironment.tube(screen, package.get("canvas")));
+                env.set(f"SEMU_RENDER_SCREEN_{index}_IMAGE{suffix}", SemuRenderEnvironment.rect(screen.get("image"), package.get("canvas")));  // where the upstream preset puts the picture inside the opening
                 env.set(f"SEMU_RENDER_SCREEN_{index}_LOOK{suffix}", SemuRenderEnvironment.look(screen));
                 env.set(f"SEMU_RENDER_SCREEN_{index}_SURROUND{suffix}", SemuRenderEnvironment.color(SemuJson.textAt(screen, "surround"), "0,0,0"));
                 JSONValue glass = screen.get("glass");

@@ -64,5 +64,6 @@
         "note": "PSP-E1000 art has no drawn screen edge; the panel is placed from the device's real proportions between the controls"
       }
     }
-  ]
+  ],
+  "calibrate_like": "psp-e1000"
 }

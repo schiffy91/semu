@@ -19,12 +19,6 @@
   "screens": [
     {
       "id": "top",
-      "tube": {
-        "x": 36,
-        "y": 377,
-        "w": 2628,
-        "h": 1641
-      },
       "fit": "aspect",
       "inset": 0.02,
       "shape": {
@@ -51,12 +45,6 @@
     },
     {
       "id": "bottom",
-      "tube": {
-        "x": 2785,
-        "y": 1086,
-        "w": 1012,
-        "h": 764
-      },
       "fit": "aspect",
       "inset": 0.02,
       "shape": {
@@ -83,6 +71,10 @@
     }
   ],
   "doc": {
-    "frame": "the Duimon openings are wider than the screens; an inset drawn bezel around the fitted game turns the leftover into a real-looking inner frame, as Duimon's own presets draw"
+    "plate": "Duimon face with the decal windows; openings and images come from calibrating Duimon's own preset"
+  },
+  "upstream": {
+    "kind": "scene",
+    "preset": "Presets/Advanced/Nintendo_3DS/3DS-[ADV]-[Guest].slangp"
   }
 }

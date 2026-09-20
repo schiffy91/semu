@@ -143,31 +143,25 @@
       }
     },
     "assets/bezels/nds/vertical.png": {
-      "type": "local",
-      "path": "config/assets/bezels/nds/vertical.png",
-      "output": {
-        "width": 2560,
-        "height": 1600,
-        "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "1be8bf26fe6cd2cce8bda139841b8fc8de18b2fe6fe3ec2e1af0cbd217037663"
-      },
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_NDS/NDS_Vertical.png",
+        "Graphics/Nintendo_NDS/NDS_Vertical_Decal.png"
+      ],
       "doc": {
-        "provenance": "Committed source (un-fetchable): originally baked from Duimon NDS_Vertical_Alt-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
+        "why": "Duimon vertical DS clamshell: device and decal plates flattened"
       }
     },
     "assets/bezels/n3ds/vertical.png": {
-      "type": "local",
-      "path": "config/assets/bezels/n3ds/vertical.png",
-      "output": {
-        "width": 2560,
-        "height": 1600,
-        "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "35b5c194e5224ea1d7c7182113b519ad97bf5e3898d28143163b45ecc256e68f"
-      },
+      "type": "flatten",
+      "from": "duimon_mega_bezel",
+      "layers": [
+        "Graphics/Nintendo_3DS/3DS_Vertical.png",
+        "Graphics/Nintendo_3DS/3DS_Vertical_Decal.png"
+      ],
       "doc": {
-        "provenance": "Committed source (un-fetchable): originally baked from Duimon 3DS_Vertical_Alt-[ADV]-[Guest].slangp via bake_bezels.sh (librashader, day variant, intro off). Lives in-tree at its final bezels/ path; bake-bezels round-trips it identically."
+        "why": "Duimon vertical 3DS clamshell: device and decal plates flattened"
       }
     },
     "assets/bezels/tv/crt-4x3-silver.png": {
@@ -276,7 +270,7 @@
       "type": "scene",
       "from": "soqueroeu_tv",
       "layers": [
-        "img/Nintendo_SuperNintendo/SuperNES.png"
+        "img/Nintendo_SuperNintendo/SuperNES_V2_Solid_A.png"
       ],
       "resize": "2560x1440",
       "ambient": {
@@ -292,14 +286,14 @@
         "height": 1440,
         "bit_depth": 8,
         "color_type": 6,
-        "sha256": "0fadf7fb26f06399e013ccfe3739c99d91d1a20de581086f10d4a08dfa458a73"
+        "sha256": "ab42dd8d7d3a6b30385bc54674cff01cb642abc6d85e5a278af9b2f63d5a2c43"
       }
     },
     "assets/bezels/tv/soqueroeu/genesis.png": {
       "type": "scene",
       "from": "soqueroeu_tv",
       "layers": [
-        "img/Sega_Genesis/Sega_Genesis.png"
+        "img/Sega_Genesis/Sega_Genesis_Solid_A.png"
       ],
       "resize": "2560x1440",
       "ambient": {
@@ -315,7 +309,7 @@
         "height": 1440,
         "bit_depth": 8,
         "color_type": 6,
-        "sha256": "dbe7929ed11c8ac89ce33c505b068527e94f4153267c637e5a7213a8aec586e1"
+        "sha256": "f962669dc93e42321fdcc3d779b9430494fb29e58b497cc3feb96cce4a6a527a"
       }
     },
     "assets/bezels/tv/soqueroeu/psx.png": {
@@ -345,7 +339,7 @@
       "type": "scene",
       "from": "soqueroeu_tv",
       "layers": [
-        "img/Sony_Playstation2/PS2.png"
+        "img/Sony_Playstation2/PS2_Solid.png"
       ],
       "resize": "2560x1440",
       "ambient": {
@@ -361,14 +355,14 @@
         "height": 1440,
         "bit_depth": 8,
         "color_type": 6,
-        "sha256": "9da4afd75cabc0e87b1e50444909da82c8e54e92c55be2c39ec079b1a7861b63"
+        "sha256": "65244745a2437e9efac51b52a3862c01cf8e87e38dd12249985255b11a88c3d3"
       }
     },
     "assets/bezels/tv/soqueroeu/gc.png": {
       "type": "scene",
       "from": "soqueroeu_tv",
       "layers": [
-        "img/Nintendo_GameCube/GameCube.png"
+        "img/Nintendo_GameCube/GameCube_Solid.png"
       ],
       "resize": "2560x1440",
       "ambient": {
@@ -384,7 +378,7 @@
         "height": 1440,
         "bit_depth": 8,
         "color_type": 6,
-        "sha256": "86d829670a217b0d2541fd88d4b11a6acdd16fd0452b57b23e74f4bbf9d94172"
+        "sha256": "d1d2aef42ebd049ef735d39b143d1185905903b4aca428d09b597639847fb0e6"
       }
     },
     "assets/bezels/tv/soqueroeu/wii.png": {
@@ -574,16 +568,27 @@
       }
     },
     "assets/bezels/n3ds/shell.png": {
-      "type": "copy",
+      "type": "flatten",
       "from": "duimon_mega_bezel",
-      "path": "Graphics/Nintendo_3DS/3DS.png",
-      "file_sha256": "d0127d6966ffda8c792752cbcd2b064bb555302c114d1edecc501b10bd398cb0"
+      "layers": [
+        "Graphics/Nintendo_3DS/3DS.png",
+        "Graphics/Nintendo_3DS/3DS_Decal.png"
+      ],
+      "doc": {
+        "why": "Duimon 3DS face: device and decal plates flattened"
+      }
     },
     "assets/bezels/nds/shell.png": {
-      "type": "copy",
+      "type": "flatten",
       "from": "duimon_mega_bezel",
-      "path": "Graphics/Nintendo_NDS/NDS.png",
-      "file_sha256": "a7f88dd5ffe8a8ab17abe7f752333e1da8d32e1e786ee5cbdb38b0cb120b1edb"
+      "layers": [
+        "Graphics/Nintendo_NDS/NDS.png",
+        "Graphics/Nintendo_NDS/NDS_Decal.png",
+        "Graphics/Nintendo_NDS/NDS_Top.png"
+      ],
+      "doc": {
+        "why": "Duimon DS face: device, decal and top plates flattened; the two screen windows live on the decal"
+      }
     },
     "assets/bezels/tv/tube-reflection.png": {
       "type": "glass",
