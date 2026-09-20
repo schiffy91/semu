@@ -307,6 +307,9 @@ class RenderingContract {
         }
         contract.expect(nesImage && nesRing, "the NES picture and bezel ring follow Soqueroeu's preset");
         contract.expect(nesReflect, "the NES ring reflection strength, blur and fade come from the preset");
+        bool compositorDir = false;
+        for entry in nesTv { if (entry.startsWith("SEMU_RENDER_COMPOSITOR_DIR=") && entry.endsWith("/config/render")) { compositorDir = true; } }
+        contract.expect(compositorDir && FileSystem.isFile(PathTools.join(fixture.project, "config/render/compositor.frag")) && FileSystem.isFile(PathTools.join(fixture.project, "config/render/compositor.vert")), "the compositor shader is data under config/render and the launch points the renderer at it");
         FileSystem.mkdirp(PathTools.join(assets, "share/libretro/shaders/semu/nes"));
         FileSystem.writeText(PathTools.join(assets, "share/libretro/shaders/semu/nes/screen.slangp"), "#reference x\n");
         Vector<string> nesFull = SemuRenderEnvironment.compile(fixture.plan, nes, "retroarch", "/state/retroarch", fixture.diagnostics);

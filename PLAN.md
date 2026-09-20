@@ -746,7 +746,15 @@ Update this block whenever a milestone criterion changes state.
   and it keeps going past the drawn bezel by `reflection.reach {x,y}` px,
   defaulted from the preset's frame (HSM_FRM_THICKNESS x 0.0007): the
   Soqueroeu PSX, Wii, N64 and Dreamcast scenes draw a 16 px bezel and were
-  invisible without it. The crt-premium / crt-silver plates were deleted on
+  invisible without it. The compositor GLSL is data since 2026-09-20:
+  `config/render/compositor.{vert,frag}` (the launch sets
+  `SEMU_RENDER_COMPOSITOR_DIR`), read by the renderer at start and re-read
+  once a second while a game runs, so a shader edit shows in the running
+  game without rebuilding anything; a broken edit keeps the last good
+  program and logs. Still to do: the emulators link libsemurenderer
+  directly (PCSX2's and RetroArch's flakes take src/renderer as an input),
+  so renderer code changes rebuild PCSX2; dlopen against the ABI header
+  would end that. The crt-premium / crt-silver plates were deleted on
   2026-09-20 (the user did not want them; every TV system has its Soqueroeu
   scene, Switch and Wii U stay bezel-free by design). Cutout handles became zones: the knob at a corner or
   edge middle sizes (Shift keeps the ratio), and just beyond it the same
