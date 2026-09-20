@@ -21,7 +21,7 @@ stdenv.mkDerivation {
   buildPhase = ''
     btrcpy libsemurenderer.btrc -o semu_renderer.c --strict-imports --no-cache --no-stdlib --no-dce
     $CC -c semu_renderer.c -o semu_renderer.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function \
-      -DLIBRA_RUNTIME_OPENGL=1 -DSTB_IMAGE_IMPLEMENTATION -DSTBI_ONLY_PNG -I${librashader}/include -I.
+      -DLIBRA_RUNTIME_OPENGL=1 -DSTB_IMAGE_IMPLEMENTATION -DSTBI_ONLY_PNG -DSTBI_ONLY_JPEG -I${librashader}/include -I.
     cat > exports.map <<'MAP'
     { global: semu_render_context_invalidate_gl; semu_render_game_gl; semu_render_post_ui_gl; local: *; };
     MAP

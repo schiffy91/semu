@@ -344,6 +344,19 @@ class RenderingContract {
             if (entry.startsWith("SEMU_RENDER_FRAME=")) { shellFrame = true; }
         }
         contract.expect(shellRing && !shellFrame, "the shell draws Duimon's bezel ring, not a frame");
+        int layerCount = 0;
+        bool deviceBelow = false;
+        bool topAbove = false;
+        bool coverBackground = false;
+        for entry in dual {
+            if (entry.startsWith("SEMU_RENDER_LAYER_COUNT=")) { layerCount = Strings.toInt(entry.substring(24, entry.len() - 24)); }
+            if (entry.startsWith("SEMU_RENDER_LAYER_") && entry.contains("/NDS.png|0,0,1,1|0|0|")) { deviceBelow = true; }
+            if (entry.startsWith("SEMU_RENDER_LAYER_") && entry.contains("/NDS_Top.png|0,0,1,1|1|0|")) { topAbove = true; }
+            if (entry.startsWith("SEMU_RENDER_LAYER_") && entry.contains("/Canvas_Background.jpg|0,0,1,1|0|0|")) { coverBackground = true; }
+        }
+        if (layerCount > 0) { contract.expect(deviceBelow && topAbove && coverBackground, "the DS layer stack reaches the compositor: the canvas-sized background and face under the screens, the top plate over them"); }
+        else { Console.log("layer stack: skipped, the upstream layers are not staged on this host"); }
+        contract.expect(dual.contains("SEMU_RENDER_CANVAS=3840,2160") || layerCount == 0, "the layer canvas is the DS face's own pixel grid");
         SemuPlan computed = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"main_right\"}}}}", diagnostics);
         Vector<string> computedEnv = SemuRenderEnvironment.compile(computed, nds, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(computedEnv.contains("SEMU_RENDER_BEZELS=1") && computedEnv.contains("SEMU_RENDER_LAYOUT=main_right") && computedEnv.contains("SEMU_RENDER_BEZEL_ID=dual-main-right"), "the computed main-right layout is an alternate that needs no plate");

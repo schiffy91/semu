@@ -55,6 +55,9 @@ class BezelLayer {  // one layer of a package: a texture the preset draws, or th
     public int height;
     public double order;
     public bool visible;
+    public bool viewport;    // follows the viewport (Mega Bezel FOLLOW_LAYER 0): covers the canvas wherever the viewport sits
+    public string blend;     // normal | add | multiply, Mega Bezel's BLEND_MODE
+    public double opacity;
     public BezelRect rect;   // viewport fractions; null for the screens
 
     public BezelLayer(string id, string texture, string prefix) {
@@ -67,6 +70,9 @@ class BezelLayer {  // one layer of a package: a texture the preset draws, or th
         self.height = 0;
         self.order = 0.0;
         self.visible = true;
+        self.viewport = false;
+        self.blend = "normal";
+        self.opacity = 1.0;
         self.rect = null;
     }
 
@@ -83,6 +89,9 @@ class BezelLayer {  // one layer of a package: a texture the preset draws, or th
         }
         value.set("order", JSONValue.makeFloat(self.order));
         value.set("visible", JSONValue.makeBool(self.visible));
+        value.set("follow", JSONValue.makeString(self.viewport ? "viewport" : "canvas"));
+        value.set("blend", JSONValue.makeString(self.blend));
+        value.set("opacity", JSONValue.makeFloat(self.opacity));
         if (self.rect != null && frame != null) { value.set("rect", self.rect.mapped(frame, (double)canvasWidth, (double)canvasHeight).rounded()); }
         return value;
     }
@@ -218,9 +227,13 @@ class BezelGeometry {  // one package: its preset, screens, layers and the canva
             layer.width = size.w;
             layer.height = size.h;
             layer.order = self.params.get("HSM_" + layer.prefix + "_LAYER_ORDER");
-            layer.visible = self.params.get("HSM_" + layer.prefix + "_OPACITY") > 0.0;
+            layer.opacity = self.params.get("HSM_" + layer.prefix + "_OPACITY");
+            int blend = self.params.mode("HSM_" + layer.prefix + "_BLEND_MODE");
+            layer.blend = blend == 2 ? "add" : (blend == 3 ? "multiply" : "normal");
+            layer.visible = layer.opacity > 0.0 && blend != 0;
             MegaBezelLayerRect placed = self.placement.layer(layer.prefix, (double)size.w / (double)size.h, self.screens[0], background, device);
             layer.rect = placed.rect;
+            layer.viewport = self.params.mode("HSM_" + layer.prefix + "_FOLLOW_LAYER") == 0;
             if (texture.equals("BackgroundImage")) { background = placed; }
             if (texture.equals("DeviceImage")) { device = placed; }
             found.push(layer);
@@ -378,6 +391,7 @@ class BezelPackageWriter {
         layer.width = size.w;
         layer.height = size.h;
         layer.rect = BezelRect(0.0, 0.0, 1.0, 1.0);
+        layer.viewport = false;
         JSONValue layers = JSONValue.makeArray();
         layers.push(layer.toJson(BezelRect(0.0, 0.0, 1.0, 1.0), canvasWidth, canvasHeight));
         BezelLayer screens = BezelLayer("screens", "", "CRT");
