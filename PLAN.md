@@ -663,7 +663,50 @@ Update this block whenever a milestone criterion changes state.
   larger window. `tools/bezel-gallery.py --mode real --verify` lights the
   flat card in the Semu renderer and checks the picture lands within 2 px of
   the package geometry; the page shows the upstream render beside each cell.
-- Active milestone: M11 (dimensions from the files); then M5/M6 hardware acceptance once a Deck is reachable
+- M11 dimensions from the files (2026-09-19/20, rewritten in BTRC after the
+  first Python pass): `src/bezel/preset.btrc` resolves a package's upstream
+  preset the way RetroArch does (every `#reference` chain first, the
+  referencing file wins, the first assignment inside one file wins: RetroArch
+  1.22.2's `config_file` keeps the first key, which is why the GameCube preset
+  scales at 64.37 and not its later 64.97), reads every `#pragma parameter`
+  default from the pinned shader tree and makes the textures absolute.
+  `src/bezel/placement.btrc` ports the closed-form placement (screen scale,
+  crop, aspect table, tube and black-edge scales, bezel edge, position
+  offsets, dual-screen split, layer transforms, zoom, pan and flips). The
+  seven render-based captures are the contract (`BezelPlacementContract`,
+  worst edge 1.1 px; scenes measured at the 10 % lit-difference crossing,
+  LCD shells at the 55 % solid region because their bezel lights up too).
+  `src/bezel/package.btrc` turns each package into Photoshop-style layers:
+  every texture the preset draws (background, device, decal, glass, top,
+  LED) with its Mega Bezel `LAYER_ORDER`, visibility (opacity > 0) and
+  placement rectangle, plus the `screens` layer; `canvas_layer` names the
+  layer whose pixel grid every rectangle is addressed in (device for the
+  shells, background for the TV scenes). Per screen: `image` (picture),
+  `ring` (black-edge outer to bezel outer, corner radii, the bezel colour
+  from `HSM_BZL_COLOR_*`, `#171819` for the NES which matches the dark
+  capture), `tube` (a measured hole or lens is kept when it holds the drawn
+  bezel; otherwise the bezel's outer edge), `aspect`, `shape`, provenance
+  with the parameters used. `semu bezel resolve|emit` write all 21 upstream
+  and inheriting packages in half a second; `semu bezel edit` serves the
+  editor (`config/editor/bezel-editor.html`) on loopback: layers listed top
+  first with visibility, reorder and the canvas radio, every rectangle
+  grabbable with handles at integer zooms (nearest-neighbour, pixel grid at
+  8x), a Slides-style diamond that drags the corner radius (round or
+  squircle exponent), `+ picture`/`+ ring` for plain plates, and Save writes
+  the package (recolors follow). The renderer draws the ring
+  (`SEMU_RENDER_SCREEN_<n>_RING`, compositor pass 1, fast preview too); the
+  bundle that carries it is not rebuilt yet. Two BTRC stdlib additions
+  landed upstream for this (`schiffy91/btrc` c959dd0e, pinned in
+  `flake.lock`): `HTTPResponse.bytes` with `HTTPServer.respond` sending
+  binary bodies, and `FileSystem.readBytes`; the system `btrcpy` on PATH
+  predates them, so build with the flake's compiler (`nix run .#btrcpy`) or
+  a checkout wrapper. Not done: baking the `art` plate from the layer stack
+  (the renderer still draws the committed plate, so changing the canvas
+  layer in the editor re-addresses rectangles without re-rendering art),
+  the fast/real galleries (M11.6) and the glass assets, which are whole
+  layers squeezed into the lens by the renderer and need a `crop` in their
+  recipes.
+- Active milestone: M11 bake-from-layers and galleries; then M5/M6 hardware acceptance once a Deck is reachable
   (`DECK_HOST=deck tests/deck/deploy.sh install`), then the native-emulator
   render hook.
 - Build structure (2026-09-19 evening): 22 flakes, one per emulator (8),

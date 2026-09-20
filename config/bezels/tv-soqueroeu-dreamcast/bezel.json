@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "tv-soqueroeu-dreamcast",
-  "label": "Living room CRT \u00b7 Dreamcast",
+  "label": "Living room CRT · Dreamcast",
   "family": "tv",
   "layout": "fixed",
   "art": "assets/bezels/tv/soqueroeu/dreamcast.png",
@@ -15,47 +15,115 @@
     {
       "id": "main",
       "tube": {
-        "x": 991,
-        "y": 263,
-        "w": 1858,
-        "h": 1392
+        "x": 958,
+        "y": 228,
+        "w": 1924,
+        "h": 1462
       },
+      "image": {
+        "x": 993,
+        "y": 264,
+        "w": 1854,
+        "h": 1390
+      },
+      "ring": {
+        "inner": {
+          "x": 976,
+          "y": 247,
+          "w": 1888,
+          "h": 1424
+        },
+        "outer": {
+          "x": 958,
+          "y": 228,
+          "w": 1924,
+          "h": 1462
+        },
+        "inner_radius": 11.393488303206944,
+        "outer_radius": 17.099479979591713,
+        "color": "#414141"
+      },
+      "aspect": 1.3332999999999999,
       "fit": "aspect",
       "shape": {
         "kind": "rounded",
-        "radius": 0.013,
-        "exponent": 4.0
+        "radius": 0.0117,
+        "exponent": 4
       },
-      "surround": "#000000",
-      "curvature": 0.035,
-      "vignette": 0.2,
-      "bloom": 0.18,
-      "glow": 0.2,
+      "surround": "#020201",
+      "curvature": 0.035000000000000003,
+      "vignette": 0.20000000000000001,
+      "bloom": 0.17999999999999999,
+      "glow": 0.20000000000000001,
       "glass": {
         "asset": "assets/bezels/tv/tube-reflection.png",
         "reflect": 0.12
       },
       "shader": null,
-      "measurement": {
-        "tool": "tools/bezel-calibrate.py",
+      "provenance": {
+        "tool": "semu bezel emit",
         "preset": "presets/TV-Console/Sega_Dreamcast-[FLAT].slangp",
         "viewport": "3840x2160",
-        "cards_px": [
-          [
-            480,
-            4,
-            2880,
-            2152
-          ]
+        "core": "640x480",
+        "screen": 1,
+        "flip": [
+          false,
+          false
         ],
-        "screen": 0
+        "canvas_layer": "background",
+        "opening": "kept",
+        "parameters": {
+          "HSM_ASPECT_RATIO_EXPLICIT": "1.3332999999999999",
+          "HSM_ASPECT_RATIO_MODE": "0",
+          "HSM_BG_LAYER_ORDER": "0",
+          "HSM_BG_OPACITY": "100",
+          "HSM_BG_POS_X": "0",
+          "HSM_BG_POS_Y": "0",
+          "HSM_BG_SCALE": "100",
+          "HSM_BG_SCALE_X": "100",
+          "HSM_BZL_BRIGHTNESS": "30",
+          "HSM_BZL_BRIGHTNESS_MULT_SIDES": "100",
+          "HSM_BZL_COLOR_HUE": "0",
+          "HSM_BZL_COLOR_SATURATION": "0",
+          "HSM_BZL_COLOR_VALUE": "44.000099",
+          "HSM_BZL_HEIGHT": "30.000000",
+          "HSM_BZL_INNER_CORNER_RADIUS_SCALE": "80",
+          "HSM_BZL_NOISE": "4.000000",
+          "HSM_BZL_OPACITY": "100",
+          "HSM_BZL_OUTER_CORNER_RADIUS_SCALE": "130.000000",
+          "HSM_BZL_OUTER_POSITION_Y": "0",
+          "HSM_BZL_SCALE_OFFSET": "100",
+          "HSM_BZL_WIDTH": "30.000000",
+          "HSM_CROP_PERCENT_BOTTOM": "0",
+          "HSM_CROP_PERCENT_LEFT": "0",
+          "HSM_CROP_PERCENT_RIGHT": "0",
+          "HSM_CROP_PERCENT_TOP": "0",
+          "HSM_CROP_PERCENT_ZOOM": "0",
+          "HSM_CRT_LAYER_ORDER": "5",
+          "HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS": "0",
+          "HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION": "0",
+          "HSM_GLOBAL_CORNER_RADIUS": "10",
+          "HSM_LED_LAYER_ORDER": "2",
+          "HSM_LED_OPACITY": "100",
+          "HSM_LED_POS_X": "0",
+          "HSM_LED_POS_Y": "0",
+          "HSM_LED_SCALE": "100",
+          "HSM_LED_SCALE_X": "100",
+          "HSM_NON_INTEGER_SCALE": "64.370285",
+          "HSM_NON_INTEGER_SCALE_OFFSET": "100",
+          "HSM_ROTATE_CORE_IMAGE": "0",
+          "HSM_SCREEN_CORNER_RADIUS_SCALE": "100",
+          "HSM_SCREEN_POSITION_X": "0",
+          "HSM_SCREEN_POSITION_Y": "56.000000",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS": "240.000000",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EMPTY_THICKNESS": "0",
+          "HSM_TUBE_EMPTY_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EXPLICIT_ASPECT": "1.3332999999999999"
+        }
       },
-      "image": {
-        "x": 480,
-        "y": 4,
-        "w": 2880,
-        "h": 2152
-      }
+      "inset": null,
+      "measurement": null
     }
   ],
   "doc": {
@@ -65,5 +133,47 @@
   "upstream": {
     "kind": "scene",
     "preset": "presets/TV-Console/Sega_Dreamcast-[FLAT].slangp"
-  }
+  },
+  "canvas_layer": "background",
+  "layers": [
+    {
+      "id": "background",
+      "texture": "BackgroundImage",
+      "file": "soqueroeu_tv:img/Sega_Dreamcast/Dreamcast.png",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "order": 0,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3840,
+        "h": 2160
+      }
+    },
+    {
+      "id": "led",
+      "texture": "LEDImage",
+      "file": "soqueroeu_tv:img/Sega_Dreamcast/Dreamcast_Led.png",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "order": 2,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3840,
+        "h": 2160
+      }
+    },
+    {
+      "id": "screens",
+      "order": 5,
+      "visible": true
+    }
+  ]
 }

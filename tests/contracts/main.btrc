@@ -20,6 +20,7 @@ import ../../src/steam/shortcuts.btrc;
 import ../../src/cli.btrc;
 import ../../src/launch/supervisor.btrc;
 import ../../src/steam/input_template.btrc;
+import ../../src/bezel/editor.btrc;
 
 class Contract {
     public int failures;
@@ -296,6 +297,13 @@ class RenderingContract {
             if (entry.startsWith("SEMU_RENDER_SCREEN_0=0.242969,0.0939815,0.514323,0.656944")) { nesTube = true; }  // 933,203,1975,1419 of 3840x2160
         }
         contract.expect(nesLook && nesTube, "the measured NES tube and its look reach the compositor per screen");
+        bool nesImage = false;
+        bool nesRing = false;
+        for entry in nesTv {
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0_IMAGE=0.275781,0.123148,0.448437,0.597685")) { nesImage = true; }  // 1059,266,1722,1291: HSM_NON_INTEGER_SCALE 59.77 at 4:3, POSITION_Y 78
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0_RING=0.273698,0.119444,0.452604,0.605093,0.246354,0.099537,0.507292,0.644907,") && entry.endsWith(",0.0901961,0.0941176,0.0980392")) { nesRing = true; }  // black edge to bezel edge, bezel color #171819
+        }
+        contract.expect(nesImage && nesRing, "the NES picture and bezel ring follow Soqueroeu's preset");
         FileSystem.mkdirp(PathTools.join(assets, "share/libretro/shaders/semu/nes"));
         FileSystem.writeText(PathTools.join(assets, "share/libretro/shaders/semu/nes/screen.slangp"), "#reference x\n");
         Vector<string> nesFull = SemuRenderEnvironment.compile(fixture.plan, nes, "retroarch", "/state/retroarch", fixture.diagnostics);
@@ -310,10 +318,17 @@ class RenderingContract {
         bool surround = false;
         for entry in full {
             if (entry.startsWith("SEMU_RENDER_SCREEN_0=0.1875,0.213737,0.625,0.268029")) { hole = true; }  // 645,1307,2150,1639 of 3440x6115
-            if (entry.startsWith("SEMU_RENDER_SCREEN_0_SURROUND=0.309804,0.352941,0.227451")) { surround = true; }  // #4f5a3a
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0_SURROUND=0.227451,0.227451,0.25098")) { surround = true; }  // #3a3a40: the plate under Duimon's tinted lens
         }
         contract.expect(hole, "the measured lens rectangle");
-        contract.expect(surround, "the olive DMG surround color");
+        contract.expect(surround, "the DMG surround sampled under the lens");
+        bool dmgImage = false;
+        bool dmgRing = false;
+        for entry in full {
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0_IMAGE=0.294186,0.247261,0.411628,0.208504")) { dmgImage = true; }  // 1012,1512,1416,1275 of 3440x6115: Duimon's 1.11 LCD placement
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0_RING=0.294186,0.247261,0.411628,0.208504,0.28314,0.240883,0.433721,0.221259,")) { dmgRing = true; }  // black edge 0: the ring starts at the picture
+        }
+        contract.expect(dmgImage && dmgRing, "the DMG picture and its drawn bezel come from the upstream preset");
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuPlan off = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"crt_shaders\":false,\"bezels\":false}}", diagnostics);
         Vector<string> disabled = SemuRenderEnvironment.compile(off, gb, "retroarch", "/state/retroarch", diagnostics);
@@ -322,9 +337,13 @@ class RenderingContract {
         Vector<string> dual = SemuRenderEnvironment.compile(fixture.plan, nds, "retroarch", "/state/retroarch", fixture.diagnostics);
         contract.expect(dual.contains("SEMU_RENDER_SURFACE_COUNT=2"), "nds has two surfaces");
         contract.expect(dual.contains("SEMU_RENDER_BEZELS=1") && dual.contains("SEMU_RENDER_LAYOUT=fixed") && dual.contains("SEMU_RENDER_BEZEL_ID=nds-shell"), "the DS default is the Duimon shell");
-        bool insetFrame = false;
-        for entry in dual { if (entry.startsWith("SEMU_RENDER_FRAME=0.012,0.02,") && entry.endsWith(",1")) { insetFrame = true; } }
-        contract.expect(insetFrame, "the shell draws its inset bezel around the fitted game");
+        bool shellRing = false;
+        bool shellFrame = false;
+        for entry in dual {
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0_RING=0.0333333,0.161111,0.442708,0.591667,0.0190104,0.137963,0.471354,0.637963,")) { shellRing = true; }  // Duimon's DS bezel around the left screen
+            if (entry.startsWith("SEMU_RENDER_FRAME=")) { shellFrame = true; }
+        }
+        contract.expect(shellRing && !shellFrame, "the shell draws Duimon's bezel ring, not a frame");
         SemuPlan computed = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"main_right\"}}}}", diagnostics);
         Vector<string> computedEnv = SemuRenderEnvironment.compile(computed, nds, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(computedEnv.contains("SEMU_RENDER_BEZELS=1") && computedEnv.contains("SEMU_RENDER_LAYOUT=main_right") && computedEnv.contains("SEMU_RENDER_BEZEL_ID=dual-main-right"), "the computed main-right layout is an alternate that needs no plate");
@@ -333,8 +352,94 @@ class RenderingContract {
         contract.expect(frame, "computed layouts draw a frame around each screen");
         SemuPlan shell = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"shell\"}}}}", diagnostics);
         Vector<string> shellEnv = SemuRenderEnvironment.compile(shell, nds, "retroarch", "/state/retroarch", diagnostics);
-        contract.expect(shellEnv.contains("SEMU_RENDER_BEZEL_ID=nds-shell") && shellEnv.contains("SEMU_RENDER_LAYOUT=fixed") && shellEnv.contains("SEMU_RENDER_SCREEN_1=0.710417,0.518519,0.286458,0.291667"), "the DS shell alternate is a fixed package with two measured openings");
+        contract.expect(shellEnv.contains("SEMU_RENDER_BEZEL_ID=nds-shell") && shellEnv.contains("SEMU_RENDER_LAYOUT=fixed") && shellEnv.contains("SEMU_RENDER_SCREEN_1=0.509635,0.137963,0.471354,0.637963"), "the DS shell alternate is a fixed package with two computed openings");  // 1957,298,1810,1378: the right screen's bezel edge
         contract.expect(fixture.diagnostics.ok(), "rendering emitter has no diagnostics: " + fixture.diagnostics.render());
+    }
+}
+
+class BezelPackageContract {  // every calibrated package: the picture sits inside its opening at the system's aspect
+    class double aspectOf(JSONValue rect) {
+        double w = SemuJson.intAt(rect, "w", 0);
+        double h = SemuJson.intAt(rect, "h", 0);
+        return h > 0.0 ? w / h : 0.0;
+    }
+
+    class bool inside(JSONValue image, JSONValue tube) {
+        int ix = SemuJson.intAt(image, "x", -1);
+        int iy = SemuJson.intAt(image, "y", -1);
+        int tx = SemuJson.intAt(tube, "x", 0);
+        int ty = SemuJson.intAt(tube, "y", 0);
+        return ix >= tx && iy >= ty && ix + SemuJson.intAt(image, "w", 0) <= tx + SemuJson.intAt(tube, "w", 0) && iy + SemuJson.intAt(image, "h", 0) <= ty + SemuJson.intAt(tube, "h", 0);
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        int calibrated = 0;
+        for id in fixture.model.systemIds() {
+            SemuSystem system = fixture.model.system(id);
+            JSONValue variants = system.bezels == null ? null : system.bezels.get("variants");
+            if (variants == null || !variants.isArray()) { continue; }
+            string widescreen = SemuJson.textAt(system.bezels, "widescreen_variant");
+            JSONValue display = system.definition.get("display");
+            JSONValue screens = display.get("screens");
+            for (int index = 0; index < variants.size(); index++) {
+                JSONValue variant = variants.at(index);
+                JSONValue package = SemuBezelPackage.load(fixture.plan, SemuJson.textAt(variant, "bezel"));
+                if (!package.isObject()) { continue; }
+                for (int screenIndex = 0; screenIndex < screens.size(); screenIndex++) {
+                    JSONValue native = screens.at(screenIndex).get("native");
+                    JSONValue screen = SemuBezelPackage.screen(package, screens.size() == 1 ? "main" : SemuJson.textAt(screens.at(screenIndex), "id"));
+                    JSONValue image = screen.isObject() ? screen.get("image") : null;
+                    if (image == null || !image.isObject()) { continue; }
+                    calibrated++;
+                    string where = SemuJson.textAt(package, "id") + "/" + SemuJson.textAt(screen, "id");
+                    contract.expect(BezelPackageContract.inside(screen.get("image"), screen.get("tube")), where + ": the picture sits inside the opening");
+                    double declared = BezelPackageContract.aspectOf(native);
+                    if (screens.size() == 1) {
+                        JSONValue aspect = display.get("aspect");
+                        if (aspect != null && aspect.isObject()) { declared = BezelPackageContract.aspectOf(aspect); }
+                        if (!widescreen.isEmpty() && widescreen.equals(SemuJson.textAt(variant, "id"))) { declared = 16.0 / 9.0; }
+                    }
+                    double actual = BezelPackageContract.aspectOf(screen.get("image"));
+                    double mismatch = declared > 0.0 && actual > 0.0 ? (actual > declared ? actual / declared : declared / actual) - 1.0 : 1.0;
+                    contract.expect(mismatch <= 0.01, where + ": the picture aspect is within 1% of the system's");
+                }
+            }
+        }
+        contract.expect(calibrated == 25, f"every upstream package and recolor carries a picture rectangle: {calibrated} screens");
+    }
+}
+
+class BezelPlacementContract {  // the Mega Bezel port against the last render-based captures (2026-09-19, 3840x2160): every edge within 2 px
+    class void check(Contract contract, MegaBezelTree tree, string preset, int coreWidth, int coreHeight, double zoom, double x0, double y0, double x1, double y1, string label) {
+        MegaBezelPlacement placement = MegaBezelPlacement(MegaBezelParams(MegaBezelPreset(tree.presetPath(preset)), tree.defaults), coreWidth, coreHeight, 3840, 2160);
+        BezelRect shown = placement.toScreen(placement.screen(1).picture, zoom).scaled(3840.0, 2160.0);
+        double worst = BezelNumber.absDouble(shown.x - x0);
+        for delta in [BezelNumber.absDouble(shown.y - y0), BezelNumber.absDouble(shown.x + shown.w - x1), BezelNumber.absDouble(shown.y + shown.h - y1)] { if (delta > worst) { worst = delta; } }
+        contract.expect(worst <= 2.0, label + ": the computed picture matches the capture within 2 px (worst " + SemuNumberText.text(worst) + ")");
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        MegaBezelTree tree = MegaBezelTree(fixture.plan.configRoot, PathTools.join(fixture.scratch, "bezel"));
+        if (!tree.ready) { Console.log("bezel placement: skipped, " + tree.failure); contract.expect(true, "bezel placement skipped without the pinned trees"); return; }
+        BezelPlacementContract.check(contract, tree, "presets/TV-Console/Nintendo_NES.slangp", 256, 240, 1.0, 1059.0, 266.0, 2780.0, 1557.0, "nes");
+        BezelPlacementContract.check(contract, tree, "presets/TV-Console/Sega_Genesis.slangp", 320, 224, 1.0, 1030.0, 279.0, 2809.0, 1613.0, "genesis");
+        BezelPlacementContract.check(contract, tree, "presets/TV-Console/Nintendo_GameCube-[FLAT].slangp", 640, 480, 1.0, 993.0, 292.0, 2847.0, 1682.0, "gc");
+        BezelPlacementContract.check(contract, tree, "presets/TV-Console/Sega_Dreamcast-[FLAT].slangp", 640, 480, 1.0, 993.0, 264.0, 2847.0, 1654.0, "dreamcast");
+        BezelPlacementContract.check(contract, tree, "Presets/Standard/Nintendo_Game_Boy/Gameboy_DMG01-[STD]-[LCD-GRID].slangp", 160, 144, 0.4, 1638.0, 752.0, 2202.0, 1260.0, "gb");
+        BezelPlacementContract.check(contract, tree, "Presets/Standard/Nintendo_Game_Boy_Color/GBC-[STD]-[LCD-GRID].slangp", 160, 144, 0.4, 1637.0, 715.0, 2202.0, 1224.0, "gbc");
+        BezelPlacementContract.check(contract, tree, "Presets/Standard/Nintendo_GBA/GBA-[STD]-[LCD-GRID].slangp", 240, 160, 0.4, 1547.0, 832.0, 2293.0, 1328.0, "gba");
+        MegaBezelPreset gamecube = MegaBezelPreset(tree.presetPath("presets/TV-Console/Nintendo_GameCube-[FLAT].slangp"));
+        contract.expect(gamecube.value("HSM_NON_INTEGER_SCALE").equals("64.370285"), "a key assigned twice in one preset keeps its first value, as RetroArch's config_file does");
+        MegaBezelPreset dmg = MegaBezelPreset(tree.presetPath("Presets/Standard/Nintendo_Game_Boy/Gameboy_DMG01-[STD]-[LCD-GRID].slangp"));
+        contract.expect(dmg.value("HSM_ASPECT_RATIO_MODE").equals("1.000000") && dmg.value("HSM_ASPECT_RATIO_EXPLICIT").equals("1.110000"), "a referencing preset overrides the base it references");
+        contract.expect(dmg.missing.size() == 0 && dmg.textures.has("DeviceImage") && dmg.textures.has("CabinetGlassImage"), "every texture the DMG preset draws resolves to a file");
+        BezelRepository repository = BezelRepository(fixture.plan.configRoot);
+        BezelGeometry geometry = BezelGeometry(tree, "gb-dmg-shell", repository.package("gb-dmg-shell"), repository.system("gb"));
+        contract.expect(geometry.failure.isEmpty() && geometry.canvasLayer != null && geometry.canvasLayer.id.equals("device") && geometry.canvasLayer.width == 3440 && geometry.canvasLayer.height == 6115, "the DMG device layer is the canvas at its own 3440x6115");
+        contract.expect(geometry.layers.size() == 7 && geometry.layer("screens") != null && geometry.layer("top").order > geometry.layer("screens").order, "the DMG stack has seven layers with the top plate above the screens");
+        contract.expect(geometry.plateRect(geometry.screens[0].picture).rounded().stringify().equals("{\"x\":1012,\"y\":1512,\"w\":1416,\"h\":1275}"), "the DMG picture lands at Duimon's placement in device pixels");
     }
 }
 
@@ -531,6 +636,8 @@ int main() {
     UnifiedInputContract.run(contract);
     SteamInputContract.run(contract);
     RenderingContract.run(contract);
+    BezelPackageContract.run(contract);
+    BezelPlacementContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);

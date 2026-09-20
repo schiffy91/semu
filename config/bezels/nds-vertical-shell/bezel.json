@@ -6,12 +6,7 @@
   "layout": "fixed",
   "art": "assets/bezels/nds/vertical.png",
   "background": "assets/bezels/backgrounds/desk-night.png",
-  "frame": {
-    "width": 0.012,
-    "radius": 0.02,
-    "color": "#0a0a0a",
-    "around": "game"
-  },
+  "frame": null,
   "canvas": {
     "w": 3840,
     "h": 2160
@@ -19,51 +14,283 @@
   "screens": [
     {
       "id": "top",
+      "tube": {
+        "x": 1384,
+        "y": 158,
+        "w": 1072,
+        "h": 815
+      },
+      "image": {
+        "x": 1408,
+        "y": 181,
+        "w": 1024,
+        "h": 769
+      },
+      "ring": {
+        "inner": {
+          "x": 1408,
+          "y": 181,
+          "w": 1024,
+          "h": 769
+        },
+        "outer": {
+          "x": 1384,
+          "y": 158,
+          "w": 1072,
+          "h": 815
+        },
+        "inner_radius": 6.1491036384000006,
+        "outer_radius": 11.744930608548412,
+        "color": "#1d1d1d"
+      },
+      "aspect": 1.3332999999999999,
       "fit": "aspect",
-      "inset": 0.02,
       "shape": {
         "kind": "rounded",
-        "radius": 0.0196,
-        "exponent": 4.0
+        "radius": 0.0143,
+        "exponent": 4
       },
-      "surround": "#151515",
-      "curvature": 0.0,
-      "vignette": 0.05,
-      "bloom": 0.0,
-      "glow": 0.1,
+      "surround": "#2b2b2b",
+      "curvature": 0,
+      "vignette": 0.050000000000000003,
+      "bloom": 0,
+      "glow": 0.10000000000000001,
       "glass": {
         "asset": "assets/bezels/tv/tube-reflection.png",
-        "reflect": 0.1
+        "reflect": 0.10000000000000001
       },
       "shader": null,
-      "measurement": {
-        "tool": "legacy",
-        "mode": "measured_dark_display_openings"
-      }
+      "provenance": {
+        "tool": "semu bezel emit",
+        "preset": "Presets/Standard/Nintendo_NDS/NDS_Vertical-[STD]-[LCD-GRID]-[Integer].slangp",
+        "viewport": "3840x2160",
+        "core": "256x384",
+        "screen": 1,
+        "flip": [
+          false,
+          false
+        ],
+        "canvas_layer": "device",
+        "opening": "kept",
+        "parameters": {
+          "HSM_2ND_SCREEN_CROP_PERCENT_BOTTOM": "0",
+          "HSM_2ND_SCREEN_CROP_PERCENT_LEFT": "0",
+          "HSM_2ND_SCREEN_CROP_PERCENT_RIGHT": "0",
+          "HSM_2ND_SCREEN_CROP_PERCENT_TOP": "0",
+          "HSM_2ND_SCREEN_CROP_PERCENT_ZOOM": "0",
+          "HSM_2ND_SCREEN_POS_X": "0",
+          "HSM_2ND_SCREEN_POS_Y": "-52.000000",
+          "HSM_2ND_SCREEN_SCALE_OFFSET": "100",
+          "HSM_ASPECT_RATIO_EXPLICIT": "1.3332999999999999",
+          "HSM_ASPECT_RATIO_MODE": "2.000000",
+          "HSM_BG_LAYER_ORDER": "0",
+          "HSM_BG_OPACITY": "100",
+          "HSM_BG_POS_X": "0",
+          "HSM_BG_POS_Y": "0",
+          "HSM_BG_SCALE": "100",
+          "HSM_BG_SCALE_X": "100",
+          "HSM_BZL_BRIGHTNESS": "30",
+          "HSM_BZL_BRIGHTNESS_MULT_SIDES": "100",
+          "HSM_BZL_COLOR_HUE": "0",
+          "HSM_BZL_COLOR_SATURATION": "0",
+          "HSM_BZL_COLOR_VALUE": "20.000000",
+          "HSM_BZL_HEIGHT": "70.000000",
+          "HSM_BZL_INNER_CORNER_RADIUS_SCALE": "80",
+          "HSM_BZL_NOISE": "10.000000",
+          "HSM_BZL_OPACITY": "100.000000",
+          "HSM_BZL_OUTER_CORNER_RADIUS_SCALE": "160.000000",
+          "HSM_BZL_OUTER_POSITION_Y": "0",
+          "HSM_BZL_SCALE_OFFSET": "100",
+          "HSM_BZL_WIDTH": "70.000000",
+          "HSM_CAB_GLASS_LAYER_ORDER": "8.000000",
+          "HSM_CAB_GLASS_OPACITY": "100",
+          "HSM_CAB_GLASS_POS_X": "0",
+          "HSM_CAB_GLASS_POS_Y": "0",
+          "HSM_CAB_GLASS_SCALE": "100",
+          "HSM_CAB_GLASS_SCALE_X": "100",
+          "HSM_CROP_PERCENT_BOTTOM": "0",
+          "HSM_CROP_PERCENT_LEFT": "0",
+          "HSM_CROP_PERCENT_RIGHT": "0",
+          "HSM_CROP_PERCENT_TOP": "0",
+          "HSM_CROP_PERCENT_ZOOM": "0",
+          "HSM_CRT_LAYER_ORDER": "5",
+          "HSM_DECAL_LAYER_ORDER": "7",
+          "HSM_DECAL_OPACITY": "0.000000",
+          "HSM_DECAL_POS_X": "0",
+          "HSM_DECAL_POS_Y": "0",
+          "HSM_DECAL_SCALE": "100",
+          "HSM_DECAL_SCALE_X": "100",
+          "HSM_DEVICE_LAYER_ORDER": "2.000000",
+          "HSM_DEVICE_OPACITY": "100",
+          "HSM_DEVICE_POS_X": "0",
+          "HSM_DEVICE_POS_Y": "0",
+          "HSM_DEVICE_SCALE": "100",
+          "HSM_DEVICE_SCALE_X": "100",
+          "HSM_DUALSCREEN_CORE_IMAGE_SPLIT_OFFSET": "0",
+          "HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS": "80.000000",
+          "HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION": "0",
+          "HSM_GLOBAL_CORNER_RADIUS": "10",
+          "HSM_LED_LAYER_ORDER": "11.000000",
+          "HSM_LED_OPACITY": "0.000000",
+          "HSM_LED_POS_X": "0",
+          "HSM_LED_POS_Y": "0",
+          "HSM_LED_SCALE": "100",
+          "HSM_LED_SCALE_X": "100",
+          "HSM_NON_INTEGER_SCALE": "71.170181",
+          "HSM_NON_INTEGER_SCALE_OFFSET": "100",
+          "HSM_ROTATE_CORE_IMAGE": "0",
+          "HSM_SCREEN_CORNER_RADIUS_SCALE": "100",
+          "HSM_SCREEN_POSITION_X": "0",
+          "HSM_SCREEN_POSITION_Y": "-50.000000",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS": "0.000000",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EMPTY_THICKNESS": "0",
+          "HSM_TUBE_EMPTY_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EXPLICIT_ASPECT": "1.3332999999999999"
+        }
+      },
+      "inset": null,
+      "measurement": null
     },
     {
       "id": "bottom",
+      "tube": {
+        "x": 1384,
+        "y": 1182,
+        "w": 1072,
+        "h": 816
+      },
+      "image": {
+        "x": 1408,
+        "y": 1206,
+        "w": 1024,
+        "h": 768
+      },
+      "ring": {
+        "inner": {
+          "x": 1408,
+          "y": 1206,
+          "w": 1024,
+          "h": 768
+        },
+        "outer": {
+          "x": 1384,
+          "y": 1182,
+          "w": 1072,
+          "h": 816
+        },
+        "inner_radius": 6.1491036384000006,
+        "outer_radius": 11.744930608548412,
+        "color": "#1d1d1d"
+      },
+      "aspect": 1.3332999999999999,
       "fit": "aspect",
-      "inset": 0.02,
       "shape": {
         "kind": "rounded",
-        "radius": 0.0196,
-        "exponent": 4.0
+        "radius": 0.0143,
+        "exponent": 4
       },
-      "surround": "#151515",
-      "curvature": 0.0,
-      "vignette": 0.05,
-      "bloom": 0.0,
-      "glow": 0.1,
+      "surround": "#2b2b2b",
+      "curvature": 0,
+      "vignette": 0.050000000000000003,
+      "bloom": 0,
+      "glow": 0.10000000000000001,
       "glass": {
         "asset": "assets/bezels/tv/tube-reflection.png",
-        "reflect": 0.1
+        "reflect": 0.10000000000000001
       },
       "shader": null,
-      "measurement": {
-        "tool": "legacy",
-        "mode": "measured_dark_display_openings"
-      }
+      "provenance": {
+        "tool": "semu bezel emit",
+        "preset": "Presets/Standard/Nintendo_NDS/NDS_Vertical-[STD]-[LCD-GRID]-[Integer].slangp",
+        "viewport": "3840x2160",
+        "core": "256x384",
+        "screen": 2,
+        "flip": [
+          false,
+          false
+        ],
+        "canvas_layer": "device",
+        "opening": "kept",
+        "parameters": {
+          "HSM_2ND_SCREEN_CROP_PERCENT_BOTTOM": "0",
+          "HSM_2ND_SCREEN_CROP_PERCENT_LEFT": "0",
+          "HSM_2ND_SCREEN_CROP_PERCENT_RIGHT": "0",
+          "HSM_2ND_SCREEN_CROP_PERCENT_TOP": "0",
+          "HSM_2ND_SCREEN_CROP_PERCENT_ZOOM": "0",
+          "HSM_2ND_SCREEN_POS_X": "0",
+          "HSM_2ND_SCREEN_POS_Y": "-52.000000",
+          "HSM_2ND_SCREEN_SCALE_OFFSET": "100",
+          "HSM_ASPECT_RATIO_EXPLICIT": "1.3332999999999999",
+          "HSM_ASPECT_RATIO_MODE": "2.000000",
+          "HSM_BG_LAYER_ORDER": "0",
+          "HSM_BG_OPACITY": "100",
+          "HSM_BG_POS_X": "0",
+          "HSM_BG_POS_Y": "0",
+          "HSM_BG_SCALE": "100",
+          "HSM_BG_SCALE_X": "100",
+          "HSM_BZL_BRIGHTNESS": "30",
+          "HSM_BZL_BRIGHTNESS_MULT_SIDES": "100",
+          "HSM_BZL_COLOR_HUE": "0",
+          "HSM_BZL_COLOR_SATURATION": "0",
+          "HSM_BZL_COLOR_VALUE": "20.000000",
+          "HSM_BZL_HEIGHT": "70.000000",
+          "HSM_BZL_INNER_CORNER_RADIUS_SCALE": "80",
+          "HSM_BZL_NOISE": "10.000000",
+          "HSM_BZL_OPACITY": "100.000000",
+          "HSM_BZL_OUTER_CORNER_RADIUS_SCALE": "160.000000",
+          "HSM_BZL_OUTER_POSITION_Y": "0",
+          "HSM_BZL_SCALE_OFFSET": "100",
+          "HSM_BZL_WIDTH": "70.000000",
+          "HSM_CAB_GLASS_LAYER_ORDER": "8.000000",
+          "HSM_CAB_GLASS_OPACITY": "100",
+          "HSM_CAB_GLASS_POS_X": "0",
+          "HSM_CAB_GLASS_POS_Y": "0",
+          "HSM_CAB_GLASS_SCALE": "100",
+          "HSM_CAB_GLASS_SCALE_X": "100",
+          "HSM_CROP_PERCENT_BOTTOM": "0",
+          "HSM_CROP_PERCENT_LEFT": "0",
+          "HSM_CROP_PERCENT_RIGHT": "0",
+          "HSM_CROP_PERCENT_TOP": "0",
+          "HSM_CROP_PERCENT_ZOOM": "0",
+          "HSM_CRT_LAYER_ORDER": "5",
+          "HSM_DECAL_LAYER_ORDER": "7",
+          "HSM_DECAL_OPACITY": "0.000000",
+          "HSM_DECAL_POS_X": "0",
+          "HSM_DECAL_POS_Y": "0",
+          "HSM_DECAL_SCALE": "100",
+          "HSM_DECAL_SCALE_X": "100",
+          "HSM_DEVICE_LAYER_ORDER": "2.000000",
+          "HSM_DEVICE_OPACITY": "100",
+          "HSM_DEVICE_POS_X": "0",
+          "HSM_DEVICE_POS_Y": "0",
+          "HSM_DEVICE_SCALE": "100",
+          "HSM_DEVICE_SCALE_X": "100",
+          "HSM_DUALSCREEN_CORE_IMAGE_SPLIT_OFFSET": "0",
+          "HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS": "80.000000",
+          "HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION": "0",
+          "HSM_GLOBAL_CORNER_RADIUS": "10",
+          "HSM_LED_LAYER_ORDER": "11.000000",
+          "HSM_LED_OPACITY": "0.000000",
+          "HSM_LED_POS_X": "0",
+          "HSM_LED_POS_Y": "0",
+          "HSM_LED_SCALE": "100",
+          "HSM_LED_SCALE_X": "100",
+          "HSM_NON_INTEGER_SCALE": "71.170181",
+          "HSM_NON_INTEGER_SCALE_OFFSET": "100",
+          "HSM_ROTATE_CORE_IMAGE": "0",
+          "HSM_SCREEN_CORNER_RADIUS_SCALE": "100",
+          "HSM_SCREEN_POSITION_X": "0",
+          "HSM_SCREEN_POSITION_Y": "-50.000000",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS": "0.000000",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EMPTY_THICKNESS": "0",
+          "HSM_TUBE_EMPTY_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EXPLICIT_ASPECT": "1.3332999999999999"
+        }
+      },
+      "inset": null,
+      "measurement": null
     }
   ],
   "doc": {
@@ -71,7 +298,100 @@
   },
   "upstream": {
     "kind": "device",
-    "preset": "Presets/Advanced/Nintendo_NDS/NDS_Vertical-[ADV]-[LCD-GRID]-[Integer].slangp",
+    "preset": "Presets/Standard/Nintendo_NDS/NDS_Vertical-[STD]-[LCD-GRID]-[Integer].slangp",
     "silhouette": "Graphics/Nintendo_NDS/NDS_Vertical.png"
-  }
+  },
+  "canvas_layer": "device",
+  "layers": [
+    {
+      "id": "background",
+      "texture": "BackgroundImage",
+      "file": "duimon_mega_bezel:Graphics/_Backgrounds/Canvas_Vignette.jpg",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "order": 0,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3840,
+        "h": 2160
+      }
+    },
+    {
+      "id": "device",
+      "texture": "DeviceImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_NDS/NDS_Vertical.png",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "order": 2,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3840,
+        "h": 2160
+      }
+    },
+    {
+      "id": "screens",
+      "order": 5,
+      "visible": true
+    },
+    {
+      "id": "decal",
+      "texture": "DecalImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_NDS/NDS_Vertical_Decal.png",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "order": 7,
+      "visible": false,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3840,
+        "h": 2160
+      }
+    },
+    {
+      "id": "glass",
+      "texture": "CabinetGlassImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_NDS/NDS_Vertical_Glass.png",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "order": 8,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3840,
+        "h": 2160
+      }
+    },
+    {
+      "id": "led",
+      "texture": "LEDImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_NDS/NDS_Vertical_LED.png",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "order": 11,
+      "visible": false,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3840,
+        "h": 2160
+      }
+    }
+  ]
 }

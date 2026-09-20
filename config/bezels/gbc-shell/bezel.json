@@ -21,27 +21,132 @@
         "h": 1675
       },
       "fit": "aspect",
-      "inset": 0.03,
+      "inset": null,
       "shape": {
         "kind": "rounded",
-        "radius": 0.0494,
-        "exponent": 4.0
+        "radius": 0.049399999999999999,
+        "exponent": 4
       },
       "surround": "#141414",
-      "curvature": 0.0,
-      "vignette": 0.06,
-      "bloom": 0.0,
-      "glow": 0.08,
+      "curvature": 0,
+      "vignette": 0.059999999999999998,
+      "bloom": 0,
+      "glow": 0.080000000000000002,
       "glass": {
         "asset": "assets/bezels/gbc/glass.png",
-        "reflect": 0.3
+        "reflect": 0.29999999999999999
       },
       "shader": null,
-      "measurement": {
-        "tool": "tools/bezel-measure.py",
-        "mode": "opaque",
-        "layer": "GBC_Glass.png",
-        "corner_radius_px": 82.8
+      "measurement": null,
+      "image": {
+        "x": 1012,
+        "y": 1296,
+        "w": 1416,
+        "h": 1275
+      },
+      "ring": {
+        "inner": {
+          "x": 1006,
+          "y": 1289,
+          "w": 1428,
+          "h": 1289
+        },
+        "outer": {
+          "x": 967,
+          "y": 1250,
+          "w": 1506,
+          "h": 1367
+        },
+        "inner_radius": 10.306700556772771,
+        "outer_radius": 7.3822639420833385,
+        "color": "#0f0f0f"
+      },
+      "aspect": 1.1100000000000001,
+      "provenance": {
+        "tool": "semu bezel emit",
+        "preset": "Presets/Advanced/Nintendo_Game_Boy_Color/GBC-[ADV]-[LCD-GRID].slangp",
+        "viewport": "3840x2160",
+        "core": "160x144",
+        "screen": 1,
+        "flip": [
+          false,
+          false
+        ],
+        "canvas_layer": "device",
+        "opening": "kept",
+        "parameters": {
+          "HSM_ASPECT_RATIO_EXPLICIT": "1.110000",
+          "HSM_ASPECT_RATIO_MODE": "1.000000",
+          "HSM_BG_LAYER_ORDER": "0",
+          "HSM_BG_OPACITY": "100",
+          "HSM_BG_POS_X": "0",
+          "HSM_BG_POS_Y": "0",
+          "HSM_BG_SCALE": "100",
+          "HSM_BG_SCALE_X": "100",
+          "HSM_BZL_BRIGHTNESS": "30",
+          "HSM_BZL_BRIGHTNESS_MULT_SIDES": "100",
+          "HSM_BZL_COLOR_HUE": "0",
+          "HSM_BZL_COLOR_SATURATION": "0",
+          "HSM_BZL_COLOR_VALUE": "10",
+          "HSM_BZL_HEIGHT": "70.000000",
+          "HSM_BZL_INNER_CORNER_RADIUS_SCALE": "80",
+          "HSM_BZL_NOISE": "10.000000",
+          "HSM_BZL_OPACITY": "100",
+          "HSM_BZL_OUTER_CORNER_RADIUS_SCALE": "60",
+          "HSM_BZL_OUTER_POSITION_Y": "0",
+          "HSM_BZL_SCALE_OFFSET": "100",
+          "HSM_BZL_WIDTH": "70.000000",
+          "HSM_CAB_GLASS_LAYER_ORDER": "9",
+          "HSM_CAB_GLASS_OPACITY": "100",
+          "HSM_CAB_GLASS_POS_X": "0",
+          "HSM_CAB_GLASS_POS_Y": "0",
+          "HSM_CAB_GLASS_SCALE": "100",
+          "HSM_CAB_GLASS_SCALE_X": "100",
+          "HSM_CROP_PERCENT_BOTTOM": "0",
+          "HSM_CROP_PERCENT_LEFT": "0",
+          "HSM_CROP_PERCENT_RIGHT": "0",
+          "HSM_CROP_PERCENT_TOP": "0",
+          "HSM_CROP_PERCENT_ZOOM": "0",
+          "HSM_CRT_LAYER_ORDER": "11.000000",
+          "HSM_DEVICELED_LAYER_ORDER": "4",
+          "HSM_DEVICELED_OPACITY": "100",
+          "HSM_DEVICELED_POS_X": "0",
+          "HSM_DEVICELED_POS_Y": "0",
+          "HSM_DEVICELED_SCALE": "100",
+          "HSM_DEVICELED_SCALE_X": "100",
+          "HSM_DEVICE_LAYER_ORDER": "2.000000",
+          "HSM_DEVICE_OPACITY": "100",
+          "HSM_DEVICE_POS_X": "0",
+          "HSM_DEVICE_POS_Y": "-88.171349",
+          "HSM_DEVICE_SCALE": "397.815613",
+          "HSM_DEVICE_SCALE_X": "100",
+          "HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS": "0",
+          "HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION": "0",
+          "HSM_GLOBAL_CORNER_RADIUS": "10",
+          "HSM_LED_LAYER_ORDER": "3.000000",
+          "HSM_LED_OPACITY": "100.000000",
+          "HSM_LED_POS_X": "0",
+          "HSM_LED_POS_Y": "0",
+          "HSM_LED_SCALE": "100",
+          "HSM_LED_SCALE_X": "100",
+          "HSM_NON_INTEGER_SCALE": "58.970268",
+          "HSM_NON_INTEGER_SCALE_OFFSET": "100",
+          "HSM_ROTATE_CORE_IMAGE": "0",
+          "HSM_SCREEN_CORNER_RADIUS_SCALE": "100",
+          "HSM_SCREEN_POSITION_X": "0",
+          "HSM_SCREEN_POSITION_Y": "128.000000",
+          "HSM_TOP_LAYER_ORDER": "12",
+          "HSM_TOP_OPACITY": "100",
+          "HSM_TOP_POS_X": "0",
+          "HSM_TOP_POS_Y": "0",
+          "HSM_TOP_SCALE": "100",
+          "HSM_TOP_SCALE_X": "100",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS": "100",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EMPTY_THICKNESS": "0",
+          "HSM_TUBE_EMPTY_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EXPLICIT_ASPECT": "1.3332999999999999"
+        }
       }
     }
   ],
@@ -49,5 +154,115 @@
     "kind": "device",
     "preset": "Presets/Advanced/Nintendo_Game_Boy_Color/GBC-[ADV]-[LCD-GRID].slangp",
     "silhouette": "Graphics/Nintendo_Game_Boy_Color/GBC_Device.png"
-  }
+  },
+  "canvas_layer": "device",
+  "layers": [
+    {
+      "id": "background",
+      "texture": "BackgroundImage",
+      "file": "duimon_mega_bezel:Graphics/_Backgrounds/Canvas_Background.jpg",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "order": 0,
+      "visible": true,
+      "rect": {
+        "x": -203,
+        "y": 1129,
+        "w": 3846,
+        "h": 2163
+      }
+    },
+    {
+      "id": "device",
+      "texture": "DeviceImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_Game_Boy_Color/GBC_Device.png",
+      "size": {
+        "w": 3440,
+        "h": 6116
+      },
+      "order": 2,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3440,
+        "h": 6116
+      }
+    },
+    {
+      "id": "led",
+      "texture": "LEDImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_Game_Boy_Color/GBC_LED.png",
+      "size": {
+        "w": 3440,
+        "h": 6116
+      },
+      "order": 3,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3440,
+        "h": 6116
+      }
+    },
+    {
+      "id": "device_led",
+      "texture": "DeviceLEDImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_Game_Boy_Color/GBC_Device_LED.png",
+      "size": {
+        "w": 3440,
+        "h": 6116
+      },
+      "order": 4,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3440,
+        "h": 6116
+      }
+    },
+    {
+      "id": "glass",
+      "texture": "CabinetGlassImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_Game_Boy_Color/GBC_Glass.png",
+      "size": {
+        "w": 3440,
+        "h": 6116
+      },
+      "order": 9,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3440,
+        "h": 6116
+      }
+    },
+    {
+      "id": "screens",
+      "order": 11,
+      "visible": true
+    },
+    {
+      "id": "top",
+      "texture": "TopLayerImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_Game_Boy_Color/GBC_Top.png",
+      "size": {
+        "w": 3440,
+        "h": 6116
+      },
+      "order": 12,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3440,
+        "h": 6116
+      }
+    }
+  ]
 }

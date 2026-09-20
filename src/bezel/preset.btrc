@@ -1,0 +1,219 @@
+// Mega Bezel presets from the pinned upstream trees, read the way RetroArch reads them: every
+// #reference chain first and the referencing file's values last (video_shader_parse), the first
+// assignment inside one file kept (config_file), textures made absolute, parameter defaults from
+// the shader tree's own #pragma parameter lines.
+import Library.Console;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Map;
+import Library.Platform;
+import Library.Process;
+import Library.Strings;
+import Library.Vector;
+
+class BezelPaths {
+    class string normalize(string path) {  // lexical: collapses . and .. without touching the disk
+        Vector<string> kept = [];
+        for part in Strings.split(path, "/") {
+            if (part.isEmpty() || part.equals(".")) { continue; }
+            if (part.equals("..")) { if (kept.size() > 0) { kept.pop(); } continue; }
+            kept.push(part);
+        }
+        return (path.startsWith("/") ? "/" : "") + Strings.join(kept, "/");
+    }
+
+    class string resolve(string from, string relative) {  // a preset's reference, relative to its own directory
+        if (relative.startsWith("/")) { return BezelPaths.normalize(relative); }
+        return BezelPaths.normalize(PathTools.join(PathTools.dirname(from), relative));
+    }
+
+    class string unquote(string text) {
+        string value = text.trim();
+        if (value.len() >= 2 && value.startsWith("\"") && value.endsWith("\"")) { return value.substring(1, value.len() - 2); }
+        return value;
+    }
+
+    class bool isImage(string value) {
+        string lower = value.toLower();
+        return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg");
+    }
+}
+
+class MegaBezelTree {  // the pinned shader tree and packs, staged the way RetroArch sees them
+    public string configRoot;
+    public string root;  // <build>/shaders: shaders_slang plus Mega_Bezel_Packs symlinks
+    public string slang;
+    public Map<string, string> upstreams;  // manifest name -> store path
+    public Map<string, double> defaults;   // pragma defaults by parameter name
+    public bool ready;
+    public string failure;
+
+    public MegaBezelTree(string configRoot, string buildRoot) {
+        self.configRoot = configRoot;
+        self.root = PathTools.join(FileSystem.absolutePath(buildRoot), "shaders");
+        self.upstreams = {};
+        self.defaults = {};
+        self.ready = false;
+        self.failure = "";
+        string installed = PathTools.dirname(UnixFileSystem.realPath("/run/current-system/sw/bin/semu"));
+        self.slang = Environment.get("SEMU_SHADERS_SLANG", PathTools.join(PathTools.dirname(installed), "share/libretro/shaders/shaders_slang"));
+        JSONValue manifest = JSONValue.readFile(PathTools.join(configRoot, "assets/bezels.json"));
+        JSONValue sources = manifest == null ? null : manifest.get("upstreams");
+        if (sources == null || !sources.isObject()) { self.failure = "config/assets/bezels.json has no upstreams"; return; }
+        for name in sources.keys() {
+            string path = MegaBezelTree.fetch(sources.get(name));
+            if (path.isEmpty()) { self.failure = "could not fetch upstream " + name; return; }
+            self.upstreams.put(name, path);
+        }
+        if (!FileSystem.isDir(PathTools.join(self.slang, "bezel/Mega_Bezel"))) { self.failure = "no Mega Bezel shader tree at " + self.slang; return; }
+        self.stage();
+        MegaBezelTree.pragmaDefaults(PathTools.join(self.slang, "bezel/Mega_Bezel/shaders"), self.defaults, 0);
+        if (!self.defaults.has("HSM_NON_INTEGER_SCALE")) { self.failure = "no Mega Bezel parameters under " + self.slang; return; }
+        self.ready = true;
+    }
+
+    class string fetch(JSONValue spec) {  // the pinned tree, into the store (a no-op once cached)
+        string expression = f"(import <nixpkgs> {{}}).fetchFromGitHub {{ owner = \"{SemuJsonText.at(spec, "owner")}\"; repo = \"{SemuJsonText.at(spec, "repo")}\"; rev = \"{SemuJsonText.at(spec, "rev")}\"; hash = \"{SemuJsonText.at(spec, "nar_hash")}\"; }}";
+        UnixPipe pipe = UnixProcess.pipe("nix-build -E " + ShellWords.quote(expression) + " --no-out-link 2>/dev/null");
+        string output = pipe.readAll().trim();
+        return pipe.close().ok() && output.startsWith("/nix/store/") ? output : "";
+    }
+
+    class string pack(string upstream) {
+        if (upstream.equals("duimon_mega_bezel")) { return "Duimon-Mega-Bezel"; }
+        if (upstream.equals("soqueroeu_tv")) { return "Soqueroeu-TV-Backgrounds_V2.0"; }
+        return upstream;
+    }
+
+    class string upstreamFor(string preset) { return preset.startsWith("Presets/") ? "duimon_mega_bezel" : "soqueroeu_tv"; }
+
+    public void stage() {  // packs reference ../../../../shaders_slang next to Mega_Bezel_Packs
+        string packs = PathTools.join(self.root, "Mega_Bezel_Packs");
+        FileSystem.mkdirp(packs);
+        MegaBezelTree.link(PathTools.join(self.root, "shaders_slang"), self.slang);
+        for name in self.upstreams.keys() { MegaBezelTree.link(PathTools.join(packs, MegaBezelTree.pack(name)), self.upstreams.get(name)); }
+    }
+
+    class void link(string path, string target) {
+        if (FileSystem.isSymlink(path)) { FileSystem.removeRecursive(path); }
+        FileSystem.symlink(target, path);
+    }
+
+    public string presetPath(string preset) { return PathTools.join(PathTools.join(PathTools.join(self.root, "Mega_Bezel_Packs"), MegaBezelTree.pack(MegaBezelTree.upstreamFor(preset))), preset); }
+
+    public string reference(string path) {  // store or staged path -> "upstream:relative", else "semu:config-relative", else the path itself
+        for name in self.upstreams.keys() {
+            string root = self.upstreams.get(name) + "/";
+            if (path.startsWith(root)) { return name + ":" + path.substring(root.len(), path.len() - root.len()); }
+            string staged = PathTools.join(PathTools.join(self.root, "Mega_Bezel_Packs"), MegaBezelTree.pack(name)) + "/";
+            if (path.startsWith(staged)) { return name + ":" + path.substring(staged.len(), path.len() - staged.len()); }
+        }
+        string config = self.configRoot + "/";
+        if (path.startsWith(config)) { return "semu:" + path.substring(config.len(), path.len() - config.len()); }
+        return path;
+    }
+
+    public string absolute(string reference) {
+        int colon = Strings.find(reference, ":", 0);
+        if (colon <= 0) { return reference; }
+        string name = reference.substring(0, colon);
+        string rest = reference.substring(colon + 1, reference.len() - colon - 1);
+        if (name.equals("semu")) { return PathTools.join(self.configRoot, rest); }
+        return self.upstreams.has(name) ? PathTools.join(self.upstreams.get(name), rest) : reference;
+    }
+
+    class void pragmaDefaults(string directory, Map<string, double> into, int depth) {  // "#pragma parameter NAME "label" default min max step"
+        if (depth > 8 || !FileSystem.isDir(directory)) { return; }
+        for name in FileSystem.listDir(directory).sorted() {
+            string path = PathTools.join(directory, name);
+            if (FileSystem.isDir(path)) { MegaBezelTree.pragmaDefaults(path, into, depth + 1); continue; }
+            if (!(name.endsWith(".inc") || name.endsWith(".slang"))) { continue; }
+            for line in Strings.split(FileSystem.readText(path), "\n") {
+                string text = line.trim();
+                if (!text.startsWith("#pragma")) { continue; }
+                int parameter = Strings.find(text, "parameter", 0);
+                if (parameter < 0) { continue; }
+                string rest = text.substring(parameter + 9, text.len() - parameter - 9).trim();
+                int space = Strings.find(rest, " ", 0);
+                int tab = Strings.find(rest, "\t", 0);
+                if (tab >= 0 && (space < 0 || tab < space)) { space = tab; }
+                if (space <= 0) { continue; }
+                string parameterName = rest.substring(0, space);
+                int quote = Strings.find(rest, "\"", 0);
+                int closing = quote < 0 ? -1 : Strings.find(rest, "\"", quote + 1);
+                if (closing < 0 || into.has(parameterName)) { continue; }
+                Vector<string> numbers = [];
+                for token in Strings.split(rest.substring(closing + 1, rest.len() - closing - 1).trim(), " ") { if (!token.trim().isEmpty()) { numbers.push(token.trim()); } }
+                if (numbers.size() == 0) { continue; }
+                JSONValue number = JSONValue.parse(numbers[0]);
+                if (number != null && number.isNumber()) { into.put(parameterName, number.asFloat()); }
+            }
+        }
+    }
+}
+
+class SemuJsonText {
+    class string at(JSONValue object, string key) {
+        JSONValue value = object == null ? null : object.get(key);
+        return value != null && value.isString() ? value.asString() : "";
+    }
+}
+
+class MegaBezelPreset {  // one preset with its chain flattened
+    public string path;
+    public Vector<string> chain;
+    public Map<string, string> values;
+    public Map<string, string> textures;  // texture key -> absolute file
+    public Vector<string> missing;
+
+    public MegaBezelPreset(string path) {
+        self.path = path;
+        self.chain = [];
+        self.values = {};
+        self.textures = {};
+        self.missing = [];
+        MegaBezelPreset.gather(path, 0, self.chain);
+        for file in self.chain {
+            Map<string, string> found = MegaBezelPreset.fileValues(file);
+            for key in found.keys() {
+                string value = found.get(key);
+                if (BezelPaths.isImage(value)) { self.textures.put(key, BezelPaths.resolve(file, value)); } else { self.values.put(key, value); }
+            }
+        }
+        for key in self.textures.keys() { if (!FileSystem.isFile(self.textures.get(key))) { self.missing.push(key + ": " + self.textures.get(key)); } }
+    }
+
+    class void gather(string path, int depth, Vector<string> into) {  // video_shader_gather_reference_path_list
+        if (depth > 16 || !FileSystem.isFile(path)) { return; }
+        for line in Strings.split(FileSystem.readText(path), "\n") {
+            string text = line.trim();
+            if (!text.startsWith("#reference")) { continue; }
+            string target = BezelPaths.unquote(text.substring(10, text.len() - 10));
+            MegaBezelPreset.gather(BezelPaths.resolve(path, target), depth + 1, into);
+        }
+        into.push(path);
+    }
+
+    class Map<string, string> fileValues(string path) {  // config_file keeps the first entry for a key
+        Map<string, string> found = {};
+        for raw in Strings.split(FileSystem.readText(path), "\n") {
+            string line = raw;
+            int comment = Strings.find(line, "//", 0);
+            if (comment >= 0) { line = line.substring(0, comment); }
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("#")) { continue; }
+            int equals = Strings.find(line, "=", 0);
+            if (equals <= 0) { continue; }
+            string key = line.substring(0, equals).trim();
+            if (key.isEmpty() || found.has(key)) { continue; }
+            found.put(key, BezelPaths.unquote(line.substring(equals + 1, line.len() - equals - 1)));
+        }
+        return found;
+    }
+
+    public bool has(string key) { return self.values.has(key); }
+
+    public string value(string key) { return self.values.has(key) ? self.values.get(key) : ""; }
+
+    public string texture(string key) { return self.textures.has(key) ? self.textures.get(key) : ""; }
+}

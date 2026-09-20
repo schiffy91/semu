@@ -24,53 +24,129 @@
       "shape": {
         "kind": "rounded",
         "radius": 0.054,
-        "exponent": 4.0
+        "exponent": 4
       },
-      "surround": "#2e2e33",
-      "curvature": 0.0,
+      "surround": "#3a3a40",
+      "curvature": 0,
       "vignette": 0.06,
-      "bloom": 0.0,
+      "bloom": 0,
       "glow": 0.08,
       "glass": {
         "asset": "assets/bezels/gb/dmg-glass.png",
         "reflect": 0.3
       },
       "shader": null,
-      "measurement": {
-        "tool": "tools/bezel-calibrate.py",
+      "measurement": null,
+      "image": {
+        "x": 1012,
+        "y": 1512,
+        "w": 1416,
+        "h": 1275
+      },
+      "ring": {
+        "inner": {
+          "x": 1012,
+          "y": 1512,
+          "w": 1416,
+          "h": 1275
+        },
+        "outer": {
+          "x": 974,
+          "y": 1473,
+          "w": 1492,
+          "h": 1353
+        },
+        "inner_radius": 10.201719257308286,
+        "outer_radius": 7.307070173004598,
+        "color": "#2f2f36"
+      },
+      "aspect": 1.11,
+      "inset": null,
+      "provenance": {
+        "tool": "semu bezel emit",
         "preset": "Presets/Advanced/Nintendo_Game_Boy/Gameboy_DMG01-[ADV]-[LCD-GRID].slangp",
         "viewport": "3840x2160",
-        "cards_px": [
-          [
-            1638,
-            752,
-            564,
-            508
-          ]
+        "core": "160x144",
+        "screen": 1,
+        "flip": [
+          false,
+          false
         ],
-        "device_px": [
-          0,
-          0,
-          3840,
-          2160
-        ],
-        "silhouette_px": [
-          431,
-          953,
-          2578,
-          4219
-        ],
-        "scale": [
-          1.48953,
-          0.51197
-        ],
-        "screen": 0
-      },
-      "image": {
-        "x": 1531,
-        "y": 2422,
-        "w": 379,
-        "h": 992
+        "canvas_layer": "device",
+        "opening": "kept",
+        "parameters": {
+          "HSM_ASPECT_RATIO_EXPLICIT": "1.110000",
+          "HSM_ASPECT_RATIO_MODE": "1.000000",
+          "HSM_BG_LAYER_ORDER": "0",
+          "HSM_BG_OPACITY": "100",
+          "HSM_BG_POS_X": "0",
+          "HSM_BG_POS_Y": "0",
+          "HSM_BG_SCALE": "100",
+          "HSM_BG_SCALE_X": "100",
+          "HSM_BZL_BRIGHTNESS": "30",
+          "HSM_BZL_BRIGHTNESS_MULT_SIDES": "100",
+          "HSM_BZL_COLOR_HUE": "240.000000",
+          "HSM_BZL_COLOR_SATURATION": "13.000000",
+          "HSM_BZL_COLOR_VALUE": "37.000076",
+          "HSM_BZL_HEIGHT": "70.000000",
+          "HSM_BZL_INNER_CORNER_RADIUS_SCALE": "80",
+          "HSM_BZL_NOISE": "10.000000",
+          "HSM_BZL_OPACITY": "100",
+          "HSM_BZL_OUTER_CORNER_RADIUS_SCALE": "60",
+          "HSM_BZL_OUTER_POSITION_Y": "0",
+          "HSM_BZL_SCALE_OFFSET": "100",
+          "HSM_BZL_WIDTH": "70.000000",
+          "HSM_CAB_GLASS_LAYER_ORDER": "9",
+          "HSM_CAB_GLASS_OPACITY": "100",
+          "HSM_CAB_GLASS_POS_X": "0",
+          "HSM_CAB_GLASS_POS_Y": "0",
+          "HSM_CAB_GLASS_SCALE": "100",
+          "HSM_CAB_GLASS_SCALE_X": "100",
+          "HSM_CROP_PERCENT_BOTTOM": "0",
+          "HSM_CROP_PERCENT_LEFT": "0",
+          "HSM_CROP_PERCENT_RIGHT": "0",
+          "HSM_CROP_PERCENT_TOP": "0",
+          "HSM_CROP_PERCENT_ZOOM": "0",
+          "HSM_CRT_LAYER_ORDER": "11.000000",
+          "HSM_DECAL_LAYER_ORDER": "7",
+          "HSM_DECAL_OPACITY": "100",
+          "HSM_DECAL_POS_X": "0",
+          "HSM_DECAL_POS_Y": "0",
+          "HSM_DECAL_SCALE": "100",
+          "HSM_DECAL_SCALE_X": "100",
+          "HSM_DEVICE_LAYER_ORDER": "2.000000",
+          "HSM_DEVICE_OPACITY": "100",
+          "HSM_DEVICE_POS_X": "0",
+          "HSM_DEVICE_POS_Y": "-71.220314",
+          "HSM_DEVICE_SCALE": "397.815613",
+          "HSM_DEVICE_SCALE_X": "100",
+          "HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS": "0",
+          "HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION": "0",
+          "HSM_GLOBAL_CORNER_RADIUS": "10",
+          "HSM_LED_LAYER_ORDER": "10.000000",
+          "HSM_LED_OPACITY": "0.000000",
+          "HSM_LED_POS_X": "0",
+          "HSM_LED_POS_Y": "0",
+          "HSM_LED_SCALE": "100",
+          "HSM_LED_SCALE_X": "100",
+          "HSM_NON_INTEGER_SCALE": "58.970268",
+          "HSM_NON_INTEGER_SCALE_OFFSET": "100",
+          "HSM_ROTATE_CORE_IMAGE": "0",
+          "HSM_SCREEN_CORNER_RADIUS_SCALE": "100",
+          "HSM_SCREEN_POSITION_X": "0",
+          "HSM_SCREEN_POSITION_Y": "86.000000",
+          "HSM_TOP_LAYER_ORDER": "12",
+          "HSM_TOP_OPACITY": "100",
+          "HSM_TOP_POS_X": "0",
+          "HSM_TOP_POS_Y": "0",
+          "HSM_TOP_SCALE": "100",
+          "HSM_TOP_SCALE_X": "100",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS": "0.000000",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EMPTY_THICKNESS": "0",
+          "HSM_TUBE_EMPTY_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EXPLICIT_ASPECT": "1.3332999999999999"
+        }
       }
     }
   ],
@@ -81,5 +157,115 @@
     "kind": "device",
     "preset": "Presets/Advanced/Nintendo_Game_Boy/Gameboy_DMG01-[ADV]-[LCD-GRID].slangp",
     "silhouette": "Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Device.png"
-  }
+  },
+  "canvas_layer": "device",
+  "layers": [
+    {
+      "id": "background",
+      "texture": "BackgroundImage",
+      "file": "duimon_mega_bezel:Graphics/_Backgrounds/Canvas_Background.jpg",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "order": 0,
+      "visible": true,
+      "rect": {
+        "x": -202,
+        "y": 1254,
+        "w": 3844,
+        "h": 2162
+      }
+    },
+    {
+      "id": "device",
+      "texture": "DeviceImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Device.png",
+      "size": {
+        "w": 3440,
+        "h": 6115
+      },
+      "order": 2,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3440,
+        "h": 6115
+      }
+    },
+    {
+      "id": "decal",
+      "texture": "DecalImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Decal.png",
+      "size": {
+        "w": 3440,
+        "h": 6115
+      },
+      "order": 7,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3440,
+        "h": 6115
+      }
+    },
+    {
+      "id": "glass",
+      "texture": "CabinetGlassImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Glass.png",
+      "size": {
+        "w": 3440,
+        "h": 6115
+      },
+      "order": 9,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3440,
+        "h": 6115
+      }
+    },
+    {
+      "id": "led",
+      "texture": "LEDImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_Game_Boy/Gameboy_LED.png",
+      "size": {
+        "w": 3440,
+        "h": 6115
+      },
+      "order": 10,
+      "visible": false,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3440,
+        "h": 6115
+      }
+    },
+    {
+      "id": "screens",
+      "order": 11,
+      "visible": true
+    },
+    {
+      "id": "top",
+      "texture": "TopLayerImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_Game_Boy/Gameboy_DMG01_Top.png",
+      "size": {
+        "w": 3440,
+        "h": 6115
+      },
+      "order": 12,
+      "visible": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3440,
+        "h": 6115
+      }
+    }
+  ]
 }
