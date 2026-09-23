@@ -91,6 +91,8 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         JSONValue fields = JSONValue.makeArray();
         if (bezels.size() >= 2) {
             fields.push(SemuSettingsUi.choice(settings, "visual.systems." + system.id + ".bezel_variant", "BEZEL", bezels, SemuJson.textAt(system.bezels, "default_variant")));
+            string placement = SemuJson.textAt(system.bezels, "placement");
+            fields.push(SemuSettingsUi.choice(settings, "visual.systems." + system.id + ".placement", "PLACEMENT", ["fit", "game", "bezel"], placement.isEmpty() ? SemuJson.textAt(settings, "visual.placement") : placement));
         }
         if (shaders.size() >= 2) {
             fields.push(SemuSettingsUi.choice(settings, "visual.systems." + system.id + ".shader_variant", "SHADER", shaders, SemuJson.textAt(system.shaders, "default_variant")));
@@ -140,8 +142,12 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         JSONValue interfaceFields = JSONValue.makeArray();
         interfaceFields.push(SemuSettingsUi.choice(settings, "ui.theme", "THEME", SemuSettingsUi.themes(plan), "slate-es-de"));
         interfaceFields.push(SemuSettingsUi.integer(settings, "ui.display_index", "DISPLAY INDEX", 0));
+        JSONValue library = JSONValue.makeArray();  // where the games and firmware live; a link to an external drive is fine
+        library.push(SemuSettingsUi.field("paths.roms", "ROM FOLDER", "path", JSONValue.makeString(plan.romsRoot())));
+        library.push(SemuSettingsUi.field("paths.bios", "BIOS FOLDER", "path", JSONValue.makeString(plan.path("bios"))));
         JSONValue sections = JSONValue.makeArray();
         sections.push(SemuSettingsUi.page("visuals", "VISUALS", visuals));
+        sections.push(SemuSettingsUi.page("library", "LIBRARY", library));
         if (systems.size() > 0) {
             JSONValue menu = JSONValue.makeObject();
             menu.set("kind", JSONValue.makeString("menu"));
