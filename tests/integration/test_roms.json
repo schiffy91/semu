@@ -1,11 +1,14 @@
 {
-  "doc": "Freely licensed test programs that real cores boot in the real-cores check. pinobatch's 240p Test Suite ports (GPL-2.0-or-later), pinned by release and hash.",
-  "source": "https://github.com/pinobatch/240p-test-mini/releases/tag/v0.23",
-  "licence": "GPL-2.0-or-later",
+  "doc": "Freely licensed test programs that real cores boot in the real-cores check: pinobatch's 240p Test Suite ports (GPL-2.0-or-later) and PeterLemon's bare-metal N64 programs (Unlicense, public domain), pinned by release or commit and hash.",
+  "sources": [
+    { "url": "https://github.com/pinobatch/240p-test-mini/releases/tag/v0.23", "licence": "GPL-2.0-or-later" },
+    { "url": "https://github.com/PeterLemon/N64/tree/7085543e4a19d8c539fc9e0a4d2869e788b4ed4b", "licence": "Unlicense" }
+  ],
   "roms": [
     { "system": "gb", "core": "gambatte", "file": "gb240p.gb", "url": "https://github.com/pinobatch/240p-test-mini/releases/download/v0.23/gb240p.gb", "hash": "sha256-cz625+wHGXUt3V/NpOcVwvLiD0rEvJccS9HUknL5uwQ=" },
     { "system": "gbc", "core": "gambatte", "file": "gb240p.gb", "url": "https://github.com/pinobatch/240p-test-mini/releases/download/v0.23/gb240p.gb", "hash": "sha256-cz625+wHGXUt3V/NpOcVwvLiD0rEvJccS9HUknL5uwQ=" },
     { "system": "gba", "core": "mgba", "file": "240pee_mb.gba", "url": "https://github.com/pinobatch/240p-test-mini/releases/download/v0.23/240pee_mb.gba", "hash": "sha256-R4RPcUBzigb487wJeA2jqwlVOaJQuHD2FP7tVh2dbzQ=" },
-    { "system": "nes", "core": "mesen", "file": "240pee.nes", "url": "https://github.com/pinobatch/240p-test-mini/releases/download/v0.23/240pee.nes", "hash": "sha256-BPAdc3L2bqK+/jJbm9ZVqfzDlaMfpG2UZihruPnS5i4=" }
+    { "system": "nes", "core": "mesen", "file": "240pee.nes", "url": "https://github.com/pinobatch/240p-test-mini/releases/download/v0.23/240pee.nes", "hash": "sha256-BPAdc3L2bqK+/jJbm9ZVqfzDlaMfpG2UZihruPnS5i4=" },
+    { "system": "n64", "core": "mupen64plus_next", "file": "HelloWorldCPU32BPP320X240.N64", "url": "https://raw.githubusercontent.com/PeterLemon/N64/7085543e4a19d8c539fc9e0a4d2869e788b4ed4b/HelloWorld/32BPP/HelloWorldCPU320x240/HelloWorldCPU32BPP320X240.N64", "hash": "sha256-WXNxw5J4Sev7yRL4FBgR2VL2wPUKmECV/Bxhzo4MdbM=" }
   ]
 }
