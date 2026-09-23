@@ -18,11 +18,16 @@
     let
       lib = nixpkgs.lib;
       version = "1.22.2";
-      platforms = { linux = true; macos = false; windows = "planned"; };  # the gl3 hook is Linux today; Metal is the macOS port to write
-      systems = [ "x86_64-linux" ];
+      platforms = { linux = true; macos = true; windows = "planned"; };  # the gl3 hook on GLX/EGL and on CGL
+      systems = [ "x86_64-linux" "aarch64-darwin" ];
       build = system:
         let pkgs = nixpkgs.legacyPackages.${system}; in
-        pkgs.callPackage ./package.nix {
+        if pkgs.stdenv.hostPlatform.isDarwin then pkgs.callPackage ./darwin.nix {
+          inherit source version;
+          btrcpy = btrc.packages.${system}.btrcpy;
+          semuRendererLoader = renderer.packages.${system}.loader;
+          bridgeSource = renderer.retroarchBridge;
+        } else pkgs.callPackage ./package.nix {
           inherit pkgs source version;
           btrcpy = btrc.packages.${system}.btrcpy;
           semuRendererLoader = renderer.packages.${system}.loader;

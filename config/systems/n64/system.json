@@ -35,7 +35,8 @@
       "label": "Mupen64Plus-Next",
       "core": "mupen64plus_next",
       "platforms": [
-        "linux"
+        "linux",
+        "macos"
       ]
     }
   ],

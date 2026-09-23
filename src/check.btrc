@@ -58,7 +58,7 @@ class SemuChecker {
 
     class bool check(SemuModel model, SemuPlan plan, SemuDiagnostics diagnostics) {
         if (plan == null) { return false; }
-        if (!plan.platform.equals("linux")) { diagnostics.add(plan.target.id, "platform", "only linux targets are supported"); }
+        if (!plan.platform.equals("linux") && !plan.platform.equals("macos")) { diagnostics.add(plan.target.id, "platform", "only linux and macos targets are supported"); }
         if (plan.assetRoot.isEmpty()) { diagnostics.add(plan.target.id, "asset_root", "SEMU_ASSET_ROOT or --asset-root is required"); }
         if (plan.systems.isEmpty()) { diagnostics.add(plan.target.id, "systems", "no system serves this platform"); }
         for systemId in plan.systems { SemuChecker.checkSystem(model, plan, model.system(systemId), diagnostics); }

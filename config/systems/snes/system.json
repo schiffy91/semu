@@ -40,7 +40,8 @@
       "label": "Snes9x",
       "core": "snes9x",
       "platforms": [
-        "linux"
+        "linux",
+        "macos"
       ]
     }
   ],

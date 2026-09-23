@@ -34,7 +34,8 @@
       "label": "mGBA",
       "core": "mgba",
       "platforms": [
-        "linux"
+        "linux",
+        "macos"
       ]
     }
   ],

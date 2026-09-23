@@ -1,0 +1,102 @@
+Fixes RetroArch v1.22.2 `make` builds on macOS (upstream builds with Xcode,
+which masks all of these):
+1. libretro-common/utils/md5.c is compiled unconditionally, but lrc_hash.h
+   maps MD5_Init/Update/Final to CommonCrypto on __APPLE__, so the duplicate
+   C implementation breaks against CC_MD5state_st. The upstream Xcode project
+   simply excludes the file; guard it the same way for the make build.
+2. menu/menu_displaylist.c uses CFBundle* under #ifdef __APPLE__ without
+   including CoreFoundation (the Xcode precompiled prefix provides it).
+3. ui/drivers/ui_cocoa.m calls functions implemented in cocoa_common.m whose
+   prototypes are only declared there (or only for iOS in apple_platform.h),
+   and uses menu symbols without including the menu headers.
+4. Makefile.common never compiles the apple display server / CoreLocation
+   driver objects video_driver.c and retroarch.c reference on __APPLE__, and
+   never links QuartzCore (CAMetalLayer, CAFrameRateRangeMake) or
+   AVFoundation (the accessibility narrator in platform_darwin.m).
+5. cocoa_common.m messages the Swift-implemented RetroArchPlaylistManager;
+   make builds have no Swift integration, so route around it (content
+   loading still works through the regular companion-UI path).
+--- a/Makefile.common	2026-07-02 21:34:44
++++ b/Makefile.common	2026-07-02 21:36:48
+@@ -2584,7 +2584,15 @@
+    DEFINES += -DHAVE_MAIN -DOSX
+    OBJ += input/drivers/cocoa_input.o \
+           ui/drivers/ui_cocoa.o \
+-          ui/drivers/cocoa/cocoa_common.o
++          ui/drivers/cocoa/cocoa_common.o \
++          gfx/display_servers/dispserv_apple.o
++
++   # objects/frameworks the Xcode project carries but the make build forgot
++   LIBS += -framework QuartzCore -framework AVFoundation
++   ifeq ($(HAVE_CORELOCATION), 1)
++      OBJ += location/drivers/corelocation.o
++      LIBS += -framework CoreLocation
++   endif
+ 
+    ifeq ($(HAVE_OPENGL), 1)
+            DEFINES += -DGL_SILENCE_DEPRECATION
+--- a/libretro-common/utils/md5.c	2026-07-02 21:34:44
++++ b/libretro-common/utils/md5.c	2026-07-02 21:34:44
+@@ -36,6 +36,8 @@
+  */
+ #include <lrc_hash.h>
+ 
++#ifndef __APPLE__
++
+ #include <string.h>
+ 
+ /*
+@@ -286,3 +288,5 @@
+ 
+ 	memset(ctx, 0, sizeof(*ctx));
+ }
++
++#endif /* !__APPLE__: CommonCrypto provides MD5_* (see lrc_hash.h) */
+--- a/menu/menu_displaylist.c	2026-07-02 21:34:44
++++ b/menu/menu_displaylist.c	2026-07-02 21:34:44
+@@ -18,6 +18,10 @@
+ 
+ #include <stddef.h>
+ 
++#ifdef __APPLE__
++#include <CoreFoundation/CoreFoundation.h>
++#endif
++
+ #include <compat/strl.h>
+ #include <compat/strcasestr.h>
+ 
+--- a/ui/drivers/cocoa/cocoa_common.m	2026-07-02 21:34:44
++++ b/ui/drivers/cocoa/cocoa_common.m	2026-07-02 21:34:44
+@@ -1194,7 +1194,11 @@
+    RARCH_LOG("Launching game by filename: %s\n", [filename UTF8String]);
+ 
+    // Strategy 1: Try to find game in playlists first (existing behavior)
++#ifdef HAVE_SWIFT
+    RetroArchPlaylistGame *game = [RetroArchPlaylistManager findGameByFilename:filename];
++#else
++   RetroArchPlaylistGame *game = nil; /* the playlist manager is Swift-only */
++#endif
+ 
+    if (game && game.corePath && game.fullPath) {
+       char core_path[PATH_MAX_LENGTH] = {0};
+--- a/ui/drivers/ui_cocoa.m	2026-07-02 21:34:44
++++ b/ui/drivers/ui_cocoa.m	2026-07-02 21:34:44
+@@ -52,6 +52,18 @@
+ 
+ #include "ui_cocoa.h"
+ 
++/* implemented in ui/drivers/cocoa/cocoa_common.m; the prototypes there are
++ * private (or iOS-only in apple_platform.h) */
++void cocoa_file_load_with_detect_core(const char *filename);
++void rarch_start_draw_observer(void);
++void rarch_stop_draw_observer(void);
++
++#include "../../gfx/video_display_server.h"
++#ifdef HAVE_MENU
++#include "../../menu/menu_displaylist.h"
++#include "../../menu/menu_cbs.h"
++#endif
++
+ #ifdef HAVE_SWIFT
+ #import "RetroArch-Swift.h"
+ #endif

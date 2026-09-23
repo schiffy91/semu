@@ -467,6 +467,22 @@ class LibrarySettingsContract {  // the ROM folder is chosen from ES-DE, and a l
     }
 }
 
+class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID pads and Core Audio; Linux keeps SDL2 and Pulse
+    class void run(Contract contract) {
+        Fixture mac = Fixture("macos");
+        Fixture desktop = Fixture("linux-desktop");
+        contract.expect(mac.diagnostics.ok() && mac.plan.platform.equals("macos"), "the macos target resolves: " + mac.diagnostics.render());
+        string macProfile = mac.profile("retroarch", "retroarch.cfg");
+        contract.contains(macProfile, "input_joypad_driver = \"hid\"", "macOS RetroArch reads pads through HID");
+        contract.contains(macProfile, "audio_driver = \"coreaudio\"", "macOS RetroArch plays through Core Audio");
+        contract.contains(macProfile, "input_driver = \"cocoa\"", "macOS RetroArch takes Cocoa keyboard input");
+        string linuxProfile = desktop.profile("retroarch", "retroarch.cfg");
+        contract.contains(linuxProfile, "input_joypad_driver = \"sdl2\"", "Linux RetroArch keeps SDL2 pads");
+        contract.contains(linuxProfile, "audio_driver = \"pulse\"", "Linux RetroArch keeps Pulse");
+        contract.expect(mac.plan.systems.contains("gb") && mac.plan.systems.contains("n64"), "the RetroArch systems serve macOS");
+    }
+}
+
 class RenderResolutionContract {  // the 3D cores render at the largest whole multiple the display holds
     class string mupen(Fixture fixture, string overlay) {
         SemuDiagnostics diagnostics = SemuDiagnostics();
@@ -741,6 +757,7 @@ int main() {
     RenderResolutionContract.run(contract);
     SteamInputInstallContract.run(contract);
     LibrarySettingsContract.run(contract);
+    MacTargetContract.run(contract);
     RetroArchSpecContract.run(contract);
     EmulatorRuntimeSpecContract.run(contract);
     StandaloneSpecContract.run(contract);

@@ -36,7 +36,8 @@
       "label": "Mesen",
       "core": "mesen",
       "platforms": [
-        "linux"
+        "linux",
+        "macos"
       ]
     }
   ],

@@ -105,7 +105,7 @@ class RetroArchSpecPlatforms {  // emulator.json slices: Linux frame ownership; 
         contract.expect(!SemuJson.get(linux, "retroarch").has("settings_overrides"), "retroarch.cfg keys live only in profile.json, not in an unread settings_overrides copy");
         string emulatorText = RetroArchSpecText.read(fixture, "config/emulators/retroarch/emulator.json");
         contract.lacks(emulatorText, "${paths.project_bios}", "emulator.json never points at a project BIOS path");
-        contract.expect(!emulator.supports("macos"), "RetroArch declares no macOS slice: its flake builds Linux only");
+        contract.expect(emulator.supports("macos") && SemuJson.textAt(emulator.platform("macos"), "core_loader.filename").equals("${core}_libretro.dylib") && SemuJson.textAt(emulator.platform("macos"), "retroarch.video_driver").equals("glcore"), "RetroArch runs on macOS: dylib cores and the hooked glcore driver");
     }
 }
 
