@@ -934,9 +934,10 @@ Update this block whenever a milestone criterion changes state.
      real test ROMs per system, nixpkgs on a release branch and the M4 pin refresh, PCSX2 built
      with the loader (all need a full emulator rebuild: FRACTAL-NORTH or a bigger VM disk), and a
      design choice for a built-in fallback compositor (G3).
-  Rulings needed from the owner: the default placement per system (G4), the ES-DE symlink
-  above the ES-DE home (G5), rewriting git history to drop the derived art (G7), and confirmation of the three defaults recorded at
-  the top of the gap section.
+  Owner rulings (2026-09-23): handhelds default to `game` placement (gb, gbc, gba, psp); ES-DE
+  may sit under a link and the ROM and BIOS folders are chosen from SEMU SETTINGS > LIBRARY;
+  git history is left as it is; the old VM cache was freed for the Linux builds. The three
+  defaults at the top of the gap section stand unless the owner says otherwise.
 - Implementation 2026-09-23 (Mac, commits dd2d43b..aa75831): 2601 contract checks pass
   natively and in the darwin flake check with no skips; the real renderer runs offscreen on
   the Mac (`tests/visual/render_host.btrc`); the full gallery verifies 68 of 68 fixed screens
