@@ -33,6 +33,7 @@ symlinkJoin {
 
     cat > "$out/bin/semu-es-de" <<LAUNCHER
     #!/bin/sh
+    export PATH="$out/bin:\$PATH"  # ES-DE finds the semu-* shims on PATH; an app opened from Finder has only /usr/bin:/bin
     target="\''${SEMU_TARGET:-${defaultTarget}}"
     "$out/bin/semu" prepare --target "\$target" || exit 1
     "$out/bin/semu" sync start --target "\$target" >/dev/null 2>&1 || true
