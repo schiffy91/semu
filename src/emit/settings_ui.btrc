@@ -131,6 +131,7 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         visuals.push(SemuSettingsUi.boolean(settings, "visual.crt_shaders", "CRT SHADERS", true));
         visuals.push(SemuSettingsUi.boolean(settings, "visual.bezels", "BEZELS", true));
         visuals.push(SemuSettingsUi.boolean(settings, "visual.integer_scaling", "INTEGER SCALING", true));
+        visuals.push(SemuSettingsUi.choice(settings, "visual.placement", "PLACEMENT", ["fit", "game", "bezel"], "fit"));  // fit the shell, or an integer picture
         JSONValue systems = JSONValue.makeArray();
         for systemId in plan.systems {
             JSONValue page = SemuSettingsUi.systemPage(settings, model.system(systemId));
