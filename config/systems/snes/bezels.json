@@ -8,6 +8,11 @@
       "id": "tv",
       "label": "Living room CRT",
       "bezel": "tv-soqueroeu-snes"
+    },
+    {
+      "id": "purple",
+      "label": "Purple-trim CRT",
+      "bezel": "tv-soqueroeu-snes-purple"
     }
   ]
 }

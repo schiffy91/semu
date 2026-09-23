@@ -83,7 +83,9 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
     class JSONValue systemPage(JSONValue settings, SemuSystem system) {  // null when the system has nothing to choose
         Vector<string> shaders = SemuSettingsUi.variantIds(system.shaders);
         Vector<string> bezels = SemuSettingsUi.variantIds(system.bezels);
-        if (shaders.size() < 2 && bezels.size() < 2) { return null; }
+        if (shaders.isEmpty() && bezels.isEmpty()) { return null; }
+        if (!shaders.isEmpty()) { shaders.push("none"); }  // every system can turn its own look off
+        if (!bezels.isEmpty()) { bezels.push("none"); }
         JSONValue fields = JSONValue.makeArray();
         if (bezels.size() >= 2) {
             fields.push(SemuSettingsUi.choice(settings, "visual.systems." + system.id + ".bezel_variant", "BEZEL", bezels, SemuJson.textAt(system.bezels, "default_variant")));

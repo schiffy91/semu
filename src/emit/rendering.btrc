@@ -98,6 +98,10 @@ class SemuRenderLayers {  // the package's layer stack for the compositor: file,
         if (lines.size() == 0) { return; }
         if (lines.size() > 8) { diagnostics.add(packageId, "layers", f"{lines.size()} drawable layers, the compositor holds 8"); return; }
         env.set("SEMU_RENDER_CANVAS" + suffix, f"{SemuRenderEnvironment.numberOr(canvas, "w", "0")},{SemuRenderEnvironment.numberOr(canvas, "h", "0")}");
+        string canvasLayer = SemuJson.textAt(package, "canvas_layer");
+        for (int index = 0; index < layers.size(); index++) {  // a scene whose canvas is the room fills the screen; a device keeps its whole silhouette
+            if (SemuJson.textAt(layers.at(index), "id").equals(canvasLayer) && SemuJson.textAt(layers.at(index), "follow").equals("viewport")) { env.set("SEMU_RENDER_CANVAS_FIT" + suffix, "cover"); }
+        }
         for (int index = 0; index < lines.size(); index++) { env.set(f"SEMU_RENDER_LAYER_{index}{suffix}", lines[index]); }
         env.set("SEMU_RENDER_LAYER_COUNT" + suffix, f"{lines.size()}");
     }
@@ -261,10 +265,18 @@ class SemuRenderEnvironment {
         return variant.isObject() ? SemuJson.textAt(variant, "bezel") : "";
     }
 
-    class bool usable(SemuPlan plan, JSONValue package) {  // a fixed bezel needs its plate in this asset root; computed layouts need nothing
+    class bool usable(SemuPlan plan, JSONValue package) {  // a fixed bezel needs its plate or one drawable layer here; computed layouts need nothing
         if (package == null || !package.isObject()) { return false; }
         if (SemuBezelPackage.computed(package)) { return true; }
-        return !SemuRenderAssets.image(plan, SemuJson.textAt(package, "art")).isEmpty();
+        if (!SemuRenderAssets.image(plan, SemuJson.textAt(package, "art")).isEmpty()) { return true; }
+        JSONValue layers = package.get("layers");
+        if (layers == null || !layers.isArray()) { return false; }
+        for (int index = 0; index < layers.size(); index++) {
+            JSONValue layer = layers.at(index);
+            string id = SemuJson.textAt(layer, "id");
+            if (!id.equals("cutouts") && !SemuRenderLayers.file(plan, SemuJson.textAt(package, "id"), id, SemuJson.textAt(layer, "file")).isEmpty()) { return true; }
+        }
+        return false;
     }
 
     class Vector<string> screenIds(SemuSystem system) {
@@ -356,7 +368,7 @@ class SemuRenderEnvironment {
         string shaderId = SemuJson.textAt(settings, "visual.systems." + system.id + ".shader_variant");
         if (shaderId.isEmpty()) { shaderId = SemuJson.textAt(system.shaders, "default_variant"); }
         string bezelId = SemuJson.textAt(settings, "visual.systems." + system.id + ".bezel_variant");
-        if (bezelId.isEmpty() || SemuRenderEnvironment.packageId(system, bezelId).isEmpty()) { bezelId = SemuJson.textAt(system.bezels, "default_variant"); }
+        if (bezelId.isEmpty() || (!bezelId.equals("none") && SemuRenderEnvironment.packageId(system, bezelId).isEmpty())) { bezelId = SemuJson.textAt(system.bezels, "default_variant"); }  // "none" turns this system's bezel off
         string shaderPath = "";
         if (wantShaders && !shaderId.isEmpty() && !shaderId.equals("none")) {
             JSONValue variant = SemuRenderEnvironment.findVariant(system.shaders, shaderId);

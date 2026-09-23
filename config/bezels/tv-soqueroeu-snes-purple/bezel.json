@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "id": "tv-soqueroeu-snes-purple",
+  "label": "Living room CRT · purple trim",
+  "family": "tv",
+  "layout": "fixed",
+  "art": null,
+  "background": null,
+  "frame": null,
+  "screens": [
+    {
+      "id": "main",
+      "fit": "aspect",
+      "curvature": 0.035000000000000003,
+      "bloom": 0.17999999999999999,
+      "glow": 0.20000000000000001,
+      "vignette": 0.20000000000000001,
+      "glass": {
+        "asset": "assets/bezels/tv/tube-reflection.png",
+        "reflect": 0.12
+      },
+      "shader": null,
+      "reflection": {
+        "strength": 0.29999999999999999,
+        "blur": 0.94999999999999996,
+        "fade": 1
+      },
+      "image": {
+        "x": 1039,
+        "y": 266,
+        "w": 1762,
+        "h": 1321
+      },
+      "tube": {
+        "x": 962,
+        "y": 222,
+        "w": 1916,
+        "h": 1409
+      },
+      "ring": {
+        "inner": {
+          "x": 1032,
+          "y": 259,
+          "w": 1776,
+          "h": 1335
+        },
+        "outer": {
+          "x": 962,
+          "y": 222,
+          "w": 1916,
+          "h": 1409
+        },
+        "inner_radius": 10.677251204644167,
+        "outer_radius": 12.683190659361145,
+        "color": "#2a2641"
+      },
+      "aspect": 1.3332999999999999,
+      "shape": {
+        "kind": "rounded",
+        "radius": 0.0089999999999999993,
+        "exponent": 4
+      },
+      "surround": "#000000",
+      "inset": null,
+      "measurement": null,
+      "provenance": {
+        "tool": "semu bezel emit",
+        "preset": "presets/TV-Console/Nintendo_SuperNintendo-[Special_Purple].slangp",
+        "viewport": "3840x2160",
+        "core": "256x224",
+        "screen": 1,
+        "flip": [
+          false,
+          false
+        ],
+        "canvas_layer": "background",
+        "opening": "bezel_outer",
+        "parameters": {
+          "HSM_ASPECT_RATIO_EXPLICIT": "1.3332999999999999",
+          "HSM_ASPECT_RATIO_MODE": "0",
+          "HSM_BG_LAYER_ORDER": "0",
+          "HSM_BG_OPACITY": "100",
+          "HSM_BG_POS_X": "0",
+          "HSM_BG_POS_Y": "0",
+          "HSM_BG_SCALE": "100",
+          "HSM_BG_SCALE_X": "100",
+          "HSM_BZL_BRIGHTNESS": "50.000000",
+          "HSM_BZL_BRIGHTNESS_MULT_SIDES": "100",
+          "HSM_BZL_COLOR_HUE": "248.000000",
+          "HSM_BZL_COLOR_SATURATION": "41.000000",
+          "HSM_BZL_COLOR_VALUE": "35.000065",
+          "HSM_BZL_HEIGHT": "64.000000",
+          "HSM_BZL_INNER_CORNER_RADIUS_SCALE": "80",
+          "HSM_BZL_NOISE": "2.000000",
+          "HSM_BZL_OPACITY": "100",
+          "HSM_BZL_OUTER_CORNER_RADIUS_SCALE": "100.000000",
+          "HSM_BZL_OUTER_POSITION_Y": "0",
+          "HSM_BZL_SCALE_OFFSET": "100",
+          "HSM_BZL_WIDTH": "123.000000",
+          "HSM_CROP_PERCENT_BOTTOM": "0",
+          "HSM_CROP_PERCENT_LEFT": "0",
+          "HSM_CROP_PERCENT_RIGHT": "0",
+          "HSM_CROP_PERCENT_TOP": "0",
+          "HSM_CROP_PERCENT_ZOOM": "0",
+          "HSM_CRT_LAYER_ORDER": "5",
+          "HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS": "0",
+          "HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION": "0",
+          "HSM_FRM_THICKNESS": "30.000000",
+          "HSM_FRM_THICKNESS_SCALE_X": "100",
+          "HSM_GLOBAL_CORNER_RADIUS": "10",
+          "HSM_LED_LAYER_ORDER": "2",
+          "HSM_LED_OPACITY": "100",
+          "HSM_LED_POS_X": "0",
+          "HSM_LED_POS_Y": "0",
+          "HSM_LED_SCALE": "100",
+          "HSM_LED_SCALE_X": "100",
+          "HSM_NON_INTEGER_SCALE": "61.170277",
+          "HSM_NON_INTEGER_SCALE_OFFSET": "100",
+          "HSM_REFLECT_BLUR_MAX": "95",
+          "HSM_REFLECT_FADE_AMOUNT": "100",
+          "HSM_REFLECT_GLOBAL_AMOUNT": "30.000000",
+          "HSM_ROTATE_CORE_IMAGE": "0",
+          "HSM_SCREEN_CORNER_RADIUS_SCALE": "100",
+          "HSM_SCREEN_POSITION_X": "0",
+          "HSM_SCREEN_POSITION_Y": "71.000000",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS": "100",
+          "HSM_TUBE_BLACK_EDGE_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EMPTY_THICKNESS": "0",
+          "HSM_TUBE_EMPTY_THICKNESS_X_SCALE": "100",
+          "HSM_TUBE_EXPLICIT_ASPECT": "1.3332999999999999"
+        }
+      }
+    }
+  ],
+  "doc": {
+    "scene": "Soqueroeu's purple-trim Super Nintendo television, lit for late night"
+  },
+  "upstream": {
+    "kind": "scene",
+    "preset": "presets/TV-Console/Nintendo_SuperNintendo-[Special_Purple].slangp",
+    "source": "soqueroeu_tv"
+  },
+  "ambient": {
+    "file": "duimon_mega_bezel:Graphics/_Night/NightLighting_1920x1080.png",
+    "opacity": 0.80000000000000004
+  },
+  "canvas": {
+    "w": 3840,
+    "h": 2160
+  },
+  "canvas_layer": "background",
+  "layers": [
+    {
+      "id": "background",
+      "texture": "BackgroundImage",
+      "file": "soqueroeu_tv:img/Nintendo_SuperNintendo/SuperNES_V3_Solid_A.png",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "order": 0,
+      "visible": true,
+      "follow": "viewport",
+      "blend": "normal",
+      "opacity": 1,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3840,
+        "h": 2160
+      }
+    },
+    {
+      "id": "led",
+      "texture": "LEDImage",
+      "file": "soqueroeu_tv:img/Nintendo_SuperNintendo/SuperNES_Led.png",
+      "size": {
+        "w": 3840,
+        "h": 2160
+      },
+      "order": 2,
+      "visible": true,
+      "follow": "canvas",
+      "blend": "normal",
+      "opacity": 1,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3840,
+        "h": 2160
+      }
+    },
+    {
+      "id": "cutouts",
+      "order": 5,
+      "visible": true,
+      "follow": "canvas",
+      "blend": "normal",
+      "opacity": 1
+    }
+  ]
+}

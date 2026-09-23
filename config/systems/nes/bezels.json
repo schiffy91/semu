@@ -8,6 +8,11 @@
       "id": "tv",
       "label": "Living room CRT",
       "bezel": "tv-soqueroeu-nes"
+    },
+    {
+      "id": "black",
+      "label": "Black edition CRT",
+      "bezel": "tv-soqueroeu-nes-black"
     }
   ]
 }

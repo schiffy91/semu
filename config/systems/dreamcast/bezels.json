@@ -8,6 +8,11 @@
       "id": "tv",
       "label": "Living room CRT",
       "bezel": "tv-soqueroeu-dreamcast"
+    },
+    {
+      "id": "speakers",
+      "label": "CRT with speakers",
+      "bezel": "tv-soqueroeu-generic"
     }
   ]
 }
