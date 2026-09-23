@@ -459,6 +459,9 @@ class RenderResolutionContract {  // the 3D cores render at the largest whole mu
         contract.contains(RenderResolutionContract.mupen(desktop, "{\"visual\":{\"render_resolution\":\"1x\"}}"), "mupen64plus-43screensize = \"320x240\"", "1x keeps the native size");
         contract.lacks(RenderResolutionContract.mupen(desktop, "{\"visual\":{\"render_resolution\":\"native\"}}"), "43screensize", "native leaves the core its own default");
         contract.lacks(RenderResolutionContract.mupen(desktop, "{}"), "169screensize", "the widescreen size stays unset for 4:3 play");
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuPlan game = SemuResolver.plan(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"systems\":{\"gb\":{\"placement\":\"game\"}}}}", diagnostics);
+        contract.expect(SemuRenderEnvironment.compile(game, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=game") && SemuRenderEnvironment.compile(deck.plan, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=fit"), "placement is fit by default and game per system");
     }
 }
 

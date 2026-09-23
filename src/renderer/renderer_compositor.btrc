@@ -194,6 +194,7 @@ struct RendererConfig {
     int shaders_enabled;
     int bezels_enabled;
     int integer_scaling;
+    int placement;  // SEMU_RENDER_PLACEMENT: 0 fit, 1 game (integer, shell cropped), 2 bezel (integer, shell whole)
     int active_variant;
     float display_aspect;
     float frames_per_second;
@@ -574,6 +575,8 @@ class RendererConfiguration {
         if (value != null && value[0] == '0') { config->bezels_enabled = 0; }
         value = getenv("SEMU_RENDER_INTEGER_SCALE");
         if (value != null && value[0] == '1') { config->integer_scaling = 1; }
+        value = getenv("SEMU_RENDER_PLACEMENT");
+        config->placement = value == null ? 0 : (strcmp(value, "game") == 0 ? 1 : (strcmp(value, "bezel") == 0 ? 2 : 0));
         value = getenv("SEMU_RENDER_ASPECT");
         if (value != null) {
             float width = 0.0f;
@@ -607,6 +610,32 @@ class RendererConfiguration {
 }
 
 class RendererGeometry {
+    class void integerPlacement(struct SemuRenderFrameGl* frame, struct RendererVariantConfig* variant, int placement, float aspect, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas) {  // the picture at a whole multiple of its native height
+        struct RendererNormalizedHole* image = &variant->screens[0].image;
+        float pictureWidth = image->width * canvas->width;
+        float pictureHeight = image->height * canvas->height;
+        float shown = aspect > 0.01f ? aspect : pictureWidth / pictureHeight;
+        if (pictureWidth / pictureHeight > shown) { pictureWidth = pictureHeight * shown; } else { pictureHeight = pictureWidth / shown; }  // the game inside its rectangle
+        float native = (float)frame->surfaces[0].native_height;
+        if (native < 1.0f || pictureHeight < 1.0f) { return; }
+        int multiple = (int)(pictureHeight / native);  // bezel: the largest step that keeps the whole shell
+        if (placement == 1) {  // game: the largest step the screen holds
+            int down = (int)((float)areaHeight / native);
+            int across = (int)((float)areaWidth / (native * shown));
+            multiple = down < across ? down : across;
+        }
+        if (multiple < 1) { multiple = 1; }
+        float grow = (float)multiple * native / pictureHeight;
+        float centerX = canvas->x + (image->x + image->width * 0.5f) * canvas->width;
+        float centerY = canvas->y + (1.0f - image->y - image->height * 0.5f) * canvas->height;  // pixel rows count up from the bottom
+        float anchorX = placement == 1 ? (float)areaWidth * 0.5f : canvas->x + canvas->width * 0.5f + (centerX - canvas->x - canvas->width * 0.5f) * grow;
+        float anchorY = placement == 1 ? (float)areaHeight * 0.5f : canvas->y + canvas->height * 0.5f + (centerY - canvas->y - canvas->height * 0.5f) * grow;
+        canvas->x = anchorX - (centerX - canvas->x) * grow;  // game centres the picture, bezel keeps the shell centred
+        canvas->y = anchorY - (centerY - canvas->y) * grow;
+        canvas->width = canvas->width * grow;
+        canvas->height = canvas->height * grow;
+    }
+
     class void coverKeepingTubes(struct SemuRenderFrameGl* frame, struct RendererVariantConfig* variant, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas) {  // scale the canvas to fill the area; keep contain if a tube would leave it
         if (canvas->width <= 0.0f || canvas->height <= 0.0f) { return; }
         float horizontal = (float)areaWidth / canvas->width;
@@ -875,6 +904,7 @@ class RendererGeometry {
                 layered ? variant->canvas_width : resources->art_width[variantIndex],
                 layered ? variant->canvas_height : resources->art_height[variantIndex], &canvas);
             if (layered && variant->canvas_cover != 0) { RendererGeometry.coverKeepingTubes(frame, variant, areaWidth, areaHeight, &canvas); }
+            if (config->placement != 0 && frame->surface_count == 1 && variant->screens[0].image.set != 0) { RendererGeometry.integerPlacement(frame, variant, config->placement, singleAspect, areaWidth, areaHeight, &canvas); }
             geometry->bezel_x = canvas.x;
             geometry->bezel_y = canvas.y;
             geometry->bezel_width = canvas.width;

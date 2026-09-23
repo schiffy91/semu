@@ -19,7 +19,8 @@
     "display": {
       "width": 3840,
       "height": 2160
-    }
+    },
+    "placement": "fit"
   },
   "ui": {
     "theme": "slate-es-de",
