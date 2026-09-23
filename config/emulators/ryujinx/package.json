@@ -23,10 +23,7 @@
       "Ryujinx.UpdateClient",
       "Ryujinx.Systems.Update.Common"
     ],
-    "updater_stub_path": "src/Ryujinx/Systems/Updater/Updater.GitLab.cs",
-    "macos_info_plist": "distribution/macos/Info.plist",
-    "macos_icon": "distribution/macos/Ryujinx.icns",
-    "macos_bundle": "Applications/Ryujinx.app"
+    "updater_stub_path": "src/Ryujinx/Systems/Updater/Updater.GitLab.cs"
   },
   "platforms": [
     "x86_64-linux",
@@ -38,8 +35,7 @@
   ],
   "outputs": {
     "linux_main_program": "bin/Ryujinx",
-    "macos_main_program": "Applications/Ryujinx.app/Contents/MacOS/Ryujinx",
-    "macos_wrapper": "bin/ryujinx"
+    "macos_main_program": "bin/Ryujinx"
   },
   "meta": {
     "description": "Nintendo Switch emulator built from the Ryubing continuation source",
