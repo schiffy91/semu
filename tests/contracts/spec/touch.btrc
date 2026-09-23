@@ -128,24 +128,6 @@ class TouchSpecPointer {
 }
 
 class TouchSpecEmulators {
-    class bool biosReadOnly(JSONValue emulator) {
-        JSONValue filesystems = SemuJson.get(emulator, "platforms.linux.sandbox.filesystems");
-        if (filesystems == null || !filesystems.isArray()) { return false; }
-        for (int index = 0; index < filesystems.size(); index++) {
-            if (SemuJson.textAt(filesystems.at(index), "path").equals("${bios}") && SemuJson.textAt(filesystems.at(index), "mode").equals("ro")) { return true; }
-        }
-        return false;
-    }
-
-    class bool fallbacksDisabled(JSONValue fallbacks) {
-        if (fallbacks == null || !fallbacks.isObject()) { return false; }
-        for name in ["host_executable", "flatpak", "libretro", "prebuilt_binary"] {
-            JSONValue value = fallbacks.get(name);
-            if (value == null || !value.isBool() || value.asBool()) { return false; }
-        }
-        return true;
-    }
-
     class bool pinned(JSONValue lock) {  // an exact commit and NAR hash
         string revision = SemuJson.textAt(lock, "nodes.source.locked.rev");
         if (revision.len() != 40) { return false; }
@@ -171,9 +153,8 @@ class TouchSpecEmulators {
             JSONValue emulator = SemuJson.readFile(PathTools.join(directory, "emulator.json"));
             JSONValue package = SemuJson.readFile(PathTools.join(directory, "package.json"));
             JSONValue lock = SemuJson.readFile(PathTools.join(directory, "flake.lock"));
-            contract.expect(TouchSpecEmulators.biosReadOnly(emulator), emulatorId + ": BIOS is mounted read-only through ${bios}");
+            contract.expect(!SemuJson.get(emulator, "platforms.linux").has("sandbox") && !package.has("fallbacks"), emulatorId + ": no unenforced sandbox or fallback declaration");
             contract.lacks(FileSystem.readText(PathTools.join(directory, "emulator.json")), "${paths.project_bios}", emulatorId + ": no project BIOS path");
-            contract.expect(TouchSpecEmulators.fallbacksDisabled(package.get("fallbacks")), emulatorId + ": every package fallback is off");
             contract.expect(TouchSpecEmulators.pinned(lock), emulatorId + ": the source is locked to one commit and hash");
         }
         SemuEmulator melonDs = fixture.model.emulator("melonds");

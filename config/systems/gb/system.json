@@ -41,7 +41,10 @@
     {
       "emulator": "retroarch",
       "label": "Gambatte",
-      "core": "gambatte"
+      "core": "gambatte",
+      "platforms": [
+        "linux"
+      ]
     }
   ],
   "display": {

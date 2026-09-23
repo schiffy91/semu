@@ -308,7 +308,8 @@ class SemuRenderEnvironment {
             JSONValue frame = package.get("frame");
             if (frame != null && frame.isObject()) {
                 string around = SemuJson.textAt(frame, "around").equals("game") ? "1" : "0";  // ring around the fitted game inside a device opening, else around the opening
-                env.set("SEMU_RENDER_FRAME" + suffix, f"{SemuRenderEnvironment.numberOr(frame, "width", "0")},{SemuRenderEnvironment.numberOr(frame, "radius", "0")},{SemuRenderEnvironment.color(SemuJson.textAt(frame, "color"), "0.08,0.08,0.08")},{around}");
+                string width = SemuRenderEnvironment.numberOr(frame, "width", SemuRenderEnvironment.numberOr(SemuJson.get(plan.settings, "visual"), "frame_width", "0"));  // the package's own width, else visual.frame_width
+                env.set("SEMU_RENDER_FRAME" + suffix, f"{width},{SemuRenderEnvironment.numberOr(frame, "radius", "0")},{SemuRenderEnvironment.color(SemuJson.textAt(frame, "color"), "0.08,0.08,0.08")},{around}");
             }
         }
         for (int index = 0; index < ids.size(); index++) {
@@ -392,6 +393,11 @@ class SemuRenderEnvironment {
         int aspectW = SemuJson.intAt(display, "aspect.w", 0);
         int aspectH = SemuJson.intAt(display, "aspect.h", 0);
         if (aspectW > 0 && aspectH > 0) { env.set("SEMU_RENDER_ASPECT", f"{aspectW}:{aspectH}"); }
+        double refresh = atof(SemuRenderEnvironment.numberOr(display, "refresh_hz", "60"));  // the system's refresh rate, else NTSC's 60
+        if (refresh <= 0.0) { refresh = 60.0; }
+        env.set("SEMU_RENDER_FPS", SemuRenderEnvironment.fraction(refresh));
+        env.set("SEMU_RENDER_FRAME_DELTA_MS", Strings.fromInt((int)(1000.0 / refresh + 0.5)));
+        env.set("SEMU_RENDER_DUAL_GAP", SemuRenderEnvironment.numberOr(SemuJson.get(settings, "visual"), "dual_screen_gap", "0"));  // a fraction of the screen width
         SemuRenderEnvironment.surfaces(env, system, diagnostics);
         if (bezels || !shaderPath.isEmpty()) {
             SemuRenderEnvironment.variant(env, plan, system, "", bezels ? package : JSONValue.makeNull(), shaderPath, shaderId, diagnostics);

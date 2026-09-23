@@ -1,7 +1,7 @@
 # RetroArch built from Semu's pinned source with the render hook: gl3 calls the
 # shared renderer after the game draw and before present. `withCores` wraps it
 # with the core packages the system bindings select.
-{ lib, pkgs, retroarch-bare, makeBinaryWrapper, writeText, symlinkJoin, btrcpy, semuRenderer, bridgeSource, source, version, retroarch-assets, retroarch-joypad-autoconfig, libretro-core-info }:
+{ lib, pkgs, retroarch-bare, makeBinaryWrapper, writeText, symlinkJoin, btrcpy, semuRenderer, bridgeSource, source, version, retroarch-assets, libretro-core-info }:
 
 let
   hooked = retroarch-bare.overrideAttrs (previous: {
@@ -10,6 +10,7 @@ let
     src = source;
     allowSubstitutes = false;  # compiled by Semu, never a cache binary
     patches = (previous.patches or [ ]) ++ [ ./retroarch.patch ./retroarch_commands.patch ./retroarch_get_status_null_safety.patch ];
+    patchFlags = [ "-p1" "--fuzz=0" ];  # a patch that drifted from the pinned source fails instead of landing fuzzily
     nativeBuildInputs = (previous.nativeBuildInputs or [ ]) ++ [ btrcpy ];
     buildInputs = (previous.buildInputs or [ ]) ++ [ semuRenderer ];
     postPatch = (previous.postPatch or "") + ''
@@ -37,9 +38,8 @@ let
           libretro = { };
           retroarch-bare = hooked;
           inherit cores;
-          settings = {
+          settings = {  # no joypad_autoconfig_dir: this appendconfig would override the profile's bundle dir with the Deck profiles
             assets_directory = "${retroarch-assets}/share/retroarch/assets";
-            joypad_autoconfig_dir = "${retroarch-joypad-autoconfig}/share/libretro/autoconfig";
             libretro_info_path = "${libretro-core-info}/share/retroarch/cores";
           };
         }).overrideAttrs (wrapped: { passthru = (wrapped.passthru or { }) // { unwrapped = hooked; }; });

@@ -39,8 +39,7 @@
       "label": "DeSmuME",
       "core": "desmume",
       "platforms": [
-        "linux",
-        "macos"
+        "linux"
       ]
     },
     {

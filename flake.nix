@@ -23,7 +23,10 @@
     emulator-dolphin = { url = "path:./config/emulators/dolphin"; inputs.nixpkgs.follows = "nixpkgs"; };
     emulator-flycast = { url = "path:./config/emulators/flycast"; inputs.nixpkgs.follows = "nixpkgs"; };
     emulator-melonds = { url = "path:./config/emulators/melonds"; inputs.nixpkgs.follows = "nixpkgs"; };
-    emulator-pcsx2 = { url = "path:./config/emulators/pcsx2"; inputs.nixpkgs.follows = "nixpkgs"; };
+    emulator-pcsx2 = {  # one libsemurenderer and one btrc across the bundle
+      url = "path:./config/emulators/pcsx2";
+      inputs = { nixpkgs.follows = "nixpkgs"; renderer.follows = "renderer"; btrc.follows = "btrc"; };
+    };
     emulator-ppsspp = { url = "path:./config/emulators/ppsspp"; inputs.nixpkgs.follows = "nixpkgs"; };
     emulator-ryujinx = { url = "path:./config/emulators/ryujinx"; inputs.nixpkgs.follows = "nixpkgs"; };
     core-azahar = { url = "path:./config/emulators/retroarch/cores/azahar"; inputs.nixpkgs.follows = "nixpkgs"; };

@@ -42,8 +42,7 @@
       "label": "Flycast (Libretro)",
       "core": "flycast",
       "platforms": [
-        "linux",
-        "macos"
+        "linux"
       ]
     }
   ],

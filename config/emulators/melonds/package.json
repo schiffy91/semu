@@ -10,14 +10,7 @@
   "outputs": {
     "main_program": "bin/melonDS",
     "main_program_name": "melonDS",
-    "linked_program": "bin/.melonDS-wrapped",
-    "build_contract": "share/semu/melonds-build-contract.json"
-  },
-  "fallbacks": {
-    "host_executable": false,
-    "flatpak": false,
-    "libretro": false,
-    "prebuilt_binary": false
+    "linked_program": "bin/.melonDS-wrapped"
   },
   "native_actions": {
     "state.load": {
@@ -42,9 +35,6 @@
   },
   "doc": {
     "source": "The immutable GitHub revision and NAR hash are the exact source identity packaged by Semu and match the repository's locked nixpkgs melonDS dependency graph.",
-    "state_patch": "The same upstream patch anchors configured relative assets in melonDS's XDG config directory, anchors writable external firmware copies there, and reads a ROM-adjacent .sav only when isolated state has no save yet.",
-    "rendering": "The directly linked game phase preserves semantic top/bottom lane identity after both LCD draws. The post-UI phase runs after splash and OSD drawing and immediately before SwapBuffers. No inactive or teardown report exists.",
-    "touch": "The Qt input consumer snapshots ABI 2 pointer geometry only after both phases succeed, maps mouse/tablet/touch input through semantic bottom surface 1, rejects bezel presses, clamps captured motion, and sends returned native pixels directly to melonDS.",
     "states": "The pinned frontend supports native savestate slots. Semu remaps only slot 1 to its global Ctrl+S and Ctrl+A action ABI while preserving the upstream shortcuts for slots 2 through 8."
   },
   "flake": "flake.nix"

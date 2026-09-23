@@ -43,6 +43,11 @@
     }
   ],
   "controller_profile": "steam_deck",
+  "controller_mode": {
+    "emulator": "dolphin",
+    "setting": "input.systems.wii.controller_mode",
+    "label": "WII CONTROLLER"
+  },
   "display": {
     "scaling": {
       "mode": "integer_preferred",

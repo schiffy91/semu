@@ -32,7 +32,10 @@
     {
       "emulator": "retroarch",
       "label": "mGBA",
-      "core": "mgba"
+      "core": "mgba",
+      "platforms": [
+        "linux"
+      ]
     }
   ],
   "display": {

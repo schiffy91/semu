@@ -11,23 +11,11 @@
     "sha256": "sha256-+3jgoh6OVbPzW5/nCvpB1CRgkMTBxLkYMm6UV16/cfU="
   },
   "platforms": [
-    "x86_64-linux",
-    "aarch64-darwin",
-    "x86_64-darwin"
+    "x86_64-linux"
   ],
   "outputs": {
     "linux_main_program": "bin/retroarch",
-    "linux_real_program": "bin/retroarch",
-    "macos_main_program": "bin/retroarch",
-    "macos_bundle_program": "Applications/RetroArch.app/Contents/MacOS/RetroArch",
-    "build_contract": "share/semu/retroarch-build-contract.json"
-  },
-  "fallbacks": {
-    "linux_host_executable": false,
-    "linux_flatpak": false,
-    "linux_prebuilt_binary": false,
-    "macos_host_executable": false,
-    "macos_prebuilt_binary": false
+    "linux_real_program": "bin/retroarch"
   },
   "auxiliary_patches": {
     "network_commands": {
@@ -42,7 +30,6 @@
     }
   },
   "core_runtime": {
-    "build_contract": "share/semu/core-host-build-contract.json",
     "selection_source": "config/systems/*/system.json",
     "directory": "lib/retroarch/cores",
     "exact_selection": true,
@@ -71,8 +58,7 @@
     }
   },
   "doc": {
-    "macos": "The macOS source build uses Metal and is outside this OpenGL renderer integration.",
-    "rendering": "The forced Linux glcore driver exposes minimal GL 3.3 / GLSL 330 taps around the directly linked ABI-3 renderer boundaries. Strict BTRC loads compiler-generated semantic surface identities and native geometry, validates live content without selecting by pixel dimensions, and publishes one query-order-independent pointer snapshot per input poll. RetroArch menus and settings bypass rendering and require a physical pointer release before gameplay resumes."
+    "rendering": "The Linux glcore driver links libsemurenderer directly (retroarch.patch) and calls it after the game draw and again before present. RetroArch menus bypass the renderer."
   },
   "nixpkgs_recipe": "retroarch-bare"
 }

@@ -40,7 +40,7 @@ class SemuCli {
         help.section("Commands");
         help.item("build configs --target T [--output DIR]", "Emit ES-DE documents and emulator profiles.");
         help.item("prepare --target T [--es-de-home DIR]", "Install ES-DE documents and settings into the ES-DE home.");
-        help.item("launch EMULATOR --system S --rom PATH [--core C] [--print-plan]", "Launch a ROM with the Start+Select quit chord.");
+        help.item("launch EMULATOR --system S --rom PATH [--core C] [--print-plan]", "Launch a ROM; the configured quit chord ends it.");
         help.item("render-env --system S [--emulator E]", "Print the SEMU_RENDER_* environment the launcher would give the emulator (bezel package, shaders, screens).");
         help.item("doctor --target T", "Show resolved paths and what is missing.");
         help.item("path NAME --target T", "Print one resolved path (roms, bios, esde_home, state_root, ...).");
@@ -190,6 +190,10 @@ class SemuCli {
         string raw = self.line.operand(3, "");
         JSONValue value = JSONValue.parse(raw);
         if (raw.isEmpty() || value == null || value.isError()) { value = JSONValue.makeString(raw); }  // bare words are strings
+        if (!SemuSettingsStore.readable(plan.semuHome)) {  // never replace the user's file with {}
+            Console.error("semu: " + PathTools.join(plan.semuHome, "semu.json") + " is not a JSON object; fix it or run 'semu settings reset'");
+            return 1;
+        }
         if (!SemuSettingsStore.put(plan.semuHome, path, value)) {
             Console.error("semu: could not write " + PathTools.join(plan.semuHome, "semu.json"));
             return 1;
@@ -210,12 +214,12 @@ class SemuCli {
         if (action.equals("status")) { return SemuSync.status(plan); }
         if (action.equals("enabled")) { return SemuSync.enabled(plan) ? 0 : 1; }  // for ExecCondition
         if (action.equals("device-id")) {
-            string id = SemuSync.deviceId(plan);
-            if (id.isEmpty()) {
+            string ownDevice = SemuSync.deviceId(plan);
+            if (ownDevice.isEmpty()) {
                 Console.error("semu: could not determine the Syncthing device id");
                 return 1;
             }
-            Console.log(id);
+            Console.log(ownDevice);
             return 0;
         }
         return self.usage(64);
@@ -248,11 +252,11 @@ class SemuCli {
         Vector<string> wanted = self.option("packages", "").isEmpty() ? repository.upstreamIds() : Strings.split(self.option("packages", ""), ",");
         if (action.equals("edit")) { return BezelEditor(repository, tree).serve(Strings.toInt(self.option("port", "8765"))); }
         if (action.equals("resolve")) {
-            for id in wanted {
-                JSONValue package = repository.package(id);
-                if (package == null) { Console.error(f"{id}: no such package"); continue; }
+            for packageId in wanted {
+                JSONValue package = repository.package(packageId);
+                if (package == null) { Console.error(f"{packageId}: no such package"); continue; }
                 MegaBezelPreset preset = MegaBezelPreset(tree.packagePreset(package));
-                Console.log(f"{id}: {preset.chain.size()} files, {preset.values.size()} values, {preset.textures.size()} textures" + (preset.missing.size() > 0 ? ", MISSING " + Strings.join(preset.missing, ", ") : ""));
+                Console.log(f"{packageId}: {preset.chain.size()} files, {preset.values.size()} values, {preset.textures.size()} textures" + (preset.missing.size() > 0 ? ", MISSING " + Strings.join(preset.missing, ", ") : ""));
                 for name in ["HSM_NON_INTEGER_SCALE", "HSM_ASPECT_RATIO_MODE", "HSM_SCREEN_POSITION_X", "HSM_SCREEN_POSITION_Y", "HSM_DUALSCREEN_MODE", "HSM_FLIP_VIEWPORT_VERTICAL", "HSM_BZL_WIDTH", "HSM_BZL_HEIGHT", "HSM_TUBE_BLACK_EDGE_THICKNESS", "HSM_DEVICE_SCALE", "HSM_DEVICE_POS_Y"] {
                     if (preset.has(name)) { Console.log(f"    {name} = {preset.value(name)}"); }
                 }
@@ -263,15 +267,15 @@ class SemuCli {
         if (action.equals("emit")) {
             BezelPackageWriter writer = BezelPackageWriter(repository, tree);
             int failures = 0;
-            for id in wanted {
-                string failure = writer.emit(id);
-                if (failure.isEmpty()) { Console.log(f"{id}: written"); } else { Console.error(f"{id}: {failure}"); failures++; }
+            for packageId in wanted {
+                string failure = writer.emit(packageId);
+                if (failure.isEmpty()) { Console.log(f"{packageId}: written"); } else { Console.error(f"{packageId}: {failure}"); failures++; }
             }
-            for id in repository.packageIds() {
-                JSONValue package = repository.package(id);
+            for packageId in repository.packageIds() {
+                JSONValue package = repository.package(packageId);
                 if (package == null) { continue; }
-                if (!SemuJson.textAt(package, "geometry_from").isEmpty()) { string failure = writer.inherit(id); Console.log(failure.isEmpty() ? f"{id}: geometry inherited" : f"{id}: {failure}"); }
-                else if (package.get("upstream") == null || !package.get("upstream").isObject()) { string failure = writer.plain(id); if (!failure.isEmpty()) { Console.error(f"{id}: {failure}"); failures++; } }
+                if (!SemuJson.textAt(package, "geometry_from").isEmpty()) { string failure = writer.inherit(packageId); Console.log(failure.isEmpty() ? f"{packageId}: geometry inherited" : f"{packageId}: {failure}"); }
+                else if (package.get("upstream") == null || !package.get("upstream").isObject()) { string failure = writer.plain(packageId); if (!failure.isEmpty()) { Console.error(f"{packageId}: {failure}"); failures++; } }
             }
             return failures == 0 ? 0 : 1;
         }

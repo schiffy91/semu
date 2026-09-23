@@ -6,11 +6,15 @@
     source = { url = "github:PCSX2/pcsx2/v2.6.3"; flake = false; };
     renderer = {
       url = "path:../../../src/renderer";
+      inputs = { nixpkgs.follows = "nixpkgs"; btrc.follows = "btrc"; };  # one btrc pin, shared with the renderer
+    };
+    btrc = {
+      url = "github:schiffy91/btrc";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, source, renderer }:
+  outputs = { self, nixpkgs, source, renderer, ... }:
     let
       lib = nixpkgs.lib;
       platforms = { linux = true; macos = false; windows = "planned"; };  # windows: nothing built yet, declared so the matrix is explicit

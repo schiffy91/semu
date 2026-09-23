@@ -112,7 +112,6 @@
     "dolphin_pad": "SDL/0/Xbox Controller",
     "dolphin_wiimote": "SDL/0/Xbox Controller",
     "dolphin_pointer": "XInput2/0/Virtual core pointer",
-    "pcsx2_pad": "SDL-0",
     "cemu_api": "SDLController",
     "cemu_display_name": "Xbox Controller",
     "cemu_uuid": "0_030000005e040000ea02000000000000",

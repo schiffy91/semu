@@ -64,13 +64,17 @@ class SemuPlan {
 }
 
 class SemuResolver {
-    class JSONValue readOptional(string path) {
+    class JSONValue readOptional(string path, SemuDiagnostics diagnostics) {  // absent is fine; malformed is reported and skipped
         if (!FileSystem.isFile(path)) { return JSONValue.makeNull(); }
         JSONValue value = SemuJson.readFile(path);
-        return value.isError() ? JSONValue.makeNull() : value;
+        if (value.isError() || !value.isObject()) {
+            diagnostics.add(path, "json", "user settings file is not a JSON object");
+            return JSONValue.makeNull();
+        }
+        return value;
     }
 
-    class JSONValue overrides(string semuHome) {  // $SEMU_HOME/overrides/**/*.json in sorted order
+    class JSONValue overrides(string semuHome, SemuDiagnostics diagnostics) {  // $SEMU_HOME/overrides/**/*.json in sorted order
         JSONValue result = JSONValue.makeObject();
         string root = PathTools.join(semuHome, "overrides");
         if (!FileSystem.isDir(root)) { return result; }
@@ -85,7 +89,7 @@ class SemuResolver {
             }
         }
         files.sort();
-        for file in files { result = SemuJson.merge(result, SemuResolver.readOptional(file)); }
+        for file in files { result = SemuJson.merge(result, SemuResolver.readOptional(file, diagnostics)); }
         return result;
     }
 
@@ -120,8 +124,8 @@ class SemuResolver {
         plan.semuHome = SemuPaths.expandHome(semuHome.isEmpty() ? Environment.get("SEMU_HOME", "${home}/.config/semu") : semuHome);
         plan.assetRoot = assetRoot.isEmpty() ? Environment.get("SEMU_ASSET_ROOT", "") : assetRoot;
         JSONValue settings = SemuJson.merge(model.defaults, SemuResolver.targetSettings(model, target, diagnostics));
-        settings = SemuJson.merge(settings, SemuResolver.readOptional(PathTools.join(plan.semuHome, "semu.json")));
-        settings = SemuJson.merge(settings, SemuResolver.overrides(plan.semuHome));
+        settings = SemuJson.merge(settings, SemuResolver.readOptional(PathTools.join(plan.semuHome, "semu.json"), diagnostics));
+        settings = SemuJson.merge(settings, SemuResolver.overrides(plan.semuHome, diagnostics));
         if (!settingsJson.isEmpty()) {
             JSONValue extra = JSONValue.parse(settingsJson);
             if (extra == null || extra.isError() || !extra.isObject()) { diagnostics.add("--settings-json", "json", "must be a JSON object"); }

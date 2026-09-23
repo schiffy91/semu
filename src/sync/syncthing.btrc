@@ -37,24 +37,30 @@ class SemuSync {  // Semu-owned Syncthing home sharing content_root (saves, stat
         Vector<string> result = [];
         string raw = SemuJson.textAt(plan.settings, "sync.peer_device_ids").replace(",", " ").replace("\n", " ");
         for token in Strings.split(raw, " ") {
-            string id = token.trim().toUpper();
-            if (!id.isEmpty() && !result.contains(id)) { result.push(id); }
+            string deviceId = token.trim().toUpper();
+            if (!deviceId.isEmpty() && !result.contains(deviceId)) { result.push(deviceId); }
         }
         return result;
     }
 
-    class string sharedDevice(string id) { return f"<device id=\"{id}\" introducedBy=\"\"></device>"; }
+    class string escape(string value) {  // attribute-safe XML text for ids and paths
+        return value.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;").replace("'", "&apos;");
+    }
+
+    class string shortName(string deviceId) { return deviceId.len() > 7 ? deviceId.substring(0, 7) : deviceId; }
+
+    class string sharedDevice(string deviceId) { return f"<device id=\"{SemuSync.escape(deviceId)}\" introducedBy=\"\"></device>"; }
 
     class string folderXml(string path, Vector<string> peers) {
         Vector<string> lines = [];
-        lines.push(f"<folder id=\"{SemuSync.folderId()}\" label=\"Semu saves\" path=\"{path}\" type=\"sendreceive\" rescanIntervalS=\"3600\" fsWatcherEnabled=\"true\" fsWatcherDelayS=\"10\" ignorePerms=\"false\" autoNormalize=\"true\">");
+        lines.push(f"<folder id=\"{SemuSync.folderId()}\" label=\"Semu saves\" path=\"{SemuSync.escape(path)}\" type=\"sendreceive\" rescanIntervalS=\"3600\" fsWatcherEnabled=\"true\" fsWatcherDelayS=\"10\" ignorePerms=\"false\" autoNormalize=\"true\">");
         for peer in peers { lines.push("    " + SemuSync.sharedDevice(peer)); }
         lines.push("</folder>");
         return lines.join("\n");
     }
 
-    class string deviceXml(string id) {
-        return f"<device id=\"{id}\" name=\"{id.substring(0, 7)}\" compression=\"metadata\" introducer=\"false\" paused=\"false\" autoAcceptFolders=\"false\"><address>dynamic</address></device>";
+    class string deviceXml(string deviceId) {
+        return f"<device id=\"{SemuSync.escape(deviceId)}\" name=\"{SemuSync.escape(SemuSync.shortName(deviceId))}\" compression=\"metadata\" introducer=\"false\" paused=\"false\" autoAcceptFolders=\"false\"><address>dynamic</address></device>";
     }
 
     class int indexOf(string haystack, string needle, int from) {  // -1 when absent; documents are small
@@ -66,9 +72,9 @@ class SemuSync {  // Semu-owned Syncthing home sharing content_root (saves, stat
     }
 
     class string insertBefore(string document, string marker, string fragment) {
-        int at = SemuSync.indexOf(document, marker, 0);
-        if (at < 0) { return document + "\n" + fragment + "\n"; }
-        return document.substring(0, at) + fragment + "\n" + document.substring(at, document.len() - at);
+        int position = SemuSync.indexOf(document, marker, 0);
+        if (position < 0) { return document + "\n" + fragment + "\n"; }
+        return document.substring(0, position) + fragment + "\n" + document.substring(position, document.len() - position);
     }
 
     class string configure(string document, string path, Vector<string> peers) {  // idempotent: adds what is missing, keeps the rest
@@ -78,12 +84,13 @@ class SemuSync {  // Semu-owned Syncthing home sharing content_root (saves, stat
             result = SemuSync.insertBefore(result, "</configuration>", SemuSync.folderXml(path, peers));
         }
         for peer in peers {
-            if (!result.contains(f"<device id=\"{peer}\" name=")) { result = SemuSync.insertBefore(result, "</configuration>", SemuSync.deviceXml(peer)); }
+            string escaped = SemuSync.escape(peer);
+            if (!result.contains(f"<device id=\"{escaped}\" name=")) { result = SemuSync.insertBefore(result, "</configuration>", SemuSync.deviceXml(peer)); }
             int folderStart = SemuSync.indexOf(result, folderMarker, 0);
             int folderEnd = SemuSync.indexOf(result, "</folder>", folderStart);
             if (folderStart < 0 || folderEnd < 0) { continue; }
             string folder = result.substring(folderStart, folderEnd - folderStart);
-            if (folder.contains(f"<device id=\"{peer}\"")) { continue; }
+            if (folder.contains(f"<device id=\"{escaped}\"")) { continue; }
             result = result.substring(0, folderEnd) + "    " + SemuSync.sharedDevice(peer) + "\n" + result.substring(folderEnd, result.len() - folderEnd);
         }
         return result;
@@ -198,14 +205,25 @@ class SemuSync {  // Semu-owned Syncthing home sharing content_root (saves, stat
         return 0;
     }
 
+    class bool isSemuSyncthing(string command, string executable, string home) {  // the command line our start spawned
+        return !executable.isEmpty() && command.startsWith(executable + " serve ") && command.contains(" --home " + home + " ");
+    }
+
+    class bool ownsProcess(SemuPlan plan, int pid) {  // the pid file may be stale and reused
+        ExecResult listing = ChildProcess.run("ps", ["-ww", "-o", "command=", "-p", Strings.fromInt(pid)]);
+        return listing.ok() && SemuSync.isSemuSyncthing(listing.stdout().trim(), SemuSync.executable(plan), SemuSync.home(plan));
+    }
+
     class int stop(SemuPlan plan) {  // ends the detached instance started by 'sync start'
         string pidFile = SemuSync.pidFile(plan);
         int pid = FileSystem.isFile(pidFile) ? Strings.toInt(FileSystem.readText(pidFile).trim()) : 0;
-        if (pid <= 1) {
-            Console.log("sync is not running under semu");
+        if (pid <= 1 || !SemuSync.ownsProcess(plan, pid)) {
+            if (pid > 1) { SemuPaths.removeFile(pidFile); }
+            Console.log(pid > 1 ? "sync is not running under semu (stale pid file removed)" : "sync is not running under semu");
             return 0;
         }
-        kill((pid_t)(-pid), SIGTERM);  // the detached instance leads its own session: monitor and worker
+        pid_t group = getpgid((pid_t)pid);
+        if (group == (pid_t)pid) { kill((pid_t)(-pid), SIGTERM); }  // its own session: monitor and worker
         kill((pid_t)pid, SIGTERM);
         for (int attempt = 0; attempt < 50 && SemuSync.listening(SemuSync.guiAddress(plan)); attempt++) { usleep(100000); }
         SemuPaths.removeFile(pidFile);
@@ -220,8 +238,8 @@ class SemuSync {  // Semu-owned Syncthing home sharing content_root (saves, stat
         Console.log("home: " + SemuSync.home(plan));
         Console.log("folder: " + plan.path("content_root"));
         Console.log("peers: " + SemuSync.peers(plan).join(" "));
-        string id = FileSystem.isFile(SemuSync.configFile(plan)) ? SemuSync.deviceId(plan) : "";
-        Console.log("device id: " + (id.isEmpty() ? "(not generated yet)" : id));
+        string ownDevice = FileSystem.isFile(SemuSync.configFile(plan)) ? SemuSync.deviceId(plan) : "";
+        Console.log("device id: " + (ownDevice.isEmpty() ? "(not generated yet)" : ownDevice));
         return 0;
     }
 }

@@ -21,7 +21,6 @@
   },
   "platforms": {
     "linux": {
-      "backend": "bwrap",
       "executable": "${asset_root}/bin/dolphin-emu",
       "args": [
         "-u",
@@ -31,31 +30,6 @@
         "-b",
         "-e"
       ],
-      "gl_wrapper": "${asset_root}/bin/nixGL",
-      "sandbox": {
-        "filesystems": [
-          {
-            "path": "${project}",
-            "mode": "ro"
-          },
-          {
-            "path": "${asset_root}",
-            "mode": "ro"
-          },
-          {
-            "path": "${roms}",
-            "mode": "ro"
-          },
-          {
-            "path": "${state_root}",
-            "mode": "create"
-          },
-          {
-            "path": "${emulation_root}",
-            "mode": "ro"
-          }
-        ]
-      },
       "graphics": {
         "method": "config_file",
         "file": "${state_root}/dolphin-user/Config/Dolphin.ini",
@@ -66,43 +40,10 @@
           "opengl": "OGL"
         }
       },
-      "aspect_probe": {
-        "files": [
-          "${state_root}/dolphin-user/Config/GFX.ini",
-          "${state_root}/dolphin-user/Config/Dolphin.ini",
-          "${project}/generated/packaging/emulators/profiles/Dolphin/config/GFX.ini",
-          "${project}/generated/packaging/emulators/profiles/Dolphin/config/Dolphin.ini"
-        ],
-        "widescreen_markers": [
-          "aspectratio = 1",
-          "aspectratio=1",
-          "aspectratio = 16:9",
-          "aspectratio=16:9",
-          "widescreen = true",
-          "widescreen=true"
-        ],
-        "standard_markers": [
-          "aspectratio = 2",
-          "aspectratio=2",
-          "aspectratio = 4:3",
-          "aspectratio=4:3"
-        ],
-        "fallback": "standard"
-      },
       "state": {
         "config_home": "preserve",
         "data_home": "preserve",
         "profile_config_dir": "${state_root}/dolphin-user/Config",
-        "managed_profile_files": [
-          "config/Dolphin.ini",
-          "config/GCPadNew.ini",
-          "config/Hotkeys.ini",
-          "config/WiimoteNew.ini",
-          "config/Profiles/GCPad/Semu GameCube.ini",
-          "config/Profiles/Wiimote/Semu Wiimote.ini",
-          "config/Profiles/Wiimote/Semu Nunchuk.ini",
-          "config/Profiles/Wiimote/Semu Classic.ini"
-        ],
         "seeds": [
           {
             "purpose": "gamecube_saves",
@@ -129,46 +70,11 @@
       "render_preload": true
     },
     "macos": {
-      "backend": "native",
       "executable": "${asset_root}/Applications/Dolphin.app/Contents/MacOS/Dolphin",
-      "sandbox": {
-        "filesystems": [
-          {
-            "path": "${project}",
-            "mode": "ro"
-          },
-          {
-            "path": "${asset_root}",
-            "mode": "ro"
-          },
-          {
-            "path": "${roms}",
-            "mode": "ro"
-          },
-          {
-            "path": "${emulation_root}",
-            "mode": "ro"
-          },
-          {
-            "path": "${state_root}",
-            "mode": "create"
-          }
-        ]
-      },
       "state": {
         "config_home": "preserve",
         "data_home": "preserve",
-        "profile_config_dir": "${state_root}/dolphin-user/Config",
-        "managed_profile_files": [
-          "config/Dolphin.ini",
-          "config/GCPadNew.ini",
-          "config/Hotkeys.ini",
-          "config/WiimoteNew.ini",
-          "config/Profiles/GCPad/Semu GameCube.ini",
-          "config/Profiles/Wiimote/Semu Wiimote.ini",
-          "config/Profiles/Wiimote/Semu Nunchuk.ini",
-          "config/Profiles/Wiimote/Semu Classic.ini"
-        ]
+        "profile_config_dir": "${state_root}/dolphin-user/Config"
       },
       "args": [
         "-u",
@@ -177,36 +83,12 @@
         "Dolphin.Display.Fullscreen=True",
         "-b",
         "-e"
-      ],
-      "aspect_probe": {
-        "files": [
-          "${state_root}/dolphin-user/Config/GFX.ini",
-          "${state_root}/dolphin-user/Config/Dolphin.ini"
-        ],
-        "widescreen_markers": [
-          "aspectratio = 1",
-          "aspectratio=1",
-          "aspectratio = 16:9",
-          "aspectratio=16:9",
-          "widescreen = true",
-          "widescreen=true"
-        ],
-        "standard_markers": [
-          "aspectratio = 2",
-          "aspectratio=2",
-          "aspectratio = 4:3",
-          "aspectratio=4:3"
-        ],
-        "fallback": "standard"
-      }
+      ]
     }
   },
   "doc": {
-    "runtime": "Linux executes the pinned, source-patched Dolphin package from the AppImage asset root inside bubblewrap. No host Dolphin application or Flatpak runtime participates.",
-    "rendering": "The OpenGL package calls the directly linked Semu renderer after RenderXFBToScreen and again after Dolphin's onscreen UI has finalized and drawn, immediately before PresentBackbuffer. Every game call supplies current output/native geometry plus the live VI/XFB presentation aspect and 4:3 or 16:9 layout from Dolphin's frame-updated widescreen manager; it owns no Semu shader, bezel, or menu policy.",
-    "aspect_probe": "Files and marker literals migrated verbatim from presentationDolphinState (presentation.btrc:654-670); markers are matched case-insensitively for non-hook planning only. Renderer layout uses the live per-frame VI/XFB ABI fields instead.",
-    "aspect_probe_macos": "The explicit -u path keeps Dolphin's live Config tree under Semu's per-emulator state root on every platform.",
-    "controller_modes": "F13-F16 bind to Semu's patched in-process mode selector. It reads only generated profiles from the explicit -u tree and changes Dolphin's current in-memory controller layer; it never writes an external Dolphin profile.",
-    "sandbox_macos": "macos launches run under sandbox-exec write confinement: these grants (plus the platform baseline) are the only writable paths."
+    "runtime": "Linux executes the pinned source-built Dolphin package from the bundle asset root; macOS runs the Dolphin.app from the same pin.",
+    "rendering": "OpenGL is forced in the managed profile. libsemupreload (render_preload) composes Semu's bezel and shader at the SDL/EGL swap: it reads the emulator's back buffer and writes the composed frame back before the real swap.",
+    "user_directory": "The explicit -u path keeps Dolphin's live Config tree under Semu's per-emulator state root on every platform."
   }
 }

@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 import Library.FileSystem;
 import Library.JSON;
 import Library.Strings;
@@ -52,18 +54,18 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         return result;
     }
 
-    class JSONValue page(string id, string label, JSONValue fields) {
+    class JSONValue page(string identifier, string label, JSONValue fields) {
         JSONValue result = JSONValue.makeObject();
         result.set("kind", JSONValue.makeString("page"));
-        result.set("id", JSONValue.makeString(id));
+        result.set("id", JSONValue.makeString(identifier));
         result.set("label", JSONValue.makeString(label));
         result.set("fields", fields);
         return result;
     }
 
-    class JSONValue command(string id, string label, Vector<string> argv) {
+    class JSONValue command(string identifier, string label, Vector<string> argv) {
         JSONValue result = JSONValue.makeObject();
-        result.set("id", JSONValue.makeString(id));
+        result.set("id", JSONValue.makeString(identifier));
         result.set("label", JSONValue.makeString(label));
         result.set("argv", SemuSettingsUi.strings(argv));
         return result;
@@ -74,8 +76,8 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         JSONValue variants = manifest == null ? null : manifest.get("variants");
         if (variants == null || !variants.isArray()) { return result; }
         for (int index = 0; index < variants.size(); index++) {
-            string id = SemuJson.textAt(variants.at(index), "id");
-            if (!id.isEmpty() && !result.contains(id)) { result.push(id); }
+            string identifier = SemuJson.textAt(variants.at(index), "id");
+            if (!identifier.isEmpty() && !result.contains(identifier)) { result.push(identifier); }
         }
         return result;
     }
@@ -103,11 +105,24 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         return result;
     }
 
-    class Vector<string> controllerModes(SemuModel model) {  // dolphin's package.json lists the Wii controller modes
-        SemuEmulator dolphin = model.emulator("dolphin");
+    class Vector<string> controllerModes(SemuModel model, SemuSystem system) {  // the named emulator's package.json lists the modes
+        SemuEmulator emulator = model.emulator(SemuJson.textAt(system.definition, "controller_mode.emulator"));
         Vector<string> none = [];
-        if (dolphin == null) { return none; }
-        return SemuJson.strings(SemuJson.readFile(PathTools.join(dolphin.directory, "package.json")).get("controller_modes"));
+        if (emulator == null) { return none; }
+        return SemuJson.strings(SemuJson.readFile(PathTools.join(emulator.directory, "package.json")).get("controller_modes"));
+    }
+
+    class JSONValue controllerModeFields(SemuModel model, SemuPlan plan) {  // one choice per system declaring controller_mode
+        JSONValue fields = JSONValue.makeArray();
+        for systemId in plan.systems {
+            SemuSystem system = model.system(systemId);
+            string setting = SemuJson.textAt(system.definition, "controller_mode.setting");
+            Vector<string> modes = SemuSettingsUi.controllerModes(model, system);
+            if (setting.isEmpty() || modes.size() < 2) { continue; }
+            string label = SemuJson.textAt(system.definition, "controller_mode.label");
+            fields.push(SemuSettingsUi.choice(plan.settings, setting, label.isEmpty() ? SemuSettingsUi.upper(system.name) : label, modes, SemuJson.textAt(model.defaults, setting)));
+        }
+        return fields;
     }
 
     class JSONValue document(SemuModel model, SemuPlan plan) {
@@ -134,12 +149,8 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
             menu.set("sections", systems);
             sections.push(menu);
         }
-        Vector<string> modes = SemuSettingsUi.controllerModes(model);
-        if (modes.size() >= 2) {
-            JSONValue input = JSONValue.makeArray();
-            input.push(SemuSettingsUi.choice(settings, "input.systems.wii.controller_mode", "WII CONTROLLER", modes, "nunchuk"));
-            sections.push(SemuSettingsUi.page("input", "INPUT", input));
-        }
+        JSONValue input = SemuSettingsUi.controllerModeFields(model, plan);
+        if (input.size() > 0) { sections.push(SemuSettingsUi.page("input", "INPUT", input)); }
         JSONValue syncFields = JSONValue.makeArray();
         syncFields.push(SemuSettingsUi.boolean(settings, "sync.enabled", "SYNC SAVES WITH SYNCTHING", false));
         syncFields.push(SemuSettingsUi.field("sync.peer_device_ids", "PEER DEVICE IDS", "string", JSONValue.makeString(SemuJson.textAt(settings, "sync.peer_device_ids"))));
@@ -174,7 +185,10 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
     class string launcher(SemuPlan plan) {  // ES-DE only trusts a regular executable file ending in /bin/semu
         string path = PathTools.join(plan.assetRoot, "bin/semu");
         string real = plan.assetRoot.isEmpty() ? "" : UnixFileSystem.realPath(path);
-        return real.endsWith("/bin/semu") && FileSystem.isFile(real) ? real : "";
+        int mode = X_OK;
+        int permitted = real.isEmpty() ? -1 : access(real, mode);
+        bool executable = permitted == 0;
+        return real.endsWith("/bin/semu") && FileSystem.isFile(real) && executable ? real : "";
     }
 
     class JSONValue manifest(string launcher) {

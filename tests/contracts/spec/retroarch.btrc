@@ -89,22 +89,12 @@ class RetroArchSpecProfile {  // retroarch.cfg per target: fullscreen, shader ow
     }
 }
 
-class RetroArchSpecPlatforms {  // emulator.json slices: Linux frame ownership, macOS confinement
-    class bool filesystem(JSONValue platform, string path, string mode) {
-        JSONValue filesystems = SemuJson.get(platform, "sandbox.filesystems");
-        for (int index = 0; filesystems.isArray() && index < filesystems.size(); index++) {
-            JSONValue entry = filesystems.at(index);
-            if (SemuJson.textAt(entry, "path").equals(path) && SemuJson.textAt(entry, "mode").equals(mode)) { return true; }
-        }
-        return false;
-    }
-
+class RetroArchSpecPlatforms {  // emulator.json slices: Linux frame ownership; no macOS slice while the flake builds Linux only
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
         SemuEmulator emulator = fixture.model.emulator("retroarch");
         JSONValue linux = emulator.platform("linux");
         JSONValue frame = SemuJson.get(linux, "retroarch.frame_output");
-        JSONValue settings = SemuJson.get(linux, "retroarch.settings_overrides");
         Vector<string> arguments = SemuJson.strings(linux.get("args"));
         contract.expect(arguments.size() > 0 && arguments.get(0).equals("-f"), "RetroArch starts with -f");
         contract.expect(SemuJson.boolAt(frame, "fullscreen", false) && !SemuJson.boolAt(frame, "native_shader", true) && !SemuJson.boolAt(frame, "native_bezel", true), "Linux frame output is fullscreen with no native shader or bezel");
@@ -112,22 +102,10 @@ class RetroArchSpecPlatforms {  // emulator.json slices: Linux frame ownership, 
         contract.expect(SemuJson.textAt(linux, "retroarch.video_driver").equals("glcore"), "Linux forces the glcore driver the tap lives in");
         Vector<string> directories = SemuJson.strings(SemuJson.get(linux, "core_loader.directories"));
         contract.expect(directories.size() == 1 && directories.get(0).equals("${asset_root}/lib/retroarch/cores"), "cores load only from the bundled core directory");
-        for key in ["notification_show_autoconfig", "notification_show_autoconfig_fails", "video_shader_enable", "input_overlay_enable", "input_overlay_enable_autopreferred"] {
-            contract.expect(SemuJson.textAt(settings, key).equals("false"), "settings override " + key + " is false");
-        }
-        contract.expect(SemuJson.textAt(settings, "input_autodetect_enable").equals("true") && SemuJson.textAt(settings, "input_player1_joypad_index").equals("0"), "settings overrides keep SDL port 1 autodetection");
-        contract.expect(!settings.has("input_player1_reserved_device") && !settings.has("input_player1_device_reservation_type"), "settings overrides reserve no device by name");
+        contract.expect(!SemuJson.get(linux, "retroarch").has("settings_overrides"), "retroarch.cfg keys live only in profile.json, not in an unread settings_overrides copy");
         string emulatorText = RetroArchSpecText.read(fixture, "config/emulators/retroarch/emulator.json");
         contract.lacks(emulatorText, "${paths.project_bios}", "emulator.json never points at a project BIOS path");
-        JSONValue macos = emulator.platform("macos");
-        for path in ["${project}", "${asset_root}", "${roms}", "${emulation_root}", "${bios}"] {
-            contract.expect(RetroArchSpecPlatforms.filesystem(macos, path, "ro"), "macOS sandbox mounts " + path + " read-only");
-        }
-        contract.expect(RetroArchSpecPlatforms.filesystem(macos, "${state_root}", "create"), "macOS state root is the only writable path");
-        contract.expect(SemuJson.textAt(macos, "env.set.HOME").equals("${state_root}/home"), "macOS HOME is redirected under the state root");
-        contract.expect(SemuJson.textAt(macos, "env.set.SEMU_RETROARCH_CONFIG").equals("${state_root}/config/RetroArch/retroarch.cfg"), "macOS active config is under the state root");
-        contract.expect(SemuJson.textAt(macos, "state.profile_config_dir").equals("${state_root}/config/RetroArch"), "macOS profile directory is under the state root");
-        contract.lacks(SemuJson.textAt(macos, "firmware.dir"), "${home}", "macOS firmware never comes from HOME");
+        contract.expect(!emulator.supports("macos"), "RetroArch declares no macOS slice: its flake builds Linux only");
     }
 }
 
@@ -140,10 +118,7 @@ class RetroArchSpecPackage {  // source-built package, essential patches, every 
         string packageNix = RetroArchSpecText.read(fixture, directory + "package.nix");
         JSONValue linux = fixture.model.emulator("retroarch").platform("linux");
         contract.expect(SemuJson.textAt(package, "build_kind").equals("source") && SemuJson.textAt(package, "source.sha256").startsWith("sha256-"), "RetroArch is a pinned source build");
-        for fallback in ["linux_host_executable", "linux_flatpak", "linux_prebuilt_binary", "macos_host_executable", "macos_prebuilt_binary"] {
-            contract.expect(!SemuJson.boolAt(package, "fallbacks." + fallback, true), "no " + fallback + " fallback");
-        }
-        contract.expect(!package.has("macos_prebuilt"), "no macOS prebuilt escape hatch");
+        contract.expect(!package.has("fallbacks") && !package.has("macos_prebuilt"), "no fallback or macOS prebuilt escape hatch is declared");
         contract.expect(SemuJson.textAt(linux, "executable").equals("${asset_root}/" + SemuJson.textAt(package, "outputs.linux_main_program")), "Linux launches the package's main program from the asset root");
         contract.expect(SemuJson.textAt(package, "core_runtime.directory").equals("lib/retroarch/cores") && SemuJson.boolAt(package, "core_runtime.exact_selection", false) && !SemuJson.boolAt(package, "core_runtime.environment_search", true) && !SemuJson.boolAt(package, "core_runtime.host_search", true), "cores come from the exact bundled selection only");
         Vector<string> patchKeys = ["network_commands", "status_null_safety"];

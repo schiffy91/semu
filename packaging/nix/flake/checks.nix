@@ -11,7 +11,7 @@ forAllSystems (system:
       name = "semu-contracts";
       src = lib.fileset.toSource {
         root = repositoryRoot;
-        fileset = lib.fileset.unions [ ../../../src ../../../tests/contracts ../../../config ];
+        fileset = lib.fileset.unions [ ../../../src ../../../tests/contracts ../../../config ../../../packaging ];  # the specs read the ES-DE patch and package
       };
       nativeBuildInputs = [ packages.btrcpy ];
       SEMU_BEZEL_TREE = "${packages.bezel-tree}/share/semu/bezel/shaders";  # the placement and layer contracts run from pinned inputs
@@ -83,14 +83,29 @@ forAllSystems (system:
         flakes = { inherit renderer retroarch esde; }
           // lib.mapAttrs' (id: flake: lib.nameValuePair "emulator-${id}" flake) emulatorFlakes
           // lib.mapAttrs' (id: flake: lib.nameValuePair "core-${id}" flake) coreFlakes;
+        emulatorDirectory = name:  # the emulator.json and package.json an emulator flake builds for, or null
+          if name == "retroarch" then repositoryRoot + "/config/emulators/retroarch"
+          else if lib.hasPrefix "emulator-" name then repositoryRoot + "/config/emulators/${lib.removePrefix "emulator-" name}"
+          else null;
         row = name: flake:
-          let meta = flake.semu; linux = flake.packages.x86_64-linux.default; inner = linux.passthru.unwrapped or linux; in
+          let
+            meta = flake.semu; linux = flake.packages.x86_64-linux.default; inner = linux.passthru.unwrapped or linux;
+            directory = emulatorDirectory name;
+            slices = if directory == null then null else lib.attrNames ((lib.importJSON (directory + "/emulator.json")).platforms or { });
+            declaredSlices = lib.filter (os: meta.platforms.${os} == true) [ "linux" "macos" "windows" ];
+            packageSystems = if directory == null then null else lib.sort lib.lessThan ((lib.importJSON (directory + "/package.json")).platforms or [ ]);
+          in
           assert lib.assertMsg (meta.platforms.linux == true && flake.packages ? x86_64-linux) "${name}: needs a linux package";
           assert lib.assertMsg (meta.platforms.windows == "planned") "${name}: windows must be declared as planned until it is built";
           assert lib.assertMsg (meta.platforms.macos == (flake.packages ? aarch64-darwin)) "${name}: the macos flag must match its aarch64-darwin package";
           assert lib.assertMsg ((inner.allowSubstitutes or true) == false) "${name}: must be compiled here, never substituted";
+          assert lib.assertMsg (slices == null || lib.sort lib.lessThan slices == declaredSlices)
+            "${name}: emulator.json platform slices [${lib.concatStringsSep " " (lib.sort lib.lessThan slices)}] must be the flake's semu.platforms [${lib.concatStringsSep " " declaredSlices}]";
+          assert lib.assertMsg (packageSystems == null || packageSystems == lib.attrNames flake.packages)
+            "${name}: package.json platforms [${lib.concatStringsSep " " packageSystems}] must be the flake's package systems [${lib.concatStringsSep " " (lib.attrNames flake.packages)}]";
           {
             inherit (meta) platforms;
+            inherit slices;
             linux = builtins.unsafeDiscardStringContext linux.drvPath;  # evaluation is the proof; the check must not build Darwin here
             macos = if meta.platforms.macos then builtins.unsafeDiscardStringContext flake.packages.aarch64-darwin.default.drvPath else null;
             source = meta.source or null;

@@ -31,10 +31,11 @@ forAllSystems (system:
         semuRenderer = renderer.packages.${system}.default;
         emulators = import ../emulators.nix { inherit lib repositoryRoot system emulatorFlakes coreFlakes; retroarchFlake = retroarch; };
         esDe = esde.packages.${system}.default;
+        retroarchAutoconfig = pkgs.callPackage ../retroarch_autoconfig.nix { inherit repositoryRoot; };  # first, so the Deck profiles win the merged autoconfig dir
         semu = pkgs.callPackage ../semu_bundle.nix {
           inherit semuCli esDe repositoryRoot;
           emulatorPackages = lib.attrValues emulators.packages;
-          extraPackages = [ pkgs.retroarch-joypad-autoconfig pkgs.syncthing semuRenderer visualAssets.combined bezelLayers ];
+          extraPackages = [ retroarchAutoconfig pkgs.retroarch-joypad-autoconfig pkgs.syncthing semuRenderer visualAssets.combined bezelLayers ];
         };
         release = pkgs.callPackage ../release.nix { inherit semu repositoryRoot; };
       in {

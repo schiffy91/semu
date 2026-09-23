@@ -304,9 +304,9 @@ let
   imageAssetNames = lib.attrNames imageAssets;
 
   # The regenerator: fetch upstreams + render every recipe with imagemagick.
-  # `nix run .#bake-bezels` copies its share/semu/assets/bezels/ back over the
+  # `nix build .#bezel-generate`, then copy its share/semu/assets/bezels/ back over the
   # committed tree. Kept as passthru.generate (and re-exported as the
-  # `semu-bezels-generate` package) so a plain app/asset build never forces the
+  # `bezel-generate` package) so a plain app/asset build never forces the
   # fetch/render path.
   generate = stdenvNoCC.mkDerivation {
     pname = "semu-bezels-generate";

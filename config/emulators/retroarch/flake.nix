@@ -6,7 +6,7 @@
     source = { url = "github:libretro/RetroArch/v1.22.2"; flake = false; };
     renderer = {
       url = "path:../../../src/renderer";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs = { nixpkgs.follows = "nixpkgs"; btrc.follows = "btrc"; };  # one btrc pin for the bridge and the renderer
     };
     btrc = {
       url = "github:schiffy91/btrc";

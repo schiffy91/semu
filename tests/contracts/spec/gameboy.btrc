@@ -229,18 +229,13 @@ class GameBoySpecBezels {
 class GameBoySpecInput {
     class void run(Contract contract, Fixture fixture) {
         string input = PathTools.join(fixture.project, "config/input/steam-deck");
-        JSONValue definition = SemuJson.readFile(PathTools.join(input, "systems/gb.json"));
+        contract.expect(!FileSystem.isFile(PathTools.join(input, "systems/gb.json")), "gb has no per-system Deck input file: its actions are RetroArch's");
         JSONValue global = SemuJson.readFile(PathTools.join(input, "steam_input.json"));
         JSONValue autoconfig = SemuJson.readFile(PathTools.join(input, "retroarch_autoconfig.json"));
         JSONValue emulatorActions = SemuJson.get(fixture.model.emulator("retroarch").definition, "input.actions");
         Vector<string> actions = ["ui.pause", "ui.screenshot", "ui.fullscreen", "ui.menu", "ui.escape", "app.quit", "state.prev", "state.next", "state.load", "state.save", "speed.rewind", "speed.fast"];
         Vector<string> bindings = ["input_up_btn", "input_down_btn", "input_left_btn", "input_right_btn", "input_b_btn", "input_a_btn", "input_start_btn", "input_select_btn"];
         Vector<string> radial = ["state.save", "state.load", "app.quit", "ui.menu", "ui.screenshot"];
-        contract.expect(SemuJson.intAt(definition, "schema_version", 0) == 1 && SemuJson.textAt(definition, "system").equals("gb") && SemuJson.textAt(definition, "device").equals("steam-deck") && SemuJson.textAt(definition, "actions.source").equals("emulator"), "gb Deck input inherits the emulator's actions");
-        contract.expect(GameBoySpecJson.exactStrings(SemuJson.get(definition, "actions.exclude"), ["screen.swap"]), "gb excludes only screen.swap");
-        contract.expect(GameBoySpecJson.exactStrings(SemuJson.get(definition, "gameplay.required_bindings"), bindings), "gb requires the eight gameplay bindings");
-        contract.expect(GameBoySpecJson.exactStrings(SemuJson.get(definition, "radial.required_actions"), radial), "gb radial requires save, load, quit, menu, screenshot");
-        contract.expect(SemuJson.get(definition, "radial.system_actions").size() == 0, "gb radial has no system-specific actions");
         contract.expect(GameBoySpecJson.exactStrings(emulatorActions, actions), "RetroArch declares exactly the twelve gb actions");
         contract.expect(!GameBoySpecJson.containsString(emulatorActions, "screen.swap"), "RetroArch offers no dead screen.swap");
         bool vocabulary = true;

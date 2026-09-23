@@ -84,7 +84,15 @@ int RGL_COMPILE_STATUS = 0x8B81;
 int RGL_FRONT = 0x0404;
 int RGL_BACK = 0x0405;
 int RGL_NO_ERROR = 0;
+int RGL_LINEAR_MIPMAP_LINEAR = 0x2703;
+int RGL_UNIFORM_BUFFER = 0x8A11;
+int RGL_UNIFORM_BUFFER_BINDING = 0x8A28;
+int RGL_UNIFORM_BUFFER_START = 0x8A29;
+int RGL_UNIFORM_BUFFER_SIZE = 0x8A2A;
+int RGL_COLOR_CLEAR_VALUE = 0x0C22;
 int SEMU_RENDER_TEXTURE_UNITS = 7;  // game, art, glass, menu, game2, glass2, background
+int SEMU_RENDER_GUARDED_TEXTURE_UNITS = 16;  // librashader binds pass textures on units 0..15
+int SEMU_RENDER_GUARDED_UNIFORM_BUFFERS = 4;  // librashader and PCSX2 bind indexed UBOs 0..3
 
 struct RendererGlApi {
     __fn_ptr<void, unsigned int, int*> get_integer;
@@ -145,6 +153,12 @@ struct RendererGlApi {
     __fn_ptr<void, int, int, int, int, unsigned int,
         unsigned int, void*> read_pixels;
     __fn_ptr<unsigned int> get_error;
+    __fn_ptr<void, unsigned int> generate_mipmap;
+    __fn_ptr<void, unsigned int, float*> get_float;
+    __fn_ptr<void, float, float, float, float> clear_color;
+    __fn_ptr<void, unsigned int, unsigned int, int*> get_integer_indexed;
+    __fn_ptr<void, unsigned int, unsigned int, unsigned int> bind_buffer_base;
+    __fn_ptr<void, unsigned int, unsigned int, unsigned int, long, long> bind_buffer_range;
 };
 
 struct RendererGlState {
@@ -152,8 +166,14 @@ struct RendererGlState {
     int program;
     int vertex_array;
     int active_texture;
-    int textures[8];  // at least SEMU_RENDER_TEXTURE_UNITS
-    int samplers[8];
+    int guarded_units;  // units saved: the smaller of the context's and SEMU_RENDER_GUARDED_TEXTURE_UNITS
+    int textures[16];  // SEMU_RENDER_GUARDED_TEXTURE_UNITS
+    int samplers[16];
+    int uniform_buffer;  // the generic binding, which glBindBufferBase also moves
+    int uniform_buffers[4];  // SEMU_RENDER_GUARDED_UNIFORM_BUFFERS: buffer, start, size each
+    int uniform_buffer_starts[4];
+    int uniform_buffer_sizes[4];
+    float clear_color[4];
     int viewport[4];
     int scissor[4];
     int draw_framebuffer;
@@ -288,6 +308,12 @@ class RendererGlProcedures {
         RendererGlProcedures.bind(&gl->stencil_mask_separate, frame, "glStencilMaskSeparate");
         RendererGlProcedures.bind(&gl->read_pixels, frame, "glReadPixels");
         RendererGlProcedures.bind(&gl->get_error, frame, "glGetError");
+        RendererGlProcedures.bind(&gl->generate_mipmap, frame, "glGenerateMipmap");
+        RendererGlProcedures.bind(&gl->get_float, frame, "glGetFloatv");
+        RendererGlProcedures.bind(&gl->clear_color, frame, "glClearColor");
+        RendererGlProcedures.bind(&gl->get_integer_indexed, frame, "glGetIntegeri_v");
+        RendererGlProcedures.bind(&gl->bind_buffer_base, frame, "glBindBufferBase");
+        RendererGlProcedures.bind(&gl->bind_buffer_range, frame, "glBindBufferRange");
 
         return gl->get_integer != null && gl->get_string != null
             && gl->get_boolean != null
@@ -318,6 +344,9 @@ class RendererGlProcedures {
             && gl->blend_equation_separate != null && gl->color_mask != null
             && gl->depth_mask != null && gl->stencil_mask_separate != null
             && gl->read_pixels != null && gl->get_error != null
+            && gl->generate_mipmap != null && gl->get_float != null
+            && gl->clear_color != null && gl->get_integer_indexed != null
+            && gl->bind_buffer_base != null && gl->bind_buffer_range != null
             && RendererGlCapabilities.supported(gl);
     }
 }
@@ -477,7 +506,8 @@ class RendererGlStateGuard {
             (unsigned int)RGL_VERTEX_ARRAY_BINDING);
         state->active_texture = RendererGlStateGuard.integer(gl,
             (unsigned int)RGL_ACTIVE_TEXTURE);
-        for (int unit = 0; unit < SEMU_RENDER_TEXTURE_UNITS; unit++) {
+        state->guarded_units = units < SEMU_RENDER_GUARDED_TEXTURE_UNITS ? units : SEMU_RENDER_GUARDED_TEXTURE_UNITS;
+        for (int unit = 0; unit < state->guarded_units; unit++) {
             gl->active_texture((unsigned int)(RGL_TEXTURE0 + unit));
             state->textures[unit] = RendererGlStateGuard.integer(gl,
                 (unsigned int)RGL_TEXTURE_BINDING_2D);
@@ -485,6 +515,13 @@ class RendererGlStateGuard {
                 (unsigned int)RGL_SAMPLER_BINDING);
         }
         gl->active_texture((unsigned int)state->active_texture);
+        state->uniform_buffer = RendererGlStateGuard.integer(gl, (unsigned int)RGL_UNIFORM_BUFFER_BINDING);
+        for (int index = 0; index < SEMU_RENDER_GUARDED_UNIFORM_BUFFERS; index++) {
+            gl->get_integer_indexed((unsigned int)RGL_UNIFORM_BUFFER_BINDING, (unsigned int)index, &state->uniform_buffers[index]);
+            gl->get_integer_indexed((unsigned int)RGL_UNIFORM_BUFFER_START, (unsigned int)index, &state->uniform_buffer_starts[index]);
+            gl->get_integer_indexed((unsigned int)RGL_UNIFORM_BUFFER_SIZE, (unsigned int)index, &state->uniform_buffer_sizes[index]);
+        }
+        gl->get_float((unsigned int)RGL_COLOR_CLEAR_VALUE, state->clear_color);
         gl->get_integer((unsigned int)RGL_VIEWPORT, state->viewport);
         gl->get_integer((unsigned int)RGL_SCISSOR_BOX, state->scissor);
         state->draw_framebuffer = RendererGlStateGuard.integer(gl,
@@ -599,7 +636,7 @@ class RendererGlStateGuard {
             (unsigned int)state->pack_buffer);
         gl->bind_buffer((unsigned int)RGL_PIXEL_UNPACK_BUFFER,
             (unsigned int)state->unpack_buffer);
-        for (int unit = 0; unit < SEMU_RENDER_TEXTURE_UNITS; unit++) {
+        for (int unit = 0; unit < state->guarded_units; unit++) {
             gl->active_texture((unsigned int)(RGL_TEXTURE0 + unit));
             gl->bind_texture((unsigned int)RGL_TEXTURE_2D,
                 (unsigned int)state->textures[unit]);
@@ -607,6 +644,16 @@ class RendererGlStateGuard {
                 (unsigned int)state->samplers[unit]);
         }
         gl->active_texture((unsigned int)state->active_texture);
+        for (int index = 0; index < SEMU_RENDER_GUARDED_UNIFORM_BUFFERS; index++) {
+            unsigned int buffer = (unsigned int)state->uniform_buffers[index];
+            if (buffer != 0u && state->uniform_buffer_sizes[index] > 0) {
+                gl->bind_buffer_range((unsigned int)RGL_UNIFORM_BUFFER, (unsigned int)index, buffer, (long)state->uniform_buffer_starts[index], (long)state->uniform_buffer_sizes[index]);
+            } else {
+                gl->bind_buffer_base((unsigned int)RGL_UNIFORM_BUFFER, (unsigned int)index, buffer);  // size 0: the whole buffer was bound
+            }
+        }
+        gl->bind_buffer((unsigned int)RGL_UNIFORM_BUFFER, (unsigned int)state->uniform_buffer);
+        gl->clear_color(state->clear_color[0], state->clear_color[1], state->clear_color[2], state->clear_color[3]);
         gl->use_program((unsigned int)state->program);
         gl->viewport(state->viewport[0], state->viewport[1],
             state->viewport[2], state->viewport[3]);
