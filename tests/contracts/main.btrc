@@ -480,6 +480,15 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
         contract.contains(linuxProfile, "input_joypad_driver = \"sdl2\"", "Linux RetroArch keeps SDL2 pads");
         contract.contains(linuxProfile, "audio_driver = \"pulse\"", "Linux RetroArch keeps Pulse");
         contract.expect(mac.plan.systems.contains("gb") && mac.plan.systems.contains("n64"), "the RetroArch systems serve macOS");
+        for systemId in mac.model.systemIds() {  // a macOS binding needs a core flake that builds for darwin
+            JSONValue bindings = mac.model.system(systemId).definition.get("emulators");
+            for (int index = 0; bindings != null && index < bindings.size(); index++) {
+                JSONValue binding = bindings.at(index);
+                if (!SemuJson.textAt(binding, "emulator").equals("retroarch") || !SemuJson.strings(binding.get("platforms")).contains("macos")) { continue; }
+                string flake = FileSystem.readText(PathTools.join(mac.project, "config/emulators/retroarch/cores/" + SemuJson.textAt(binding, "core") + "/flake.nix"));
+                contract.expect(flake.contains("macos = true"), systemId + ": the " + SemuJson.textAt(binding, "core") + " core builds for macOS");
+            }
+        }
     }
 }
 
