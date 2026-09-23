@@ -215,6 +215,12 @@ class LaunchPlanContract {
         contract.expect(FileSystem.isFile(PathTools.join(fixture.plan.stateRoot(), "dolphin/dolphin-user/Config/Dolphin.ini")), "dolphin profile lands in its user directory");
         SemuLaunchPlan outside = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "", PathTools.join(fixture.scratch, "outside.zip"), SemuDiagnostics());
         contract.expect(!outside.ok(), "ROM outside the system directory is rejected");
+        FileSystem.mkdirp(PathTools.join(roms, "gb/Disks.m3u"));
+        FileSystem.writeText(PathTools.join(roms, "gb/Disks.m3u/Disks.m3u"), "Disk 1.chd\n");
+        SemuLaunchPlan folder = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "", "Disks.m3u", SemuDiagnostics());
+        contract.expect(folder.ok() && folder.argv.last().equals(PathTools.join(roms, "gb/Disks.m3u/Disks.m3u")), "an ES-DE directory-as-file launches the same-named file inside: " + folder.error);
+        FileSystem.mkdirp(PathTools.join(roms, "gb/Empty.zip"));
+        contract.expect(!SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "", "Empty.zip", SemuDiagnostics()).ok(), "a directory without its same-named file is rejected");
         SemuLaunchPlan wrongCore = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "mgba", "Tetris.zip", SemuDiagnostics());
         contract.expect(!wrongCore.ok(), "core that the system does not bind is rejected");
         SemuLaunchPlan wrongEmulator = SemuLauncher.plan(fixture.model, fixture.plan, "dolphin", "gb", "", "Tetris.zip", SemuDiagnostics());

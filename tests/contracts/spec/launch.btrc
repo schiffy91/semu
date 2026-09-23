@@ -211,9 +211,44 @@ class LaunchSpecSettingsUi {  // controller modes come from config; the launcher
     }
 }
 
+class LaunchSpecGameControllers {  // macOS pads keep a slot per controller; one that leaves releases its buttons
+    class void run(Contract contract, Fixture fixture) {
+        SemuLaunchPlan launch = LaunchSpecTools.retroarchPlan(fixture);
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+        SemuQuitChord.configure(&SemuSupervisorRuntime.quit_template, launch.quitButtons, launch.chordWindowMs);
+        SemuGameControllers.reset();
+        contract.expect(SemuGameControllerFramework.code(0) == SemuKeyNames.button("south") && SemuGameControllerFramework.code(8) == SemuKeyNames.button("select") && SemuGameControllerFramework.code(9) == SemuKeyNames.button("start"), "GameController buttons map to the evdev names the config uses");
+        int controllers[3];  // stand-ins for three GCController objects
+        void* first = (void*)&controllers[0];
+        void* second = (void*)&controllers[1];
+        void* third = (void*)&controllers[2];
+        int south = SemuKeyNames.button("south");
+        void* identities[2];
+        unsigned int pressed[2];
+        identities[0] = first; pressed[0] = 1u;
+        identities[1] = second; pressed[1] = 0u;
+        SemuGameControllers.apply(launch, identities, pressed, 2, 1000LL);
+        contract.expect(SemuControllerIdentities[0] == first && SemuControllerIdentities[1] == second && SemuControllerDevices[0].down[south] == 1, "each connected pad claims its own slot and its held button");
+        identities[0] = second; pressed[0] = 0u;
+        SemuGameControllers.apply(launch, identities, pressed, 1, 1100LL);
+        contract.expect(SemuControllerIdentities[0] == null && SemuControllerDevices[0].down[south] == 0 && SemuControllerIdentities[1] == second, "a pad that disconnects releases what it held and frees its slot");
+        identities[0] = second; identities[1] = third; pressed[1] = 0u;
+        SemuGameControllers.apply(launch, identities, pressed, 2, 1200LL);
+        contract.expect(SemuControllerIdentities[0] == third && SemuControllerIdentities[1] == second && SemuControllerDevices[0].quit_chord.window_ms == launch.chordWindowMs, "a new pad reuses the free slot with the configured chord");
+        identities[0] = second; pressed[0] = 1u << 8;
+        SemuGameControllers.apply(launch, identities, pressed, 1, 1300LL);
+        contract.expect(SemuSupervisorRuntime.quit == 0 && SemuControllerIdentities[0] == null, "select alone does not quit");
+        pressed[0] = (1u << 8) | (1u << 9);
+        SemuGameControllers.apply(launch, identities, pressed, 1, 1350LL);
+        contract.expect(SemuSupervisorRuntime.quit == 1, "the quit chord completes on a GameController pad");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+        SemuGameControllers.reset();
+    }
+}
+
 class LaunchSpecLayout {  // the supervisor is split and styled
     class void run(Contract contract, Fixture fixture) {
-        for name in ["supervisor", "actions", "input_state", "process", "plan"] {
+        for name in ["supervisor", "actions", "input_state", "process", "plan", "gamepad"] {
             string text = LaunchSpecTools.source(fixture, "src/launch/" + name + ".btrc");
             contract.expect(!text.isEmpty() && LaunchSpecTools.lines(text) <= 500, "src/launch/" + name + ".btrc stays under 500 lines");
             contract.lacks(text, "SemuActions2", "no numbered class names in " + name);
@@ -228,6 +263,7 @@ class LaunchSpecContract {
         LaunchSpecQuitOrder.run(contract, fixture);
         LaunchSpecOrphans.run(contract);
         LaunchSpecJournal.run(contract);
+        LaunchSpecGameControllers.run(contract, fixture);
         LaunchSpecSettings.run(contract, fixture);
         LaunchSpecSync.run(contract, fixture);
         LaunchSpecSettingsUi.run(contract, fixture);

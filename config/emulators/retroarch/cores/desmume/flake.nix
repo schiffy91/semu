@@ -18,6 +18,8 @@
           src = source;
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
           includeRetroArch = false;  # Semu wraps RetroArch itself; the nixpkgs launcher would drag in a Darwin-broken RetroArch
+        } // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
+          env = (previous.env or { }) // { NIX_CFLAGS_COMPILE = ((previous.env or { }).NIX_CFLAGS_COMPILE or "") + " -mmacosx-version-min=11.0"; };  # aligned deallocation needs macOS 10.13 or newer
         });
     in {
       semu = {
