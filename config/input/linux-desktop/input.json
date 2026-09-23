@@ -115,6 +115,7 @@
     "pcsx2_pad": "SDL-0",
     "cemu_api": "SDLController",
     "cemu_display_name": "Xbox Controller",
+    "cemu_uuid": "0_030000005e040000ea02000000000000",
     "cemu_profile": "Xbox",
     "ryujinx_controller_id": "0-00000000-045e-0000-ea02-000000000000"
   },

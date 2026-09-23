@@ -1,0 +1,401 @@
+// Standalone emulator spec: exact keys, chords, argv and seeds per emulator.
+
+import Library.Console;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/profiles.btrc;
+import ../../../src/launch/plan.btrc;
+
+class StandaloneSpecText {
+    class int occurrences(string text, string needle) {
+        int count = 0;
+        string remaining = text;
+        while (!needle.isEmpty() && remaining.contains(needle)) {
+            int start = remaining.indexOf(needle) + needle.len();
+            remaining = remaining.substring(start, remaining.len() - start);
+            count++;
+        }
+        return count;
+    }
+
+    class bool ordered(string text, Vector<string> needles) {  // every needle appears after the previous one
+        string remaining = text;
+        for needle in needles {
+            int position = remaining.indexOf(needle);
+            if (position < 0) { return false; }
+            int start = position + needle.len();
+            remaining = remaining.substring(start, remaining.len() - start);
+        }
+        return true;
+    }
+
+    class bool lowerHex(string value, int length) {
+        if (value.len() != length) { return false; }
+        string digits = "0123456789abcdef";
+        for (int position = 0; position < value.len(); position++) {
+            if (!digits.contains(value.substring(position, 1))) { return false; }
+        }
+        return true;
+    }
+}
+
+class StandaloneSpecBed {  // a linux-desktop fixture whose external roots live in scratch
+    public Fixture fixture;
+    public string roms;
+    public string emulation;
+    public string bios;
+
+    public StandaloneSpecBed() {
+        self.fixture = Fixture("linux-desktop");
+        self.roms = PathTools.join(self.fixture.scratch, "roms");
+        self.emulation = PathTools.join(self.fixture.scratch, "emulation");
+        self.bios = PathTools.join(self.fixture.scratch, "bios");
+        for directory in [self.roms, self.emulation, self.bios] { FileSystem.mkdirp(directory); }
+        self.fixture.plan.tokens.put("roms", self.roms);  // never read the real Emulation tree
+        self.fixture.plan.tokens.put("emulation_root", self.emulation);
+        self.fixture.plan.tokens.put("bios", self.bios);
+    }
+
+    public string stateRoot(string emulatorId) { return PathTools.join(self.fixture.plan.stateRoot(), emulatorId); }
+
+    public string romPath(string systemId, string romName) {
+        SemuSystem system = self.fixture.model.system(systemId);
+        return PathTools.join(PathTools.join(self.roms, system.romDir), romName);
+    }
+
+    public void write(string path, string content) {
+        FileSystem.mkdirp(PathTools.dirname(path));
+        FileSystem.writeText(path, content);
+    }
+
+    public string executable(string emulatorId) {
+        JSONValue platform = self.fixture.model.emulator(emulatorId).platform(self.fixture.plan.platform);
+        return self.fixture.plan.tokens.resolve(SemuJson.textAt(platform, "executable"));
+    }
+
+    public SemuLaunchPlan launch(string emulatorId, string systemId, string romName) {
+        self.write(self.executable(emulatorId), "#!/bin/sh\n");
+        self.write(self.romPath(systemId, romName), "");
+        return SemuLauncher.plan(self.fixture.model, self.fixture.plan, emulatorId, systemId, "", romName, SemuDiagnostics());
+    }
+}
+
+class StandaloneSpecContract {
+    class Vector<string> standaloneIds() { return ["dolphin", "pcsx2", "ppsspp", "flycast", "melonds", "azahar", "cemu", "ryujinx"]; }
+
+    class Vector<string> actionGroups() { return ["hotkeys.keymap", "actions.native", "actions.external", "controller_modes"]; }
+
+    class bool filled(JSONValue entry, string key) { return !SemuJson.textAt(entry, key).isEmpty(); }
+
+    class bool consumerValid(string group, JSONValue entry) {  // every consumer row names who consumes it
+        if (!StandaloneSpecContract.filled(entry, "action")) { return false; }
+        if (group.equals("hotkeys.keymap")) { return StandaloneSpecContract.filled(entry, "setting") || StandaloneSpecContract.filled(entry, "native"); }
+        if (group.equals("controller_modes")) { return StandaloneSpecContract.filled(entry, "hotkey_setting"); }
+        bool consumer = StandaloneSpecContract.filled(entry, "consumer") || StandaloneSpecContract.filled(entry, "keyboard_consumer");
+        if (group.equals("actions.external")) { consumer = consumer || StandaloneSpecContract.filled(entry, "physical_consumer"); }
+        return consumer;
+    }
+
+    class Vector<string> consumed(Contract contract, SemuEmulator emulator) {
+        Vector<string> result = [];
+        for group in StandaloneSpecContract.actionGroups() {
+            JSONValue rows = SemuJson.get(emulator.profile, group);
+            if (!rows.isArray()) { continue; }
+            for (int index = 0; index < rows.size(); index++) {
+                JSONValue row = rows.at(index);
+                contract.expect(StandaloneSpecContract.consumerValid(group, row), f"{emulator.id} {group}.{index} names its action and consumer");
+                result.push(SemuJson.textAt(row, "action"));
+            }
+        }
+        return result;
+    }
+
+    class int count(Vector<string> values, string expected) {
+        int total = 0;
+        for value in values { if (value.equals(expected)) { total++; } }
+        return total;
+    }
+
+    class void actionContract(Contract contract, SemuEmulator emulator) {  // declared actions have exactly one profile consumer
+        Vector<string> consumed = StandaloneSpecContract.consumed(contract, emulator);
+        contract.expect(!emulator.actions.isEmpty(), emulator.id + " declares input.actions");
+        contract.expect(emulator.actions.contains("app.quit"), emulator.id + " declares app.quit");
+        for action in emulator.actions {
+            contract.expect(StandaloneSpecContract.count(consumed, action) == 1, f"{emulator.id} action {action} has exactly one profile consumer");
+            contract.expect(StandaloneSpecContract.count(emulator.actions, action) == 1, f"{emulator.id} declares {action} once");
+        }
+        for action in consumed { contract.expect(emulator.actions.contains(action), f"{emulator.id} profile consumes undeclared {action}"); }
+        bool save = emulator.actions.contains("state.save");
+        contract.expect(save == emulator.actions.contains("state.load"), emulator.id + " declares save and load together or neither");
+        JSONValue unsupported = SemuJson.get(emulator.profile, "actions.unsupported");
+        if (!unsupported.isArray()) { return; }
+        for (int index = 0; index < unsupported.size(); index++) {
+            JSONValue row = unsupported.at(index);
+            string action = SemuJson.textAt(row, "action");
+            contract.expect(StandaloneSpecContract.filled(row, "reason"), f"{emulator.id} unsupported {action} states a reason");
+            contract.expect(!emulator.actions.contains(action) && !consumed.contains(action), f"{emulator.id} unsupported {action} is neither declared nor consumed");
+        }
+    }
+
+    class void chordContract(Contract contract, SemuPlan plan, SemuEmulator emulator) {  // profile chord rows repeat the target's chords
+        for group in StandaloneSpecContract.actionGroups() {
+            JSONValue rows = SemuJson.get(emulator.profile, group);
+            if (!rows.isArray()) { continue; }
+            for (int index = 0; index < rows.size(); index++) {
+                JSONValue row = rows.at(index);
+                if (!row.has("chord")) { continue; }
+                string action = SemuJson.textAt(row, "action");
+                contract.expect(SemuJson.textAt(row, "chord").equals(plan.input.chord(action)), f"{emulator.id} {action} chord matches target {plan.target.id}");
+            }
+        }
+    }
+
+    class void seedContract(Contract contract, Fixture fixture, SemuEmulator emulator) {  // seeds only ever land inside the emulator state root
+        string stateRoot = PathTools.join(fixture.plan.stateRoot(), emulator.id);
+        fixture.plan.tokens.put("state_root", stateRoot);
+        JSONValue platforms = emulator.definition.get("platforms");
+        for platformName in platforms.keys() {
+            JSONValue seeds = SemuJson.get(platforms.get(platformName), "state.seeds");
+            if (!seeds.isArray()) { continue; }
+            for (int index = 0; index < seeds.size(); index++) {
+                JSONValue seed = seeds.at(index);
+                string label = f"{emulator.id} {platformName} seed {SemuJson.textAt(seed, "purpose")}";
+                string target = SemuJson.textAt(seed, "target");
+                string resolved = fixture.plan.tokens.resolve(target);
+                Vector<string> sources = SemuJson.strings(seed.get("sources"));
+                contract.expect(StandaloneSpecContract.filled(seed, "purpose"), label + " has a purpose");
+                contract.expect(target.startsWith("${state_root}/") && resolved.startsWith(stateRoot + "/"), label + " targets the state root");
+                contract.expect(SemuJson.textAt(seed, "copy").equals("once_if_target_absent") && !SemuJson.boolAt(seed, "overwrite", true), label + " copies once, never overwrites");
+                contract.expect(SemuJson.textAt(seed, "source_access").equals("read_only"), label + " reads its sources only");
+                contract.expect(!sources.isEmpty(), label + " lists sources");
+                for source in sources { contract.expect(fixture.plan.tokens.resolved(fixture.plan.tokens.resolve(source)), label + " source resolves: " + source); }
+            }
+        }
+    }
+
+    class void sourceContract(Contract contract, string project, SemuEmulator emulator) {  // pinned upstream source, compiled locally, per platform
+        string directory = PathTools.join(project, "config/emulators/" + emulator.id);
+        JSONValue lock = SemuJson.readFile(PathTools.join(directory, "flake.lock"));
+        string flake = FileSystem.readText(PathTools.join(directory, "flake.nix"));
+        string revision = SemuJson.textAt(lock, "nodes.source.locked.rev");
+        contract.expect(StandaloneSpecText.lowerHex(revision, 40), emulator.id + " pins a 40-digit source revision");
+        contract.expect(SemuJson.textAt(lock, "nodes.source.locked.narHash").startsWith("sha256-"), emulator.id + " pins the source hash");
+        contract.contains(flake, "allowSubstitutes = false", emulator.id + " is compiled, never substituted");
+        for platformName in emulator.definition.get("platforms").keys() {
+            contract.contains(flake, platformName + " = true", emulator.id + " flake builds its " + platformName + " slice");
+            JSONValue platform = emulator.platform(platformName);
+            contract.expect(SemuJson.textAt(platform, "executable").startsWith("${asset_root}/"), f"{emulator.id} {platformName} runs the bundled executable");
+            bool fullscreen = false;
+            for argument in SemuJson.strings(platform.get("args")) {
+                string lowered = argument.toLower();
+                if (lowered.contains("fullscreen") || lowered.equals("-f")) { fullscreen = true; }
+            }
+            contract.expect(fullscreen, f"{emulator.id} {platformName} starts fullscreen");
+        }
+        string definition = FileSystem.readText(PathTools.join(directory, "emulator.json"));
+        contract.lacks(definition, "${paths.project_bios}", emulator.id + " uses no legacy BIOS token");
+    }
+
+    class void genericEmitters(Contract contract, string project) {  // emitters and launcher name no emulator
+        for file in ["src/emit/profiles.btrc", "src/launch/plan.btrc"] {
+            string source = FileSystem.readText(PathTools.join(project, file));
+            for emulatorId in StandaloneSpecContract.standaloneIds() { contract.lacks(source, "\"" + emulatorId + "\"", file + " stays emulator-generic"); }
+        }
+    }
+
+    class string identity(Fixture fixture, string name) { return SemuJson.textAt(fixture.plan.input.definition, "device_identities." + name); }
+
+    class void dolphinProfile(Contract contract, Fixture fixture, string target) {
+        string main = fixture.profile("dolphin", "dolphin-user/Config/Dolphin.ini");
+        string pad = fixture.profile("dolphin", "dolphin-user/Config/GCPadNew.ini");
+        string wiimote = fixture.profile("dolphin", "dolphin-user/Config/Profiles/Wiimote/Semu Wiimote.ini");
+        string hotkeys = fixture.profile("dolphin", "dolphin-user/Config/Hotkeys.ini");
+        contract.contains(main, "GFXBackend = OGL", target + " dolphin forces OpenGL");
+        contract.contains(main, "[Semu Controller Modes]\nWiimoteProfile = Semu Wiimote\nNunchukProfile = Semu Nunchuk\nClassicProfile = Semu Classic\nGameCubeProfile = Semu GameCube", target + " dolphin names the mode profiles");
+        contract.contains(pad, "[GCPad1]\nDevice = " + StandaloneSpecContract.identity(fixture, "dolphin_pad"), target + " dolphin GameCube pad is the target pad");
+        contract.contains(wiimote, "Device = " + StandaloneSpecContract.identity(fixture, "dolphin_wiimote"), target + " dolphin Wiimote is the target pad");
+        contract.contains(hotkeys, "General/Stop = @(Ctrl+Q)", target + " dolphin quit chord");
+        contract.contains(hotkeys, "General/Toggle Pause = @(Ctrl+P)", target + " dolphin pause chord");
+        contract.contains(hotkeys, "Other State Hotkeys/Increase Selected State Slot = @(Ctrl+K)", target + " dolphin next slot chord");
+        contract.contains(hotkeys, "Semu Controller Mode/Wii Remote = @(Ctrl+Shift+F9)", target + " dolphin Wiimote mode chord");
+        contract.contains(hotkeys, "Semu Controller Mode/GameCube Controller = @(Ctrl+Shift+F12)", target + " dolphin GameCube mode chord");
+    }
+
+    class void pcsx2Profile(Contract contract, Fixture fixture, string target) {
+        string main = fixture.profile("pcsx2", "config/PCSX2/inis/PCSX2.ini");
+        string input = fixture.profile("pcsx2", "config/PCSX2/inputprofiles/Steam Deck.ini");
+        JSONValue platform = fixture.model.emulator("pcsx2").platform("linux");
+        contract.expect(SemuJson.textAt(platform, "input.primary_device").equals("SDL-0") && SemuJson.textAt(platform, "input.selection").equals("first_sdl_gamepad"), "pcsx2 Pad1 is the first SDL gamepad");
+        contract.contains(main, "Renderer = 12", target + " pcsx2 forces OpenGL");
+        contract.contains(main, "InputProfileName = Steam Deck", target + " pcsx2 selects the generated input profile");
+        contract.contains(main, "ConfirmShutdown = false", target + " pcsx2 quits without a prompt");
+        contract.expect(StandaloneSpecText.occurrences(input, " = SDL-0/") == 24, target + " pcsx2 binds all 24 Pad1 controls to SDL-0");
+        contract.lacks(input, "SDL-1", target + " pcsx2 never binds a second SDL index");
+        contract.contains(input, "SaveStateToSlot = Keyboard/Control & Keyboard/S", target + " pcsx2 save chord");
+        contract.contains(input, "LoadStateFromSlot = Keyboard/Control & Keyboard/A", target + " pcsx2 load chord");
+        contract.contains(input, "OpenPauseMenu = Keyboard/Control & Keyboard/M", target + " pcsx2 menu chord");
+        contract.contains(input, "ToggleTurbo = Keyboard/Control & Keyboard/Plus", target + " pcsx2 fast-forward chord");
+    }
+
+    class void ppssppProfile(Contract contract, Fixture fixture, string target) {
+        string main = fixture.profile("ppsspp", "config/ppsspp/PSP/SYSTEM/ppsspp.ini");
+        string controls = fixture.profile("ppsspp", "config/ppsspp/PSP/SYSTEM/controls.ini");
+        contract.contains(main, "GraphicsBackend = OPENGL", target + " ppsspp forces OpenGL");
+        contract.contains(main, "FullScreen = True", target + " ppsspp fullscreen");
+        contract.contains(main, "CheckForNewVersion = False", target + " ppsspp never checks for updates");
+        contract.contains(controls, "Cross = 10-189", target + " ppsspp face buttons read pad zero");
+        contract.contains(controls, "Save State = 1-113:1-47", target + " ppsspp save chord");
+        contract.contains(controls, "Load State = 1-113:1-29", target + " ppsspp load chord");
+        contract.contains(controls, "Exit App = 1-113:1-45", target + " ppsspp quit chord");
+    }
+
+    class void flycastProfile(Contract contract, Fixture fixture, string target) {
+        string main = fixture.profile("flycast", "config/flycast/emu.cfg");
+        string keyboard = fixture.profile("flycast", "config/flycast/mappings/SDL_Keyboard.cfg");
+        contract.contains(main, "RendererType = 0", target + " flycast forces OpenGL");
+        contract.contains(main, "[window]\nfullscreen = yes", target + " flycast fullscreen");
+        contract.contains(main, "AutoLoadState = no", target + " flycast never auto-loads a state");
+        contract.contains(keyboard, "224,22:btn_quick_save:0", target + " flycast save chord");
+        contract.contains(keyboard, "224,4:btn_jump_state:0", target + " flycast load chord");
+        contract.contains(keyboard, "224,20:btn_escape:0", target + " flycast quit chord");
+    }
+
+    class void melondsProfile(Contract contract, Fixture fixture, string target) {
+        string main = fixture.profile("melonds", "config/melonDS/melonDS.toml");
+        string saves = PathTools.join(fixture.plan.stateRoot(), "melonds/data/melonDS/saves");
+        contract.contains(main, "[3D]\nRenderer = 0", target + " melonDS uses the software renderer");
+        contract.contains(main, "JoystickID = 0", target + " melonDS reads joystick zero");
+        contract.contains(main, "SaveFilePath = \"" + saves + "\"", target + " melonDS saves stay in the state root");
+        contract.contains(main, "HK_Pause = 67108944", target + " melonDS pause chord");
+        contract.contains(main, "HK_SwapScreens = 83886081", target + " melonDS swap chord");
+        contract.contains(main, "HK_FastForwardToggle = 67108907", target + " melonDS fast-forward chord");
+    }
+
+    class void azaharProfile(Contract contract, Fixture fixture, string target) {
+        string main = fixture.profile("azahar", "config/azahar-emu/qt-config.ini");
+        string guid = StandaloneSpecContract.identity(fixture, "azahar_controller_guid");
+        contract.expect(StandaloneSpecText.lowerHex(guid, 32), target + " azahar pad GUID is 32 lowercase hex digits");
+        contract.contains(main, "profiles\\1\\button_a=engine:sdl,guid:" + guid + ",port:0,button:1", target + " azahar binds the target pad");
+        contract.contains(main, "graphics_api=1", target + " azahar forces OpenGL");
+        contract.contains(main, "fullscreen=true", target + " azahar fullscreen");
+        contract.contains(main, "Main%20Window\\Quick%20Save\\KeySeq=Ctrl+S", target + " azahar save chord");
+        contract.contains(main, "Main%20Window\\Quick%20Load\\KeySeq=Ctrl+A", target + " azahar load chord");
+        contract.contains(main, "Main%20Window\\Exit%20Azahar\\KeySeq=Ctrl+Q", target + " azahar quit chord");
+        contract.contains(main, "Main%20Window\\Swap%20Screens\\KeySeq=Ctrl+Tab", target + " azahar swap chord");
+    }
+
+    class void ryujinxProfile(Contract contract, Fixture fixture, string target) {
+        JSONValue config = JSONValue.parse(fixture.profile("ryujinx", "config/Ryujinx/Config.json"));
+        JSONValue players = SemuJson.get(config, "input_config");
+        JSONValue player = players.isArray() && players.size() > 0 ? players.at(0) : JSONValue.makeObject();
+        contract.expect(SemuJson.textAt(player, "id").equals(StandaloneSpecContract.identity(fixture, "ryujinx_controller_id")), target + " ryujinx player one is the target pad");
+        contract.expect(SemuJson.textAt(player, "backend").equals("GamepadSDL2") && SemuJson.textAt(player, "player_index").equals("Player1"), target + " ryujinx player one reads SDL2");
+        contract.expect(SemuJson.textAt(config, "graphics_backend").equals("OpenGl"), target + " ryujinx forces OpenGL");
+        contract.expect(SemuJson.boolAt(config, "start_fullscreen", false) && !SemuJson.boolAt(config, "show_confirm_exit", true), target + " ryujinx fullscreen without an exit prompt");
+        contract.expect(!SemuJson.boolAt(config, "check_updates_on_start", true), target + " ryujinx never checks for updates");
+    }
+
+    class void renderedProfiles(Contract contract, string target) {
+        Fixture fixture = Fixture(target);
+        StandaloneSpecContract.dolphinProfile(contract, fixture, target);
+        StandaloneSpecContract.pcsx2Profile(contract, fixture, target);
+        StandaloneSpecContract.ppssppProfile(contract, fixture, target);
+        StandaloneSpecContract.flycastProfile(contract, fixture, target);
+        StandaloneSpecContract.melondsProfile(contract, fixture, target);
+        StandaloneSpecContract.azaharProfile(contract, fixture, target);
+        StandaloneSpecContract.ryujinxProfile(contract, fixture, target);
+        for emulatorId in StandaloneSpecContract.standaloneIds() { StandaloneSpecContract.chordContract(contract, fixture.plan, fixture.model.emulator(emulatorId)); }
+        contract.expect(fixture.diagnostics.ok(), target + " standalone profiles render cleanly: " + fixture.diagnostics.render());
+    }
+
+    class void expectArgv(Contract contract, StandaloneSpecBed bed, SemuLaunchPlan launch, Vector<string> middle, string romPath) {
+        Vector<string> expected = [bed.executable(launch.emulator)];
+        for argument in middle { expected.push(argument); }
+        expected.push(romPath);
+        contract.expect(launch.ok(), launch.emulator + " launch plan resolves: " + launch.error);
+        contract.expect(launch.argv.join(" | ").equals(expected.join(" | ")), launch.emulator + " argv is exact: " + launch.argv.join(" | "));
+    }
+
+    class void launches(Contract contract) {
+        StandaloneSpecBed bed = StandaloneSpecBed();
+        SemuLaunchPlan dolphin = bed.launch("dolphin", "wii", "Sports.rvz");
+        StandaloneSpecContract.expectArgv(contract, bed, dolphin, ["-u", PathTools.join(bed.stateRoot("dolphin"), "dolphin-user"), "--config", "Dolphin.Display.Fullscreen=True", "-b", "-e"], bed.romPath("wii", "Sports.rvz"));
+        SemuLaunchPlan pcsx2 = bed.launch("pcsx2", "ps2", "Shadow.chd");
+        StandaloneSpecContract.expectArgv(contract, bed, pcsx2, ["-batch", "-fullscreen", "--"], bed.romPath("ps2", "Shadow.chd"));
+        contract.expect(pcsx2.environment.contains("XDG_CONFIG_HOME=" + PathTools.join(bed.stateRoot("pcsx2"), "config")), "pcsx2 reads its config from the state root");
+        SemuLaunchPlan ppsspp = bed.launch("ppsspp", "psp", "Lumines.iso");
+        StandaloneSpecContract.expectArgv(contract, bed, ppsspp, ["--fullscreen"], bed.romPath("psp", "Lumines.iso"));
+        bed.write(PathTools.join(bed.bios, "dc/dc_boot.bin"), "boot");
+        SemuLaunchPlan flycast = bed.launch("flycast", "dreamcast", "Taxi.chd");
+        StandaloneSpecContract.expectArgv(contract, bed, flycast, ["-config", "window:fullscreen=yes"], bed.romPath("dreamcast", "Taxi.chd"));
+        string boot = PathTools.join(bed.stateRoot("flycast"), "data/flycast/dc_boot.bin");
+        contract.expect(FileSystem.isFile(boot) && FileSystem.readText(boot).equals("boot"), "flycast seeds the Dreamcast boot ROM from ${bios}/dc");
+        SemuLaunchPlan melonds = bed.launch("melonds", "nds", "Kirby.nds");
+        StandaloneSpecContract.expectArgv(contract, bed, melonds, ["--fullscreen"], bed.romPath("nds", "Kirby.nds"));
+        contract.expect(melonds.environment.contains("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1"), "melonDS keeps reading the pad unfocused");
+        contract.expect(FileSystem.isDir(PathTools.join(bed.stateRoot("melonds"), "data/melonDS/saves")), "melonDS save directory exists before launch");
+        SemuLaunchPlan azahar = bed.launch("azahar", "n3ds", "Zelda.3ds");
+        StandaloneSpecContract.expectArgv(contract, bed, azahar, ["-f"], bed.romPath("n3ds", "Zelda.3ds"));
+        contract.expect(azahar.environment.contains("QT_QPA_PLATFORM=xcb"), "azahar runs on XWayland");
+        bed.write(PathTools.join(bed.fixture.plan.semuHome, "firmware/ryujinx/prod.keys"), "owned");
+        bed.write(PathTools.join(bed.bios, "switch/prod.keys"), "bios");
+        SemuLaunchPlan ryujinx = bed.launch("ryujinx", "switch", "Odyssey.nsp");
+        string configRoot = PathTools.join(bed.stateRoot("ryujinx"), "config/Ryujinx");
+        StandaloneSpecContract.expectArgv(contract, bed, ryujinx, ["--root-data-dir", configRoot, "--fullscreen", "--graphics-backend", "opengl"], bed.romPath("switch", "Odyssey.nsp"));
+        string keys = PathTools.join(configRoot, "system/prod.keys");
+        contract.expect(FileSystem.isFile(keys) && FileSystem.readText(keys).equals("owned"), "ryujinx prefers Semu-owned keys over the BIOS folder");
+        bed.write(PathTools.join(bed.fixture.plan.semuHome, "firmware/ryujinx/prod.keys"), "newer");
+        bed.launch("ryujinx", "switch", "Odyssey.nsp");
+        contract.expect(FileSystem.readText(keys).equals("owned"), "an existing seeded key file is never overwritten");
+    }
+
+    class void seededPaths(Contract contract) {  // Deck-specific seed sources the old spec pinned
+        Fixture fixture = Fixture("linux-desktop");
+        JSONValue flycast = fixture.model.emulator("flycast").platform("linux");
+        Vector<string> flycastSources = [];
+        JSONValue flycastSeeds = SemuJson.get(flycast, "state.seeds");
+        for (int index = 0; index < flycastSeeds.size(); index++) {
+            for source in SemuJson.strings(flycastSeeds.at(index).get("sources")) { flycastSources.push(source); }
+        }
+        contract.expect(flycastSources.contains("${bios}/dc/dc_boot.bin") && flycastSources.contains("${bios}/dc/dc_flash.bin"), "flycast BIOS fallbacks use ${bios}/dc");
+        SemuEmulator ryujinx = fixture.model.emulator("ryujinx");
+        for platformName in ryujinx.definition.get("platforms").keys() {
+            JSONValue seeds = SemuJson.get(ryujinx.platform(platformName), "state.seeds");
+            string prodKeys = "";
+            string titleKeys = "";
+            for (int index = 0; index < seeds.size(); index++) {
+                Vector<string> sources = SemuJson.strings(seeds.at(index).get("sources"));
+                string first = sources.isEmpty() ? "" : sources.get(0);
+                if (SemuJson.textAt(seeds.at(index), "purpose").equals("prod_keys")) { prodKeys = first; }
+                if (SemuJson.textAt(seeds.at(index), "purpose").equals("title_keys")) { titleKeys = first; }
+            }
+            contract.expect(prodKeys.equals("${semu_home}/firmware/ryujinx/prod.keys") && titleKeys.equals("${semu_home}/firmware/ryujinx/title.keys"), "ryujinx " + platformName + " prefers persistent Semu-owned keys");
+        }
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        Vector<string> all = ["retroarch"];
+        for emulatorId in StandaloneSpecContract.standaloneIds() { all.push(emulatorId); }
+        for emulatorId in all {
+            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            contract.expect(emulator != null, emulatorId + " is declared");
+            if (emulator == null) { continue; }
+            StandaloneSpecContract.actionContract(contract, emulator);
+            StandaloneSpecContract.seedContract(contract, fixture, emulator);
+        }
+        for emulatorId in StandaloneSpecContract.standaloneIds() { StandaloneSpecContract.sourceContract(contract, fixture.project, fixture.model.emulator(emulatorId)); }
+        StandaloneSpecContract.genericEmitters(contract, fixture.project);
+        StandaloneSpecContract.seededPaths(contract);
+        StandaloneSpecContract.renderedProfiles(contract, "linux-desktop");
+        StandaloneSpecContract.renderedProfiles(contract, "steam-deck");
+        StandaloneSpecContract.launches(contract);
+    }
+}

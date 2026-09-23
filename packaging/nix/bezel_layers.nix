@@ -25,6 +25,11 @@ let
   root = "share/semu/assets/bezels/layers";
 in
 runCommand "semu-bezel-layers" { } ''
+  ${lib.concatStrings (lib.mapAttrsToList (name: tree: ''
+    for notice in "${tree}"/LICENSE* "${tree}"/README*; do  # each upstream's own terms travel with its plates
+      if [ -f "$notice" ]; then install -Dm644 "$notice" "$out/${root}/_files/${name}/$(basename "$notice")"; fi
+    done
+  '') upstreams)}
   ${lib.concatMapStrings (ref: ''
     install -Dm644 "${upstreams.${ref.upstream}}/${ref.path}" "$out/${root}/_files/${ref.upstream}/${ref.path}"
   '') unique}

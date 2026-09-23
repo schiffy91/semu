@@ -5,16 +5,7 @@
 set -eu
 work="${TMPDIR:-/tmp}/semu-headless"
 command_port() {  # send one RetroArch network command and print the reply, if any
-  python3 - "$1" <<'PY'
-import socket, sys
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-s.settimeout(1.0)
-s.sendto(sys.argv[1].encode(), ("127.0.0.1", 55355))
-try:
-    print(s.recv(4096).decode(errors="replace").strip())
-except socket.timeout:
-    pass
-PY
+  printf '%s' "$1" | socat -t 1 - UDP:127.0.0.1:55355 2>/dev/null | tr -d '\n'
 }
 rm -rf "$work"
 mkdir -p "$work/home" "$work/assets/bin" "$work/roms/gb" "$work/screenshots" "$work/content/saves" "$work/content/states" "$work/content/screenshots"
@@ -94,4 +85,7 @@ if kill -0 "$pid" 2>/dev/null; then
   kill "$pid" 2>/dev/null || true
   exit 1
 fi
+status=0
+wait "$pid" || status=$?
+[ "$status" -eq 0 ] || { echo "retroarch exited $status after QUIT" >&2; exit 1; }
 echo "retroarch-headless: pass"

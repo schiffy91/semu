@@ -1,0 +1,86 @@
+// Shared contract helpers: the check counter and a fixture over the real config tree.
+
+import Library.Console;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Platform;
+import Library.Strings;
+import Library.Vector;
+import ../../src/lib/json.btrc;
+import ../../src/lib/paths.btrc;
+import ../../src/model.btrc;
+import ../../src/resolve.btrc;
+import ../../src/check.btrc;
+import ../../src/emit/esde.btrc;
+import ../../src/emit/profiles.btrc;
+import ../../src/launch/plan.btrc;
+import ../../src/emit/rendering.btrc;
+import ../../src/emit/settings_ui.btrc;
+import ../../src/sync/syncthing.btrc;
+import ../../src/steam/shortcuts.btrc;
+import ../../src/cli.btrc;
+import ../../src/launch/supervisor.btrc;
+import ../../src/steam/input_template.btrc;
+import ../../src/bezel/editor.btrc;
+
+class Contract {
+    public int failures;
+    public int checks;
+
+    public Contract() {
+        self.failures = 0;
+        self.checks = 0;
+    }
+
+    public void expect(bool condition, string message) {
+        self.checks++;
+        if (!condition) {
+            self.failures++;
+            Console.error("FAIL: " + message);
+        }
+    }
+
+    public void skip(string label, string reason) {  // a skip fails unless SEMU_ALLOW_SKIP=1 says the host lacks it
+        bool allowed = Environment.get("SEMU_ALLOW_SKIP", "").equals("1");
+        Console.error((allowed ? "SKIP: " : "FAIL: ") + label + ": " + reason);
+        self.checks++;
+        if (!allowed) { self.failures++; }
+    }
+
+    public void contains(string haystack, string needle, string message) {
+        self.expect(haystack.contains(needle), f"{message}: missing '{needle}'");
+    }
+
+    public void lacks(string haystack, string needle, string message) {
+        self.expect(!haystack.contains(needle), f"{message}: unexpected '{needle}'");
+    }
+}
+
+class Fixture {
+    public string project;
+    public string scratch;
+    public SemuDiagnostics diagnostics;
+    public SemuModel model;
+    public SemuPlan plan;
+
+    public Fixture(string target) {
+        self.project = Environment.get("SEMU_PROJECT", FileSystem.currentDirectory());
+        self.scratch = FileSystem.tempDir("semu-contract");
+        self.diagnostics = SemuDiagnostics();
+        self.model = SemuModel.load(PathTools.join(self.project, "config"), self.diagnostics);
+        string assets = PathTools.join(self.scratch, "assets");
+        FileSystem.mkdirp(PathTools.join(assets, "bin"));
+        string home = PathTools.join(self.scratch, "semu-home");
+        string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(self.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(self.scratch, "content") + "\"}}";
+        self.plan = SemuResolver.plan(self.model, target, home, assets, overlay, self.diagnostics);
+    }
+
+    public string profile(string emulatorId, string relative) {
+        SemuEmulator emulator = self.model.emulator(emulatorId);
+        for file in SemuProfiles.render(self.model, self.plan, emulator, self.diagnostics) {
+            if (file.path.equals(relative)) { return file.content; }
+        }
+        return "";
+    }
+}
+

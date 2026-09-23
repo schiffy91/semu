@@ -16,7 +16,7 @@
     "x86_64-darwin"
   ],
   "outputs": {
-    "linux_main_program": "bin/retroarch-semu",
+    "linux_main_program": "bin/retroarch",
     "linux_real_program": "bin/retroarch",
     "macos_main_program": "bin/retroarch",
     "macos_bundle_program": "Applications/RetroArch.app/Contents/MacOS/RetroArch",

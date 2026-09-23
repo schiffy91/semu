@@ -12,7 +12,7 @@
         "source": "input.device_identities.cemu_display_name"
       },
       "controller_uuid": {
-        "source": "profile.controller.uuid"
+        "source": "input.device_identities.cemu_uuid"
       },
       "controller_type": {
         "source": "profile.controller.emulated_type"
@@ -37,12 +37,11 @@
   "controller": {
     "api_identity": "cemu_api",
     "display_name_identity": "cemu_display_name",
+    "uuid_identity": "cemu_uuid",
     "authoritative": true,
     "compile_define": "SEMU_CEMU_OWNED_INPUT_PROFILE",
     "emulated_type": "Wii U GamePad",
     "guid_index": 0,
-    "guid": "03000000de280000ff11000001000000",
-    "uuid": "0_03000000de280000ff11000001000000",
     "rumble": "0.5",
     "mappings": [
       {

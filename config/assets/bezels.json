@@ -105,8 +105,7 @@
         "width": 1152,
         "height": 2048,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "96c25c459bbe25717e63ddfc3e5c5c9ea7d7bd5428577f76cce58929ac4079da"
+        "color_type": 6
       }
     },
     "assets/bezels/gba/arctic.png": {
@@ -118,8 +117,7 @@
         "width": 2048,
         "height": 1182,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "ca07e8d599c6f830dcd4ad0b3a8668f9392442b100b4e69340ed25d8cd84e7f9"
+        "color_type": 6
       }
     },
     "assets/bezels/psp/red.png": {
@@ -131,8 +129,7 @@
         "width": 5335,
         "height": 2160,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "fcf6476e833030bcbe09001fa05193a2baa370b050b03545c3cfc254010b0f51"
+        "color_type": 6
       }
     },
     "assets/bezels/tv/soqueroeu/n64.png": {
@@ -154,8 +151,7 @@
         "width": 2560,
         "height": 1440,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "62048db16cc9583d11a83b9e245f671b023dc91246438b778b4a6624839cc6b8"
+        "color_type": 6
       }
     },
     "assets/bezels/tv/soqueroeu/nes.png": {
@@ -177,8 +173,7 @@
         "width": 2560,
         "height": 1440,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "36be3fc7d070d163600d152a1d8100475e526a6f0fe44bd10140008fb9318f70"
+        "color_type": 6
       }
     },
     "assets/bezels/tv/soqueroeu/snes.png": {
@@ -200,8 +195,7 @@
         "width": 2560,
         "height": 1440,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "ab42dd8d7d3a6b30385bc54674cff01cb642abc6d85e5a278af9b2f63d5a2c43"
+        "color_type": 6
       }
     },
     "assets/bezels/tv/soqueroeu/genesis.png": {
@@ -223,8 +217,7 @@
         "width": 2560,
         "height": 1440,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "f962669dc93e42321fdcc3d779b9430494fb29e58b497cc3feb96cce4a6a527a"
+        "color_type": 6
       }
     },
     "assets/bezels/tv/soqueroeu/psx.png": {
@@ -246,8 +239,7 @@
         "width": 2560,
         "height": 1440,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "37335c5f3a0a56a822d71174b90087d9bc9290897c9693e20c9a75ab8593684c"
+        "color_type": 6
       }
     },
     "assets/bezels/tv/soqueroeu/ps2.png": {
@@ -269,8 +261,7 @@
         "width": 2560,
         "height": 1440,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "65244745a2437e9efac51b52a3862c01cf8e87e38dd12249985255b11a88c3d3"
+        "color_type": 6
       }
     },
     "assets/bezels/tv/soqueroeu/gc.png": {
@@ -292,8 +283,7 @@
         "width": 2560,
         "height": 1440,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "d1d2aef42ebd049ef735d39b143d1185905903b4aca428d09b597639847fb0e6"
+        "color_type": 6
       }
     },
     "assets/bezels/tv/soqueroeu/wii.png": {
@@ -315,8 +305,7 @@
         "width": 2560,
         "height": 1440,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "d7685d3205de268c754378c6a004add8f8882bbe7f3e5def8b7f323f96fe25ee"
+        "color_type": 6
       }
     },
     "assets/bezels/tv/soqueroeu/wii-16x9.png": {
@@ -338,8 +327,7 @@
         "width": 2560,
         "height": 1440,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "cc4dac274a71b6d2b3fcb55c332562885e54c2edd4424104b652d8fe28c69a19"
+        "color_type": 6
       }
     },
     "assets/bezels/tv/soqueroeu/dreamcast.png": {
@@ -361,8 +349,7 @@
         "width": 2560,
         "height": 1440,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "cabf80e7b2e687814a891779b5346fe39b869c94bc170e5c4ba130b1123d3cf6"
+        "color_type": 6
       }
     },
     "assets/bezels/backgrounds/desk-night.png": {
@@ -384,8 +371,7 @@
         "width": 2560,
         "height": 1440,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "4331a7126b5e06471a3742dfdd50bf0e78292a644c65a4542f8153744eb3348c"
+        "color_type": 6
       }
     },
     "assets/bezels/gb/dmg-shell.png": {
@@ -403,8 +389,7 @@
         "width": 1152,
         "height": 2048,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "24008cfbb6223b9f0fc0a3d98debc621fbcc443c85193c4ed87d619649ac8573"
+        "color_type": 6
       }
     },
     "assets/bezels/gb/dmg-glass.png": {
@@ -415,8 +400,7 @@
         "width": 1152,
         "height": 2048,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "a5e0b1b26ca682308b11ca81250723cbe1681e3067bf7d4199e085e714cec899"
+        "color_type": 6
       }
     },
     "assets/bezels/gbc/shell.png": {
@@ -435,8 +419,7 @@
         "width": 1152,
         "height": 2048,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "e6602622b7b8a183ea543ad5b12093b5c094fe00b05db21055a2de7efabca651"
+        "color_type": 6
       }
     },
     "assets/bezels/gbc/glass.png": {
@@ -447,8 +430,7 @@
         "width": 1152,
         "height": 2048,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "172dc6678ef4e7ea4d695487f94d7ba16735e5ad4231e0b9c45a6f8eeeaa5b72"
+        "color_type": 6
       }
     },
     "assets/bezels/gba/shell.png": {
@@ -466,8 +448,7 @@
         "width": 2048,
         "height": 1182,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "9c0412e6fdfd2160dd47939f55e2fb7ba6561141204e98d6c6b62804ba2d05ef"
+        "color_type": 6
       }
     },
     "assets/bezels/gba/glass.png": {
@@ -478,8 +459,7 @@
         "width": 2048,
         "height": 1182,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "f6ce310e4d48e112dc7cd3ce021e2bf32efeb2ffad1600995386c4bd63bcf760"
+        "color_type": 6
       }
     },
     "assets/bezels/n3ds/shell.png": {
@@ -516,8 +496,7 @@
         "width": 1440,
         "height": 1080,
         "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "27feaf28197ddaad8b7e4a6d4ef36e0d9ed603c3c73217e0c92c2406df156cab"
+        "color_type": 6
       }
     }
   },

@@ -1,0 +1,217 @@
+// Touch spec: the DS and 3DS second screen takes the pointer, mapped to native pixels.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/emit/rendering.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+
+class TouchSpecMath {
+    class bool close(float actual, float expected) {
+        float difference = actual - expected;
+        if (difference < 0.0f) { difference = -difference; }
+        return difference < 0.001f;
+    }
+
+    class void surface(struct SemuRenderPointerSurface* surface, int left, int bottom, int width, int height, int nativeWidth, int nativeHeight) {
+        surface->x = left;
+        surface->y = bottom;
+        surface->width = width;
+        surface->height = height;
+        surface->native_width = nativeWidth;
+        surface->native_height = nativeHeight;
+        surface->rotation = 0;
+        surface->origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+    }
+
+    class void query(struct SemuRenderPointerQuery* query, unsigned long long frameId, float pointerX, float pointerY, int clamp) {
+        query->abi = (unsigned int)SEMU_RENDER_ABI_GL;
+        query->struct_size = (unsigned int)sizeof(struct SemuRenderPointerQuery);
+        query->frame_id = frameId;
+        query->x = pointerX;
+        query->y = pointerY;
+        query->viewport_width = 1280;
+        query->viewport_height = 800;
+        query->origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+        query->surface_index = 1;
+        query->clamp = clamp;
+    }
+}
+
+class TouchSpecPointer {
+    class void melonDs(Contract contract) {  // two 256x192 screens drawn at 400x300 on 1280x800
+        struct SemuRenderPointerMap map;
+        RendererPointerContract.clearMap(&map);
+        map.frame_id = 91ULL;
+        map.framebuffer_width = 1280;
+        map.framebuffer_height = 800;
+        map.surface_count = 2;
+        TouchSpecMath.surface(&map.surfaces[0], 100, 450, 400, 300, 256, 192);
+        TouchSpecMath.surface(&map.surfaces[1], 700, 100, 400, 300, 256, 192);
+        struct SemuRenderPointerQuery query;
+        TouchSpecMath.query(&query, map.frame_id, 900.0f, 550.0f, 0);
+        struct SemuRenderPointerResult center;
+        int status = RendererPointerContract.map(&map, &query, &center);
+        contract.expect(status == SEMU_RENDER_POINTER_MAPPED && center.surface_index == 1 && TouchSpecMath.close(center.native_x, 127.5f) && TouchSpecMath.close(center.native_y, 95.5f), "DS: the touch screen's centre maps to native 127.5,95.5");
+        query.x = 600.0f;
+        struct SemuRenderPointerResult rejected;
+        contract.expect(RendererPointerContract.map(&map, &query, &rejected) == SEMU_RENDER_POINTER_OUTSIDE, "DS: a press on the bezel is rejected");
+        query.clamp = 1;
+        struct SemuRenderPointerResult captured;
+        status = RendererPointerContract.map(&map, &query, &captured);
+        contract.expect(status == SEMU_RENDER_POINTER_MAPPED && captured.surface_index == 1 && captured.clamped == 1 && captured.native_x == 0.0f, "DS: captured motion off the screen clamps to its edge");
+    }
+
+    class void azahar(Contract contract) {  // 400x240 top, 320x240 bottom shown at 2x
+        struct SemuRenderPointerMap map;
+        RendererPointerContract.clearMap(&map);
+        map.frame_id = 73ULL;
+        map.framebuffer_width = 1280;
+        map.framebuffer_height = 800;
+        map.surface_count = 2;
+        TouchSpecMath.surface(&map.surfaces[0], 440, 560, 400, 240, 400, 240);
+        TouchSpecMath.surface(&map.surfaces[1], 420, 80, 640, 480, 320, 240);
+        struct SemuRenderPointerQuery query;
+        TouchSpecMath.query(&query, map.frame_id, 740.0f, 480.0f, 0);
+        struct SemuRenderPointerResult center;
+        int status = RendererPointerContract.map(&map, &query, &center);
+        contract.expect(status == SEMU_RENDER_POINTER_MAPPED && center.surface_index == 1 && center.frame_id == map.frame_id && center.native_width == 320 && center.native_height == 240 && TouchSpecMath.close(center.native_x, 159.5f) && TouchSpecMath.close(center.native_y, 119.5f), "3DS: the bottom screen's centre maps to native 159.5,119.5");
+        query.x = 640.0f;
+        query.y = 120.0f;
+        struct SemuRenderPointerResult topScreen;
+        contract.expect(RendererPointerContract.map(&map, &query, &topScreen) == SEMU_RENDER_POINTER_OUTSIDE, "3DS: a press on the top screen is not a touch");
+        query.x = 100.0f;
+        query.y = 480.0f;
+        query.clamp = 1;
+        struct SemuRenderPointerResult dragged;
+        status = RendererPointerContract.map(&map, &query, &dragged);
+        contract.expect(status == SEMU_RENDER_POINTER_MAPPED && dragged.surface_index == 1 && dragged.clamped == 1 && TouchSpecMath.close(dragged.native_x, 0.0f) && TouchSpecMath.close(dragged.native_y, 119.5f), "3DS: a captured drag off the left edge clamps");
+        query.x = 1110.0f;
+        query.y = 720.0f;
+        query.viewport_width = 1920;
+        query.viewport_height = 1200;
+        query.clamp = 0;
+        struct SemuRenderPointerResult scaled;
+        status = RendererPointerContract.map(&map, &query, &scaled);
+        contract.expect(status == SEMU_RENDER_POINTER_MAPPED && TouchSpecMath.close(scaled.native_x, 159.5f) && TouchSpecMath.close(scaled.native_y, 119.5f), "3DS: a larger logical viewport scales to the same point");
+        query.frame_id = 72ULL;
+        struct SemuRenderPointerResult stale;
+        contract.expect(RendererPointerContract.map(&map, &query, &stale) == SEMU_RENDER_POINTER_STALE, "3DS: a query against an older frame is stale");
+    }
+
+    class void publish(Contract contract) {  // the map is the frame's composed lanes
+        struct SemuRenderFrameGl frame;
+        frame.frame_id = 12ULL;
+        frame.framebuffer_width = 1280;
+        frame.framebuffer_height = 800;
+        struct RendererCompositionGeometry geometry;
+        geometry.lane_count = 2;
+        for (int index = 0; index < 2; index++) {
+            geometry.lanes[index].output_x = 100 + index * 600;
+            geometry.lanes[index].output_y = 200;
+            geometry.lanes[index].output_width = 512;
+            geometry.lanes[index].output_height = 384;
+            geometry.lanes[index].native_width = 256;
+            geometry.lanes[index].native_height = 192;
+            geometry.lanes[index].rotation = 0;
+            geometry.lanes[index].origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+        }
+        struct SemuRenderPointerMap map;
+        RendererPointerContract.publish(&frame, &geometry, &map);
+        contract.expect(RendererPointerContract.validMap(&map) && map.frame_id == 12ULL && map.surface_count == 2 && map.surfaces[1].x == 700 && map.surfaces[1].width == 512 && map.surfaces[1].native_width == 256, "the pointer map carries the frame id and each drawn lane");
+    }
+}
+
+class TouchSpecEmulators {
+    class bool biosReadOnly(JSONValue emulator) {
+        JSONValue filesystems = SemuJson.get(emulator, "platforms.linux.sandbox.filesystems");
+        if (filesystems == null || !filesystems.isArray()) { return false; }
+        for (int index = 0; index < filesystems.size(); index++) {
+            if (SemuJson.textAt(filesystems.at(index), "path").equals("${bios}") && SemuJson.textAt(filesystems.at(index), "mode").equals("ro")) { return true; }
+        }
+        return false;
+    }
+
+    class bool fallbacksDisabled(JSONValue fallbacks) {
+        if (fallbacks == null || !fallbacks.isObject()) { return false; }
+        for name in ["host_executable", "flatpak", "libretro", "prebuilt_binary"] {
+            JSONValue value = fallbacks.get(name);
+            if (value == null || !value.isBool() || value.asBool()) { return false; }
+        }
+        return true;
+    }
+
+    class bool pinned(JSONValue lock) {  // an exact commit and NAR hash
+        string revision = SemuJson.textAt(lock, "nodes.source.locked.rev");
+        if (revision.len() != 40) { return false; }
+        for (int index = 0; index < revision.len(); index++) {
+            char digit = revision.charAt(index);
+            if (!((digit >= '0' && digit <= '9') || (digit >= 'a' && digit <= 'f'))) { return false; }
+        }
+        return SemuJson.textAt(lock, "nodes.source.locked.narHash").startsWith("sha256-");
+    }
+
+    class JSONValue external(JSONValue profile, string action) {
+        JSONValue entries = SemuJson.get(profile, "actions.external");
+        if (entries == null || !entries.isArray()) { return JSONValue.makeNull(); }
+        for (int index = 0; index < entries.size(); index++) {
+            if (SemuJson.textAt(entries.at(index), "action").equals(action)) { return entries.at(index); }
+        }
+        return JSONValue.makeNull();
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        for emulatorId in ["melonds", "azahar"] {
+            string directory = PathTools.join(fixture.project, "config/emulators/" + emulatorId);
+            JSONValue emulator = SemuJson.readFile(PathTools.join(directory, "emulator.json"));
+            JSONValue package = SemuJson.readFile(PathTools.join(directory, "package.json"));
+            JSONValue lock = SemuJson.readFile(PathTools.join(directory, "flake.lock"));
+            contract.expect(TouchSpecEmulators.biosReadOnly(emulator), emulatorId + ": BIOS is mounted read-only through ${bios}");
+            contract.lacks(FileSystem.readText(PathTools.join(directory, "emulator.json")), "${paths.project_bios}", emulatorId + ": no project BIOS path");
+            contract.expect(TouchSpecEmulators.fallbacksDisabled(package.get("fallbacks")), emulatorId + ": every package fallback is off");
+            contract.expect(TouchSpecEmulators.pinned(lock), emulatorId + ": the source is locked to one commit and hash");
+        }
+        SemuEmulator melonDs = fixture.model.emulator("melonds");
+        contract.expect(melonDs.actions.contains("state.load") && melonDs.actions.contains("state.save"), "melonDS declares save and load actions");
+        JSONValue package = SemuJson.readFile(PathTools.join(fixture.project, "config/emulators/melonds/package.json"));
+        for action in ["state.load", "state.save"] {
+            JSONValue native = SemuJson.get(package, "native_actions").get(action);  // action ids contain dots, so no path
+            JSONValue external = TouchSpecEmulators.external(melonDs.profile, action);
+            contract.expect(SemuJson.intAt(native, "slot", 0) == 1 && SemuJson.intAt(external, "native_slot", 0) == 1 && SemuJson.textAt(native, "chord").equals(SemuJson.textAt(external, "chord")) && SemuJson.textAt(native, "consumer").equals(SemuJson.textAt(external, "keyboard_consumer")), "melonDS " + action + ": package and profile agree on the slot-1 chord");
+        }
+    }
+}
+
+class TouchSpecRouting {
+    class void run(Contract contract, Fixture fixture) {  // the renderer is told which surface is the touch screen
+        for systemId in ["nds", "n3ds"] {
+            string bottomNative = systemId.equals("nds") ? "256x192" : "320x240";
+            SemuSystem system = fixture.model.system(systemId);
+            Vector<string> environment = SemuRenderEnvironment.compile(fixture.plan, system, "retroarch", "/state/retroarch", fixture.diagnostics);
+            contract.expect(environment.contains("SEMU_RENDER_SURFACE_COUNT=2") && environment.contains("SEMU_RENDER_SURFACE_LAYOUT=vertical") && environment.contains("SEMU_RENDER_SURFACE_1_ID=bottom"), systemId + ": two stacked surfaces, the second is bottom");
+            contract.expect(environment.contains("SEMU_RENDER_SURFACE_1_NATIVE=" + bottomNative), systemId + ": the touch surface keeps its native size");
+            contract.expect(environment.contains("SEMU_RENDER_TOUCH_SURFACE_ID=bottom") && environment.contains("SEMU_RENDER_TOUCH_SURFACE_INDEX=1"), systemId + ": touch goes to the bottom surface, index 1");
+        }
+        Vector<string> single = SemuRenderEnvironment.compile(fixture.plan, fixture.model.system("gb"), "retroarch", "/state/retroarch", fixture.diagnostics);
+        bool touchless = true;
+        for line in single { if (line.startsWith("SEMU_RENDER_TOUCH_")) { touchless = false; } }
+        contract.expect(touchless, "a single-screen system names no touch surface");
+        contract.expect(fixture.diagnostics.ok(), "touch routing compiles without diagnostics: " + fixture.diagnostics.render());
+    }
+}
+
+class TouchSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        TouchSpecPointer.melonDs(contract);
+        TouchSpecPointer.azahar(contract);
+        TouchSpecPointer.publish(contract);
+        TouchSpecEmulators.run(contract, fixture);
+        TouchSpecRouting.run(contract, fixture);
+    }
+}

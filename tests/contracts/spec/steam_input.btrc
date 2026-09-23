@@ -1,0 +1,269 @@
+// Steam Input spec: the Deck binding table, its icons, the RetroArch pad autoconfig and one chord vocabulary.
+
+import Library.Bytes;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/steam/input_template.btrc;
+import ../../../src/renderer/action_abi.btrc;
+
+class SteamInputSpecFiles {
+    class string definitionPath(Fixture fixture) { return SteamInputTemplates.source(fixture.plan); }
+
+    class JSONValue definition(Fixture fixture) { return SemuJson.readFile(SteamInputSpecFiles.definitionPath(fixture)); }
+
+    class string iconDirectory(Fixture fixture) { return PathTools.join(PathTools.dirname(SteamInputSpecFiles.definitionPath(fixture)), "icons"); }
+
+    class bool sameBytes(string leftPath, string rightPath) {
+        Bytes left = FileSystem.readBytes(leftPath);
+        Bytes right = FileSystem.readBytes(rightPath);
+        return !left.isEmpty() && left.equals(right);
+    }
+
+    class string source(Fixture fixture, string relative) { return FileSystem.readText(PathTools.join(fixture.project, relative)); }
+}
+
+class SteamInputSpecAutoconfig {  // the SDL index-0 pad RetroArch sees on the Deck, packaged by retroarch/package.json
+    class void profile(Contract contract, JSONValue profile, JSONValue contractSection) {
+        string device = SemuJson.textAt(profile, "device_name");
+        Vector<string> lines = SemuJson.strings(profile.get("lines"));
+        contract.expect(!device.isEmpty(), "autoconfig profile names its device");
+        contract.expect(lines.contains("input_driver = \"sdl2\""), "autoconfig profile uses SDL2: " + device);
+        contract.expect(lines.contains("input_device = \"" + device + "\""), "autoconfig profile matches its own device name: " + device);
+        contract.expect(lines.contains("input_device_display_name = \"Steam Virtual Gamepad\""), "autoconfig profile displays as the Steam pad: " + device);
+        contract.expect(lines.contains("input_enable_hotkey_btn = \"nul\""), "autoconfig profile leaves the hotkey button unbound: " + device);
+        for group in ["gameplay_mapping", "gameplay_labels"] {
+            JSONValue mapping = contractSection.get(group);
+            bool complete = mapping != null && mapping.isObject() && mapping.size() > 0;
+            if (complete) {
+                for key in mapping.keys() {
+                    if (!lines.contains(key + " = \"" + SemuJson.textAt(mapping, key) + "\"")) { complete = false; }
+                }
+            }
+            contract.expect(complete, "autoconfig profile carries every " + group + " line: " + device);
+        }
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        string path = PathTools.join(fixture.project, "config/input/steam-deck/retroarch_autoconfig.json");
+        JSONValue root = SemuJson.readFile(path);
+        contract.expect(!root.isError() && root.isObject(), "RetroArch autoconfig declaration is a JSON object");
+        if (root.isError()) { return; }
+        JSONValue contractSection = root.get("contract");
+        JSONValue identity = SemuJson.get(root, "contract.identity");
+        Vector<string> names = SemuJson.strings(identity.get("accepted_device_names"));
+        contract.expect(contractSection != null && contractSection.isObject() && identity.isObject(), "autoconfig declares its contract identity");
+        contract.expect(!identity.has("reservation") && !FileSystem.readText(path).contains("exclusive player-one reservation"), "autoconfig reserves no player by device name");
+        contract.expect(names.size() == 2 && names.contains("Steam Virtual Gamepad") && names.contains("Microsoft X-Box 360 pad 0"), "autoconfig accepts exactly the two SDL names of the Steam pad");
+        JSONValue profiles = root.get("profiles");
+        contract.expect(profiles != null && profiles.isArray() && profiles.size() == 2, "autoconfig declares one profile per accepted name");
+        for (int index = 0; profiles != null && profiles.isArray() && index < profiles.size(); index++) {
+            SteamInputSpecAutoconfig.profile(contract, profiles.at(index), contractSection);
+        }
+        string packageText = SteamInputSpecFiles.source(fixture, "config/emulators/retroarch/package.json");
+        contract.contains(packageText, "../../input/steam-deck/retroarch_autoconfig.json", "RetroArch packaging merges the Deck autoconfig");
+    }
+}
+
+class SteamInputSpecTable {  // the rendered Neptune template: semantic radials, isolated gamepad, Start+Select quit
+    class void semanticBindings(Contract contract, string vdf) {
+        Vector<string> bindings = [
+            "Save State, semu-save.png", "Load State, semu-load.png", "Quit Emulator, semu-quit.png",
+            "Open Menu, semu-menu.png", "Take Screenshot, semu-screenshot.png", "Escape, semu-back.png", "Menu Up, semu-up.png",
+            "Menu Down, semu-down.png", "Menu Confirm, semu-confirm.png", "Menu Back, semu-back.png",
+            "Wiimote, semu-wiimote.png", "Wiimote + Nunchuk, semu-wiimote-nunchuk.png",
+            "Classic Controller, semu-classic-controller.png", "GameCube Controller, semu-gamecube-controller.png"
+        ];
+        for binding in bindings { contract.contains(vdf, binding + ", #232323 #FFFFFF", "radial slot carries its semantic icon"); }
+    }
+
+    class void gamepad(Contract contract, string vdf) {
+        for button in ["A", "B", "X", "Y"] { contract.contains(vdf, "xinput_button " + button + ", , ", "native face button passes through"); }
+        contract.contains(vdf, "\"id\" \"0\" \"name\" \"Default\"", "the default preset is the plain gamepad");
+        contract.contains(vdf, "\"0\" \"button_diamond active\"", "default preset uses the plain face buttons");
+        contract.contains(vdf, "\"1\" \"dpad active\"", "default preset uses the plain d-pad");
+        contract.contains(vdf, "\"2\" \"joystick active\"", "default preset uses the plain left stick");
+        contract.contains(vdf, "\"3\" \"right_joystick active\"", "default preset uses the plain right stick");
+        contract.contains(vdf, "\"Long_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 2 0 0, Hotkey, , \"", "holding View enters the hotkey preset");
+        contract.contains(vdf, "\"release\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 1 0 0, , \"", "releasing returns to the gamepad preset");
+    }
+
+    class void labels(Contract contract, string vdf) {
+        contract.contains(vdf, "key_press DOWN_ARROW, Menu Down", "menu radial moves down with the arrow key");
+        contract.lacks(vdf, "key_press UP, Menu Up", "menu up uses the Steam arrow key name");
+        contract.lacks(vdf, "key_press DOWN, Menu Down", "menu down uses the Steam arrow key name");
+        contract.lacks(vdf, ", Ctrl,", "no radial slot is labelled with a modifier");
+        contract.lacks(vdf, ", Control,", "no radial slot is labelled Control");
+        contract.lacks(vdf, ", LEFT_CONTROL,", "no radial slot is labelled with a key name");
+    }
+
+    class void quit(Contract contract, string vdf) {
+        contract.contains(vdf, "xinput_button SELECT, , ", "View emits a plain Select");
+        contract.contains(vdf, "xinput_button START, , ", "Menu emits a plain Start");
+        contract.contains(vdf, "Start+Select quit", "the template describes the quit chord");
+        contract.contains(vdf, "key_press LEFT_CONTROL, Quit Emulator, semu-quit.png", "radial quit presses the quit chord");
+        contract.contains(vdf, "xinput_button SELECT, Quit Emulator, semu-quit.png", "radial quit also presses Select");
+        for forbidden in ["key_press LEFT_ALT, Quit Emulator", "key_press F4, Quit Emulator", "key_press ESCAPE, Quit Emulator"] {
+            contract.lacks(vdf, forbidden, "quit converges on the one declared chord");
+        }
+    }
+
+    class void wiiLayer(Contract contract, string vdf) {
+        contract.contains(vdf, "\"name\" \"Wii Controller Mode\"", "the Wii controller-mode radial exists");
+        contract.contains(vdf, "\"title\" \"Wii Controller Mode\"", "the Wii controller-mode preset exists");
+        for key in ["F9", "F10", "F11", "F12"] { contract.contains(vdf, "key_press " + key + ", ", "Wii mode chord key is pressed"); }
+        contract.contains(vdf, "\"button_back_left_lower\" { \"activators\" { \"Full_Press\"", "a lower grip holds the Wii layer");
+        contract.expect(RendererActionJournal.systemRadial() == 3, "the journal names the system radial 3");
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        JSONValue root = SteamInputSpecFiles.definition(fixture);
+        SteamInputDocument document = SteamInputDocument(root);
+        JSONValue templates = root.get("templates");
+        int defaults = 0;
+        for (int index = 0; index < templates.size(); index++) {
+            if (SemuJson.boolAt(templates.at(index), "default", false)) { defaults++; }
+            string vdf = SteamInputVdf.render(document, templates.at(index));
+            contract.contains(vdf, "\"title\"\t\t\"" + SemuJson.textAt(templates.at(index), "title") + "\"", "each template carries its own title");
+            SteamInputSpecTable.semanticBindings(contract, vdf);
+            SteamInputSpecTable.gamepad(contract, vdf);
+            SteamInputSpecTable.labels(contract, vdf);
+            SteamInputSpecTable.quit(contract, vdf);
+            SteamInputSpecTable.wiiLayer(contract, vdf);
+        }
+        contract.expect(templates.size() == 2 && defaults == 1, "simple and full templates, exactly one default");
+        contract.expect(SteamInputRules.problems(document).isEmpty(), "the shipped definition passes its own rules");
+    }
+}
+
+class SteamInputSpecVocabulary {  // Steam's chords and the supervisor's chords are the same table
+    class void run(Contract contract, Fixture fixture) {
+        JSONValue root = SteamInputSpecFiles.definition(fixture);
+        SteamInputDocument document = SteamInputDocument(root);
+        SemuInput input = fixture.plan.input;
+        JSONValue actions = root.get("actions");
+        for id in actions.keys() {
+            contract.expect(document.chord(id).equals(input.chord(id)), "Steam and supervisor agree on the chord for " + id);
+            contract.expect(!document.chord(id).toLower().contains("alt+f4"), "no action falls back to Alt+F4: " + id);
+            string supervisorChord = SemuJson.textAt(actions.get(id), "supervisor_chord");
+            if (!supervisorChord.isEmpty()) { contract.expect(supervisorChord.equals(document.chord(id)), "held controller-mode chord is one chord: " + id); }
+        }
+        contract.expect(document.chord("state.save").equals("Ctrl+S") && SemuActions.code("state.save") == 6, "save is Ctrl+S and journal code 6");
+        contract.expect(document.chord("state.load").equals("Ctrl+A") && SemuActions.code("state.load") == 7, "load is Ctrl+A and journal code 7");
+        contract.expect(document.chord("app.quit").equals("Ctrl+Q") && SemuActions.code("app.quit") == 8, "quit is Ctrl+Q and journal code 8");
+        Vector<string> steamQuit = SemuJson.strings(SemuJson.get(root, "quit_chord.buttons"));
+        Vector<string> supervisorQuit = input.quitChord();
+        contract.expect(steamQuit.size() == 2 && steamQuit.contains("select") && steamQuit.contains("start") && supervisorQuit.size() == 2 && supervisorQuit.contains("select") && supervisorQuit.contains("start"), "both definitions quit on Start+Select");
+        contract.expect(SemuJson.intAt(root, "quit_chord.window_ms", 0) == 250 && input.chordWindowMs() == 250, "both definitions use the 250 ms quit window");
+        string text = FileSystem.readText(SteamInputSpecFiles.definitionPath(fixture));
+        contract.lacks(text, "quit_extra_bindings", "quit has no emulator-specific fallbacks");
+    }
+}
+
+class SteamInputSpecControllerModes {  // the Wii layer's slot order is the extension ABI order
+    class void run(Contract contract, Fixture fixture) {
+        JSONValue root = SteamInputSpecFiles.definition(fixture);
+        JSONValue layer = SemuJson.get(root, "radial.system_layers.0");
+        Vector<string> slots = SemuJson.strings(layer.get("slots"));
+        contract.expect(SemuJson.textAt(layer, "id").equals("wii_controller") && slots.size() == 4, "the Wii layer declares four controller modes");
+        SemuActions.resetExtensions();
+        for (int index = 0; index < slots.size(); index++) {
+            int code = SemuActions.code(slots.get(index));
+            contract.expect(code == SemuActions.extensionBase() + index && SemuActions.id(code).equals(slots.get(index)) && SemuActions.controllerModeSlot(code) == index, "declared slot order gives a stable ABI slot: " + slots.get(index));
+        }
+        SemuActions.resetExtensions();
+        contract.expect(SemuActions.code("fixture.controller.remote") == SemuActions.extensionBase(), "alternate declared controller actions configure the ABI");
+        SemuActions.resetExtensions();
+        contract.expect(SemuActions.code("wii.controller.wiimote") == SemuActions.extensionBase() && SemuActions.id(SemuActions.extensionBase()).equals("wii.controller.wiimote"), "extension identities do not leak between sessions");
+        SemuActions.resetExtensions();
+    }
+}
+
+class SteamInputSpecRules {  // a definition that would corrupt the VDF or show key glyphs is refused
+    class bool rejected(Fixture fixture, string path, JSONValue value, string fragment) {
+        JSONValue root = SteamInputSpecFiles.definition(fixture);
+        Vector<string> segments = Strings.split(path, "/");
+        JSONValue parent = root;
+        for (int index = 0; index < segments.size() - 1; index++) { parent = parent.get(segments.get(index)); }
+        parent.set(segments.last(), value);
+        for problem in SteamInputRules.problems(SteamInputDocument(root)) {
+            if (problem.contains(fragment)) { return true; }
+        }
+        return false;
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        contract.expect(SteamInputSpecRules.rejected(fixture, "radial/show_labels", JSONValue.makeBool(true), "radial.show_labels"), "visible keyboard-label fallback is rejected");
+        contract.expect(SteamInputSpecRules.rejected(fixture, "quit_chord/window_ms", JSONValue.makeInt(25), "50..1000 ms"), "an out-of-contract quit window is rejected");
+        contract.expect(SteamInputSpecRules.rejected(fixture, "actions/state.save/chord", JSONValue.makeString("Ctrl+S,Injected"), "safe key chord"), "unsafe VDF chord text is rejected");
+        contract.expect(SteamInputSpecRules.rejected(fixture, "actions/state.save/label", JSONValue.makeString("Ctrl"), "semantic Semu icon and label"), "a generic modifier label is rejected");
+        contract.expect(SteamInputSpecRules.rejected(fixture, "actions/state.save/icon", JSONValue.makeString("semu-save.svg\", x"), "semantic Semu icon and label"), "an icon that breaks the binding is rejected");
+        JSONValue unknownSlot = JSONValue.makeArray();
+        unknownSlot.push(JSONValue.makeString("state.unknown"));
+        contract.expect(SteamInputSpecRules.rejected(fixture, "radial/quick_slots", unknownSlot, "undeclared action"), "a radial slot naming no action is rejected");
+    }
+}
+
+class SteamInputSpecIcons {  // every action shows a Semu PNG, and publishing copies it byte for byte
+    class void run(Contract contract, Fixture fixture) {
+        JSONValue root = SteamInputSpecFiles.definition(fixture);
+        string icons = SteamInputSpecFiles.iconDirectory(fixture);
+        Vector<string> declared = SemuJson.strings(SemuJson.get(root, "binding_icons.files"));
+        SteamInputDocument document = SteamInputDocument(root);
+        for id in root.get("actions").keys() {
+            contract.expect(declared.contains(document.icon(id)), "action icon is a declared binding icon: " + id);
+        }
+        for name in declared { contract.expect(FileSystem.isFile(PathTools.join(icons, name)), "declared binding icon exists: " + name); }
+        string output = PathTools.join(fixture.scratch, "steam-spec/templates");
+        string installed = PathTools.join(fixture.scratch, "steam-spec/binding_icons");
+        contract.expect(SteamInputTemplates.publish(fixture.plan, output, installed) == 0, "templates and icons publish");
+        contract.expect(FileSystem.isFile(PathTools.join(output, "neptune-simple.vdf")) && FileSystem.isFile(PathTools.join(output, "neptune-full.vdf")), "both declared templates are written");
+        for name in declared {
+            contract.expect(SteamInputSpecFiles.sameBytes(PathTools.join(icons, name), PathTools.join(installed, name)), "published icon matches its source byte for byte: " + name);
+        }
+        string realIcons = PathTools.join(fixture.scratch, "steam-spec/elsewhere");
+        FileSystem.mkdirp(realIcons);
+        string linkedIcons = PathTools.join(fixture.scratch, "steam-spec/linked-icons");
+        FileSystem.symlink(realIcons, linkedIcons);
+        contract.expect(SteamInputTemplates.publish(fixture.plan, output, linkedIcons) != 0 && !FileSystem.isFile(PathTools.join(realIcons, "semu-save.png")), "a symlinked icon directory is refused");
+        string linkedTemplates = PathTools.join(fixture.scratch, "steam-spec/linked-templates");
+        FileSystem.symlink(realIcons, linkedTemplates);
+        contract.expect(SteamInputTemplates.publish(fixture.plan, linkedTemplates, "") != 0 && !FileSystem.isFile(PathTools.join(realIcons, "neptune-full.vdf")), "a symlinked template directory is refused");
+    }
+}
+
+class SteamInputSpecSources {  // declarative data stays data: no action, device or Wii identity in code
+    class void run(Contract contract, Fixture fixture) {
+        string template = SteamInputSpecFiles.source(fixture, "src/steam/input_template.btrc");
+        string supervisor = SteamInputSpecFiles.source(fixture, "src/launch/supervisor.btrc");
+        string actionAbi = SteamInputSpecFiles.source(fixture, "src/renderer/action_abi.btrc");
+        contract.expect(!template.isEmpty() && !supervisor.isEmpty() && !actionAbi.isEmpty(), "the input sources are readable");
+        for needle in ["Ctrl+S", "F13", "steamdeck.skm", "quitExtraBindings", "alt_f4"] { contract.lacks(template, needle, "the Steam template generator hard-codes no configured action"); }
+        for needle in ["28de:11ff", "28de:1205"] {
+            contract.lacks(template, needle, "Deck device identities stay in target data");
+            contract.lacks(supervisor, needle, "Deck device identities stay in target data");
+        }
+        for needle in ["wii.controller.", "wiiWiimote", "wiiNunchuk", "wiiClassic", "wiiGameCube"] { contract.lacks(actionAbi, needle, "the action ABI names no Wii-specific action"); }
+        contract.lacks(supervisor, "EVIOCGRAB", "the supervisor observes input devices without grabbing them");
+    }
+}
+
+class SteamInputSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        contract.expect(FileSystem.isFile(SteamInputSpecFiles.definitionPath(fixture)), "steam-deck target has a Steam Input definition");
+        SteamInputSpecAutoconfig.run(contract, fixture);
+        SteamInputSpecTable.run(contract, fixture);
+        SteamInputSpecVocabulary.run(contract, fixture);
+        SteamInputSpecControllerModes.run(contract, fixture);
+        SteamInputSpecRules.run(contract, fixture);
+        SteamInputSpecIcons.run(contract, fixture);
+        SteamInputSpecSources.run(contract, fixture);
+    }
+}
