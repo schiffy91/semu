@@ -587,11 +587,14 @@ RetroArch systems launched through `semu launch` with the synthetic core as thei
 answered on the command port and ended through their own QUIT with nothing left over. The
 renderer now reaches RetroArch and PCSX2 through `libsemurendererloader` (dlopen of
 `SEMU_RENDERER_LIBRARY`), so renderer edits no longer rebuild them; the renderer's install check
-proves the forwarding. Not built there: PCSX2 with the loader and `checks.platform-matrix` (the
-VM disk filled while fetching every emulator source; the matrix evaluates on the Mac), and the
-whole bundle. Still open: one check per system with its real core and a real, freely
-licensed test ROM (M3's wording), and nixpkgs on a release branch with the M4 pin refresh
-(both need a full emulator rebuild, beyond this disk).
+proves the forwarding. After the owner freed the old cache volume: PCSX2 built with the loader (its binary needs no
+`libsemurenderer.so`), and the new `checks.real-cores` passes: gb and gbc (gambatte), gba (mgba)
+and nes (mesen) boot pinobatch's 240p Test Suite (GPL-2.0-or-later, `tests/integration/
+test_roms.json`) through `semu launch`, draw a non-blank frame, save and load a state and quit
+through QUIT. Not built there: `checks.platform-matrix` (it evaluates on the Mac) and the whole
+bundle. Still open: real test programs for the 3D systems (no freely licensed N64, PSX, PSP,
+DS, 3DS or Dreamcast suite is pinned yet) and nixpkgs on a release branch with the M4 pin
+refresh (a full rebuild of every emulator; FRACTAL-NORTH).
 
 ### G9. Observation still missing (needs hardware)
 
