@@ -456,7 +456,7 @@ Each gap keeps its done criterion; the evidence is what was observed on the Mac.
 dd2d43b to aa75831.
 
 Rulings taken as defaults because the owner was not available (reversible; say if wrong):
-- macOS is a development host, not a product target (G1).
+- macOS is a development host, not a product target (G1). Superseded the same day: the owner made the Mac a target (see "macOS product target").
 - Recolours and the late-night light are drawn by the renderer over the unmodified upstream
   plates (layer `tint` and a multiplied, lifted `ambient` plate); the few flattened plates are
   baked by nix on the building machine, never committed (G4, G7).
@@ -595,6 +595,41 @@ through QUIT. Not built there: `checks.platform-matrix` (it evaluates on the Mac
 bundle. Still open: real test programs for the 3D systems (no freely licensed N64, PSX, PSP,
 DS, 3DS or Dreamcast suite is pinned yet) and nixpkgs on a release branch with the M4 pin
 refresh (a full rebuild of every emulator; FRACTAL-NORTH).
+
+### macOS product target (2026-09-23)
+
+The owner said semu may run on the Mac and pointed at the library in
+`~/Drive/media/Games/Emulation`, which supersedes the G1 ruling. The `macos` target
+(`config/targets/macos.json`, `aarch64-darwin`) resolves that library read-only and keeps
+state under `~/Library/Application Support/Semu`. Done and observed on mbp21:
+- RetroArch 1.22.2 builds from the pinned source for darwin (`config/emulators/retroarch/
+  darwin.nix`): Metal plus glcore for the Semu renderer hook, the renderer reached through the
+  loader, and a real `RetroArch.app`. Its profile uses Cocoa input, HID pads and CoreAudio.
+- The renderer builds as `libsemurenderer.dylib`. macOS pads reach the supervisor through
+  Apple's GameController framework (`src/launch/gamepad.btrc`), one slot per controller, with a
+  departed pad's buttons released (spec-tested).
+- Real ROMs from the library, through `semu launch --target macos` (a one-off on-screen run, script since removed), each with the bezel: gb, gbc and psp booted and quit through QUIT (psp
+  also saved a state); gba (inspected capture: bezel and boot logo), nes, snes and genesis
+  booted but did not exit within the 1.5 s QUIT grace and were stopped by signal. That run
+  happened while the owner was using the screen, and the owner stopped it. **Never use the
+  Mac's real display: emulator runs go to a virtual display (the Linux VM with Xvfb) or the
+  offscreen render host.**
+- psx multi-disc games in the library are ES-DE directories named `Game.m3u/` holding
+  `Game.m3u`. `semu launch` now resolves the directory to that file (contract-tested).
+- 3DS through RetroArch is Linux-only: Azahar and Citra both compile their OpenGL renderer
+  out on Apple, and Azahar asked for Vulkan and shut down under glcore. Dreamcast's Flycast
+  core has no darwin build either. On the Mac, 3DS belongs to standalone Azahar.
+- Darwin cores built: gambatte, mgba, mesen, snes9x, genesis_plus_gx, mednafen_psx, ppsspp,
+  melonds (the Linux-only `-z noexecstack` is now gated) and desmume (deployment target 11.0).
+  mupen64plus_next builds against nixpkgs zlib and libpng on darwin (its bundled copies
+  take Apple headers for classic Mac OS).
+
+Still open on the Mac:
+- Why QUIT outran the grace window for gba, nes, snes and genesis on macOS (needs a Mac run
+  that stays off the real display, or the owner's go-ahead).
+  A background RetroArch pauses (`pause_nonactive`) before it acts on SAVE_STATE, but QUIT is
+  handled before that pause.
+- Launch ES-DE and Semu.app from the darwin bundle; standalone emulators' macOS slices.
 
 ### G9. Observation still missing (needs hardware)
 
