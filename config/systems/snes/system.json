@@ -38,7 +38,10 @@
     {
       "emulator": "retroarch",
       "label": "Snes9x",
-      "core": "snes9x"
+      "core": "snes9x",
+      "platforms": [
+        "linux"
+      ]
     }
   ],
   "display": {

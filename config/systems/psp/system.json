@@ -40,8 +40,7 @@
       "label": "PPSSPP (Libretro)",
       "core": "ppsspp",
       "platforms": [
-        "linux",
-        "macos"
+        "linux"
       ]
     }
   ],

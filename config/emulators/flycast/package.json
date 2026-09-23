@@ -10,14 +10,7 @@
   "outputs": {
     "main_program": "bin/flycast",
     "main_program_name": "flycast",
-    "linked_program": "bin/.flycast-wrapped",
-    "build_contract": "share/semu/flycast-build-contract.json"
-  },
-  "fallbacks": {
-    "host_executable": false,
-    "flatpak": false,
-    "libretro": false,
-    "prebuilt_binary": false
+    "linked_program": "bin/.flycast-wrapped"
   },
   "metadata": {
     "description": "Multi-platform Sega Dreamcast, Naomi and Atomiswave emulator",
@@ -26,8 +19,7 @@
   },
   "doc": {
     "source": "The Steam Deck payload is the immutable Flycast v2.6 commit with the complete hash-pinned upstream submodule tree. Nix replaces the older nixpkgs source and carries no host, Flatpak, libretro, or binary fallback.",
-    "platforms": "Only x86_64-linux is an owned package target. Other hosts fail at Nix evaluation.",
-    "rendering": "The directly linked game phase receives the final upright windowbox before Flycast draws OSD or routes video. The post-UI phase runs immediately before imguiDriver presents. UI, failure, and teardown paths emit no inactive reports."
+    "platforms": "Only x86_64-linux is an owned package target. Other hosts fail at Nix evaluation."
   },
   "flake": "flake.nix"
 }

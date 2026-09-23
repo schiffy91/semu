@@ -31,6 +31,8 @@ import ./spec/steam_input.btrc;
 import ./spec/esde.btrc;
 import ./spec/gameboy.btrc;
 import ./spec/touch.btrc;
+import ./spec/launch.btrc;
+import ./spec/render_env.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -701,6 +703,8 @@ int main() {
     EsDeSpecContract.run(contract);
     GameBoySpecContract.run(contract);
     TouchSpecContract.run(contract);
+    LaunchSpecContract.run(contract);
+    RenderEnvSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);

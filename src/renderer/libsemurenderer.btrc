@@ -22,6 +22,8 @@ struct SemuRendererRuntime {
     unsigned long long last_frame_id;
     int game_failure_status;
     int post_failure_status;
+    long long initialize_retry_ms;  // a failed initialize waits until then before trying again
+    long long initialize_backoff_ms;  // doubles per failure from one second to eight
     struct RendererGlApi gl;
     struct RendererGlState game_state;
     struct RendererGlState post_state;
@@ -56,6 +58,8 @@ class SemuRendererLifecycle {
         RendererPhaseOwnership.clear(&SemuRenderer.pending);
         SemuRenderer.game_failure_status = 0;
         SemuRenderer.post_failure_status = 0;
+        SemuRenderer.initialize_retry_ms = 0LL;
+        SemuRenderer.initialize_backoff_ms = 0LL;
     }
 
     class void activate(unsigned long long contextGeneration,
@@ -81,6 +85,25 @@ class SemuRendererReceipts {
         if (*previous == status) { return false; }
         *previous = status;
         return true;
+    }
+}
+
+class SemuRendererInitialization {  // a failed initialize backs off instead of rereading files every frame
+    class bool resources(unsigned long long contextGeneration) {
+        if (SemuRenderer.resources.ready == 0 && SemuRenderer.initialize_retry_ms != 0LL
+                && RendererClock.milliseconds() < SemuRenderer.initialize_retry_ms) { return false; }
+        if (RendererResources.initialize(&SemuRenderer.gl, &SemuRenderer.resources,
+                &SemuRenderer.config, contextGeneration)) {
+            SemuRenderer.initialize_retry_ms = 0LL;
+            SemuRenderer.initialize_backoff_ms = 0LL;
+            return true;
+        }
+        long long backoff = SemuRenderer.initialize_backoff_ms * 2LL;
+        if (backoff < 1000LL) { backoff = 1000LL; }
+        if (backoff > 8000LL) { backoff = 8000LL; }
+        SemuRenderer.initialize_backoff_ms = backoff;
+        SemuRenderer.initialize_retry_ms = RendererClock.milliseconds() + backoff;
+        return false;
     }
 }
 
@@ -175,9 +198,8 @@ int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
 
     RendererConfiguration.select(&SemuRenderer.config, frame);
     int status = SEMU_RENDER_APPLIED;
-    if (!RendererResources.initialize(&SemuRenderer.gl,
-            &SemuRenderer.resources, &SemuRenderer.config,
-            contextGeneration)) {
+    if (!SemuRendererInitialization.resources(contextGeneration)) {
+        memset(&SemuRenderer.geometry, 0, sizeof(struct RendererCompositionGeometry));  // no stale rectangles for the post phase
         status = RendererResourceFailure.set(&SemuRenderer.resources,
             SEMU_RENDER_PIPELINE_FAILED, "resource_initialization_failed");
     } else if (!RendererGeometry.resolve(frame, &SemuRenderer.config,
@@ -191,12 +213,11 @@ int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
     }
     RendererGlStateGuard.restore(&SemuRenderer.gl, &SemuRenderer.game_state);
     if (status != SEMU_RENDER_APPLIED) {
-        if (getenv("SEMU_RENDER_DEBUG") != null && SemuRenderer.game_failure_status != status) {
-            fprintf(stderr, "semu-renderer: game phase status %d (%s)\n", status, SemuRenderer.resources.failure_reason);
-        }
-        RendererPhaseOwnership.clear(&SemuRenderer.pending);
+        RendererPhaseOwnership.acceptGame(&SemuRenderer.pending, frame,
+            contextGeneration);  // the emulator's own picture stays, and the menu still draws over it
         if (SemuRendererReceipts.failureTransition(status,
                 &SemuRenderer.game_failure_status)) {
+            fprintf(stderr, "semu-renderer: game phase status %d (%s); the emulator's picture shows unframed\n", status, SemuRenderer.resources.failure_reason);
             RendererStateFiles.appendReceipt("game", frame,
                 contextGeneration, 1,
                 status, 0, 0ULL, -1, &SemuRenderer.config,

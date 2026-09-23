@@ -10,14 +10,7 @@
   "outputs": {
     "main_program": "bin/azahar",
     "main_program_name": "azahar",
-    "linked_program": "bin/.azahar-wrapped",
-    "build_contract": "share/semu/azahar-build-contract.json"
-  },
-  "fallbacks": {
-    "host_executable": false,
-    "flatpak": false,
-    "libretro": false,
-    "prebuilt_binary": false
+    "linked_program": "bin/.azahar-wrapped"
   },
   "metadata": {
     "description": "Open-source Nintendo 3DS emulator based on Citra",
@@ -25,9 +18,8 @@
     "license": "gpl2Only"
   },
   "doc": {
-    "source": "The immutable upstream unified-source release is hash-pinned and carries GIT-TAG/GIT-COMMIT identity files. Nix verifies both files against this contract before configuration.",
-    "platforms": "Only the Steam Deck's x86_64-linux closure is declared. Other hosts fail during Nix evaluation.",
-    "rendering": "The directly linked game phase receives semantic top and bottom regions after TryPresent's final blit. OpenGLRenderWidget copies the ABI 2 frame pointer map into GRenderWindow before the post-UI phase and SwapBuffers. Mouse and touch events map only through bottom surface 1 and enter the native-coordinate touch path. Render-target release emits no inactive report."
+    "source": "The immutable upstream 2126.0 tag with its submodules. The flake writes GIT-TAG and GIT-COMMIT because the input carries no .git.",
+    "platforms": "Only the Steam Deck's x86_64-linux closure is declared. Other hosts fail during Nix evaluation."
   },
   "flake": "flake.nix"
 }

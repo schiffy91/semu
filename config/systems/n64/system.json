@@ -37,12 +37,6 @@
       "platforms": [
         "linux"
       ]
-    },
-    {
-      "emulator": "ares",
-      "platforms": [
-        "macos"
-      ]
     }
   ],
   "display": {

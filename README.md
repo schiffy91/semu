@@ -18,8 +18,8 @@ Targets:
 src/          BTRC: model, resolve, check, emit (ES-DE, profiles), launch, cli
 config/       targets, systems, emulators, input, bezels (packages), assets, settings defaults
 packaging/    Nix packages and the flake helpers
-tests/        contracts/ (run by make test), spec/ (reference fixtures),
-              integration/ (real emulator runs)
+tests/        contracts/ (make test; spec/ holds the ported emulator specs), integration/
+              (real emulator runs in flake checks), visual/ (render host, gallery, Xvfb captures)
 build/        ignored build output
 ```
 
@@ -44,15 +44,32 @@ platform. Bumping an emulator: edit its flake's `source` input, run
 
 ## Build and test
 
+The CLI, the contracts and the bezel tools build and run on Linux and on macOS (a
+development host: evdev input is idle there and nothing launches emulators). Nothing needs
+`btrcpy` on PATH; the Makefile runs the flake's pinned compiler.
+
 ```sh
 make build           # transpile src/semu.btrc with btrcpy and compile it
-make test            # contract tests against the real config tree
+make test            # links the pinned Mega Bezel tree (make bezel-tree), then every contract
+make nix-check       # build and run every flake check for this system
 make configs         # emit ES-DE documents and profiles into build/targets/<target>
 make nix             # build the bundle (CLI, ES-DE, emulators) at build/nix/result
 make doctor          # show resolved paths and what is missing
 ```
 
-## Visual checks without touching the desktop
+## Visual checks
+
+On the Mac the real renderer runs offscreen (`tests/visual/render_host.btrc`, CGL), fed by
+`semu render-env` and the bundle's data (`nix build .#asset-root`):
+
+```sh
+tests/visual/render.sh out 1280x800 gb gba:arctic nes:black:sharp nds:none:none   # system[:bezel[:shader]]
+tests/visual/gallery.sh --quick out/gallery   # every variant at Deck size
+tests/visual/gallery.sh out/gallery           # Deck and 4K, flat-card placement verified within 2 px
+tests/visual/hot-reload.sh                     # a compositor edit mid-game changes nothing but the program
+```
+
+On Linux, real emulators on a private Xvfb display:
 
 ```sh
 nix shell nixpkgs#xorg.xorgserver nixpkgs#xorg.xwd nixpkgs#imagemagick -c \
@@ -127,20 +144,11 @@ write each screen's picture, black edge, bezel ring and opening plus the
 preset's texture stack as layers (`layers`, `canvas_layer`), and `semu bezel
 edit` serves an editor on `http://127.0.0.1:8765/` where every layer can be
 hidden, reordered or made the canvas and every rectangle and corner radius
-dragged at integer zoom, with Save writing the package back. Openings
-measured with `tools/bezel-measure.py` are kept when they hold the drawn
-bezel; art is rendered from pinned upstream layers by `nix build
-.#bezel-generate` and baked into `config/assets`. `tools/bezel-gallery.py build/bezel-gallery` renders every
-system's bezel variants for the Steam Deck (1280x800) and a 4K PC (3840x2160)
-and writes a static site (`index.html`: consoles across the top, renderer and
-screen configuration top right, one section per variant with the composed
-frame, the art and background plates and the package facts). `--mode fake`
-(the default) draws the compositor's geometry in numpy from the same
-`semu render-env` output in under a minute for everything; `--mode real` runs
-RetroArch with the synthetic test-card core through libsemurenderer on Xvfb
-(about nine seconds a cell); `--mode both` does both. With
-`--semu build/semu-cli/bin/semu` the previews read the working tree's
-packages, so a bezel edit shows without a rebuild. Switch variants
+dragged at integer zoom, with Save writing the package back. The upstream
+plates are bundled verbatim (`.#bezel-layers`); recolours (`recolor`) and the late-night light
+(`ambient`) are drawn by the renderer over them, and the few flattened plates are baked from
+recipes when the bundle is built (see `config/assets/NOTICE.md` for the art's licences). Every
+system offers its default, an alternate and `none` for both bezel and shader. Switch variants
 without a rebuild:
 
 ```sh

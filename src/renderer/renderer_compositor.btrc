@@ -51,8 +51,9 @@ struct RendererNormalizedHole {
 struct RendererCompositorSource {
     char* vertex;  // the two GLSL files under $SEMU_RENDER_COMPOSITOR_DIR, as last read
     char* fragment;
-    int missing_reported;
 };
+
+int RendererCompositorMissingReported = 0;  // survives resets, so a retried launch logs once
 
 class RendererCompositorFiles {
     class char* path(char* name) {  // $SEMU_RENDER_COMPOSITOR_DIR/<name>, malloc'd, or null without the directory
@@ -89,10 +90,10 @@ class RendererCompositorFiles {
         if (vertex == null || fragment == null) {
             if (vertex != null) { free((void*)vertex); }
             if (fragment != null) { free((void*)fragment); }
-            if (source->missing_reported == 0) {
+            if (RendererCompositorMissingReported == 0) {
                 char* dir = getenv("SEMU_RENDER_COMPOSITOR_DIR");
                 fprintf(stderr, "semu-renderer: no compositor.vert/compositor.frag under %s\n", dir == null ? "(SEMU_RENDER_COMPOSITOR_DIR unset)" : dir);
-                source->missing_reported = 1;
+                RendererCompositorMissingReported = 1;
             }
             return false;
         }
@@ -104,6 +105,13 @@ class RendererCompositorFiles {
         source->vertex = vertex;
         source->fragment = fragment;
         return true;
+    }
+
+    class void discard(struct RendererCompositorSource* source) {  // the last-read text, before the resources are cleared
+        if (source->vertex != null) { free((void*)source->vertex); }
+        if (source->fragment != null) { free((void*)source->fragment); }
+        source->vertex = null;
+        source->fragment = null;
     }
 }
 
@@ -125,8 +133,6 @@ struct RendererScreenConfig {
     float ring_reflect;  // the picture mirrored onto the drawn bezel: strength, blur growth, fade with distance
     float ring_reflect_blur;
     float ring_reflect_fade;
-    float ring_reach_x;  // how far past the bezel the reflection keeps going, fractions of the bezel's width and height
-    float ring_reach_y;
     int shape;
     float radius;
     float exponent;
@@ -160,6 +166,7 @@ struct RendererLayerConfig {  // one layer of the package stack: SEMU_RENDER_LAY
 
 struct RendererVariantConfig {
     int declared;
+    struct RendererPath bezel_id;  // SEMU_RENDER_BEZEL_ID: the package name, for the debug line
     struct RendererPath shader_preset;
     struct RendererPath art;
     struct RendererPath background;
@@ -191,10 +198,14 @@ struct RendererConfig {
     float display_aspect;
     float frames_per_second;
     unsigned int frame_delta_ms;
+    float dual_screen_gap;  // SEMU_RENDER_DUAL_GAP: space between two screens, fraction of width
     struct RendererPath system_id;
     struct RendererPath emulator_id;
-    struct RendererVariantConfig variants[4];
+    struct RendererVariantConfig variants[4];  // A and B are emitted; C and D stay undeclared
 };
+
+unsigned int RendererAssetReported = 0u;  // one bit per missing-asset reason, logged once per process
+unsigned int RendererLayerReported = 0u;  // one bit per variant layer slot that would not load
 
 struct RendererGlResources {
     long long compositor_checked_ms;  // last look at the compositor files for an edit
@@ -267,7 +278,6 @@ struct RendererGlResources {
     int uniform_ring_look2;
     int uniform_ring_reflect;
     int uniform_ring_reflect2;
-    int uniform_ring_reach;
     struct RendererCompositorSource compositor;  // the GLSL as files, re-read while running
     int uniform_ring_color;
     int uniform_ring_color2;
@@ -354,20 +364,12 @@ class RendererConfiguration {
         screen->bulge_y = RendererConfiguration.clamp01(screen->bulge_y);
         snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_REFLECT%s", index, suffix);
         char* reflect = getenv(name);
-        screen->ring_reach_x = 0.0f;
-        screen->ring_reach_y = 0.0f;
-        int reflectCount = reflect == null ? 0 : sscanf(reflect, "%f,%f,%f,%f,%f", &screen->ring_reflect, &screen->ring_reflect_blur, &screen->ring_reflect_fade, &screen->ring_reach_x, &screen->ring_reach_y);
+        int reflectCount = reflect == null ? 0 : sscanf(reflect, "%f,%f,%f", &screen->ring_reflect, &screen->ring_reflect_blur, &screen->ring_reflect_fade);
         if (reflectCount < 3) {
             screen->ring_reflect = 0.0f;
             screen->ring_reflect_blur = 0.0f;
             screen->ring_reflect_fade = 0.0f;
         }
-        if (reflectCount < 5) {
-            screen->ring_reach_x = 0.0f;
-            screen->ring_reach_y = 0.0f;
-        }
-        screen->ring_reach_x = RendererConfiguration.clamp01(screen->ring_reach_x);
-        screen->ring_reach_y = RendererConfiguration.clamp01(screen->ring_reach_y);
         screen->ring_reflect = RendererConfiguration.clamp01(screen->ring_reflect);
         screen->ring_reflect_blur = RendererConfiguration.clamp01(screen->ring_reflect_blur);
         screen->ring_reflect_fade = RendererConfiguration.clamp01(screen->ring_reflect_fade);
@@ -446,6 +448,8 @@ class RendererConfiguration {
     class void loadVariant(struct RendererVariantConfig* variant, char* suffix) {
         char name[128];
         memset(variant, 0, sizeof(struct RendererVariantConfig));
+        snprintf(name, sizeof(name), "SEMU_RENDER_BEZEL_ID%s", suffix);
+        RendererConfiguration.copyEnvironment(&variant->bezel_id, name);
         snprintf(name, sizeof(name), "SEMU_RENDER_SHADER_PRESET%s", suffix);
         RendererConfiguration.copyEnvironment(&variant->shader_preset, name);
         snprintf(name, sizeof(name), "SEMU_RENDER_ART%s", suffix);
@@ -533,6 +537,12 @@ class RendererConfiguration {
         return config->variants[0].shader_available != 0;
     }
 
+    class float widescreenThreshold() {  // halfway between the 4:3 and 16:9 pictures
+        float standard = 4.0f / 3.0f;
+        float widescreen = 16.0f / 9.0f;
+        return (standard + widescreen) * 0.5f;
+    }
+
     class int select(struct RendererConfig* config,
                      struct SemuRenderFrameGl* frame) {
         int selected = 0;
@@ -542,7 +552,7 @@ class RendererConfiguration {
             if (config->variants[explicitVariant].declared != 0) {
                 selected = explicitVariant;
             }
-        } else if (frame->presentation_aspect >= 1.55f
+        } else if (frame->presentation_aspect >= RendererConfiguration.widescreenThreshold()
                 && config->variants[1].declared != 0) {
             selected = 1;
         }
@@ -582,12 +592,14 @@ class RendererConfiguration {
         if (value != null && atoi(value) > 0) {
             config->frame_delta_ms = (unsigned int)atoi(value);
         }
+        value = getenv("SEMU_RENDER_DUAL_GAP");
+        if (value != null) { config->dual_screen_gap = RendererConfiguration.clamp01((float)atof(value)); }
         RendererConfiguration.copyEnvironment(&config->system_id,
             "SEMU_RENDER_SYSTEM_ID");
         RendererConfiguration.copyEnvironment(&config->emulator_id,
             "SEMU_RENDER_EMULATOR_ID");
-        char* suffixes[4] = {"", "_B", "_C", "_D"};
-        for (int index = 0; index < 4; index++) {
+        char* suffixes[2] = {"", "_B"};
+        for (int index = 0; index < 2; index++) {
             RendererConfiguration.loadVariant(&config->variants[index],
                 suffixes[index]);
         }
@@ -787,8 +799,8 @@ class RendererGeometry {
     }
 
     class void computed(struct RendererCompositionGeometry* geometry, int layout, int areaWidth, int areaHeight,
-                        int frame, int integerScaling) {
-        int gap = areaWidth / 64;
+                        int frame, float gapFraction, int integerScaling) {
+        int gap = (int)(gapFraction * (float)areaWidth + 0.5f);  // visual.dual_screen_gap, a fraction of the width
         if (layout == SEMU_LAYOUT_MAIN_RIGHT || layout == SEMU_LAYOUT_MAIN_LEFT) {
             if (RendererGeometry.mainBeside(geometry, areaWidth, areaHeight, frame, gap, layout == SEMU_LAYOUT_MAIN_RIGHT)) { return; }
             RendererGeometry.sideBySide(geometry, areaWidth, areaHeight, frame, gap, integerScaling);  // too small for the policy: the plain side-by-side keeps both screens whole
@@ -897,8 +909,16 @@ class RendererGeometry {
         }
         int layout = bezel ? variant->layout : (variant->layout == SEMU_LAYOUT_FIXED ? SEMU_LAYOUT_STACKED : variant->layout);
         if (layout == SEMU_LAYOUT_FIXED) { layout = SEMU_LAYOUT_STACKED; }
-        RendererGeometry.computed(geometry, layout, areaWidth, areaHeight, bezel ? frameWidth : 0, config->integer_scaling);
+        RendererGeometry.computed(geometry, layout, areaWidth, areaHeight, bezel ? frameWidth : 0, config->dual_screen_gap, config->integer_scaling);
         return true;
+    }
+}
+
+class RendererClock {
+    class long long milliseconds() {  // monotonic, for the reload check and retry backoff
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        return (long long)now.tv_sec * 1000LL + (long long)(now.tv_nsec / 1000000L);
     }
 }
 
@@ -945,6 +965,7 @@ class RendererResources {
             gl->delete_textures(4, resources->bezel_textures);
             gl->delete_textures(4, resources->background_textures);
             gl->delete_textures(8, resources->glass_textures);
+            gl->delete_textures(32, resources->layer_textures);
             gl->delete_textures(1, &resources->menu_texture);
             gl->delete_textures(1, &resources->composition.texture);
         }
@@ -958,6 +979,7 @@ class RendererResources {
         if (gl->delete_program != null && resources->program != 0u) {
             gl->delete_program(resources->program);
         }
+        RendererCompositorFiles.discard(&resources->compositor);
         memset(resources, 0, sizeof(struct RendererGlResources));
         return true;
     }
@@ -974,6 +996,7 @@ class RendererResources {
             if (index == 0) { RendererShaderLane0 = null; }
             else { RendererShaderLane1 = null; }
         }
+        RendererCompositorFiles.discard(&resources->compositor);  // the GL objects died with the context; the text did not
         memset(resources, 0, sizeof(struct RendererGlResources));
     }
 
@@ -1020,6 +1043,14 @@ class RendererResources {
             (unsigned int)RGL_TEXTURE_WRAP_T, RGL_CLAMP_TO_EDGE);
     }
 
+    class void mipmap(struct RendererGlApi* gl) {  // the bound 2D texture: full chain, trilinear when minified
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_MAX_LEVEL, 1000);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D,
+            (unsigned int)RGL_TEXTURE_MIN_FILTER, RGL_LINEAR_MIPMAP_LINEAR);
+        gl->generate_mipmap((unsigned int)RGL_TEXTURE_2D);
+    }
+
     class bool loadImage(struct RendererGlApi* gl, char* path,
                          unsigned int* texture, int* width, int* height) {
         if (path == null || path[0] == 0) { return false; }
@@ -1047,6 +1078,7 @@ class RendererResources {
         gl->texture_image_2d((unsigned int)RGL_TEXTURE_2D, 0, RGL_RGBA8,
             *width, *height, 0, (unsigned int)RGL_RGBA,
             (unsigned int)RGL_UNSIGNED_BYTE, pixels);
+        RendererResources.mipmap(gl);  // plates up to 4400 px shrink onto 1280x800 without aliasing
         bool uploaded = RendererGlErrors.none(gl);
         stbi_image_free((void*)pixels);
         if (!uploaded) {
@@ -1100,7 +1132,6 @@ class RendererResources {
         resources->uniform_ring_look2 = RendererResources.uniform(gl, resources, "uRingLook2");
         resources->uniform_ring_reflect = RendererResources.uniform(gl, resources, "uRingReflect");
         resources->uniform_ring_reflect2 = RendererResources.uniform(gl, resources, "uRingReflect2");
-        resources->uniform_ring_reach = RendererResources.uniform(gl, resources, "uRingReach");
         resources->uniform_ring_color = RendererResources.uniform(gl, resources, "uRingColor");
         resources->uniform_ring_color2 = RendererResources.uniform(gl, resources, "uRingColor2");
         resources->uniform_layer = RendererResources.uniform(gl, resources, "uLayer");
@@ -1257,6 +1288,7 @@ class RendererResources {
                 resources->layer_loaded[slot] = RendererResources.loadImage(gl,
                     variant->layers[layerIndex].file.value, &resources->layer_textures[slot],
                     &resources->layer_width[slot], &resources->layer_height[slot]) ? 1 : 0;
+                if (resources->layer_loaded[slot] == 0) { RendererAssetContract.layerFailed(&variant->layers[layerIndex], slot); }
             }
             gl->active_texture((unsigned int)(RGL_TEXTURE0 + 6));
             resources->background_loaded[variantIndex] = RendererResources.loadImage(gl,
@@ -1446,50 +1478,47 @@ class RendererShaderPasses {
     }
 }
 
-class RendererAssetContract {
-    class int validate(struct RendererConfig* config,
-                       struct RendererGlResources* resources,
-                       int surfaceCount) {
-        if (config == null || resources == null) {
-            return RendererResourceFailure.set(resources,
-                SEMU_RENDER_PIPELINE_FAILED, "invalid_asset_state");
-        }
+class RendererAssetContract {  // a missing asset degrades the frame and is logged once; it never fails the phase
+    class void missing(struct RendererGlResources* resources, int bit, char* reason) {
+        RendererResourceFailure.set(resources, SEMU_RENDER_ASSET_MISSING, reason);
+        if ((RendererAssetReported & (1u << bit)) != 0u) { return; }
+        RendererAssetReported = RendererAssetReported | (1u << bit);
+        fprintf(stderr, "semu-renderer: %s; drawing without it\n", reason);
+    }
+
+    class void report(struct RendererConfig* config,
+                      struct RendererGlResources* resources,
+                      int surfaceCount) {
         RendererResourceFailure.clear(resources);
         struct RendererVariantConfig* variant = RendererConfiguration.active(config);
         int selected = config->active_variant;
         if (config->shaders_enabled != 0 && !RendererShaderPasses.presetAvailable(config)) {
-            return RendererResourceFailure.set(resources,
-                SEMU_RENDER_ASSET_MISSING, "shader_preset_missing");
+            RendererAssetContract.missing(resources, 0, "shader_preset_missing");
         }
         if (config->bezels_enabled != 0 && variant->layout == SEMU_LAYOUT_FIXED) {
             bool layered = variant->layer_count > 0 && variant->canvas_width > 0;
             if (!layered && (variant->art.value[0] == 0 || resources->art_loaded[selected] == 0)) {
-                return RendererResourceFailure.set(resources,
-                    SEMU_RENDER_ASSET_MISSING, "bezel_art_missing");
-            }
-            for (int layerIndex = 0; layered && layerIndex < variant->layer_count; layerIndex++) {
-                if (resources->layer_loaded[selected * 8 + layerIndex] == 0) {
-                    return RendererResourceFailure.set(resources,
-                        SEMU_RENDER_ASSET_MISSING, "bezel_layer_missing");
-                }
+                RendererAssetContract.missing(resources, 1, "bezel_art_missing");
             }
             bool tubes = variant->screens[0].tube.set != 0 && (surfaceCount < 2 || variant->screens[1].tube.set != 0);
             if (!tubes) {
-                return RendererResourceFailure.set(resources,
-                    SEMU_RENDER_PIPELINE_FAILED, "bezel_aperture_missing");
+                RendererAssetContract.missing(resources, 2, "bezel_aperture_missing");
             }
             for (int lane = 0; lane < surfaceCount; lane++) {
                 if (variant->screens[lane].glass.value[0] != 0 && resources->glass_loaded[selected * 2 + lane] == 0) {
-                    return RendererResourceFailure.set(resources,
-                        SEMU_RENDER_ASSET_MISSING, "bezel_glass_missing");
+                    RendererAssetContract.missing(resources, 3, "bezel_glass_missing");
                 }
             }
         }
         if (config->bezels_enabled != 0 && variant->background.value[0] != 0 && resources->background_loaded[selected] == 0) {
-            return RendererResourceFailure.set(resources,
-                SEMU_RENDER_ASSET_MISSING, "bezel_background_missing");
+            RendererAssetContract.missing(resources, 4, "bezel_background_missing");
         }
-        return SEMU_RENDER_APPLIED;
+    }
+
+    class void layerFailed(struct RendererLayerConfig* layer, int slot) {  // an unreadable layer is skipped; the rest of the stack draws
+        if ((RendererLayerReported & (1u << slot)) != 0u) { return; }
+        RendererLayerReported = RendererLayerReported | (1u << slot);
+        fprintf(stderr, "semu-renderer: layer %s did not load; it is skipped\n", layer->file.value);
     }
 }
 
@@ -1640,8 +1669,7 @@ class RendererCompositor {
         int filtered[2] = {0, 0};
         resources->shader_actual = 0;
         resources->bezel_actual = 0;
-        int assets = RendererAssetContract.validate(config, resources, geometry->lane_count);
-        if (assets != SEMU_RENDER_APPLIED) { return assets; }
+        RendererAssetContract.report(config, resources, geometry->lane_count);
         bool shaderRequested = config->shaders_enabled != 0;
         for (int index = 0; index < geometry->lane_count; index++) {
             if (!RendererShaderPasses.extract(gl, resources, frame,
@@ -1704,9 +1732,7 @@ class RendererCompositor {
             return RendererResourceFailure.set(resources,
                 SEMU_RENDER_PIPELINE_FAILED, "framebuffer_state_invalid");
         }
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        long long nowMs = (long long)now.tv_sec * 1000LL + (long long)(now.tv_nsec / 1000000L);
+        long long nowMs = RendererClock.milliseconds();
         if (nowMs - resources->compositor_checked_ms >= 1000LL) { resources->compositor_checked_ms = nowMs; RendererResources.relinkIfChanged(gl, resources); }  // the files are data: an edit shows within a second
         gl->use_program(resources->program);
         gl->bind_vertex_array(resources->vertex_array);
@@ -1725,9 +1751,6 @@ class RendererCompositor {
             int lane = index < geometry->lane_count ? index : second;
             RendererCompositor.laneUniforms(gl, resources, &variant->screens[lane], &geometry->lanes[lane], geometry, bezel, index);
         }
-        RendererCompositor.set4(gl, resources->uniform_ring_reach,
-            variant->screens[0].ring_reach_x, variant->screens[0].ring_reach_y,
-            variant->screens[second].ring_reach_x, variant->screens[second].ring_reach_y);
         float rotation0 = filtered[0] != 0 ? 0.0f : (float)geometry->lanes[0].rotation / 90.0f;
         float rotation1 = filtered[second] != 0 ? 0.0f : (float)geometry->lanes[second].rotation / 90.0f;
         RendererCompositor.set4(gl, resources->uniform_rotation, rotation0, rotation1, 0.0f, 0.0f);
@@ -1774,8 +1797,9 @@ class RendererCompositor {
         bool drew = RendererGlErrors.none(gl);
         if (getenv("SEMU_RENDER_DEBUG") != null && (frame->frame_id % 120ULL) == 1ULL) {
             struct RendererLaneGeometry* lane0 = &geometry->lanes[0];
-            fprintf(stderr, "semu-renderer: frame %llu fb %dx%d lane0 out %d,%d %dx%d tube %d,%d %dx%d native %dx%d art=%d bg=%d framed=%d bezelrect %.0f,%.0f %.0fx%.0f shaders=%d drew=%d\n",
-                frame->frame_id, frame->framebuffer_width, frame->framebuffer_height,
+            fprintf(stderr, "semu-renderer: frame %llu bezel %s fb %dx%d lane0 out %d,%d %dx%d tube %d,%d %dx%d native %dx%d art=%d bg=%d framed=%d bezelrect %.0f,%.0f %.0fx%.0f shaders=%d drew=%d\n",
+                frame->frame_id, variant->bezel_id.value[0] != 0 ? variant->bezel_id.value : "none",
+                frame->framebuffer_width, frame->framebuffer_height,
                 lane0->output_x, lane0->output_y, lane0->output_width, lane0->output_height,
                 lane0->tube_x, lane0->tube_y, lane0->tube_width, lane0->tube_height,
                 lane0->native_width, lane0->native_height, art ? 1 : 0, background ? 1 : 0, framed ? 1 : 0,

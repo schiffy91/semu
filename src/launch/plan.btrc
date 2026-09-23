@@ -20,6 +20,7 @@ class SemuLaunchPlan {
     public string rom;
     public bool watchPads;
     public int chordWindowMs;
+    public Vector<string> quitButtons;  // config/input quit_chord.buttons, e.g. start and select
     public Vector<string> menuLabels;
     public Vector<string> menuActions;
     public string pauseAction;
@@ -43,6 +44,7 @@ class SemuLaunchPlan {
         self.rom = "";
         self.watchPads = true;
         self.chordWindowMs = 250;
+        self.quitButtons = [];
         self.menuLabels = [];
         self.menuActions = [];
         self.pauseAction = "";
@@ -72,6 +74,10 @@ class SemuLaunchPlan {
         result.set("core", JSONValue.makeString(self.core));
         result.set("rom", JSONValue.makeString(self.rom));
         result.set("quit_chord_window_ms", JSONValue.makeInt(self.chordWindowMs));
+        JSONValue quitButtons = JSONValue.makeArray();
+        for button in self.quitButtons { quitButtons.push(JSONValue.makeString(button)); }
+        result.set("quit_chord_buttons", quitButtons);
+        result.set("command_port", JSONValue.makeInt(self.retroarchPort));
         result.set("error", JSONValue.makeString(self.error));
         return result.stringifyPretty(2);
     }
@@ -196,12 +202,27 @@ class SemuLauncher {
         launch.environment.push("SEMU_TARGET=" + plan.target.id);
     }
 
+    class string configValue(string document, string key) {  // the last `key = "value"` line of a retroarch.cfg
+        string found = "";
+        for line in Strings.split(document, "\n") {
+            Vector<string> parts = Strings.split(line, "=");
+            if (parts.size() != 2 || !parts.get(0).trim().equals(key)) { continue; }
+            found = parts.get(1).trim().replace("\"", "");
+        }
+        return found;
+    }
+
+    class int commandPort(string retroarchConfig) {  // the port the generated profile opens; 0 when off
+        if (!SemuLauncher.configValue(retroarchConfig, "network_cmd_enable").equals("true")) { return 0; }
+        int port = Strings.toInt(SemuLauncher.configValue(retroarchConfig, "network_cmd_port"));
+        return port > 0 && port <= 65535 ? port : 0;
+    }
+
     class void inputContracts(SemuLaunchPlan launch, SemuPlan plan, JSONValue platform, string stateRoot) {  // what the supervisor mirrors from config/input
         launch.stateDir = stateRoot;
         launch.semuHome = plan.semuHome;
         launch.bezelsOn = SemuJson.boolAt(plan.settings, "visual.bezels", true);
         launch.shadersOn = SemuJson.boolAt(plan.settings, "visual.crt_shaders", true);
-        if (SemuJson.get(platform, "retroarch").isObject()) { launch.retroarchPort = 55355; }
         if (plan.input == null) { return; }
         JSONValue definition = plan.input.definition;
         JSONValue items = SemuJson.get(definition, "menu.items");
@@ -296,7 +317,11 @@ class SemuLauncher {
         for argument in SemuJson.strings(platform.get("args")) { launch.argv.push(plan.tokens.resolve(argument)); }
         if (SemuJson.get(platform, "retroarch").isObject()) {
             string config = PathTools.join(stateRoot, "retroarch.cfg");
-            for file in files { if (file.path.endsWith("retroarch.cfg")) { config = PathTools.join(stateRoot, file.path); } }
+            for file in files {
+                if (!file.path.endsWith("retroarch.cfg")) { continue; }
+                config = PathTools.join(stateRoot, file.path);
+                launch.retroarchPort = SemuLauncher.commandPort(file.content);  // QUIT and actions use this port
+            }
             launch.argv.push("--config");
             launch.argv.push(config);
             SemuPaths.writeOwned(stateRoot, PathTools.join(PathTools.dirname(config), "retroarch-core-options.cfg"),
@@ -326,6 +351,7 @@ class SemuLauncher {
             }
         }
         launch.chordWindowMs = plan.input == null ? 250 : plan.input.chordWindowMs();
+        if (plan.input != null) { launch.quitButtons = plan.input.quitChord(); }
         SemuLauncher.inputContracts(launch, plan, platform, stateRoot);
         for argument in launch.argv {
             if (argument.contains("${")) { launch.error = "unresolved token in launch arguments: " + argument; }

@@ -29,8 +29,8 @@ class SemuTarget {
     public JSONValue settings;
     public JSONValue definition;
 
-    public SemuTarget(string id, JSONValue definition) {
-        self.id = id;
+    public SemuTarget(string identifier, JSONValue definition) {
+        self.id = identifier;
         self.definition = definition;
         self.platform = SemuJson.textAt(definition, "platform");
         self.inherits = SemuJson.textAt(definition, "inherits");
@@ -74,8 +74,8 @@ class SemuSystem {
     public JSONValue bezels;
     public string file;
 
-    public SemuSystem(string id, string file, JSONValue definition) {
-        self.id = id;
+    public SemuSystem(string identifier, string file, JSONValue definition) {
+        self.id = identifier;
         self.file = file;
         self.definition = definition;
         self.shaders = JSONValue.makeObject();
@@ -115,8 +115,8 @@ class SemuEmulator {
     public string directory;
     public string profileFile;
 
-    public SemuEmulator(string id, string directory, JSONValue definition, JSONValue profile) {
-        self.id = id;
+    public SemuEmulator(string identifier, string directory, JSONValue definition, JSONValue profile) {
+        self.id = identifier;
         self.directory = directory;
         self.definition = definition;
         self.profile = profile;
@@ -134,8 +134,8 @@ class SemuInput {
     public string id;
     public JSONValue definition;
 
-    public SemuInput(string id, JSONValue definition) {
-        self.id = id;
+    public SemuInput(string identifier, JSONValue definition) {
+        self.id = identifier;
         self.definition = definition;
     }
 
@@ -197,47 +197,47 @@ class SemuModel {
         string targetsDir = PathTools.join(configRoot, "targets");
         for name in SemuModel.sortedEntries(targetsDir) {
             if (!name.endsWith(".json")) { continue; }
-            string id = name.substring(0, name.len() - 5);
-            model.targets.put(id, SemuTarget(id, SemuModel.readObject(PathTools.join(targetsDir, name), diagnostics)));
+            string identifier = name.substring(0, name.len() - 5);
+            model.targets.put(identifier, SemuTarget(identifier, SemuModel.readObject(PathTools.join(targetsDir, name), diagnostics)));
         }
         string systemsDir = PathTools.join(configRoot, "systems");
-        for id in SemuModel.sortedEntries(systemsDir) {
-            string directory = PathTools.join(systemsDir, id);
+        for identifier in SemuModel.sortedEntries(systemsDir) {
+            string directory = PathTools.join(systemsDir, identifier);
             string file = PathTools.join(directory, "system.json");
             if (!FileSystem.isFile(file)) { continue; }
-            SemuSystem system = SemuSystem(id, file, SemuModel.readObject(file, diagnostics));
+            SemuSystem system = SemuSystem(identifier, file, SemuModel.readObject(file, diagnostics));
             for name in ["shaders", "bezels"] {  // optional rendering declarations beside system.json
                 string manifest = PathTools.join(directory, name + ".json");
                 if (!FileSystem.isFile(manifest)) { continue; }
                 JSONValue value = SemuModel.readObject(manifest, diagnostics);
                 if (name.equals("shaders")) { system.shaders = value; } else { system.bezels = value; }
             }
-            model.systems.put(id, system);
+            model.systems.put(identifier, system);
         }
         string emulatorsDir = PathTools.join(configRoot, "emulators");
-        for id in SemuModel.sortedEntries(emulatorsDir) {
-            string directory = PathTools.join(emulatorsDir, id);
+        for identifier in SemuModel.sortedEntries(emulatorsDir) {
+            string directory = PathTools.join(emulatorsDir, identifier);
             string file = PathTools.join(directory, "emulator.json");
             if (!FileSystem.isFile(file)) { continue; }
             JSONValue profile = SemuModel.readObject(PathTools.join(directory, "profile.json"), diagnostics);
-            model.emulators.put(id, SemuEmulator(id, directory, SemuModel.readObject(file, diagnostics), profile));
+            model.emulators.put(identifier, SemuEmulator(identifier, directory, SemuModel.readObject(file, diagnostics), profile));
         }
         string inputsDir = PathTools.join(configRoot, "input");
-        for id in SemuModel.sortedEntries(inputsDir) {
-            string file = PathTools.join(PathTools.join(inputsDir, id), "input.json");
-            if (FileSystem.isFile(file)) { model.inputs.put(id, SemuInput(id, SemuModel.readObject(file, diagnostics))); }
+        for identifier in SemuModel.sortedEntries(inputsDir) {
+            string file = PathTools.join(PathTools.join(inputsDir, identifier), "input.json");
+            if (FileSystem.isFile(file)) { model.inputs.put(identifier, SemuInput(identifier, SemuModel.readObject(file, diagnostics))); }
         }
         model.defaults = SemuModel.readObject(PathTools.join(configRoot, "settings/defaults.json"), diagnostics);
         return model;
     }
 
-    public SemuTarget target(string id) { return self.targets.has(id) ? self.targets.get(id) : null; }
+    public SemuTarget target(string identifier) { return self.targets.has(identifier) ? self.targets.get(identifier) : null; }
 
-    public SemuSystem system(string id) { return self.systems.has(id) ? self.systems.get(id) : null; }
+    public SemuSystem system(string identifier) { return self.systems.has(identifier) ? self.systems.get(identifier) : null; }
 
-    public SemuEmulator emulator(string id) { return self.emulators.has(id) ? self.emulators.get(id) : null; }
+    public SemuEmulator emulator(string identifier) { return self.emulators.has(identifier) ? self.emulators.get(identifier) : null; }
 
-    public SemuInput input(string id) { return self.inputs.has(id) ? self.inputs.get(id) : null; }
+    public SemuInput input(string identifier) { return self.inputs.has(identifier) ? self.inputs.get(identifier) : null; }
 
     public Vector<string> systemIds() { return self.systems.keys().sorted(); }
 

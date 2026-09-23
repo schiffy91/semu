@@ -34,7 +34,10 @@
     {
       "emulator": "retroarch",
       "label": "Mesen",
-      "core": "mesen"
+      "core": "mesen",
+      "platforms": [
+        "linux"
+      ]
     }
   ],
   "display": {

@@ -1,11 +1,12 @@
-// Process-group spawning, supervision and the bounded group kill.
-
+#include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netinet/in.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -16,13 +17,15 @@ import Library.Strings;
 import Library.Vector;
 
 #define SEMU_POLL_MS 10
+#define SEMU_GRACEFUL_QUIT_MS 1500
+#define SEMU_TERMINATE_GRACE_MS 250
 
 volatile sig_atomic_t semuStopSignal = 0;
 
-void semuOnStopSignal(int signo) { semuStopSignal = signo; }
+void semuOnStopSignal(int signalNumber) { semuStopSignal = signalNumber; }
 
-class SemuStopSignals {
-    class void install() {  // a killed launcher must take its emulator with it
+class SemuStopSignals {  // a killed launcher must take its emulator with it
+    class void install() {
         int term = SIGTERM;
         int interrupt = SIGINT;
         int hangup = SIGHUP;
@@ -42,7 +45,28 @@ class SemuClock {
     }
 }
 
-class SemuProcessGroup {
+class SemuCommandPort {  // one loopback UDP datagram, e.g. RetroArch's network commands
+    class bool send(int port, string command) {
+        if (port <= 0 || port > 65535 || command.isEmpty()) { return false; }
+        int handle = socket(AF_INET, SOCK_DGRAM, 0);
+        if (handle < 0) { return false; }
+        struct sockaddr_in target;
+        memset(&target, 0, sizeof(target));
+        target.sin_family = AF_INET;
+        target.sin_port = htons((unsigned short)port);
+        target.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        char buffer[64];
+        int length = command.len() < 63 ? command.len() : 63;
+        for (int index = 0; index < length; index++) { buffer[index] = command.charAt(index); }
+        buffer[length] = 0;
+        size_t targetSize = sizeof(target);
+        ssize_t sent = sendto(handle, buffer, (size_t)length, 0, (struct sockaddr*)&target, targetSize);
+        close(handle);
+        return sent == (ssize_t)length;
+    }
+}
+
+class SemuProcessGroup {  // process-group spawning, supervision and the bounded group kill
     class char** cStrings(Vector<string> values) {
         int slots = values.size() + 1;
         char** result = (char**)calloc((size_t)slots, sizeof(char*));
@@ -102,13 +126,37 @@ class SemuProcessGroup {
     class void terminate(int child) {  // TERM the group, KILL whatever survives 250 ms
         pid_t group = (pid_t)(-child);
         kill(group, SIGTERM);
-        long long deadline = SemuClock.milliseconds() + 250LL;
+        long long deadline = SemuClock.milliseconds() + (long long)SEMU_TERMINATE_GRACE_MS;
         while (SemuClock.milliseconds() < deadline) {
             SemuProcessGroup.reapGroup(child);
             if (!SemuProcessGroup.groupAlive(child)) { break; }
             usleep(10000);
         }
         kill(group, SIGKILL);
+        SemuProcessGroup.reapGroup(child);
+    }
+
+    class bool awaitExit(int child, int timeoutMs) {  // true once the direct child exits in time
+        bool exited = false;
+        long long deadline = SemuClock.milliseconds() + (long long)timeoutMs;
+        while (!exited && SemuClock.milliseconds() < deadline) {
+            SemuProcessGroup.reap(child, &exited);
+            if (!exited) { usleep(10000); }
+        }
+        return exited;
+    }
+
+    class bool stop(int child, int commandPort) {  // polite QUIT first so saves flush; true when honoured
+        bool graceful = false;
+        if (commandPort > 0 && SemuCommandPort.send(commandPort, "QUIT")) {
+            graceful = SemuProcessGroup.awaitExit(child, SEMU_GRACEFUL_QUIT_MS);
+        }
+        SemuProcessGroup.terminate(child);
+        return graceful;
+    }
+
+    class void finish(int child) {  // the child exited: no orphan survives it
+        if (SemuProcessGroup.groupAlive(child)) { SemuProcessGroup.terminate(child); }
         SemuProcessGroup.reapGroup(child);
     }
 
@@ -126,7 +174,7 @@ class SemuProcessGroup {
             }
             usleep(SEMU_POLL_MS * 1000);
         }
-        SemuProcessGroup.reapGroup(child);
+        SemuProcessGroup.finish(child);
         return exitCode;
     }
 }

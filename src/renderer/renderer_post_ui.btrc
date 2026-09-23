@@ -286,7 +286,9 @@ class RendererMenuModel {
         } else if (action == SemuActions.menuDown() && state->visible != 0) {
             state->selected = (state->selected + 1) % count;
         } else if (action == SemuActions.stateSave()
-                || action == SemuActions.stateLoad()) {
+                || action == SemuActions.stateLoad()
+                || action == SemuActions.stateNext()
+                || action == SemuActions.statePrev()) {  // each record carries the slot now selected
             RendererMenuModel.observeSavestate(state, record->slot);
         } else if (action == SemuActions.screenshot()) {
             RendererEvidencePolicy.request(state);
@@ -472,6 +474,22 @@ class RendererMenuRaster {
 }
 
 class RendererPostUiCompositor {
+    class void menuSize(int screenWidth, int screenHeight, int* width, int* height) {  // the largest whole multiple of the menu texture that fits
+        int across = screenWidth / SEMU_RENDER_MENU_WIDTH;
+        int down = screenHeight / SEMU_RENDER_MENU_HEIGHT;
+        int scale = across < down ? across : down;
+        if (scale >= 1) {
+            *width = scale * SEMU_RENDER_MENU_WIDTH;
+            *height = scale * SEMU_RENDER_MENU_HEIGHT;
+            return;
+        }
+        float horizontal = (float)screenWidth / (float)SEMU_RENDER_MENU_WIDTH;  // a screen smaller than the texture: shrink to fit
+        float vertical = (float)screenHeight / (float)SEMU_RENDER_MENU_HEIGHT;
+        float shrink = horizontal < vertical ? horizontal : vertical;
+        *width = (int)((float)SEMU_RENDER_MENU_WIDTH * shrink);
+        *height = (int)((float)SEMU_RENDER_MENU_HEIGHT * shrink);
+    }
+
     class bool draw(struct RendererGlApi* gl,
                     struct RendererGlResources* resources,
                     struct SemuRenderFrameGl* frame,
@@ -481,7 +499,7 @@ class RendererPostUiCompositor {
 
         gl->active_texture((unsigned int)(RGL_TEXTURE0 + 3));
         gl->bind_sampler(3, 0);
-        RendererResources.configureTexture(gl, resources->menu_texture, RGL_LINEAR);
+        RendererResources.configureTexture(gl, resources->menu_texture, RGL_NEAREST);  // whole-number scale: crisp glyph pixels
         RendererResources.normalizeUnpack(gl);
         RendererGlErrors.clear(gl);
         gl->texture_image_2d((unsigned int)RGL_TEXTURE_2D, 0, RGL_RGBA8,
@@ -503,14 +521,9 @@ class RendererPostUiCompositor {
         gl->viewport(0, 0, frame->framebuffer_width, frame->framebuffer_height);
         gl->use_program(resources->program);
         gl->bind_vertex_array(resources->vertex_array);
-        int width = frame->framebuffer_width * 2 / 5;
-        if (width < 320) { width = frame->framebuffer_width - 32; }
-        if (width > 520) { width = 520; }
-        int height = width * SEMU_RENDER_MENU_HEIGHT / SEMU_RENDER_MENU_WIDTH;
-        if (height > frame->framebuffer_height - 32) {
-            height = frame->framebuffer_height - 32;
-            width = height * SEMU_RENDER_MENU_WIDTH / SEMU_RENDER_MENU_HEIGHT;
-        }
+        int width = 0;
+        int height = 0;
+        RendererPostUiCompositor.menuSize(frame->framebuffer_width, frame->framebuffer_height, &width, &height);
         int x = (frame->framebuffer_width - width) / 2;
         int y = (frame->framebuffer_height - height) / 2;
         if (resources->uniform_menu_rect >= 0) {

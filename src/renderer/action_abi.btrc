@@ -44,6 +44,8 @@ class SemuActions {
     class int shadersToggle() { return 12; }
     class int extensionBase() { return 13; }
     class int extensionCapacity() { return SEMU_ACTION_EXTENSION_CAPACITY; }
+    class int stateNext() { return SemuActions.extensionBase() + SemuActions.extensionCapacity(); }  // past the extension range: every older code stays
+    class int statePrev() { return SemuActions.stateNext() + 1; }
 
     class void resetExtensions() {
         memset(SemuActionExtensionIds, 0,
@@ -88,6 +90,8 @@ class SemuActions {
         if (actionId.equals("ui.menu.back")) { return SemuActions.menuBack(); }
         if (actionId.equals("state.save")) { return SemuActions.stateSave(); }
         if (actionId.equals("state.load")) { return SemuActions.stateLoad(); }
+        if (actionId.equals("state.next")) { return SemuActions.stateNext(); }
+        if (actionId.equals("state.prev")) { return SemuActions.statePrev(); }
         if (actionId.equals("app.quit")) { return SemuActions.appQuit(); }
         if (actionId.equals("ui.screenshot")) { return SemuActions.screenshot(); }
         if (actionId.equals("ui.escape")) { return SemuActions.escape(); }
@@ -104,6 +108,8 @@ class SemuActions {
         if (action == SemuActions.menuBack()) { return "ui.menu.back"; }
         if (action == SemuActions.stateSave()) { return "state.save"; }
         if (action == SemuActions.stateLoad()) { return "state.load"; }
+        if (action == SemuActions.stateNext()) { return "state.next"; }
+        if (action == SemuActions.statePrev()) { return "state.prev"; }
         if (action == SemuActions.appQuit()) { return "app.quit"; }
         if (action == SemuActions.screenshot()) { return "ui.screenshot"; }
         if (action == SemuActions.escape()) { return "ui.escape"; }
@@ -132,6 +138,8 @@ class SemuActions {
             || action == SemuActions.menuBack()
             || action == SemuActions.stateSave()
             || action == SemuActions.stateLoad()
+            || action == SemuActions.stateNext()
+            || action == SemuActions.statePrev()
             || action == SemuActions.screenshot()
             || action == SemuActions.bezelsToggle()
             || action == SemuActions.shadersToggle();

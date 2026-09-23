@@ -7,26 +7,13 @@
   "graphics_apis": [
     "opengl"
   ],
-  "patches": [
-    {
-      "file": "system-cubeb.patch",
-      "sha256": "9da95181d132aaefc4b842f7e353e42103bf28791b3db618c3a6ab320657d837"
-    }
-  ],
   "outputs": {
     "main_program": "bin/pcsx2-qt",
-    "linked_program": "bin/.pcsx2-qt-wrapped",
-    "build_contract": "share/semu/pcsx2-build-contract.json"
-  },
-  "fallbacks": {
-    "linux_host_executable": false,
-    "linux_flatpak": false,
-    "linux_prebuilt_binary": false
+    "linked_program": "bin/.pcsx2-qt-wrapped"
   },
   "doc": {
     "linux": "The Steam Deck payload is built from the immutable upstream source revision with the Semu game-frame patch. There is no host, Flatpak, or prebuilt Linux fallback.",
-    "platforms": "Only x86_64-linux is declared. Darwin remains unsupported until PCSX2 can be built reproducibly from this source contract; no application archive is substituted.",
-    "rendering": "The OpenGL device directly calls the shared ABI 2 renderer after the final upright GS draw, then calls its post-UI phase after FullscreenUI, OSD, and ImGui immediately before the emulator-owned swap."
+    "platforms": "Only x86_64-linux is declared. Darwin remains unsupported until PCSX2 can be built reproducibly from this source contract; no application archive is substituted."
   },
   "flake": "flake.nix"
 }

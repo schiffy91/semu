@@ -40,7 +40,10 @@
     {
       "emulator": "retroarch",
       "label": "Genesis Plus GX",
-      "core": "genesis_plus_gx"
+      "core": "genesis_plus_gx",
+      "platforms": [
+        "linux"
+      ]
     }
   ],
   "display": {

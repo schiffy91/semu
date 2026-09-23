@@ -112,7 +112,6 @@
     "dolphin_pad": "SDL/0/Steam Deck Controller",
     "dolphin_wiimote": "SteamDeck/0/Steam Deck",
     "dolphin_pointer": "XInput2/0/Virtual core pointer",
-    "pcsx2_pad": "SDL-1",
     "cemu_api": "SDLController",
     "cemu_display_name": "Steam Virtual Gamepad",
     "cemu_uuid": "0_03000000de280000ff11000001000000",

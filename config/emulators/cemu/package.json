@@ -9,14 +9,7 @@
   ],
   "outputs": {
     "main_program": "bin/Cemu",
-    "linked_program": "bin/.Cemu-wrapped",
-    "build_contract": "share/semu/cemu-build-contract.json"
-  },
-  "fallbacks": {
-    "host_executable": false,
-    "flatpak": false,
-    "libretro": false,
-    "prebuilt_binary": false
+    "linked_program": "bin/.Cemu-wrapped"
   },
   "metadata": {
     "description": "Wii U emulator",
@@ -25,8 +18,7 @@
   },
   "doc": {
     "source": "The immutable v2.6 release commit and fixed-output hash resolve to the exact upstream source used by the pinned Nixpkgs Cemu 2.6 recipe.",
-    "platforms": "This slice is proven only for the Steam Deck's x86_64-linux closure. Evaluation fails on every other host instead of selecting a host, Flatpak, libretro, or prebuilt fallback.",
-    "rendering": "The TV game path directly invokes the shared ABI 2 renderer after its final draw and before Cemu UI; the post-UI phase runs immediately before Cemu's owned swap. Shader-cache, settings, empty, and secondary-pad-window paths never create a renderer frame."
+    "platforms": "This slice is proven only for the Steam Deck's x86_64-linux closure. Evaluation fails on every other host instead of selecting a host, Flatpak, libretro, or prebuilt fallback."
   },
   "flake": "flake.nix"
 }

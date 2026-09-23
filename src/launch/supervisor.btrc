@@ -1,383 +1,24 @@
-// The unified input supervisor: one action vocabulary for every emulator.
-// It watches gamepads and keyboards through evdev, turns Select-modifier
-// chords and keyboard chords into Semu actions, drives the renderer's native
-// menu through the action journal, and executes actions through RetroArch's
-// command port or by typing the action's keyboard chord into the emulator.
-
-#include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <netinet/in.h>
 #include <poll.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <sys/socket.h>
 #include <sys/types.h>
-#include <sys/wait.h>
-#include <time.h>
 #include <unistd.h>
 #include "semu_evdev.h"
 
 import Library.Console;
-import Library.FileSystem;
-import Library.JSON;
 import Library.Strings;
 import Library.Vector;
-import ../lib/json.btrc;
-import ../lib/paths.btrc;
-import ../lib/settings.btrc;
-import ../renderer/action_abi.btrc;
+import ./input_state.btrc;
+import ./actions.btrc;
 import ./process.btrc;
 import ./plan.btrc;
 
-#define SEMU_SUPERVISOR_DEVICES 64
-#define SEMU_SUPERVISOR_KEYS 768
-#define SEMU_SUPERVISOR_RESCAN_TICKS 200
-#define SEMU_BIT_WORDS 16
-
-struct SemuInputDevice {
-    int fd;
-    int gamepad;
-    int keyboard;
-    unsigned char down[SEMU_SUPERVISOR_KEYS];
-    int hat_x;
-    int hat_y;
-    long long start_at;
-    long long select_at;
-};
-
-struct SemuSupervisorState {
-    struct SemuInputDevice devices[SEMU_SUPERVISOR_DEVICES];
-    int device_count;
-    int uinput_fd;
-    int udp_fd;
-    unsigned long long sequence;
-    int menu_visible;
-    int menu_selected;
-    int slot;
-    int quit;
-};
-
-struct SemuSupervisorState SemuSupervisorRuntime;
-
-class SemuKeyNames {  // "Ctrl+Shift+S" -> evdev codes; the same table types chords into the emulator
-    class int modifier(string name) {
-        string lower = name.toLower();
-        if (lower.equals("ctrl") || lower.equals("control")) { return KEY_LEFTCTRL; }
-        if (lower.equals("shift")) { return KEY_LEFTSHIFT; }
-        if (lower.equals("alt")) { return KEY_LEFTALT; }
-        if (lower.equals("meta") || lower.equals("super")) { return KEY_LEFTMETA; }
-        return 0;
-    }
-
-    class int key(string name) {
-        string lower = name.toLower();
-        if (lower.len() == 1) {
-            char character = lower.charAt(0);
-            if (character >= 'a' && character <= 'z') {
-                int letters[26] = {KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G, KEY_H, KEY_I, KEY_J, KEY_K, KEY_L, KEY_M,
-                    KEY_N, KEY_O, KEY_P, KEY_Q, KEY_R, KEY_S, KEY_T, KEY_U, KEY_V, KEY_W, KEY_X, KEY_Y, KEY_Z};
-                return letters[character - 'a'];
-            }
-            if (character >= '0' && character <= '9') {
-                int digits[10] = {KEY_0, KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9};
-                return digits[character - '0'];
-            }
-            if (character == '+') { return KEY_EQUAL; }
-            if (character == '-') { return KEY_MINUS; }
-        }
-        if (lower.equals("up")) { return KEY_UP; }
-        if (lower.equals("down")) { return KEY_DOWN; }
-        if (lower.equals("left")) { return KEY_LEFT; }
-        if (lower.equals("right")) { return KEY_RIGHT; }
-        if (lower.equals("enter") || lower.equals("return")) { return KEY_ENTER; }
-        if (lower.equals("space")) { return KEY_SPACE; }
-        if (lower.equals("backspace")) { return KEY_BACKSPACE; }
-        if (lower.equals("esc") || lower.equals("escape")) { return KEY_ESC; }
-        if (lower.equals("tab")) { return KEY_TAB; }
-        if (lower.startsWith("f") && lower.len() <= 3) {
-            int number = Strings.toInt(lower.substring(1, lower.len() - 1));
-            int functions[12] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12};
-            if (number >= 1 && number <= 12) { return functions[number - 1]; }
-        }
-        return 0;
-    }
-
-    class Vector<int> chord(string text) {  // modifiers first, the key last; empty when any part is unknown
-        Vector<int> codes = [];
-        Vector<string> parts = Strings.split(text, "+");
-        if (text.endsWith("++")) { parts = Strings.split(text.substring(0, text.len() - 2), "+"); parts.push("+"); }
-        for (int index = 0; index < parts.size(); index++) {
-            string part = parts.get(index).trim();
-            if (part.isEmpty()) { continue; }
-            int code = index == parts.size() - 1 ? SemuKeyNames.key(part) : SemuKeyNames.modifier(part);
-            if (code == 0 && index == parts.size() - 1) { code = SemuKeyNames.modifier(part); }
-            if (code == 0) { Vector<int> none = []; return none; }
-            codes.push(code);
-        }
-        return codes;
-    }
-
-    class int button(string name) {  // gamepad button names from config/input
-        string lower = name.toLower();
-        if (lower.equals("south") || lower.equals("a")) { return BTN_SOUTH; }
-        if (lower.equals("east") || lower.equals("b")) { return BTN_EAST; }
-        if (lower.equals("north") || lower.equals("y")) { return BTN_NORTH; }
-        if (lower.equals("west") || lower.equals("x")) { return BTN_WEST; }
-        if (lower.equals("tl") || lower.equals("l1")) { return BTN_TL; }
-        if (lower.equals("tr") || lower.equals("r1")) { return BTN_TR; }
-        if (lower.equals("tl2") || lower.equals("l2")) { return BTN_TL2; }
-        if (lower.equals("tr2") || lower.equals("r2")) { return BTN_TR2; }
-        if (lower.equals("select") || lower.equals("back")) { return BTN_SELECT; }
-        if (lower.equals("start")) { return BTN_START; }
-        if (lower.equals("mode") || lower.equals("guide")) { return BTN_MODE; }
-        if (lower.equals("thumbl")) { return BTN_THUMBL; }
-        if (lower.equals("thumbr")) { return BTN_THUMBR; }
-        if (lower.equals("dpad_up")) { return BTN_DPAD_UP; }
-        if (lower.equals("dpad_down")) { return BTN_DPAD_DOWN; }
-        if (lower.equals("dpad_left")) { return BTN_DPAD_LEFT; }
-        if (lower.equals("dpad_right")) { return BTN_DPAD_RIGHT; }
-        return 0;
-    }
-}
-
-class SemuActionRouter {  // where an action goes: the renderer, the emulator, or the process group
-    class string retroarchCommand(string action) {
-        if (action.equals("state.save")) { return "SAVE_STATE"; }
-        if (action.equals("state.load")) { return "LOAD_STATE"; }
-        if (action.equals("state.next")) { return "STATE_SLOT_PLUS"; }
-        if (action.equals("state.prev")) { return "STATE_SLOT_MINUS"; }
-        if (action.equals("ui.screenshot")) { return "SCREENSHOT"; }
-        if (action.equals("ui.pause")) { return "PAUSE_TOGGLE"; }
-        if (action.equals("ui.fullscreen")) { return "FULLSCREEN_TOGGLE"; }
-        if (action.equals("speed.fast")) { return "FAST_FORWARD"; }
-        if (action.equals("speed.rewind")) { return "REWIND"; }
-        return "";
-    }
-
-    class bool semuOwned(string action) {
-        return action.startsWith("ui.menu") || action.equals("app.quit") || action.startsWith("visual.");
-    }
-
-    class string route(string action, bool retroarch, bool fromKeyboard) {  // "semu" | "udp:<COMMAND>" | "inject" | "none"
-        if (SemuActionRouter.semuOwned(action)) { return "semu"; }
-        if (retroarch) {
-            string command = SemuActionRouter.retroarchCommand(action);
-            return command.isEmpty() ? "none" : "udp:" + command;
-        }
-        return fromKeyboard ? "none" : "inject";  // a keyboard chord already reached the emulator's own hotkey table
-    }
-}
-
-class SemuActionJournal {  // the renderer reads these records; same ABI as action_abi
-    class bool append(SemuLaunchPlan launch, int action, int slot) {
-        if (launch.stateDir.isEmpty()) { return false; }
-        string path = PathTools.join(launch.stateDir, RendererActionJournal.fileName());
-        FILE* file = fopen(path, "ab");
-        if (file == null) { return false; }
-        struct SemuActionRecord record;
-        memset(&record, 0, sizeof(record));
-        record.abi = (unsigned int)RendererActionJournal.abi();
-        record.size = (unsigned int)sizeof(struct SemuActionRecord);
-        SemuSupervisorRuntime.sequence = SemuSupervisorRuntime.sequence + 1ULL;
-        record.sequence = SemuSupervisorRuntime.sequence;
-        record.monotonic_ms = SemuClock.milliseconds();
-        record.action = action;
-        record.radial = RendererActionJournal.direct();
-        record.slot = slot;
-        size_t sourceCapacity = sizeof(record.source);
-        snprintf(record.source, sourceCapacity, "%s", "semu");
-        size_t recordSize = sizeof(record);
-        bool ok = fwrite(&record, recordSize, 1, file) == (size_t)1;
-        fclose(file);
-        return ok;
-    }
-
-    class void reset(SemuLaunchPlan launch) {  // a fresh session starts an empty journal
-        if (launch.stateDir.isEmpty()) { return; }
-        string path = PathTools.join(launch.stateDir, RendererActionJournal.fileName());
-        FILE* file = fopen(path, "wb");
-        if (file != null) { fclose(file); }
-        SemuSupervisorRuntime.sequence = 0ULL;
-    }
-}
-
-class SemuVirtualKeyboard {  // types an action's chord into whatever emulator has focus
-    class bool open() {
-        if (SemuSupervisorRuntime.uinput_fd > 0) { return true; }
-        int flags = (int)O_WRONLY | (int)O_NONBLOCK;
-        int fd = open("/dev/uinput", flags);
-        if (fd < 0) { return false; }
-        unsigned long setEvent = (unsigned long)UI_SET_EVBIT;
-        unsigned long setKey = (unsigned long)UI_SET_KEYBIT;
-        int keyType = EV_KEY;
-        int synType = EV_SYN;
-        ioctl(fd, setEvent, keyType);
-        ioctl(fd, setEvent, synType);
-        for (int code = 1; code < 256; code++) { ioctl(fd, setKey, code); }
-        struct uinput_setup setup;
-        memset(&setup, 0, sizeof(setup));
-        setup.id.bustype = BUS_VIRTUAL;
-        setup.id.vendor = 0x5345;
-        setup.id.product = 0x4d55;
-        int nameCapacity = UINPUT_MAX_NAME_SIZE;
-        snprintf(setup.name, (size_t)nameCapacity, "%s", "Semu Virtual Keyboard");
-        unsigned long devSetup = (unsigned long)UI_DEV_SETUP;
-        unsigned long devCreate = (unsigned long)UI_DEV_CREATE;
-        if (ioctl(fd, devSetup, &setup) < 0 || ioctl(fd, devCreate) < 0) {
-            close(fd);
-            return false;
-        }
-        SemuSupervisorRuntime.uinput_fd = fd;
-        usleep(200000);  // let the emulator's input layer see the new device
-        return true;
-    }
-
-    class void emit(int type, int code, int value) {
-        struct input_event event;
-        memset(&event, 0, sizeof(event));
-        event.type = (unsigned short)type;
-        event.code = (unsigned short)code;
-        event.value = value;
-        int fd = SemuSupervisorRuntime.uinput_fd;
-        ssize_t wrote = write(fd, &event, sizeof(event));
-        (void)wrote;
-    }
-
-    class bool type(Vector<int> codes) {
-        if (codes.isEmpty() || !SemuVirtualKeyboard.open()) { return false; }
-        int keyType = EV_KEY;
-        int synType = EV_SYN;
-        int synReport = SYN_REPORT;
-        for (int index = 0; index < codes.size(); index++) {
-            int code = codes.get(index);
-            SemuVirtualKeyboard.emit(keyType, code, 1);
-            SemuVirtualKeyboard.emit(synType, synReport, 0);
-            usleep(15000);
-        }
-        for (int index = codes.size() - 1; index >= 0; index--) {
-            int code = codes.get(index);
-            SemuVirtualKeyboard.emit(keyType, code, 0);
-            SemuVirtualKeyboard.emit(synType, synReport, 0);
-            usleep(15000);
-        }
-        return true;
-    }
-}
-
-class SemuRetroArchCommands {
-    class bool send(int port, string command) {
-        if (SemuSupervisorRuntime.udp_fd <= 0) {
-            SemuSupervisorRuntime.udp_fd = socket(AF_INET, SOCK_DGRAM, 0);
-            if (SemuSupervisorRuntime.udp_fd <= 0) { return false; }
-        }
-        struct sockaddr_in target;
-        memset(&target, 0, sizeof(target));
-        target.sin_family = AF_INET;
-        target.sin_port = htons((unsigned short)port);
-        target.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        int fd = SemuSupervisorRuntime.udp_fd;
-        char buffer[64];
-        int length = command.len() < 63 ? command.len() : 63;
-        for (int index = 0; index < length; index++) { buffer[index] = command.charAt(index); }
-        buffer[length] = 0;
-        size_t targetSize = sizeof(target);
-        ssize_t sent = sendto(fd, buffer, (size_t)length, 0, (struct sockaddr*)&target, targetSize);
-        return sent == (ssize_t)length;
-    }
-}
-
-class SemuActions2 {  // execution of one action id (SemuActions is the renderer's code table)
-    class string chordFor(SemuLaunchPlan launch, string action) {
-        for entry in launch.actionChords {
-            if (entry.startsWith(action + "=")) { return entry.substring(action.len() + 1, entry.len() - action.len() - 1); }
-        }
-        return "";
-    }
-
-    class void toEmulator(SemuLaunchPlan launch, string action, bool fromKeyboard) {
-        string route = SemuActionRouter.route(action, launch.retroarchPort > 0, fromKeyboard);
-        if (route.startsWith("udp:")) {
-            SemuRetroArchCommands.send(launch.retroarchPort, route.substring(4, route.len() - 4));
-        } else if (route.equals("inject")) {
-            Vector<int> codes = SemuKeyNames.chord(SemuActions2.chordFor(launch, action));
-            if (!SemuVirtualKeyboard.type(codes) && getenv("SEMU_RENDER_DEBUG") != null) {
-                Console.error("semu: could not type the chord for " + action + " (no /dev/uinput access?)");
-            }
-        }
-        if (action.equals("state.next") && SemuSupervisorRuntime.slot < 9) { SemuSupervisorRuntime.slot++; }
-        if (action.equals("state.prev") && SemuSupervisorRuntime.slot > 0) { SemuSupervisorRuntime.slot--; }
-        if (action.equals("state.save") || action.equals("state.load") || action.startsWith("state.")) {
-            SemuActionJournal.append(launch, SemuActions.code(action.startsWith("state.") && !action.equals("state.save") ? "state.load" : action), SemuSupervisorRuntime.slot);
-        } else if (action.equals("ui.screenshot")) {
-            SemuActionJournal.append(launch, SemuActions.screenshot(), 0);
-        }
-    }
-
-    class void openMenu(SemuLaunchPlan launch, int child) {
-        if (SemuSupervisorRuntime.menu_visible != 0) { return; }
-        SemuSupervisorRuntime.menu_visible = 1;
-        SemuSupervisorRuntime.menu_selected = 0;
-        SemuActionJournal.append(launch, SemuActions.menuToggle(), 0);
-        if (!launch.pauseAction.isEmpty()) { SemuActions2.toEmulator(launch, launch.pauseAction, false); }
-    }
-
-    class void closeMenu(SemuLaunchPlan launch) {
-        if (SemuSupervisorRuntime.menu_visible == 0) { return; }
-        SemuSupervisorRuntime.menu_visible = 0;
-        SemuActionJournal.append(launch, SemuActions.menuBack(), 0);
-        if (!launch.pauseAction.isEmpty()) { SemuActions2.toEmulator(launch, launch.pauseAction, false); }
-    }
-
-    class void toggleVisual(SemuLaunchPlan launch, string action) {
-        bool bezels = action.equals("visual.bezels.toggle");
-        SemuActionJournal.append(launch, bezels ? SemuActions.bezelsToggle() : SemuActions.shadersToggle(), 0);
-        if (bezels) { launch.bezelsOn = !launch.bezelsOn; } else { launch.shadersOn = !launch.shadersOn; }
-        if (!launch.semuHome.isEmpty()) {  // the choice survives the session
-            bool enabled = launch.shadersOn;
-            if (bezels) { enabled = launch.bezelsOn; }
-            SemuSettingsStore.put(launch.semuHome, bezels ? "visual.bezels" : "visual.crt_shaders", JSONValue.makeBool(enabled));
-        }
-    }
-
-    class void execute(SemuLaunchPlan launch, int child, string action, bool fromKeyboard) {
-        if (action.isEmpty()) { return; }
-        if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: action " + action + (fromKeyboard ? " (keyboard)" : " (gamepad)")); }
-        if (action.equals("app.quit")) {
-            SemuSupervisorRuntime.quit = 1;
-        } else if (action.equals("ui.menu")) {
-            if (SemuSupervisorRuntime.menu_visible != 0) { SemuActions2.closeMenu(launch); } else { SemuActions2.openMenu(launch, child); }
-        } else if (action.equals("ui.menu.back") || action.equals("ui.escape")) {
-            SemuActions2.closeMenu(launch);
-        } else if (action.equals("ui.menu.up") || action.equals("ui.menu.down")) {
-            if (SemuSupervisorRuntime.menu_visible == 0) { return; }
-            int count = launch.menuActions.size() > 0 ? launch.menuActions.size() : 1;
-            SemuSupervisorRuntime.menu_selected = (SemuSupervisorRuntime.menu_selected + (action.equals("ui.menu.up") ? count - 1 : 1)) % count;
-            SemuActionJournal.append(launch, action.equals("ui.menu.up") ? SemuActions.menuUp() : SemuActions.menuDown(), 0);
-        } else if (action.equals("ui.menu.confirm")) {
-            if (SemuSupervisorRuntime.menu_visible == 0 || SemuSupervisorRuntime.menu_selected >= launch.menuActions.size()) { return; }
-            string item = launch.menuActions.get(SemuSupervisorRuntime.menu_selected);
-            if (item.startsWith("visual.")) {
-                SemuActions2.toggleVisual(launch, item);  // stays open so the change is visible
-            } else if (item.equals("app.quit")) {
-                SemuSupervisorRuntime.quit = 1;
-            } else {
-                SemuActions2.closeMenu(launch);  // resume first so the emulator can act
-                if (!item.equals("ui.menu.back")) { SemuActions2.toEmulator(launch, item, false); }
-            }
-        } else if (action.startsWith("visual.")) {
-            SemuActions2.toggleVisual(launch, action);
-        } else {
-            SemuActions2.toEmulator(launch, action, fromKeyboard);
-        }
-    }
-}
-
-class SemuInputDevices {
+class SemuInputDevices {  // evdev gamepads and keyboards, opened into reusable slots
     class bool bit(unsigned long* bits, int code) {
         int word = code / 64;
         int offset = code % 64;
@@ -385,19 +26,19 @@ class SemuInputDevices {
         return ((bits[word] >> offset) & 1UL) != 0UL;
     }
 
-    class bool classify(int fd, int* gamepad, int* keyboard) {
+    class bool classify(int handle, int* gamepad, int* keyboard) {
         unsigned long eventBits[SEMU_BIT_WORDS];
         unsigned long keyBits[SEMU_BIT_WORDS];
         memset(eventBits, 0, sizeof(eventBits));
         memset(keyBits, 0, sizeof(keyBits));
         unsigned long eventRequest = (unsigned long)EVIOCGBIT(0, sizeof(eventBits));
         unsigned long keyRequest = (unsigned long)EVIOCGBIT(EV_KEY, sizeof(keyBits));
-        if (ioctl(fd, eventRequest, eventBits) < 0 || !SemuInputDevices.bit(eventBits, EV_KEY)) { return false; }
-        if (ioctl(fd, keyRequest, keyBits) < 0) { return false; }
+        if (ioctl(handle, eventRequest, eventBits) < 0 || !SemuInputDevices.bit(eventBits, EV_KEY)) { return false; }
+        if (ioctl(handle, keyRequest, keyBits) < 0) { return false; }
         char name[128];
         memset(name, 0, sizeof(name));
         unsigned long nameRequest = (unsigned long)EVIOCGNAME(127);
-        ioctl(fd, nameRequest, name);
+        ioctl(handle, nameRequest, name);
         if (strcmp(name, "Semu Virtual Keyboard") == 0) { return false; }  // never listen to our own typing
         int south = BTN_SOUTH;
         int start = BTN_START;
@@ -411,11 +52,36 @@ class SemuInputDevices {
         return *gamepad != 0 || *keyboard != 0;
     }
 
+    class int freeSlot() {  // a slot closed by unplug first, then a new one; -1 when full
+        for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) {
+            if (SemuSupervisorRuntime.devices[index].descriptor < 0) { return index; }
+        }
+        return SemuSupervisorRuntime.device_count < SEMU_SUPERVISOR_DEVICES ? SemuSupervisorRuntime.device_count : -1;
+    }
+
+    class void adopt(int slot, int handle, int gamepad, int keyboard, char* path) {  // fills a slot with a fresh device
+        struct SemuInputDevice* device = &SemuSupervisorRuntime.devices[slot];
+        memset(device, 0, sizeof(struct SemuInputDevice));
+        device->descriptor = handle;
+        device->gamepad = gamepad;
+        device->keyboard = keyboard;
+        memcpy(&device->quit_chord, &SemuSupervisorRuntime.quit_template, sizeof(struct SemuChordState));
+        SemuInputDevices.remember(slot, path);
+        if (slot == SemuSupervisorRuntime.device_count) { SemuSupervisorRuntime.device_count++; }
+    }
+
+    class void vacate(int slot) {  // unplugged: the slot becomes free again
+        struct SemuInputDevice* device = &SemuSupervisorRuntime.devices[slot];
+        if (device->descriptor >= 0) { close(device->descriptor); }
+        device->descriptor = -1;
+        SemuDevicePaths[slot * 64] = 0;
+    }
+
     class void scan(bool watchPads) {  // opens every gamepad and keyboard; safe to call repeatedly for hotplug
         DIR* directory = opendir("/dev/input");
         if (directory == null) { return; }
         struct dirent* entry = readdir(directory);
-        while (entry != null && SemuSupervisorRuntime.device_count < SEMU_SUPERVISOR_DEVICES) {
+        while (entry != null && SemuInputDevices.freeSlot() >= 0) {
             char* name = entry->d_name;
             if (strncmp(name, "event", 5) == 0) {
                 char path[64];
@@ -423,20 +89,14 @@ class SemuInputDevices {
                 snprintf(path, capacity, "/dev/input/%s", name);
                 if (!SemuInputDevices.opened(path)) {
                     int flags = (int)O_RDONLY | (int)O_NONBLOCK | (int)O_CLOEXEC;
-                    int fd = open(path, flags);
-                    if (fd >= 0) {
+                    int handle = open(path, flags);
+                    if (handle >= 0) {
                         int gamepad = 0;
                         int keyboard = 0;
-                        if (SemuInputDevices.classify(fd, &gamepad, &keyboard) && (watchPads || keyboard != 0)) {
-                            struct SemuInputDevice* device = &SemuSupervisorRuntime.devices[SemuSupervisorRuntime.device_count];
-                            memset(device, 0, sizeof(struct SemuInputDevice));
-                            device->fd = fd;
-                            device->gamepad = gamepad;
-                            device->keyboard = keyboard;
-                            SemuInputDevices.remember(SemuSupervisorRuntime.device_count, path);
-                            SemuSupervisorRuntime.device_count++;
+                        if (SemuInputDevices.classify(handle, &gamepad, &keyboard) && (watchPads || keyboard != 0)) {
+                            SemuInputDevices.adopt(SemuInputDevices.freeSlot(), handle, gamepad, keyboard, path);
                         } else {
-                            close(fd);
+                            close(handle);
                         }
                     }
                 }
@@ -452,15 +112,13 @@ class SemuInputDevices {
 
     class bool opened(char* path) {
         for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) {
-            if (strcmp(SemuDevicePaths + index * 64, path) == 0) { return SemuSupervisorRuntime.devices[index].fd >= 0; }
+            if (strcmp(SemuDevicePaths + index * 64, path) == 0) { return SemuSupervisorRuntime.devices[index].descriptor >= 0; }
         }
         return false;
     }
 }
 
-char SemuDevicePaths[SEMU_SUPERVISOR_DEVICES * 64];  // one 64-byte path per device slot
-
-class SemuInputEvents {
+class SemuInputEvents {  // evdev events to Semu actions and the quit chord
     class bool held(struct SemuInputDevice* device, int left, int right) { return device->down[left] != 0 || device->down[right] != 0; }
 
     class string keyboardAction(SemuLaunchPlan launch, struct SemuInputDevice* device, int code) {  // match the chord's key code and modifier set
@@ -479,36 +137,32 @@ class SemuInputEvents {
             int rightAltKey = KEY_RIGHTALT;
             int leftMetaKey = KEY_LEFTMETA;
             int rightMetaKey = KEY_RIGHTMETA;
-            bool ctrl = SemuInputEvents.held(device, leftControlKey, rightControlKey);
+            bool control = SemuInputEvents.held(device, leftControlKey, rightControlKey);
             bool shift = SemuInputEvents.held(device, leftShiftKey, rightShiftKey);
-            bool alt = SemuInputEvents.held(device, leftAltKey, rightAltKey);
+            bool alternate = SemuInputEvents.held(device, leftAltKey, rightAltKey);
             bool meta = SemuInputEvents.held(device, leftMetaKey, rightMetaKey);
-            bool wantCtrl = false;
+            bool wantControl = false;
             bool wantShift = false;
-            bool wantAlt = false;
+            bool wantAlternate = false;
             bool wantMeta = false;
             for (int index = 0; index < codes.size() - 1; index++) {
                 int modifier = codes.get(index);
-                int leftControl = KEY_LEFTCTRL;
-                int leftShift = KEY_LEFTSHIFT;
-                int leftAlt = KEY_LEFTALT;
-                int leftMeta = KEY_LEFTMETA;
-                if (modifier == leftControl) { wantCtrl = true; }
-                if (modifier == leftShift) { wantShift = true; }
-                if (modifier == leftAlt) { wantAlt = true; }
-                if (modifier == leftMeta) { wantMeta = true; }
+                if (modifier == leftControlKey) { wantControl = true; }
+                if (modifier == leftShiftKey) { wantShift = true; }
+                if (modifier == leftAltKey) { wantAlternate = true; }
+                if (modifier == leftMetaKey) { wantMeta = true; }
             }
-            if (ctrl == wantCtrl && shift == wantShift && alt == wantAlt && meta == wantMeta) { return action; }
+            if (control == wantControl && shift == wantShift && alternate == wantAlternate && meta == wantMeta) { return action; }
         }
         if (SemuSupervisorRuntime.menu_visible != 0) {  // bare keys steer the open menu too
-            int up = KEY_UP;
-            int down = KEY_DOWN;
+            int upward = KEY_UP;
+            int downward = KEY_DOWN;
             int enter = KEY_ENTER;
             int space = KEY_SPACE;
             int backspace = KEY_BACKSPACE;
             int escape = KEY_ESC;
-            if (code == up) { return "ui.menu.up"; }
-            if (code == down) { return "ui.menu.down"; }
+            if (code == upward) { return "ui.menu.up"; }
+            if (code == downward) { return "ui.menu.down"; }
             if (code == enter || code == space) { return "ui.menu.confirm"; }
             if (code == backspace || code == escape) { return "ui.menu.back"; }
         }
@@ -524,45 +178,38 @@ class SemuInputEvents {
             return "";
         }
         if (SemuSupervisorRuntime.menu_visible != 0) {
-            int up = BTN_DPAD_UP;
-            int down = BTN_DPAD_DOWN;
+            int upward = BTN_DPAD_UP;
+            int downward = BTN_DPAD_DOWN;
             int south = BTN_SOUTH;
             int east = BTN_EAST;
-            if (code == up) { return "ui.menu.up"; }
-            if (code == down) { return "ui.menu.down"; }
+            if (code == upward) { return "ui.menu.up"; }
+            if (code == downward) { return "ui.menu.down"; }
             if (code == south) { return "ui.menu.confirm"; }
             if (code == east) { return "ui.menu.back"; }
         }
         return "";
     }
 
-    class bool quitChord(struct SemuInputDevice* device, int windowMs) {
-        if (device->start_at == 0LL || device->select_at == 0LL) { return false; }
-        long long delta = device->start_at - device->select_at;
-        if (delta < 0LL) { delta = -delta; }
-        return delta <= (long long)windowMs;
-    }
-
-    class void hat(SemuLaunchPlan launch, int child, struct SemuInputDevice* device, int axis, int value) {  // xpad style d-pads
+    class void hat(SemuLaunchPlan launch, struct SemuInputDevice* device, int axis, int value) {  // xpad style d-pads
         int hatX = ABS_HAT0X;
         int left = BTN_DPAD_LEFT;
         int right = BTN_DPAD_RIGHT;
-        int up = BTN_DPAD_UP;
-        int down = BTN_DPAD_DOWN;
+        int upward = BTN_DPAD_UP;
+        int downward = BTN_DPAD_DOWN;
         bool horizontal = axis == hatX;
         int previous = horizontal ? device->hat_x : device->hat_y;
         if (horizontal) { device->hat_x = value; } else { device->hat_y = value; }
         if (value == previous || value == 0) { return; }
-        int code = down;
-        if (horizontal) { code = value < 0 ? left : right; } else if (value < 0) { code = up; }
-        SemuActions2.execute(launch, child, SemuInputEvents.gamepadAction(launch, device, code), false);
+        int code = downward;
+        if (horizontal) { code = value < 0 ? left : right; } else if (value < 0) { code = upward; }
+        SemuActionExecutor.execute(launch, SemuInputEvents.gamepadAction(launch, device, code), false);
     }
 
-    class void drain(SemuLaunchPlan launch, int child, struct SemuInputDevice* device) {
+    class void drain(SemuLaunchPlan launch, struct SemuInputDevice* device) {
         struct input_event events[32];
         while (true) {
-            int fd = device->fd;
-            ssize_t got = read(fd, events, sizeof(events));
+            int handle = device->descriptor;
+            ssize_t got = read(handle, events, sizeof(events));
             if (got <= (ssize_t)0) { return; }
             size_t count = (size_t)got / sizeof(struct input_event);
             long long now = SemuClock.milliseconds();
@@ -570,12 +217,12 @@ class SemuInputEvents {
                 int type = (int)events[index].type;
                 int code = (int)events[index].code;
                 int value = events[index].value;
-                int absType = EV_ABS;
+                int absoluteType = EV_ABS;
                 int hatX = ABS_HAT0X;
                 int hatY = ABS_HAT0Y;
                 int keyType = EV_KEY;
-                if (type == absType && device->gamepad != 0 && (code == hatX || code == hatY)) {
-                    SemuInputEvents.hat(launch, child, device, code, value);
+                if (type == absoluteType && device->gamepad != 0 && (code == hatX || code == hatY)) {
+                    SemuInputEvents.hat(launch, device, code, value);
                     continue;
                 }
                 int keyLimit = SEMU_SUPERVISOR_KEYS;
@@ -584,24 +231,20 @@ class SemuInputEvents {
                 bool press = value != 0 && device->down[code] == 0;
                 device->down[code] = value != 0 ? 1 : 0;
                 if (device->gamepad != 0) {
-                    int startButton = BTN_START;
-                    int selectButton = BTN_SELECT;
-                    if (code == startButton) { device->start_at = value != 0 ? now : 0LL; }
-                    if (code == selectButton) { device->select_at = value != 0 ? now : 0LL; }
-                    if (SemuInputEvents.quitChord(device, launch.chordWindowMs)) {
+                    if (SemuQuitChord.event(&device->quit_chord, code, value, now)) {
                         SemuSupervisorRuntime.quit = 1;
                         return;
                     }
-                    if (press) { SemuActions2.execute(launch, child, SemuInputEvents.gamepadAction(launch, device, code), false); }
+                    if (press) { SemuActionExecutor.execute(launch, SemuInputEvents.gamepadAction(launch, device, code), false); }
                 } else if (device->keyboard != 0 && press) {
-                    SemuActions2.execute(launch, child, SemuInputEvents.keyboardAction(launch, device, code), true);
+                    SemuActionExecutor.execute(launch, SemuInputEvents.keyboardAction(launch, device, code), true);
                 }
             }
         }
     }
 }
 
-class SemuSupervisor {
+class SemuSupervisor {  // one action vocabulary for every emulator, until exit or quit
     class int indexOf(string haystack, string needle) {
         for (int index = 0; index + needle.len() <= haystack.len(); index++) {
             if (haystack.substring(index, needle.len()).equals(needle)) { return index; }
@@ -609,69 +252,79 @@ class SemuSupervisor {
         return -1;
     }
 
-    class int run(int child, SemuLaunchPlan launch) {  // waits for exit, the quit chord, or a quit action
+    class void begin(SemuLaunchPlan launch) {  // fresh runtime, configured chord, first device scan
         memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
         memset(SemuDevicePaths, 0, sizeof(SemuDevicePaths));
         SemuSupervisorRuntime.slot = 0;  // RetroArch numbers slots from 0
+        bool chord = SemuQuitChord.configure(&SemuSupervisorRuntime.quit_template, launch.quitButtons, launch.chordWindowMs);
+        if (!chord) { Console.error("semu: the quit chord is not usable: " + SemuQuitChord.describe(launch.quitButtons)); }
         SemuActionJournal.reset(launch);
         SemuInputDevices.scan(launch.watchPads);
         bool anyPad = false;
         for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) { if (SemuSupervisorRuntime.devices[index].gamepad != 0) { anyPad = true; } }
-        if (launch.watchPads && !anyPad) { Console.error("semu: no gamepad found for the Start+Select quit chord"); }
+        if (launch.watchPads && !anyPad) { Console.error("semu: no gamepad found for the " + SemuQuitChord.describe(launch.quitButtons) + " quit chord"); }
+    }
+
+    class void pollDevices(SemuLaunchPlan launch) {  // one bounded wait for input, then drain it
         struct pollfd polls[SEMU_SUPERVISOR_DEVICES];
+        int count = SemuSupervisorRuntime.device_count;
+        int open = 0;
+        for (int index = 0; index < count; index++) {
+            polls[index].fd = SemuSupervisorRuntime.devices[index].descriptor;
+            polls[index].events = POLLIN;
+            polls[index].revents = 0;
+            if (polls[index].fd >= 0) { open++; }
+        }
+        int ready = 0;
+        nfds_t total = (nfds_t)count;
+        if (open > 0) { ready = poll(polls, total, SEMU_POLL_MS); } else { usleep(SEMU_POLL_MS * 1000); }
+        if (ready <= 0) { return; }
+        for (int index = 0; index < count; index++) {
+            int returned = (int)polls[index].revents;
+            struct SemuInputDevice* device = &SemuSupervisorRuntime.devices[index];
+            if (device->descriptor < 0) { continue; }
+            if ((returned & (int)POLLIN) != 0) { SemuInputEvents.drain(launch, device); }
+            if ((returned & ((int)POLLERR | (int)POLLHUP)) != 0) { SemuInputDevices.vacate(index); }
+        }
+    }
+
+    class void end() {  // closes every device and the virtual keyboard
+        for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) {
+            if (SemuSupervisorRuntime.devices[index].descriptor >= 0) { SemuInputDevices.vacate(index); }
+        }
+        SemuVirtualKeyboard.removeDevice();
+    }
+
+    class int run(int child, SemuLaunchPlan launch) {  // waits for exit, the quit chord, or a quit action
+        SemuSupervisor.begin(launch);
         int exitCode = 0;
         bool exited = false;
         int ticks = 0;
         SemuStopSignals.install();
         while (true) {
             exitCode = SemuProcessGroup.reap(child, &exited);
-            if (exited) { break; }
+            if (exited) {
+                SemuProcessGroup.finish(child);  // no orphan outlives the emulator
+                break;
+            }
             if (SemuStopSignals.pending() != 0) {
-                SemuProcessGroup.terminate(child);
+                SemuProcessGroup.stop(child, launch.retroarchPort);
                 exitCode = 128 + SemuStopSignals.pending();
                 break;
             }
             ticks++;
             int rescanTicks = SEMU_SUPERVISOR_RESCAN_TICKS;
             if (ticks % rescanTicks == 0) { SemuInputDevices.scan(launch.watchPads); }
-            int count = SemuSupervisorRuntime.device_count;
-            int open = 0;
-            for (int index = 0; index < count; index++) {
-                polls[index].fd = SemuSupervisorRuntime.devices[index].fd;
-                polls[index].events = POLLIN;
-                polls[index].revents = 0;
-                if (polls[index].fd >= 0) { open++; }
-            }
-            int ready = 0;
-            nfds_t total = (nfds_t)count;
-            if (open > 0) { ready = poll(polls, total, SEMU_POLL_MS); } else { usleep(SEMU_POLL_MS * 1000); }
-            if (ready > 0) {
-                for (int index = 0; index < count; index++) {
-                    int revents = (int)polls[index].revents;
-                    struct SemuInputDevice* device = &SemuSupervisorRuntime.devices[index];
-                    if (device->fd < 0) { continue; }
-                    if ((revents & (int)POLLIN) != 0) { SemuInputEvents.drain(launch, child, device); }
-                    if ((revents & ((int)POLLERR | (int)POLLHUP)) != 0) { close(device->fd); device->fd = -1; SemuDevicePaths[index * 64] = 0; }
-                }
-            }
+            SemuSupervisor.pollDevices(launch);
             if (SemuSupervisorRuntime.quit != 0) {
                 Console.error("semu: quit");
-                SemuProcessGroup.terminate(child);
+                SemuProcessGroup.stop(child, launch.retroarchPort);
                 exitCode = 0;
                 break;
             }
         }
         SemuProcessGroup.reapGroup(child);
-        for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) {
-            int fd = SemuSupervisorRuntime.devices[index].fd;
-            if (fd >= 0) { close(fd); }
-        }
-        if (SemuSupervisorRuntime.uinput_fd > 0) {
-            unsigned long devDestroy = (unsigned long)UI_DEV_DESTROY;
-            ioctl(SemuSupervisorRuntime.uinput_fd, devDestroy);
-            close(SemuSupervisorRuntime.uinput_fd);
-        }
-        if (SemuSupervisorRuntime.udp_fd > 0) { close(SemuSupervisorRuntime.udp_fd); }
+        SemuSupervisor.end();
         return exitCode;
     }
 }

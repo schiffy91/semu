@@ -18,10 +18,17 @@ class SemuSettingsStore {  // $SEMU_HOME/semu.json: the one user-owned settings 
         return result;
     }
 
-    class bool put(string semuHome, string path, JSONValue value) {
+    class bool readable(string semuHome) {  // absent, or a JSON object; malformed files are never replaced
         string file = PathTools.join(semuHome, "semu.json");
+        if (!FileSystem.exists(file)) { return true; }
+        JSONValue current = FileSystem.isFile(file) ? SemuJson.readFile(file) : null;
+        return current != null && !current.isError() && current.isObject();
+    }
+
+    class bool put(string semuHome, string path, JSONValue value) {  // false, file untouched, when semu.json is malformed
+        string file = PathTools.join(semuHome, "semu.json");
+        if (!SemuSettingsStore.readable(semuHome)) { return false; }
         JSONValue current = FileSystem.isFile(file) ? SemuJson.readFile(file) : JSONValue.makeObject();
-        if (current.isError() || !current.isObject()) { current = JSONValue.makeObject(); }
         JSONValue updated = SemuSettingsStore.withPath(current, Strings.split(path, "."), 0, value);
         return SemuPaths.writeOwned(semuHome, file, updated.stringifyPretty(2) + "\n");
     }

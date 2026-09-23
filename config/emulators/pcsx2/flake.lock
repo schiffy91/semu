@@ -3,16 +3,15 @@
     "btrc": {
       "inputs": {
         "nixpkgs": [
-          "renderer",
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1789806178,
-        "narHash": "sha256-JFQ1uEmZlR7W+Q9qx/kHCC/jZ5VKm2G5om2WWX4tsJE=",
+        "lastModified": 1789880700,
+        "narHash": "sha256-Or17d/Z6IJjSKwvEihMSD+TxIzWhiV9hX68d8ivCSeQ=",
         "owner": "schiffy91",
         "repo": "btrc",
-        "rev": "fad4b470817f73f551ebb20ff3ecbb6d7f895a73",
+        "rev": "c959dd0e5d122d7019266536d571d20fb7c5cc9d",
         "type": "github"
       },
       "original": {
@@ -39,7 +38,9 @@
     },
     "renderer": {
       "inputs": {
-        "btrc": "btrc",
+        "btrc": [
+          "btrc"
+        ],
         "nixpkgs": [
           "nixpkgs"
         ]
@@ -56,6 +57,7 @@
     },
     "root": {
       "inputs": {
+        "btrc": "btrc",
         "nixpkgs": "nixpkgs",
         "renderer": "renderer",
         "source": "source"

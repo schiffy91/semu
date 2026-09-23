@@ -22,14 +22,14 @@ class SteamInputDocument {  // the Deck's Steam Input template, rendered from co
         if (self.quitButtons.isEmpty()) { self.quitButtons = ["start", "select"]; }
     }
 
-    public JSONValue action(string id) {
+    public JSONValue action(string identifier) {
         JSONValue actions = self.root.get("actions");
-        return actions != null && actions.isObject() && actions.has(id) ? actions.get(id) : JSONValue.makeObject();
+        return actions != null && actions.isObject() && actions.has(identifier) ? actions.get(identifier) : JSONValue.makeObject();
     }
 
-    public string label(string id) { return SemuJson.textAt(self.action(id), "label"); }
-    public string icon(string id) { return SemuJson.textAt(self.action(id), "icon"); }
-    public string chord(string id) { return SemuJson.textAt(self.action(id), "chord"); }
+    public string label(string identifier) { return SemuJson.textAt(self.action(identifier), "label"); }
+    public string icon(string identifier) { return SemuJson.textAt(self.action(identifier), "icon"); }
+    public string chord(string identifier) { return SemuJson.textAt(self.action(identifier), "chord"); }
 
     public string hotkeyAction(string button) {
         JSONValue bindings = self.root.get("hotkey_bindings");
@@ -115,10 +115,10 @@ class SteamInputVdf {  // the controller_mappings document Steam loads as a Nept
         return "\t\t\t\"" + name + "\" { \"activators\" { \"" + activator + "\" { \"bindings\" { " + bindings + " } } } }";
     }
 
-    class void groupHead(Vector<string> lines, string id, string mode) {
+    class void groupHead(Vector<string> lines, string identifier, string mode) {
         lines.push("\t\"group\"");
         lines.push("\t{");
-        lines.push("\t\t\"id\" \"" + id + "\"");
+        lines.push("\t\t\"id\" \"" + identifier + "\"");
         lines.push("\t\t\"mode\" \"" + mode + "\"");
         lines.push("\t\t\"inputs\"");
         lines.push("\t\t{");
@@ -129,8 +129,8 @@ class SteamInputVdf {  // the controller_mappings document Steam loads as a Nept
         lines.push("\t}");
     }
 
-    class string singleGroup(string id, string mode, string name, string bindings) {
-        return "\t\"group\" { \"id\" \"" + id + "\" \"mode\" \"" + mode + "\" \"inputs\" { \"" + name
+    class string singleGroup(string identifier, string mode, string name, string bindings) {
+        return "\t\"group\" { \"id\" \"" + identifier + "\" \"mode\" \"" + mode + "\" \"inputs\" { \"" + name
             + "\" { \"activators\" { \"Full_Press\" { \"bindings\" { " + bindings + " } } } } } }";
     }
 
@@ -225,10 +225,10 @@ class SteamInputVdf {  // the controller_mappings document Steam loads as a Nept
         if (!document.hotkeyAction("R3").isEmpty()) { lines.push(SteamInputVdf.singleGroup("16", "joystick_move", "click", SteamInputVdf.actionBindings(document, document.hotkeyAction("R3")))); }
     }
 
-    class void radial(Vector<string> lines, SteamInputDocument document, string id, Vector<string> slots, string name) {
+    class void radial(Vector<string> lines, SteamInputDocument document, string identifier, Vector<string> slots, string name) {
         lines.push("\t\"group\"");
         lines.push("\t{");
-        lines.push("\t\t\"id\" \"" + id + "\"");
+        lines.push("\t\t\"id\" \"" + identifier + "\"");
         lines.push("\t\t\"mode\" \"radial_menu\"");
         lines.push("\t\t\"name\" \"" + name + "\"");
         lines.push("\t\t\"inputs\"");
@@ -245,8 +245,8 @@ class SteamInputVdf {  // the controller_mappings document Steam loads as a Nept
         lines.push("\t}");
     }
 
-    class void systemSwitch(Vector<string> lines, JSONValue layer, string id) {
-        SteamInputVdf.groupHead(lines, id, "switches");
+    class void systemSwitch(Vector<string> lines, JSONValue layer, string identifier) {
+        SteamInputVdf.groupHead(lines, identifier, "switches");
         lines.push(SteamInputVdf.input("button_escape", "Full_Press", SteamInputVdf.xinput("START")));
         lines.push(SteamInputVdf.input("button_menu", "Full_Press", SteamInputVdf.xinput("SELECT")));
         lines.push(SteamInputVdf.input("left_bumper", "Full_Press", SteamInputVdf.xinput("SHOULDER_LEFT")));
@@ -268,13 +268,13 @@ class SteamInputVdf {  // the controller_mappings document Steam loads as a Nept
                 document.hotkeyAction("R2").isEmpty() ? "5" : "12", "14"];
     }
 
-    class string preset(string id, string name, Vector<string> groups, string leftTrackpad) {
+    class string preset(string identifier, string name, Vector<string> groups, string leftTrackpad) {
         string bindings = "\"" + groups.get(0) + "\" \"button_diamond active\"" + " \"" + groups.get(1) + "\" \"dpad active\""
             + " \"" + groups.get(2) + "\" \"joystick active\"" + " \"" + groups.get(3) + "\" \"right_joystick active\""
             + " \"" + groups.get(4) + "\" \"left_trigger active\"" + " \"" + groups.get(5) + "\" \"right_trigger active\""
             + " \"6\" \"right_trackpad active\"" + " \"" + groups.get(6) + "\" \"switch active\""
             + " \"" + leftTrackpad + "\" \"left_trackpad active\"";
-        return "\t\"preset\" { \"id\" \"" + id + "\" \"name\" \"" + name + "\" \"group_source_bindings\" { " + bindings + " } }";
+        return "\t\"preset\" { \"id\" \"" + identifier + "\" \"name\" \"" + name + "\" \"group_source_bindings\" { " + bindings + " } }";
     }
 
     class string render(SteamInputDocument document, JSONValue template) {
@@ -355,11 +355,11 @@ class SteamInputRules {  // what a definition must satisfy before it becomes VDF
             problems.push("actions must declare the input vocabulary");
             return problems;
         }
-        for id in actions.keys() {
-            if (!SteamInputRules.safeChord(document.chord(id))) { problems.push(id + ": chord is not a safe key chord"); }
-            string label = document.label(id);
-            if (!SteamInputRules.safeText(label) || SteamInputRules.modifierLabel(label)) { problems.push(id + ": needs a semantic Semu icon and label"); }
-            if (!SteamInputRules.safeText(document.icon(id)) || !document.icon(id).endsWith(".png")) { problems.push(id + ": needs a semantic Semu icon and label"); }
+        for identifier in actions.keys() {
+            if (!SteamInputRules.safeChord(document.chord(identifier))) { problems.push(identifier + ": chord is not a safe key chord"); }
+            string label = document.label(identifier);
+            if (!SteamInputRules.safeText(label) || SteamInputRules.modifierLabel(label)) { problems.push(identifier + ": needs a semantic Semu icon and label"); }
+            if (!SteamInputRules.safeText(document.icon(identifier)) || !document.icon(identifier).endsWith(".png")) { problems.push(identifier + ": needs a semantic Semu icon and label"); }
         }
         SteamInputRules.declared(problems, document, document.slots("quick_slots"), "radial.quick_slots");
         SteamInputRules.declared(problems, document, document.slots("menu_slots"), "radial.menu_slots");

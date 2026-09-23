@@ -1,0 +1,236 @@
+// Launch spec: the quit chord, quit order, orphans, journaling, settings safety, sync and settings UI ids.
+
+#include <fcntl.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/lib/settings.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/settings_ui.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/launch/process.btrc;
+import ../../../src/launch/supervisor.btrc;
+import ../../../src/renderer/action_abi.btrc;
+import ../../../src/sync/syncthing.btrc;
+
+class LaunchSpecTools {
+    class SemuLaunchPlan retroarchPlan(Fixture fixture) {  // a RetroArch Game Boy launch over fake assets
+        string assets = fixture.plan.assetRoot;
+        string roms = PathTools.join(fixture.scratch, "launch-spec/roms");
+        FileSystem.mkdirp(PathTools.join(roms, "gb"));
+        FileSystem.writeText(PathTools.join(roms, "gb/Tetris.zip"), "");
+        FileSystem.mkdirp(PathTools.join(assets, "bin"));
+        FileSystem.writeText(PathTools.join(assets, "bin/retroarch"), "#!/bin/sh\n");
+        FileSystem.mkdirp(PathTools.join(assets, "lib/retroarch/cores"));
+        FileSystem.writeText(PathTools.join(assets, "lib/retroarch/cores/gambatte_libretro.so"), "");
+        fixture.plan.tokens.put("roms", roms);
+        return SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "", "Tetris.zip", fixture.diagnostics);
+    }
+
+    class string source(Fixture fixture, string relative) { return FileSystem.readText(PathTools.join(fixture.project, relative)); }
+
+    class int lines(string text) { return Strings.split(text, "\n").size(); }
+}
+
+class LaunchSpecQuitChord {  // pure state machine over synthetic evdev events
+    class void run(Contract contract, Fixture fixture) {
+        Vector<string> configured = fixture.plan.input.quitChord();
+        int window = fixture.plan.input.chordWindowMs();
+        contract.expect(configured.size() == 2 && configured.contains("start") && configured.contains("select") && window == 250, "config/input declares Start+Select within 250 ms");
+        struct SemuChordState chord;
+        contract.expect(SemuQuitChord.configure(&chord, configured, window) && chord.count == 2, "the configured buttons become a chord");
+        int start = SemuKeyNames.button("start");
+        int select = SemuKeyNames.button("select");
+        int south = SemuKeyNames.button("south");
+        contract.expect(!SemuQuitChord.event(&chord, start, 1, 1000LL) && SemuQuitChord.event(&chord, select, 1, 1100LL), "start then select inside the window quits");
+        SemuQuitChord.configure(&chord, configured, window);
+        contract.expect(!SemuQuitChord.event(&chord, select, 1, 1000LL) && SemuQuitChord.event(&chord, start, 1, 1250LL), "select then start at the window edge quits");
+        SemuQuitChord.configure(&chord, configured, window);
+        contract.expect(!SemuQuitChord.event(&chord, start, 1, 1000LL) && !SemuQuitChord.event(&chord, select, 1, 1251LL), "a pair wider than the window does not quit");
+        SemuQuitChord.event(&chord, start, 0, 1300LL);
+        contract.expect(SemuQuitChord.event(&chord, start, 1, 1400LL), "re-pressing start near a held select quits");
+        SemuQuitChord.configure(&chord, configured, window);
+        contract.expect(!SemuQuitChord.event(&chord, start, 1, 1000LL) && !SemuQuitChord.event(&chord, start, 0, 1050LL) && !SemuQuitChord.event(&chord, select, 1, 1100LL), "a released button breaks the chord");
+        contract.expect(!SemuQuitChord.event(&chord, south, 1, 1110LL), "another button never completes the chord");
+        Vector<string> custom = ["south", "north"];
+        SemuQuitChord.configure(&chord, custom, 100);
+        contract.expect(!SemuQuitChord.event(&chord, start, 1, 1000LL) && !SemuQuitChord.event(&chord, select, 1, 1010LL), "Start+Select is not hardcoded once config names other buttons");
+        contract.expect(!SemuQuitChord.event(&chord, south, 1, 1000LL) && SemuQuitChord.event(&chord, SemuKeyNames.button("north"), 1, 1090LL), "the configured buttons and window decide");
+        Vector<string> unknown = ["start", "bogus"];
+        contract.expect(!SemuQuitChord.configure(&chord, unknown, 250), "an unknown button name disables the chord");
+        SemuLaunchPlan launch = LaunchSpecTools.retroarchPlan(fixture);
+        contract.expect(launch.ok(), "the RetroArch launch plan resolves: " + launch.error);
+        contract.expect(launch.quitButtons.size() == configured.size() && launch.quitButtons.get(0).equals(configured.get(0)) && launch.chordWindowMs == window, "the launch plan carries the configured chord and window");
+        string supervisor = LaunchSpecTools.source(fixture, "src/launch/supervisor.btrc");
+        contract.lacks(supervisor, "BTN_SELECT", "the supervisor names no quit button");
+        contract.lacks(supervisor, "select_at", "the old hardcoded chord timestamps are gone");
+    }
+}
+
+class LaunchSpecQuitOrder {  // RetroArch gets QUIT and time to flush before SIGTERM
+    class void run(Contract contract, Fixture fixture) {
+        SemuLaunchPlan launch = LaunchSpecTools.retroarchPlan(fixture);
+        string profile = fixture.profile("retroarch", "retroarch.cfg");
+        int configured = Strings.toInt(SemuLauncher.configValue(profile, "network_cmd_port"));
+        contract.expect(configured > 0 && launch.retroarchPort == configured, "the command port is the one the generated profile opens");
+        contract.contains(profile, f"network_cmd_port = \"{configured}\"", "the generated retroarch.cfg declares that port");
+        contract.lacks(LaunchSpecTools.source(fixture, "src/launch/plan.btrc"), "55355", "the port is not a literal in the launcher");
+        string silent = "network_cmd_enable = \"false\"\nnetwork_cmd_port = \"4242\"\n";
+        contract.expect(SemuLauncher.commandPort(silent) == 0 && SemuLauncher.commandPort("") == 0, "no enabled command port means no UDP quit");
+        contract.expect(SemuLauncher.commandPort("network_cmd_enable = \"true\"\nnetwork_cmd_port = \"4242\"\n") == 4242, "an enabled port is read from the profile");
+        Vector<string> environment = [];
+        int quick = SemuProcessGroup.start(["/bin/sh", "-c", "sleep 0.3"], environment);
+        long long began = SemuClock.milliseconds();
+        bool graceful = SemuProcessGroup.stop(quick, 1);
+        long long spent = SemuClock.milliseconds() - began;
+        contract.expect(graceful && spent < 1400LL, "an emulator that exits after QUIT is never signalled");
+        int stubborn = SemuProcessGroup.start(["/bin/sh", "-c", "sleep 30"], environment);
+        began = SemuClock.milliseconds();
+        graceful = SemuProcessGroup.stop(stubborn, 1);
+        spent = SemuClock.milliseconds() - began;
+        contract.expect(!graceful && spent >= 1450LL && !SemuProcessGroup.groupAlive(stubborn), "QUIT waits about 1.5 s, then the bounded group kill");
+        int plain = SemuProcessGroup.start(["/bin/sh", "-c", "sleep 30"], environment);
+        began = SemuClock.milliseconds();
+        SemuProcessGroup.stop(plain, 0);
+        spent = SemuClock.milliseconds() - began;
+        contract.expect(spent < 1000LL && !SemuProcessGroup.groupAlive(plain), "without a command port the group is terminated at once");
+    }
+}
+
+class LaunchSpecOrphans {  // a normal child exit takes the rest of its group
+    class void run(Contract contract) {
+        Vector<string> environment = [];
+        int child = SemuProcessGroup.start(["/bin/sh", "-c", "sleep 30 & exit 0"], environment);
+        bool exited = SemuProcessGroup.awaitExit(child, 3000);
+        contract.expect(exited && SemuProcessGroup.groupAlive(child), "the direct child exits while a background process remains");
+        SemuProcessGroup.finish(child);
+        contract.expect(!SemuProcessGroup.groupAlive(child), "finish leaves no orphan in the group");
+        int supervised = SemuProcessGroup.start(["/bin/sh", "-c", "sleep 30 & exit 3"], environment);
+        int code = SemuProcessGroup.supervise(supervised);
+        contract.expect(code == 3 && !SemuProcessGroup.groupAlive(supervised), "supervise keeps the exit code and ends the group");
+    }
+}
+
+class LaunchSpecJournal {  // slot moves journal as themselves; unplugged slots are reused
+    class void run(Contract contract) {
+        contract.expect(SemuActionRouter.journalCode("state.next") != SemuActions.stateLoad() && SemuActionRouter.journalCode("state.prev") != SemuActions.stateLoad(), "slot next and prev never journal as state.load");
+        contract.expect(SemuActionRouter.journalCode("state.next") == SemuActions.code("state.next") && SemuActionRouter.journalCode("state.prev") == SemuActions.code("state.prev"), "slot next and prev journal under their own codes");
+        contract.expect(SemuActionRouter.journalCode("state.load") == SemuActions.stateLoad() && SemuActionRouter.journalCode("state.save") == SemuActions.stateSave(), "save and load keep their codes");
+        contract.expect(SemuActionRouter.journalCode("ui.pause") == SemuActions.none(), "emulator-only actions are not journalled");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+        memset(SemuDevicePaths, 0, sizeof(SemuDevicePaths));
+        for (int slot = 0; slot < SEMU_SUPERVISOR_DEVICES; slot++) { SemuInputDevices.adopt(slot, 1000 + slot, 1, 0, "/dev/input/event-spec"); }
+        contract.expect(SemuSupervisorRuntime.device_count == SEMU_SUPERVISOR_DEVICES && SemuInputDevices.freeSlot() == -1, "a full device table has no free slot");
+        int handle = open("/dev/null", O_RDONLY);
+        SemuSupervisorRuntime.devices[5].descriptor = handle;
+        SemuInputDevices.remember(5, "/dev/input/event5");
+        SemuInputDevices.vacate(5);
+        contract.expect(SemuInputDevices.freeSlot() == 5 && !SemuInputDevices.opened("/dev/input/event5"), "an unplugged slot is free again");
+        SemuInputDevices.adopt(SemuInputDevices.freeSlot(), 2000, 1, 0, "/dev/input/event7");
+        contract.expect(SemuSupervisorRuntime.device_count == SEMU_SUPERVISOR_DEVICES && SemuInputDevices.opened("/dev/input/event7"), "a new device reuses the slot without growing the table");
+        contract.expect(SemuSupervisorRuntime.devices[5].quit_chord.window_ms == SemuSupervisorRuntime.quit_template.window_ms, "a reused slot starts from the configured chord");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+        memset(SemuDevicePaths, 0, sizeof(SemuDevicePaths));
+    }
+}
+
+class LaunchSpecSettings {  // malformed user files are reported and never replaced
+    class void run(Contract contract, Fixture fixture) {
+        string home = PathTools.join(fixture.scratch, "launch-spec/semu-home");
+        FileSystem.mkdirp(PathTools.join(home, "overrides"));
+        string file = PathTools.join(home, "semu.json");
+        FileSystem.writeText(file, "{\"ui\": {\"theme\": ");
+        contract.expect(!SemuSettingsStore.readable(home), "a truncated semu.json is not readable");
+        contract.expect(!SemuSettingsStore.put(home, "ui.theme", JSONValue.makeString("linear-es-de")), "settings put refuses a malformed semu.json");
+        contract.expect(FileSystem.readText(file).equals("{\"ui\": {\"theme\": "), "the malformed semu.json is left untouched");
+        FileSystem.writeText(PathTools.join(home, "overrides/broken.json"), "[1, 2");
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuResolver.plan(fixture.model, "linux-desktop", home, fixture.plan.assetRoot, "", diagnostics);
+        contract.contains(diagnostics.render(), file + ": json", "a malformed semu.json is a diagnostic");
+        contract.contains(diagnostics.render(), "overrides/broken.json: json", "a malformed override is a diagnostic");
+        string fresh = PathTools.join(fixture.scratch, "launch-spec/fresh-home");
+        FileSystem.mkdirp(fresh);
+        contract.expect(SemuSettingsStore.readable(fresh) && SemuSettingsStore.put(fresh, "ui.theme", JSONValue.makeString("linear-es-de")), "an absent semu.json is created");
+        contract.expect(SemuJson.textAt(SemuJson.readFile(PathTools.join(fresh, "semu.json")), "ui.theme").equals("linear-es-de"), "the written value reads back");
+    }
+}
+
+class LaunchSpecSync {  // XML-safe config and a pid file that must name our Syncthing
+    class void run(Contract contract, Fixture fixture) {
+        string base = "<configuration version=\"37\">\n</configuration>\n";
+        Vector<string> peers = ["AB\"<C&D"];
+        string document = SemuSync.configure(base, "/home/user/Saves & <States>", peers);
+        contract.contains(document, "path=\"/home/user/Saves &amp; &lt;States&gt;\"", "the folder path is XML-escaped");
+        contract.contains(document, "<device id=\"AB&quot;&lt;C&amp;D\" name=", "peer ids are XML-escaped");
+        contract.lacks(document, "AB\"<C", "no raw peer id reaches the XML");
+        contract.expect(SemuSync.configure(document, "/home/user/Saves & <States>", peers).equals(document), "escaped configuration stays idempotent");
+        contract.contains(SemuSync.deviceXml("ABC"), "name=\"ABC\"", "a short id keeps its whole name");
+        string executable = "/opt/semu/bin/syncthing";
+        contract.expect(SemuSync.isSemuSyncthing(executable + " serve --home /state/syncthing --no-browser", executable, "/state/syncthing"), "our serve command line is recognised");
+        contract.expect(!SemuSync.isSemuSyncthing("/usr/bin/vim --home /state/syncthing --no-browser", executable, "/state/syncthing"), "another program is not Syncthing");
+        contract.expect(!SemuSync.isSemuSyncthing(executable + " serve --home /other --no-browser", executable, "/state/syncthing"), "another Syncthing home is not ours");
+        string pidFile = SemuSync.pidFile(fixture.plan);
+        FileSystem.mkdirp(PathTools.dirname(pidFile));
+        FileSystem.writeText(pidFile, Strings.fromInt((int)getpid()) + "\n");
+        contract.expect(!SemuSync.ownsProcess(fixture.plan, (int)getpid()), "the contract process is not Semu's Syncthing");
+        contract.expect(SemuSync.stop(fixture.plan) == 0 && !FileSystem.isFile(pidFile), "sync stop drops a stale pid file without killing its process");
+    }
+}
+
+class LaunchSpecSettingsUi {  // controller modes come from config; the launcher must be executable
+    class void run(Contract contract, Fixture fixture) {
+        string source = LaunchSpecTools.source(fixture, "src/emit/settings_ui.btrc");
+        contract.lacks(source, "\"dolphin\"", "the settings UI names no emulator");
+        contract.lacks(source, "input.systems.wii", "the settings UI names no system setting");
+        SemuSystem wii = fixture.model.system("wii");
+        string setting = SemuJson.textAt(wii.definition, "controller_mode.setting");
+        contract.expect(!setting.isEmpty() && fixture.model.emulator(SemuJson.textAt(wii.definition, "controller_mode.emulator")) != null, "wii system.json names its controller-mode emulator and setting");
+        string document = SemuSettingsUi.document(fixture.model, fixture.plan).stringify();
+        contract.contains(document, "\"key\":\"" + setting + "\"", "the INPUT page offers the configured controller mode");
+        contract.contains(document, "\"nunchuk\"", "the choices come from the emulator's package");
+        string assets = PathTools.join(fixture.scratch, "launch-spec/launcher-assets");
+        FileSystem.mkdirp(PathTools.join(assets, "bin"));
+        string launcher = PathTools.join(assets, "bin/semu");
+        FileSystem.writeText(launcher, "#!/bin/sh\n");
+        chmod(launcher, 0644);
+        string previous = fixture.plan.assetRoot;
+        fixture.plan.assetRoot = assets;
+        contract.expect(SemuSettingsUi.launcher(fixture.plan).isEmpty(), "a non-executable bin/semu is not trusted");
+        chmod(launcher, 0755);
+        contract.expect(SemuSettingsUi.launcher(fixture.plan).endsWith("/bin/semu"), "an executable bin/semu is trusted");
+        fixture.plan.assetRoot = previous;
+    }
+}
+
+class LaunchSpecLayout {  // the supervisor is split and styled
+    class void run(Contract contract, Fixture fixture) {
+        for name in ["supervisor", "actions", "input_state", "process", "plan"] {
+            string text = LaunchSpecTools.source(fixture, "src/launch/" + name + ".btrc");
+            contract.expect(!text.isEmpty() && LaunchSpecTools.lines(text) <= 500, "src/launch/" + name + ".btrc stays under 500 lines");
+            contract.lacks(text, "SemuActions2", "no numbered class names in " + name);
+        }
+    }
+}
+
+class LaunchSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        LaunchSpecQuitChord.run(contract, fixture);
+        LaunchSpecQuitOrder.run(contract, fixture);
+        LaunchSpecOrphans.run(contract);
+        LaunchSpecJournal.run(contract);
+        LaunchSpecSettings.run(contract, fixture);
+        LaunchSpecSync.run(contract, fixture);
+        LaunchSpecSettingsUi.run(contract, fixture);
+        LaunchSpecLayout.run(contract, fixture);
+    }
+}

@@ -15,43 +15,14 @@
   },
   "platforms": {
     "linux": {
-      "backend": "bwrap",
       "executable": "${asset_root}/bin/melonDS",
       "args": [
         "--fullscreen"
       ],
-      "gl_wrapper": "${asset_root}/bin/nixGL",
       "env": {
         "set": {
           "SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS": "1"
         }
-      },
-      "sandbox": {
-        "devices": [
-          "all"
-        ],
-        "filesystems": [
-          {
-            "path": "${asset_root}",
-            "mode": "ro"
-          },
-          {
-            "path": "${roms}",
-            "mode": "ro"
-          },
-          {
-            "path": "${emulation_root}",
-            "mode": "ro"
-          },
-          {
-            "path": "${bios}",
-            "mode": "ro"
-          },
-          {
-            "path": "${state_root}",
-            "mode": "create"
-          }
-        ]
       },
       "graphics": {
         "method": "config_file",
@@ -80,9 +51,6 @@
         "data_home": "xdg",
         "config_subdir": "melonDS",
         "data_subdir": "melonDS",
-        "managed_profile_files": [
-          "config/melonDS.toml"
-        ],
         "seeds": [
           {
             "purpose": "nds_bios9",
@@ -141,9 +109,8 @@
   },
   "doc": {
     "launch": "The bundled source-built melonDS Qt frontend receives --fullscreen followed by exactly one positional Nintendo DS ROM. No host executable, Flatpak, libretro core, or prebuilt binary is permitted.",
-    "state": "melonDS reads $XDG_CONFIG_HOME/melonDS/melonDS.toml. Managed relative save, savestate, and cheat paths are source-patched to resolve below Semu's isolated XDG state instead of the process working directory.",
-    "sandbox": "The package closure, ROM library, shared Emulation tree, and external BIOS roots are read-only. Optional BIOS files are copied once into isolated state; a ROM-adjacent .sav may be imported read-only, while all later writes target Semu state.",
+    "state": "melonDS reads $XDG_CONFIG_HOME/melonDS/melonDS.toml; the managed save, savestate and cheat paths point into its isolated state root.",
     "input": "SDL raw joystick zero is the Steam Virtual Gamepad lane. The profile maps every DS control explicitly; pinned Qt actions consume Ctrl+S and Ctrl+A for slot-1 save/load, while Semu's process-group watcher owns Ctrl+Q and immediate physical Select+Start termination.",
-    "rendering": "The managed TOML pins both melonDS OpenGL selectors. The source-built package directly links libsemurenderer, submits semantic top/bottom final-framebuffer regions before OSD, then submits splash/OSD output immediately before SwapBuffers. screenKind owns lane identity, both lanes use zero rotation, and no inactive or display/session path exists."
+    "rendering": "The managed TOML pins both melonDS OpenGL selectors. The flake applies no Semu render hook, so no Semu bezel or shader reaches this emulator yet."
   }
 }

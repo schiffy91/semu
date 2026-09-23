@@ -48,17 +48,6 @@
       "platforms": [
         "linux"
       ]
-    },
-    {
-      "emulator": "retroarch",
-      "label": "Beetle PSX HW",
-      "label_aliases": [
-        "SwanStation"
-      ],
-      "core": "mednafen_psx_hw",
-      "platforms": [
-        "macos"
-      ]
     }
   ],
   "bios": {

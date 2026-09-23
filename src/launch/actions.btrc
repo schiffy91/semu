@@ -1,0 +1,242 @@
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include "semu_evdev.h"
+
+import Library.Console;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/paths.btrc;
+import ../lib/settings.btrc;
+import ../renderer/action_abi.btrc;
+import ./input_state.btrc;
+import ./process.btrc;
+import ./plan.btrc;
+
+class SemuActionRouter {  // where an action goes: the renderer, the emulator, or the process group
+    class string retroarchCommand(string action) {
+        if (action.equals("state.save")) { return "SAVE_STATE"; }
+        if (action.equals("state.load")) { return "LOAD_STATE"; }
+        if (action.equals("state.next")) { return "STATE_SLOT_PLUS"; }
+        if (action.equals("state.prev")) { return "STATE_SLOT_MINUS"; }
+        if (action.equals("ui.screenshot")) { return "SCREENSHOT"; }
+        if (action.equals("ui.pause")) { return "PAUSE_TOGGLE"; }
+        if (action.equals("ui.fullscreen")) { return "FULLSCREEN_TOGGLE"; }
+        if (action.equals("speed.fast")) { return "FAST_FORWARD"; }
+        if (action.equals("speed.rewind")) { return "REWIND"; }
+        return "";
+    }
+
+    class bool semuOwned(string action) {
+        return action.startsWith("ui.menu") || action.equals("app.quit") || action.startsWith("visual.");
+    }
+
+    class string route(string action, bool retroarch, bool fromKeyboard) {  // "semu" | "udp:<COMMAND>" | "inject" | "none"
+        if (SemuActionRouter.semuOwned(action)) { return "semu"; }
+        if (retroarch) {
+            string command = SemuActionRouter.retroarchCommand(action);
+            return command.isEmpty() ? "none" : "udp:" + command;
+        }
+        return fromKeyboard ? "none" : "inject";  // a keyboard chord already reached the emulator's own hotkey table
+    }
+
+    class int journalCode(string action) {  // each action journals as itself; none when the ABI lacks it
+        if (action.startsWith("state.") || action.equals("ui.screenshot")) { return SemuActions.code(action); }
+        return SemuActions.none();
+    }
+}
+
+class SemuActionJournal {  // the renderer reads these records; same ABI as action_abi
+    class bool append(SemuLaunchPlan launch, int action, int slot) {
+        if (launch.stateDir.isEmpty() || action == SemuActions.none()) { return false; }
+        string path = PathTools.join(launch.stateDir, RendererActionJournal.fileName());
+        FILE* file = fopen(path, "ab");
+        if (file == null) { return false; }
+        struct SemuActionRecord record;
+        memset(&record, 0, sizeof(record));
+        record.abi = (unsigned int)RendererActionJournal.abi();
+        record.size = (unsigned int)sizeof(struct SemuActionRecord);
+        SemuSupervisorRuntime.sequence = SemuSupervisorRuntime.sequence + 1ULL;
+        record.sequence = SemuSupervisorRuntime.sequence;
+        record.monotonic_ms = SemuClock.milliseconds();
+        record.action = action;
+        record.radial = RendererActionJournal.direct();
+        record.slot = slot;
+        size_t sourceCapacity = sizeof(record.source);
+        snprintf(record.source, sourceCapacity, "%s", "semu");
+        size_t recordSize = sizeof(record);
+        bool written = fwrite(&record, recordSize, 1, file) == (size_t)1;
+        fclose(file);
+        return written;
+    }
+
+    class void reset(SemuLaunchPlan launch) {  // a fresh session starts an empty journal
+        if (launch.stateDir.isEmpty()) { return; }
+        string path = PathTools.join(launch.stateDir, RendererActionJournal.fileName());
+        FILE* file = fopen(path, "wb");
+        if (file != null) { fclose(file); }
+        SemuSupervisorRuntime.sequence = 0ULL;
+    }
+}
+
+class SemuVirtualKeyboard {  // types an action's chord into whatever emulator has focus
+    class bool open() {
+        if (SemuSupervisorRuntime.uinput_descriptor > 0) { return true; }
+        int flags = (int)O_WRONLY | (int)O_NONBLOCK;
+        int handle = open("/dev/uinput", flags);
+        if (handle < 0) { return false; }
+        unsigned long setEvent = (unsigned long)UI_SET_EVBIT;
+        unsigned long setKey = (unsigned long)UI_SET_KEYBIT;
+        int keyType = EV_KEY;
+        int synType = EV_SYN;
+        ioctl(handle, setEvent, keyType);
+        ioctl(handle, setEvent, synType);
+        for (int code = 1; code < 256; code++) { ioctl(handle, setKey, code); }
+        struct uinput_setup setup;
+        memset(&setup, 0, sizeof(setup));
+        setup.id.bustype = BUS_VIRTUAL;
+        setup.id.vendor = 0x5345;
+        setup.id.product = 0x4d55;
+        int nameCapacity = UINPUT_MAX_NAME_SIZE;
+        snprintf(setup.name, (size_t)nameCapacity, "%s", "Semu Virtual Keyboard");
+        unsigned long deviceSetup = (unsigned long)UI_DEV_SETUP;
+        unsigned long deviceCreate = (unsigned long)UI_DEV_CREATE;
+        if (ioctl(handle, deviceSetup, &setup) < 0 || ioctl(handle, deviceCreate) < 0) {
+            close(handle);
+            return false;
+        }
+        SemuSupervisorRuntime.uinput_descriptor = handle;
+        usleep(200000);  // let the emulator's input layer see the new device
+        return true;
+    }
+
+    class void emit(int type, int code, int value) {
+        struct input_event event;
+        memset(&event, 0, sizeof(event));
+        event.type = (unsigned short)type;
+        event.code = (unsigned short)code;
+        event.value = value;
+        int handle = SemuSupervisorRuntime.uinput_descriptor;
+        ssize_t wrote = write(handle, &event, sizeof(event));
+        (void)wrote;
+    }
+
+    class bool type(Vector<int> codes) {
+        if (codes.isEmpty() || !SemuVirtualKeyboard.open()) { return false; }
+        int keyType = EV_KEY;
+        int synType = EV_SYN;
+        int synReport = SYN_REPORT;
+        for (int index = 0; index < codes.size(); index++) {
+            int code = codes.get(index);
+            SemuVirtualKeyboard.emit(keyType, code, 1);
+            SemuVirtualKeyboard.emit(synType, synReport, 0);
+            usleep(15000);
+        }
+        for (int index = codes.size() - 1; index >= 0; index--) {
+            int code = codes.get(index);
+            SemuVirtualKeyboard.emit(keyType, code, 0);
+            SemuVirtualKeyboard.emit(synType, synReport, 0);
+            usleep(15000);
+        }
+        return true;
+    }
+
+    class void removeDevice() {  // removes the virtual device at session end
+        if (SemuSupervisorRuntime.uinput_descriptor <= 0) { return; }
+        unsigned long deviceDestroy = (unsigned long)UI_DEV_DESTROY;
+        ioctl(SemuSupervisorRuntime.uinput_descriptor, deviceDestroy);
+        close(SemuSupervisorRuntime.uinput_descriptor);
+        SemuSupervisorRuntime.uinput_descriptor = 0;
+    }
+}
+
+class SemuActionExecutor {  // execution of one action id (SemuActions is the renderer's code table)
+    class string chordFor(SemuLaunchPlan launch, string action) {
+        for entry in launch.actionChords {
+            if (entry.startsWith(action + "=")) { return entry.substring(action.len() + 1, entry.len() - action.len() - 1); }
+        }
+        return "";
+    }
+
+    class void toEmulator(SemuLaunchPlan launch, string action, bool fromKeyboard) {
+        string route = SemuActionRouter.route(action, launch.retroarchPort > 0, fromKeyboard);
+        if (route.startsWith("udp:")) {
+            SemuCommandPort.send(launch.retroarchPort, route.substring(4, route.len() - 4));
+        } else if (route.equals("inject")) {
+            Vector<int> codes = SemuKeyNames.chord(SemuActionExecutor.chordFor(launch, action));
+            if (!SemuVirtualKeyboard.type(codes) && getenv("SEMU_RENDER_DEBUG") != null) {
+                Console.error("semu: could not type the chord for " + action + " (no /dev/uinput access?)");
+            }
+        }
+        if (action.equals("state.next") && SemuSupervisorRuntime.slot < 9) { SemuSupervisorRuntime.slot++; }
+        if (action.equals("state.prev") && SemuSupervisorRuntime.slot > 0) { SemuSupervisorRuntime.slot--; }
+        int journal = SemuActionRouter.journalCode(action);
+        SemuActionJournal.append(launch, journal, action.startsWith("state.") ? SemuSupervisorRuntime.slot : 0);
+    }
+
+    class void openMenu(SemuLaunchPlan launch) {
+        if (SemuSupervisorRuntime.menu_visible != 0) { return; }
+        SemuSupervisorRuntime.menu_visible = 1;
+        SemuSupervisorRuntime.menu_selected = 0;
+        SemuActionJournal.append(launch, SemuActions.menuToggle(), 0);
+        if (!launch.pauseAction.isEmpty()) { SemuActionExecutor.toEmulator(launch, launch.pauseAction, false); }
+    }
+
+    class void closeMenu(SemuLaunchPlan launch) {
+        if (SemuSupervisorRuntime.menu_visible == 0) { return; }
+        SemuSupervisorRuntime.menu_visible = 0;
+        SemuActionJournal.append(launch, SemuActions.menuBack(), 0);
+        if (!launch.pauseAction.isEmpty()) { SemuActionExecutor.toEmulator(launch, launch.pauseAction, false); }
+    }
+
+    class void toggleVisual(SemuLaunchPlan launch, string action) {
+        bool bezels = action.equals("visual.bezels.toggle");
+        SemuActionJournal.append(launch, bezels ? SemuActions.bezelsToggle() : SemuActions.shadersToggle(), 0);
+        if (bezels) { launch.bezelsOn = !launch.bezelsOn; } else { launch.shadersOn = !launch.shadersOn; }
+        if (!launch.semuHome.isEmpty()) {  // the choice survives the session
+            bool enabled = launch.shadersOn;
+            if (bezels) { enabled = launch.bezelsOn; }
+            SemuSettingsStore.put(launch.semuHome, bezels ? "visual.bezels" : "visual.crt_shaders", JSONValue.makeBool(enabled));
+        }
+    }
+
+    class void confirm(SemuLaunchPlan launch) {  // runs the selected menu item
+        if (SemuSupervisorRuntime.menu_visible == 0 || SemuSupervisorRuntime.menu_selected >= launch.menuActions.size()) { return; }
+        string item = launch.menuActions.get(SemuSupervisorRuntime.menu_selected);
+        if (item.startsWith("visual.")) {
+            SemuActionExecutor.toggleVisual(launch, item);  // stays open so the change is visible
+        } else if (item.equals("app.quit")) {
+            SemuSupervisorRuntime.quit = 1;
+        } else {
+            SemuActionExecutor.closeMenu(launch);  // resume first so the emulator can act
+            if (!item.equals("ui.menu.back")) { SemuActionExecutor.toEmulator(launch, item, false); }
+        }
+    }
+
+    class void execute(SemuLaunchPlan launch, string action, bool fromKeyboard) {
+        if (action.isEmpty()) { return; }
+        if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: action " + action + (fromKeyboard ? " (keyboard)" : " (gamepad)")); }
+        if (action.equals("app.quit")) {
+            SemuSupervisorRuntime.quit = 1;
+        } else if (action.equals("ui.menu")) {
+            if (SemuSupervisorRuntime.menu_visible != 0) { SemuActionExecutor.closeMenu(launch); } else { SemuActionExecutor.openMenu(launch); }
+        } else if (action.equals("ui.menu.back") || action.equals("ui.escape")) {
+            SemuActionExecutor.closeMenu(launch);
+        } else if (action.equals("ui.menu.up") || action.equals("ui.menu.down")) {
+            if (SemuSupervisorRuntime.menu_visible == 0) { return; }
+            int count = launch.menuActions.size() > 0 ? launch.menuActions.size() : 1;
+            SemuSupervisorRuntime.menu_selected = (SemuSupervisorRuntime.menu_selected + (action.equals("ui.menu.up") ? count - 1 : 1)) % count;
+            SemuActionJournal.append(launch, action.equals("ui.menu.up") ? SemuActions.menuUp() : SemuActions.menuDown(), 0);
+        } else if (action.equals("ui.menu.confirm")) {
+            SemuActionExecutor.confirm(launch);
+        } else if (action.startsWith("visual.")) {
+            SemuActionExecutor.toggleVisual(launch, action);
+        } else {
+            SemuActionExecutor.toEmulator(launch, action, fromKeyboard);
+        }
+    }
+}

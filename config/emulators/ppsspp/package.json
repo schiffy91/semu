@@ -10,14 +10,7 @@
   "outputs": {
     "main_program": "bin/ppsspp",
     "main_program_name": "ppsspp",
-    "patched_binary": "share/ppsspp/bin/PPSSPPSDL",
-    "build_contract": "share/semu/ppsspp-build-contract.json"
-  },
-  "fallbacks": {
-    "host_executable": false,
-    "flatpak": false,
-    "libretro": false,
-    "prebuilt_binary": false
+    "patched_binary": "share/ppsspp/bin/PPSSPPSDL"
   },
   "metadata": {
     "description": "Fast and portable PSP emulator",
@@ -25,9 +18,8 @@
     "license": "gpl2Plus"
   },
   "doc": {
-    "source": "Nix fetches the immutable upstream 1.19.3 commit with all declared submodules and verifies the recursive source hash before applying the Semu patch.",
-    "platforms": "Only the Steam Deck x86_64-linux closure is declared. Evaluation fails on other hosts instead of selecting an alternate package or frontend.",
-    "rendering": "PPSSPP queues the directly linked renderer's game phase after the final PSP image draw, executes normal PPSSPP UI, then queues the post-UI phase from Present immediately before the real swap task. No inactive report or runtime symbol lookup exists."
+    "source": "Nix fetches the immutable upstream 1.19.3 commit with all declared submodules and verifies the recursive source hash.",
+    "platforms": "Only the Steam Deck x86_64-linux closure is declared. Evaluation fails on other hosts instead of selecting an alternate package or frontend."
   },
   "flake": "flake.nix"
 }

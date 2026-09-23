@@ -1,0 +1,170 @@
+#include <string.h>
+#include "semu_evdev.h"
+
+import Library.Strings;
+import Library.Vector;
+
+#define SEMU_SUPERVISOR_DEVICES 64
+#define SEMU_SUPERVISOR_KEYS 768
+#define SEMU_SUPERVISOR_RESCAN_TICKS 200
+#define SEMU_BIT_WORDS 16
+#define SEMU_QUIT_CHORD_BUTTONS 4
+
+struct SemuChordState {  // one device's view of the configured quit chord
+    int buttons[SEMU_QUIT_CHORD_BUTTONS];
+    int count;
+    int window_ms;
+    int held[SEMU_QUIT_CHORD_BUTTONS];
+    long long pressed_at[SEMU_QUIT_CHORD_BUTTONS];
+};
+
+struct SemuInputDevice {
+    int descriptor;
+    int gamepad;
+    int keyboard;
+    unsigned char down[SEMU_SUPERVISOR_KEYS];
+    int hat_x;
+    int hat_y;
+    struct SemuChordState quit_chord;
+};
+
+struct SemuSupervisorState {
+    struct SemuInputDevice devices[SEMU_SUPERVISOR_DEVICES];
+    int device_count;
+    int uinput_descriptor;
+    unsigned long long sequence;
+    int menu_visible;
+    int menu_selected;
+    int slot;
+    int quit;
+    struct SemuChordState quit_template;
+};
+
+struct SemuSupervisorState SemuSupervisorRuntime;
+
+char SemuDevicePaths[SEMU_SUPERVISOR_DEVICES * 64];  // one 64-byte path per device slot
+
+class SemuKeyNames {  // "Ctrl+Shift+S" -> evdev codes; the same table types chords into the emulator
+    class int modifier(string name) {
+        string lower = name.toLower();
+        if (lower.equals("ctrl") || lower.equals("control")) { return KEY_LEFTCTRL; }
+        if (lower.equals("shift")) { return KEY_LEFTSHIFT; }
+        if (lower.equals("alt")) { return KEY_LEFTALT; }
+        if (lower.equals("meta") || lower.equals("super")) { return KEY_LEFTMETA; }
+        return 0;
+    }
+
+    class int key(string name) {
+        string lower = name.toLower();
+        if (lower.len() == 1) {
+            char character = lower.charAt(0);
+            if (character >= 'a' && character <= 'z') {
+                int letters[26] = {KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G, KEY_H, KEY_I, KEY_J, KEY_K, KEY_L, KEY_M,
+                    KEY_N, KEY_O, KEY_P, KEY_Q, KEY_R, KEY_S, KEY_T, KEY_U, KEY_V, KEY_W, KEY_X, KEY_Y, KEY_Z};
+                return letters[character - 'a'];
+            }
+            if (character >= '0' && character <= '9') {
+                int digits[10] = {KEY_0, KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9};
+                return digits[character - '0'];
+            }
+            if (character == '+') { return KEY_EQUAL; }
+            if (character == '-') { return KEY_MINUS; }
+        }
+        if (lower.equals("up")) { return KEY_UP; }
+        if (lower.equals("down")) { return KEY_DOWN; }
+        if (lower.equals("left")) { return KEY_LEFT; }
+        if (lower.equals("right")) { return KEY_RIGHT; }
+        if (lower.equals("enter") || lower.equals("return")) { return KEY_ENTER; }
+        if (lower.equals("space")) { return KEY_SPACE; }
+        if (lower.equals("backspace")) { return KEY_BACKSPACE; }
+        if (lower.equals("esc") || lower.equals("escape")) { return KEY_ESC; }
+        if (lower.equals("tab")) { return KEY_TAB; }
+        if (lower.startsWith("f") && lower.len() <= 3) {
+            int number = Strings.toInt(lower.substring(1, lower.len() - 1));
+            int functions[12] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12};
+            if (number >= 1 && number <= 12) { return functions[number - 1]; }
+        }
+        return 0;
+    }
+
+    class Vector<int> chord(string text) {  // modifiers first, the key last; empty when any part is unknown
+        Vector<int> codes = [];
+        Vector<string> parts = Strings.split(text, "+");
+        if (text.endsWith("++")) { parts = Strings.split(text.substring(0, text.len() - 2), "+"); parts.push("+"); }
+        for (int index = 0; index < parts.size(); index++) {
+            string part = parts.get(index).trim();
+            if (part.isEmpty()) { continue; }
+            int code = index == parts.size() - 1 ? SemuKeyNames.key(part) : SemuKeyNames.modifier(part);
+            if (code == 0 && index == parts.size() - 1) { code = SemuKeyNames.modifier(part); }
+            if (code == 0) { Vector<int> none = []; return none; }
+            codes.push(code);
+        }
+        return codes;
+    }
+
+    class int button(string name) {  // gamepad button names from config/input
+        string lower = name.toLower();
+        if (lower.equals("south") || lower.equals("a")) { return BTN_SOUTH; }
+        if (lower.equals("east") || lower.equals("b")) { return BTN_EAST; }
+        if (lower.equals("north") || lower.equals("y")) { return BTN_NORTH; }
+        if (lower.equals("west") || lower.equals("x")) { return BTN_WEST; }
+        if (lower.equals("tl") || lower.equals("l1")) { return BTN_TL; }
+        if (lower.equals("tr") || lower.equals("r1")) { return BTN_TR; }
+        if (lower.equals("tl2") || lower.equals("l2")) { return BTN_TL2; }
+        if (lower.equals("tr2") || lower.equals("r2")) { return BTN_TR2; }
+        if (lower.equals("select") || lower.equals("back")) { return BTN_SELECT; }
+        if (lower.equals("start")) { return BTN_START; }
+        if (lower.equals("mode") || lower.equals("guide")) { return BTN_MODE; }
+        if (lower.equals("thumbl")) { return BTN_THUMBL; }
+        if (lower.equals("thumbr")) { return BTN_THUMBR; }
+        if (lower.equals("dpad_up")) { return BTN_DPAD_UP; }
+        if (lower.equals("dpad_down")) { return BTN_DPAD_DOWN; }
+        if (lower.equals("dpad_left")) { return BTN_DPAD_LEFT; }
+        if (lower.equals("dpad_right")) { return BTN_DPAD_RIGHT; }
+        return 0;
+    }
+}
+
+class SemuQuitChord {  // pure state machine: every configured button held within the window
+    class bool configure(struct SemuChordState* state, Vector<string> names, int windowMs) {  // false when a name is unknown
+        memset(state, 0, sizeof(struct SemuChordState));
+        state->window_ms = windowMs;
+        for name in names {
+            int code = SemuKeyNames.button(name);
+            if (code == 0 || state->count >= SEMU_QUIT_CHORD_BUTTONS) {
+                state->count = 0;
+                return false;
+            }
+            state->buttons[state->count] = code;
+            state->count++;
+        }
+        return state->count >= 2;
+    }
+
+    class bool event(struct SemuChordState* state, int code, int value, long long now) {  // true the moment the chord completes
+        bool matched = false;
+        for (int index = 0; index < state->count; index++) {
+            if (state->buttons[index] != code) { continue; }
+            matched = true;
+            if (value == 0) {
+                state->held[index] = 0;
+            } else if (state->held[index] == 0) {
+                state->held[index] = 1;
+                state->pressed_at[index] = now;
+            }
+        }
+        if (!matched || value == 0 || state->count < 2) { return false; }
+        long long earliest = state->pressed_at[0];
+        long long latest = state->pressed_at[0];
+        for (int index = 0; index < state->count; index++) {
+            if (state->held[index] == 0) { return false; }
+            if (state->pressed_at[index] < earliest) { earliest = state->pressed_at[index]; }
+            if (state->pressed_at[index] > latest) { latest = state->pressed_at[index]; }
+        }
+        return latest - earliest <= (long long)state->window_ms;
+    }
+
+    class string describe(Vector<string> names) {  // "start+select" for messages
+        return names.isEmpty() ? "(no quit chord configured)" : names.join("+");
+    }
+}

@@ -13,9 +13,6 @@
       "DISABLE_UPDATER",
       "FORCE_EXTERNAL_BASE_DIR"
     ],
-    "linux_defines": [
-      "SEMU_RENDERER"
-    ],
     "executables": [
       "Ryujinx"
     ],
@@ -33,8 +30,6 @@
   },
   "platforms": [
     "x86_64-linux",
-    "aarch64-linux",
-    "x86_64-darwin",
     "aarch64-darwin"
   ],
   "graphics_apis": [
@@ -44,13 +39,7 @@
   "outputs": {
     "linux_main_program": "bin/Ryujinx",
     "macos_main_program": "Applications/Ryujinx.app/Contents/MacOS/Ryujinx",
-    "macos_wrapper": "bin/ryujinx",
-    "build_contract": "share/semu/ryujinx-build-contract.json"
-  },
-  "fallbacks": {
-    "linux_host_executable": false,
-    "linux_flatpak": false,
-    "linux_prebuilt_binary": false
+    "macos_wrapper": "bin/ryujinx"
   },
   "meta": {
     "description": "Nintendo Switch emulator built from the Ryubing continuation source",
@@ -61,8 +50,7 @@
   },
   "doc": {
     "source": "The current official Ryubing Forgejo repository exposes release 1.3.3 at this immutable commit archive. The normalized unpacked source hash matches the former repository pin byte-for-byte.",
-    "build": "The pinned source declares .NET SDK 9.0.100 with latestFeature roll-forward and builds src/Ryujinx/Ryujinx.csproj. Its retired updater NuGet feed is removed declaratively and the updater is compiled out.",
-    "rendering": "The Linux managed OpenGL path uses static named P/Invoke into libsemurenderer: game rendering runs after the final guest blit, and post-UI rendering runs immediately before the embedded window's owned swap. Settings and loading views never create a renderer frame."
+    "build": "The pinned source declares .NET SDK 9.0.100 with latestFeature roll-forward and builds src/Ryujinx/Ryujinx.csproj. Its retired updater NuGet feed is removed declaratively and the updater is compiled out."
   },
   "flake": "flake.nix"
 }

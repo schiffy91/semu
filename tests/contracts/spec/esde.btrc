@@ -1,5 +1,7 @@
 // ES-DE spec: filtered custom systems, a narrow es_settings merge, the settings manifest and the ES-DE patch.
 
+#include <sys/stat.h>
+
 import Library.FileSystem;
 import Library.JSON;
 import Library.Strings;
@@ -147,6 +149,7 @@ class EsDeSpecLauncher {  // ES-DE runs only a regular /bin/semu, never an AppIm
         string assets = PathTools.join(fixture.scratch, "esde-spec/trusted-assets");
         FileSystem.mkdirp(PathTools.join(assets, "bin"));
         FileSystem.writeText(PathTools.join(assets, "bin/semu"), "#!/bin/sh\n");
+        chmod(PathTools.join(assets, "bin/semu"), 0755);  // ES-DE runs only an executable launcher
         plan.assetRoot = assets;
         string launcher = SemuSettingsUi.launcher(plan);
         contract.expect(launcher.endsWith("/bin/semu") && FileSystem.isFile(launcher), "a regular bin/semu is the trusted launcher");

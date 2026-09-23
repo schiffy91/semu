@@ -1,0 +1,201 @@
+// Render environment spec: every SEMU_RENDER_* the renderer reads is emitted for some system, and every emitted name is read.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/rendering.btrc;
+
+class RenderEnvSpecSources {  // the names the renderer sources ask for, as literals or snprintf templates
+    class void collect(string directory, Vector<string> names) {
+        for entry in FileSystem.listDir(directory).sorted() {
+            string path = PathTools.join(directory, entry);
+            if (FileSystem.isDir(path)) {
+                RenderEnvSpecSources.collect(path, names);
+            } else if (entry.endsWith(".btrc")) {
+                RenderEnvSpecSources.scan(FileSystem.readText(path), names);
+            }
+        }
+    }
+
+    class void scan(string text, Vector<string> names) {
+        int start = Strings.find(text, "\"SEMU_RENDER_", 0);
+        while (start >= 0) {
+            int close = Strings.find(text, "\"", start + 1);
+            if (close < 0) { return; }
+            string name = text.substring(start + 1, close - start - 1);
+            if (!names.contains(name)) { names.push(name); }
+            start = Strings.find(text, "\"SEMU_RENDER_", close + 1);
+        }
+    }
+
+    class bool harnessKnob(string name) {  // set by a person or a test harness, never by the launch
+        return name.equals("SEMU_RENDER_DEBUG") || name.equals("SEMU_RENDER_CAPTURE_FRAME");
+    }
+}
+
+class RenderEnvSpecMatch {  // %d is one or more digits, %s a variant suffix: nothing or _ and a capital
+    class bool isDigit(char value) { return value >= '0' && value <= '9'; }
+
+    class bool from(string pattern, int patternIndex, string name, int nameIndex) {
+        if (patternIndex >= pattern.len()) { return nameIndex >= name.len(); }
+        char current = pattern.charAt(patternIndex);
+        if (current == '%' && patternIndex + 1 < pattern.len()) {
+            char kind = pattern.charAt(patternIndex + 1);
+            if (kind == 'd') {
+                int digitEnd = nameIndex;
+                while (digitEnd < name.len() && RenderEnvSpecMatch.isDigit(name.charAt(digitEnd))) {
+                    digitEnd++;
+                    if (RenderEnvSpecMatch.from(pattern, patternIndex + 2, name, digitEnd)) { return true; }
+                }
+                return false;
+            }
+            if (kind == 's') {
+                if (RenderEnvSpecMatch.from(pattern, patternIndex + 2, name, nameIndex)) { return true; }
+                bool suffix = nameIndex + 1 < name.len() && name.charAt(nameIndex) == '_'
+                    && name.charAt(nameIndex + 1) >= 'A' && name.charAt(nameIndex + 1) <= 'Z';
+                return suffix && RenderEnvSpecMatch.from(pattern, patternIndex + 2, name, nameIndex + 2);
+            }
+        }
+        return nameIndex < name.len() && name.charAt(nameIndex) == current
+            && RenderEnvSpecMatch.from(pattern, patternIndex + 1, name, nameIndex + 1);
+    }
+
+    class bool matches(string pattern, string name) { return RenderEnvSpecMatch.from(pattern, 0, name, 0); }
+
+    class bool anyMatches(Vector<string> patterns, string name) {
+        for pattern in patterns { if (RenderEnvSpecMatch.matches(pattern, name)) { return true; } }
+        return false;
+    }
+
+    class bool anyMatched(string pattern, Vector<string> names) {
+        for name in names { if (RenderEnvSpecMatch.matches(pattern, name)) { return true; } }
+        return false;
+    }
+}
+
+class RenderEnvSpecAssets {  // a stub for every asset a manifest or package names, so every optional name can be emitted
+    class void stub(string assets, string reference) {
+        string logical = reference.startsWith("semu:") ? reference.substring(5, reference.len() - 5) : reference;
+        string shaders = "assets/shaders/";
+        if (logical.startsWith(shaders)) {
+            RenderEnvSpecAssets.write(PathTools.join(assets, "share/libretro/shaders/semu/" + logical.substring(shaders.len(), logical.len() - shaders.len())));
+        } else if (logical.startsWith("assets/")) {
+            RenderEnvSpecAssets.write(PathTools.join(assets, "share/semu/" + logical));
+        }
+    }
+
+    class void write(string path) {
+        int slash = Strings.rfind(path, "/");
+        if (slash > 0) { FileSystem.mkdirp(path.substring(0, slash)); }
+        if (!FileSystem.isFile(path)) { FileSystem.writeText(path, "stub"); }
+    }
+
+    class void walk(string assets, JSONValue value) {
+        if (value == null) { return; }
+        if (value.isString()) { RenderEnvSpecAssets.stub(assets, value.asString()); return; }
+        if (value.isArray()) {
+            for (int index = 0; index < value.size(); index++) { RenderEnvSpecAssets.walk(assets, value.at(index)); }
+            return;
+        }
+        if (value.isObject()) {
+            for key in value.keys() { RenderEnvSpecAssets.walk(assets, value.get(key)); }
+        }
+    }
+
+    class void layer(string assets, string packageId, string layerId, string reference) {  // the bundled copy the emitter prefers
+        if (layerId.isEmpty() || reference.isEmpty()) { return; }
+        int dot = Strings.rfind(reference, ".");
+        string extension = dot > 0 ? reference.substring(dot, reference.len() - dot) : "";
+        RenderEnvSpecAssets.write(PathTools.join(assets, "share/semu/assets/bezels/layers/" + packageId + "/" + layerId + extension));
+    }
+
+    class void packages(string assets, string configRoot) {
+        string root = PathTools.join(configRoot, "bezels");
+        for packageId in FileSystem.listDir(root).sorted() {
+            string file = PathTools.join(root, packageId + "/bezel.json");
+            if (!FileSystem.isFile(file)) { continue; }
+            JSONValue package = JSONValue.parse(FileSystem.readText(file));
+            if (package == null || !package.isObject()) { continue; }
+            RenderEnvSpecAssets.walk(assets, package);
+            JSONValue layers = package.get("layers");
+            for (int index = 0; layers != null && layers.isArray() && index < layers.size(); index++) {
+                RenderEnvSpecAssets.layer(assets, packageId, SemuJson.textAt(layers.at(index), "id"), SemuJson.textAt(layers.at(index), "file"));
+            }
+            JSONValue ambient = package.get("ambient");
+            if (ambient != null && ambient.isObject()) { RenderEnvSpecAssets.layer(assets, packageId, "ambient", SemuJson.textAt(ambient, "file")); }
+        }
+    }
+}
+
+class RenderEnvSpecContract {
+    class void emittedNames(Fixture fixture, Vector<string> names) {  // every system under every bezel variant, names only
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        for systemId in fixture.model.systemIds() {
+            SemuSystem system = fixture.model.system(systemId);
+            Vector<string> variants = [""];
+            JSONValue declared = system.bezels == null ? null : system.bezels.get("variants");
+            for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) { variants.push(SemuJson.textAt(declared.at(index), "id")); }
+            for variant in variants {
+                string overlay = variant.isEmpty() ? "{}" : "{\"visual\":{\"systems\":{\"" + systemId + "\":{\"bezel_variant\":\"" + variant + "\"}}}}";
+                SemuPlan plan = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
+                for entry in SemuRenderEnvironment.compile(plan, system, "retroarch", "/state/retroarch", diagnostics) {
+                    int equals = Strings.find(entry, "=", 0);
+                    string name = equals > 0 ? entry.substring(0, equals) : entry;
+                    if (!names.contains(name)) { names.push(name); }
+                }
+            }
+        }
+    }
+
+    class void editorAuthored(Fixture fixture, Vector<string> names) {  // fields only the bezel editor writes today: a bulged tube
+        SemuSystem system = fixture.model.system("nes");
+        JSONValue package = SemuBezelPackage.load(fixture.plan, SemuRenderEnvironment.packageId(system, SemuJson.textAt(system.bezels, "default_variant")));
+        JSONValue screen = SemuBezelPackage.screen(package, "main");
+        if (screen == null || !screen.isObject()) { return; }
+        JSONValue shape = screen.get("shape");
+        if (shape == null || !shape.isObject()) {
+            shape = JSONValue.makeObject();
+            screen.set("shape", shape);
+        }
+        JSONValue bulge = JSONValue.makeObject();
+        bulge.set("x", JSONValue.makeFloat(4.0));
+        bulge.set("y", JSONValue.makeFloat(4.0));
+        shape.set("bulge", bulge);
+        SemuRenderEnvironment env = SemuRenderEnvironment();
+        SemuRenderEnvironment.variant(env, fixture.plan, system, "", package, "", "", SemuDiagnostics());
+        for entry in env.entries {
+            int equals = Strings.find(entry, "=", 0);
+            string name = equals > 0 ? entry.substring(0, equals) : entry;
+            if (!names.contains(name)) { names.push(name); }
+        }
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        for systemId in fixture.model.systemIds() {
+            SemuSystem system = fixture.model.system(systemId);
+            RenderEnvSpecAssets.walk(fixture.plan.assetRoot, system.shaders);
+            RenderEnvSpecAssets.walk(fixture.plan.assetRoot, system.bezels);
+        }
+        RenderEnvSpecAssets.packages(fixture.plan.assetRoot, fixture.plan.configRoot);
+        Vector<string> read = [];
+        RenderEnvSpecSources.collect(PathTools.join(fixture.project, "src/renderer"), read);
+        Vector<string> emitted = [];
+        RenderEnvSpecContract.emittedNames(fixture, emitted);
+        RenderEnvSpecContract.editorAuthored(fixture, emitted);
+        contract.expect(read.size() > 20 && emitted.size() > 20, f"render env: the renderer reads {read.size()} names and the launch emits {emitted.size()}");
+        for pattern in read {
+            if (RenderEnvSpecSources.harnessKnob(pattern)) { continue; }
+            contract.expect(RenderEnvSpecMatch.anyMatched(pattern, emitted), "render env: the renderer reads " + pattern + " but no system emits it");
+        }
+        for name in emitted {
+            contract.expect(RenderEnvSpecMatch.anyMatches(read, name), "render env: the launch emits " + name + " but the renderer never reads it");
+        }
+    }
+}
