@@ -12,8 +12,8 @@
   outputs = { self, nixpkgs, btrc }:
     let
       lib = nixpkgs.lib;
-      platforms = { linux = true; macos = false; windows = "planned"; };  # OpenGL through EGL/GLX today; Metal and D3D are the planned ports
-      systems = [ "x86_64-linux" ];
+      platforms = { linux = true; macos = true; windows = "planned"; };  # OpenGL: EGL/GLX on Linux, CGL on macOS; D3D is planned
+      systems = [ "x86_64-linux" "aarch64-darwin" ];
     in {
       semu = { id = "renderer"; inherit platforms; };
       retroarchBridge = ./retroarch;  # transpiled into RetroArch's gl3 driver by the retroarch flake

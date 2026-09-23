@@ -43,7 +43,8 @@
       "label": "Gambatte",
       "core": "gambatte",
       "platforms": [
-        "linux"
+        "linux",
+        "macos"
       ]
     }
   ],

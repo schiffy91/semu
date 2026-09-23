@@ -367,7 +367,360 @@
           "ppsspp": {
             "video_driver": "vulkan"
           }
-        }
+        },
+        "audio_driver": "pulse",
+        "joypad_driver": "sdl2"
+      },
+      "render_hook": true
+    },
+    "macos": {
+      "executable": "${asset_root}/bin/retroarch",
+      "args": [
+        "-f"
+      ],
+      "state": {
+        "data_home": "xdg"
+      },
+      "firmware": {
+        "dir": "${emulation_root}/RetroArch/config/system",
+        "fallback_dirs": [
+          "${bios}"
+        ]
+      },
+      "core_loader": {
+        "filename": "${core}_libretro.dylib",
+        "directories": [
+          "${asset_root}/lib/retroarch/cores"
+        ],
+        "args": [
+          "-L",
+          "${core_file}"
+        ]
+      },
+      "retroarch": {
+        "video_driver": "glcore",
+        "input_driver": "cocoa",
+        "frame_output": {
+          "fullscreen": true,
+          "scope": "game_only",
+          "origin": "bottom_left",
+          "orientation": "upright",
+          "filter": "nearest",
+          "native_shader": false,
+          "native_bezel": false
+        },
+        "core_options": {
+          "mesen": [
+            {
+              "key": "mesen_aspect_ratio",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            }
+          ],
+          "snes9x": [
+            {
+              "key": "snes9x_aspect",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            },
+            {
+              "key": "snes9x_overscan",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
+            }
+          ],
+          "genesis_plus_gx": [
+            {
+              "key": "genesis_plus_gx_aspect_ratio",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            },
+            {
+              "key": "genesis_plus_gx_overscan",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            },
+            {
+              "key": "genesis_plus_gx_render",
+              "source": {
+                "kind": "literal",
+                "value": "single field"
+              }
+            }
+          ],
+          "mupen64plus_next": [
+            {
+              "key": "mupen64plus-aspect",
+              "aspect": "standard",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            },
+            {
+              "key": "mupen64plus-aspect",
+              "aspect": "widescreen",
+              "source": {
+                "kind": "literal",
+                "value": "16:9 adjusted"
+              }
+            },
+            {
+              "key": "mupen64plus-43screensize",
+              "aspect": "standard",
+              "source": {
+                "kind": "render_resolution",
+                "basis": "combined",
+                "display_aspect": "standard",
+                "anchor": "width"
+              }
+            },
+            {
+              "key": "mupen64plus-169screensize",
+              "aspect": "widescreen",
+              "source": {
+                "kind": "render_resolution",
+                "basis": "combined",
+                "display_aspect": "widescreen",
+                "anchor": "width",
+                "minimum_scale": 2
+              }
+            },
+            {
+              "key": "mupen64plus-EnableFBEmulation",
+              "source": {
+                "kind": "literal",
+                "value": "True"
+              }
+            },
+            {
+              "key": "mupen64plus-rdp-plugin",
+              "source": {
+                "kind": "literal",
+                "value": "angrylion"
+              }
+            },
+            {
+              "key": "mupen64plus-rsp-plugin",
+              "source": {
+                "kind": "literal",
+                "value": "cxd4"
+              }
+            }
+          ],
+          "mednafen_psx": [
+            {
+              "key": "beetle_psx_aspect_ratio",
+              "source": {
+                "kind": "literal",
+                "value": "4:3"
+              }
+            },
+            {
+              "key": "beetle_psx_widescreen_hack",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            },
+            {
+              "key": "beetle_psx_display_vram",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            }
+          ],
+          "desmume": [
+            {
+              "key": "desmume_screens_layout",
+              "source": {
+                "kind": "literal",
+                "value": "top/bottom"
+              }
+            },
+            {
+              "key": "desmume_screens_gap",
+              "source": {
+                "kind": "literal",
+                "value": "0"
+              }
+            },
+            {
+              "key": "desmume_internal_resolution",
+              "source": {
+                "kind": "render_resolution",
+                "basis": "screen",
+                "screen": "top",
+                "display_aspect": "native",
+                "anchor": "width"
+              }
+            }
+          ],
+          "ppsspp": [
+            {
+              "key": "ppsspp_cropto16x9",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            },
+            {
+              "key": "ppsspp_internal_resolution",
+              "source": {
+                "kind": "render_resolution",
+                "basis": "combined",
+                "display_aspect": "native",
+                "anchor": "width"
+              }
+            }
+          ],
+          "citra": [
+            {
+              "key": "citra_layout_option",
+              "source": {
+                "kind": "literal",
+                "value": "Default Top-Bottom Screen"
+              }
+            },
+            {
+              "key": "citra_swap_screen",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            },
+            {
+              "key": "citra_use_hw_shaders",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
+            },
+            {
+              "key": "citra_use_hw_shader_cache",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
+            },
+            {
+              "key": "citra_resolution_factor",
+              "source": {
+                "kind": "literal",
+                "value": "1x"
+              }
+            },
+            {
+              "key": "citra_use_libretro_save_path",
+              "source": {
+                "kind": "literal",
+                "value": "LibRetro Default"
+              }
+            },
+            {
+              "key": "citra_mouse_touchscreen",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            }
+          ],
+          "azahar": [
+            {
+              "key": "citra_layout_option",
+              "source": {
+                "kind": "literal",
+                "value": "default"
+              }
+            },
+            {
+              "key": "citra_swap_screen",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            },
+            {
+              "key": "citra_resolution_factor",
+              "source": {
+                "kind": "literal",
+                "value": "1x"
+              }
+            },
+            {
+              "key": "citra_use_libretro_save_path",
+              "source": {
+                "kind": "literal",
+                "value": "LibRetro Default"
+              }
+            },
+            {
+              "key": "citra_use_hw_shader",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
+            },
+            {
+              "key": "citra_use_disk_shader_cache",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
+            },
+            {
+              "key": "citra_enable_mouse_touchscreen",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            }
+          ],
+          "melonds": [
+            {
+              "key": "melonds_screen_layout",
+              "source": {
+                "kind": "literal",
+                "value": "Top/Bottom"
+              }
+            },
+            {
+              "key": "melonds_screen_gap",
+              "source": {
+                "kind": "literal",
+                "value": "0"
+              }
+            },
+            {
+              "key": "melonds_opengl_renderer",
+              "source": {
+                "kind": "literal",
+                "value": "disabled"
+              }
+            },
+            {
+              "key": "melonds_touch_mode",
+              "source": {
+                "kind": "literal",
+                "value": "Touch"
+              }
+            }
+          ]
+        },
+        "core_overrides": {},
+        "audio_driver": "coreaudio",
+        "joypad_driver": "hid"
       },
       "render_hook": true
     }

@@ -25,7 +25,7 @@
         "source": "platform.retroarch.input_driver"
       },
       "audio_driver": {
-        "literal": "pulse"
+        "source": "platform.retroarch.audio_driver"
       },
       "content_root": {
         "source": "runtime.content_root"
@@ -56,6 +56,9 @@
       },
       "bios_directory": {
         "source": "runtime.bios_directory"
+      },
+      "joypad_driver": {
+        "source": "platform.retroarch.joypad_driver"
       }
     },
     "line_groups": {
@@ -142,7 +145,7 @@
           "line": "input_driver = \"${input_driver}\""
         },
         "input_autodetect_enable = \"true\"",
-        "input_joypad_driver = \"sdl2\"",
+        "input_joypad_driver = \"${joypad_driver}\"",
         "input_player1_joypad_index = \"0\"",
         "joypad_autoconfig_dir = \"${asset_root}/share/libretro/autoconfig\"",
         "notification_show_autoconfig = \"false\"",

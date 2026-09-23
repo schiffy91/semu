@@ -31,7 +31,8 @@
       "label": "melonDS (libretro)",
       "core": "melonds",
       "platforms": [
-        "linux"
+        "linux",
+        "macos"
       ]
     },
     {
@@ -39,7 +40,8 @@
       "label": "DeSmuME",
       "core": "desmume",
       "platforms": [
-        "linux"
+        "linux",
+        "macos"
       ]
     },
     {

@@ -46,7 +46,8 @@
       ],
       "core": "mednafen_psx",
       "platforms": [
-        "linux"
+        "linux",
+        "macos"
       ]
     }
   ],

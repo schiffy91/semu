@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "id": "macos",
+  "platform": "macos",
+  "nix_systems": [
+    "aarch64-darwin"
+  ],
+  "backend": "native",
+  "input": "macos",
+  "settings": {
+    "paths": {
+      "emulation_root": "${home}/Drive/media/Games/Emulation",
+      "roms": "${home}/Drive/media/Games/Emulation/ES-DE/ES-DE/ROMs",
+      "media": "${home}/Drive/media/Games/Emulation/ES-DE/ES-DE/downloaded_media",
+      "bios": "${home}/Drive/media/Games/Emulation/RetroArch/config/system",
+      "content_root": "${home}/Drive/media/Games/Emulation/Semu",
+      "state_root": "${home}/Library/Application Support/Semu",
+      "esde_home": "${home}/ES-DE"
+    },
+    "ui": {
+      "display_index": 0
+    }
+  }
+}

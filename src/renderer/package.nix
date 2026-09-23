@@ -22,6 +22,11 @@ stdenv.mkDerivation {
     btrcpy libsemurenderer.btrc -o semu_renderer.c --strict-imports --no-cache --no-stdlib --no-dce
     $CC -c semu_renderer.c -o semu_renderer.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function \
       -DLIBRA_RUNTIME_OPENGL=1 -DSTB_IMAGE_IMPLEMENTATION -DSTBI_ONLY_PNG -DSTBI_ONLY_JPEG -I${librashader}/include -I.
+  '' + (if stdenv.hostPlatform.isDarwin then ''
+    printf '%s\n' _semu_render_context_invalidate_gl _semu_render_game_gl _semu_render_post_ui_gl > exports.txt
+    $CC -dynamiclib -Wl,-exported_symbols_list,exports.txt -install_name "$out/lib/libsemurenderer.dylib" \
+      semu_renderer.o -L${librashader}/lib -Wl,-rpath,${librashader}/lib -lrashader -lm -o libsemurenderer.dylib
+  '' else ''
     cat > exports.map <<'MAP'
     { global: semu_render_context_invalidate_gl; semu_render_game_gl; semu_render_post_ui_gl; local: *; };
     MAP
@@ -36,20 +41,26 @@ stdenv.mkDerivation {
     MAP
     $CC -shared -Wl,-soname,libsemupreload.so -Wl,--version-script=preload.map \
       semu_preload.o -L. -Wl,-rpath,$out/lib -lsemurenderer -ldl -o libsemupreload.so
-  '';
+  '');
 
   installPhase = ''
     mkdir -p "$out/include" "$out/lib"
     cp ${rendererHeader} "$out/include/semu_renderer.h"
+  '' + (if stdenv.hostPlatform.isDarwin then ''
+    cp libsemurenderer.dylib "$out/lib/libsemurenderer.dylib"
+    ln -s libsemurenderer.dylib "$out/lib/libsemurenderer.so"  # one SEMU_RENDERER_LIBRARY path on every platform
+  '' else ''
     cp libsemurenderer.so "$out/lib/libsemurenderer.so"
     cp libsemupreload.so "$out/lib/libsemupreload.so"
-  '';
+  '');
 
   doInstallCheck = true;
   installCheckPhase = ''
+  '' + lib.optionalString (!stdenv.hostPlatform.isDarwin) ''
     nm -D --defined-only "$out/lib/libsemurenderer.so" | awk '{ print $3 }' | sort > actual
     printf '%s\n' semu_render_context_invalidate_gl semu_render_game_gl semu_render_post_ui_gl | sort > expected
     cmp expected actual
+  '' + ''
     btrcpy loader/loader_probe.btrc -o loader_probe.c --strict-imports --no-cache --no-stdlib --no-dce  # emulators link the loader: prove it forwards
     $CC loader_probe.c -std=c11 -O1 -o loader_probe -ldl
     test "$(SEMU_RENDERER_LIBRARY="$out/lib/libsemurenderer.so" ./loader_probe)" = "-1"
