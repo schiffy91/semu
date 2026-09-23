@@ -522,13 +522,14 @@ class RenderResolutionContract {  // the 3D cores render at the largest whole mu
 
 class HelpContract {  // help on any command prints usage and writes nothing
     class bool quiet(char* flag) {  // prepare with a help flag, into a home that must stay absent
-        char* arguments[5];
+        char* arguments[6];
         arguments[0] = "semu";
         arguments[1] = "prepare";
         arguments[2] = flag;
         arguments[3] = "--es-de-home";
         arguments[4] = "/tmp/semu-help-contract-es-de-home";
-        return SemuCli(CLIArgs(5, arguments)).run() == 0 && !FileSystem.exists("/tmp/semu-help-contract-es-de-home");
+        arguments[5] = "--project";
+        return SemuCli(CLIArgs(6, arguments)).run() == 0 && !FileSystem.exists("/tmp/semu-help-contract-es-de-home");
     }
 
     class void run(Contract contract) {
