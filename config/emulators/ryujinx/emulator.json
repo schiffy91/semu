@@ -77,7 +77,7 @@
       }
     },
     "macos": {
-      "executable": "${asset_root}/Applications/Ryujinx.app/Contents/MacOS/Ryujinx",
+      "executable": "${asset_root}/bin/Ryujinx",
       "graphics": {
         "method": "cli"
       },
