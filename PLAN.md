@@ -448,324 +448,141 @@ Order and expected cost: M11.1 and M11.2 are the work (a few hundred lines of
 Python against Mega Bezel's source, half a day); M11.3 to M11.5 are an hour;
 M11.6 runs in minutes on this machine. No emulator is launched before M11.6.
 
-## Gap review (2026-09-22)
+## Gap review (2026-09-22) and its resolution (2026-09-23)
 
-A full review of `src/`, `tests/`, `config/`, `packaging/` and a visual pass,
-run on the Mac (mbp21, aarch64-darwin, macOS 27). FRACTAL-NORTH did not
-resolve and no Deck was reachable, so nothing here was observed on either
-production target. How it was run: the pinned BTRC compiler (c959dd0e) with
-the host Python; the contracts compiled and run in the local podman Linux VM;
-a scratch macOS `semu` (evdev headers stubbed, not committed) serving
-`semu bezel edit` against the pinned nixpkgs `libretro-shaders-slang`, with
-every package inspected on the editor's test card; the committed plates in
-montages; `glslangValidator` on `config/render/compositor.frag`.
+The review ran on the Mac (mbp21, aarch64-darwin, macOS 27). FRACTAL-NORTH did not resolve
+and no Deck was reachable on either day, so nothing below was observed on a production target.
+Each gap keeps its done criterion; the evidence is what was observed on the Mac. Commits
+dd2d43b to aa75831.
 
-What held up: the contracts print `PASS: 371 checks`. The compositor GLSL
-compiles. Every system's shader and bezel variant resolves to a package or
-asset that exists. Both `input.json` files match the M8 vocabulary. The
-editor puts the test card inside the opening for the DMG, GBC, GBA, DS, 3DS,
-PSP and every Soqueroeu TV. Every CLI command PLAN names exists.
+Rulings taken as defaults because the owner was not available (reversible; say if wrong):
+- macOS is a development host, not a product target (G1).
+- Recolours and the late-night light are drawn by the renderer over the unmodified upstream
+  plates (layer `tint` and a multiplied, lifted `ambient` plate); the few flattened plates are
+  baked by nix on the building machine, never committed (G4, G7).
+- `semu bezel` may write `config/bezels/<id>/bezel.json` and nothing else under the checkout's
+  `src/` or `config/` (`SemuPaths.writeSource`, G5).
 
-The gaps below are ordered by priority. Each has a done criterion, like a
-milestone. Where a gap contradicts a Status line, that line is corrected
-below.
+### G1. Build and tests run on one host only — done on the Mac
 
-### G1. The build and tests run on one host only (P0)
+- The root flake exposes aarch64-darwin for the development outputs (btrcpy, semu-program/cli,
+  bezel-tree, bezel-layers, visual-assets, asset-root, the contracts check); the bundle and
+  emulators stay x86_64-linux. The Makefile's `nix run .#btrcpy` works there (the libffi abort
+  came from btrc's own lock; through semu's follows it is gone).
+- Evdev sits behind `src/launch/semu_evdev.h` (kernel headers on Linux, the same constants and
+  records elsewhere); the dead pad reader in `process.btrc` is deleted.
+- `MegaBezelTree` reads the pinned `.#bezel-tree` (slang-shaders pinned by rev, packs named in
+  `bezels.json`) via `SEMU_BEZEL_TREE`, the bundle, or `build/bezel-tree`; no
+  `/run/current-system`, no `nix-build <nixpkgs>`.
+- Observed: `make build test` passes natively (2601 checks); the contracts run in 2 s once built;
+  `nix build .#checks.aarch64-darwin.contracts` passes 2601 with no skip from pinned inputs;
+  `make -j2 build test` from a touched source takes 61 s, all of it the two BTRC transpiles.
+- Remaining: the M1 "under a minute" wants a faster transpiler or one binary for CLI and
+  contracts; the x86_64-linux checks were evaluated, not built (no Linux builder here).
 
-- `make build` fails on the Mac. The root flake lists only `x86_64-linux`
-  (`flake.nix:47`), so the Makefile's `nix run .#btrcpy` fallback has
-  nothing to run. The pinned `btrcpy`, built for darwin, aborts in libffi
-  (`ffi_trampoline_table_alloc`) under nixpkgs Python 3.14 on macOS 27, and
-  runs fine under the host's Python 3.13.
-- Once transpiled, the C does not compile on macOS. `<linux/input.h>` and
-  `<linux/uinput.h>` are included unconditionally (`src/launch/
-  supervisor.btrc:23-24`, `process.btrc:16`). `check.btrc:61` also rejects
-  every target whose platform is not `linux`.
-- The `bezel` commands and the placement contract only work on a NixOS host
-  with channels. `MegaBezelTree` (`src/bezel/preset.btrc:58`) finds the
-  slang tree through `/run/current-system/sw/bin/semu`. It fetches the packs
-  with `nix-build -E '(import <nixpkgs> {})…'` and discards stderr
-  (`:76-79`), which is impure, not pinned, and slow: it is most of the
-  contracts' 63 s.
-- The owner's rulings conflict: the Vision names two Linux targets, while
-  the memory notes name Deck plus Mac. **Ruling needed:** is macOS a
-  development host only, or a product target? The answer decides whether
-  the supervisor gets a platform gate or a macOS input backend.
-- **Done when:** on this Mac, `make build && make test` passes (at least as
-  a development host) with no BTRC on PATH. The placement and layer-stack
-  contracts run in the `contracts` flake check from pinned inputs, with no
-  `<nixpkgs>`, `/run/current-system` or network. `make test` takes under a
-  minute (the M1 criterion; the run here took 63 s).
+### G2. Tests that report PASS without testing — done
 
-### G2. Tests that report PASS without testing (P0)
+- All nine keep-list specs are ported to `tests/contracts/spec/*.btrc` against the current code
+  and run in `make test` (RetroArch 294 conditions, runtime 323, standalone+Cemu 774, Steam
+  Input+ES-DE 397, Game Boy 18-case matrix and touch 167, plus new launch (68) and render-env
+  (111) specs). A skip now fails unless `SEMU_ALLOW_SKIP=1`; the hardcoded package count is a
+  per-package check. `make nix-check` builds the checks. Quit chord and process-group
+  behaviour have real tests (a fake child group is started and killed).
+- Python is gone from the integration check (socat), and it now checks RetroArch's exit status.
+- Remaining: one integration check per M3 system through `semu launch` with a real core on
+  Linux (needs a Linux builder; the check exists only for the synthetic core); `menu-e2e.sh`
+  and the Xvfb captures still need FRACTAL-NORTH.
 
-- None of the nine spec tests from the keep list run. `tests/spec/*.btrc`
-  still use the old syntax (`import std.{…}`, `JsonValue`) and import
-  `src/compiler/*` and `src/generators/*`, which no longer exist. Nothing
-  imports them (`tests/contracts/main.btrc:9-23`), and the check copies only
-  `src`, `tests/contracts` and `config` (`checks.nix:14`). This covers the
-  gb 18-case matrix (named in M6), the Steam Input binding table,
-  melonDS/Azahar touch, Cemu and the standalone contracts, plus the
-  `tests/spec/retroarch/*.cfg` fixtures. **M1's "make test runs the ported
-  contract tests" is therefore not met.**
-- Two contracts skip and still count as passes. Layer stack:
-  `main.btrc:363-366` passes when `layerCount == 0`. Bezel placement:
-  `:444` adds `expect(true)` when the shader tree is missing. So the seven
-  2 px ground-truth rectangles (M11.2) never run in any check.
-  `BezelPackageContract` hardcodes `calibrated == 25` (`:429`).
-- `NativeProfilesContract` (`main.btrc:177-201`) asserts keys for Dolphin
-  and PCSX2 only. For PPSSPP, melonDS, Cemu, Flycast, Azahar and Ryujinx it
-  checks only that the file is non-empty.
-- Nothing tests the quit chord (either order, the 250 ms window) or the
-  process-group kill. Only `chordWindowMs == 250` is asserted.
-- `make nix-check` is `nix flake check --no-build` (`Makefile:48`), so it
-  evaluates the checks but never runs them.
-- There are no per-system integration tests (M3 and M4). The only one,
-  `tests/integration/retroarch-headless.sh`, uses the synthetic core. It
-  bypasses `semu launch`, the supervisor and the renderer, overrides
-  `glcore`/`sdl2` with `gl`/`x`, never checks the exit code, and treats
-  `mean > 0.05` as non-blank, which RetroArch's own menu can pass.
-- `tests/visual/*` and `tests/deck/deploy.sh` need FRACTAL-NORTH (host
-  ROMs, `semu` on PATH, Xvfb, IM6) and contain no assertions.
-  `menu-e2e.sh` greps a log; it never checks the state file or the
-  persisted `visual.bezels`.
-- **Done when:** the spec tests are ported to the current BTRC and wired
-  into `main.btrc`, or deleted with their assertions moved in. A skipped
-  contract fails the run unless an explicit `SEMU_ALLOW_SKIP` is set.
-  `make nix-check` builds the checks. There is one integration check per M3
-  system through `semu launch` with a real core, asserting save/load, exit
-  0 and no orphans. Quit-chord and process-group tests drive a fake child.
+### G3. Renderer defects — done, follow-ups listed
 
-### G3. Renderer defects (P0 for hot reload, P1 otherwise)
+- Hot reload rebinds sampler units and checks once a second; `tests/visual/hot-reload.sh`
+  proves a reloaded program draws the identical frame (the unfixed code changed 98.8 % of it).
+- A failed shader chain, layer, asset or game phase keeps the bezel and the Semu menu and logs
+  once; `initialize` backs off; no texture or source leaks on context change; the GL state guard
+  also keeps units 0-15, UBO bindings 0-3 and the clear colour; plates are mipmapped;
+  `SEMU_RENDER_FPS`/`FRAME_DELTA_MS` are emitted and `RenderEnvSpecContract` checks every read
+  name is emitted; the dual gap is a setting, the widescreen switch is the 4:3/16:9 midpoint, the
+  menu scales by whole multiples with nearest filtering.
+- Remaining: a compositor file broken at launch has no built-in fallback program; no
+  `system.json` declares `display.refresh_hz`; the renderer is still linked into RetroArch and
+  PCSX2 (dlopen against the ABI header would end the rebuilds); the preload shim still assumes a
+  centred picture at `SEMU_RENDER_ASPECT`; standalone melonDS, Azahar, Cemu and Ryujinx get no
+  bezel (their `doc` strings no longer claim one).
 
-- **Hot reload breaks every texture but the game.** Confirmed in code:
-  `relinkIfChanged` (`renderer_compositor.btrc:1065-1093`) links the new
-  program and looks the uniforms up again, but sets sampler units only in
-  `initialize` (`:1190-1196`), and the GLSL has no `binding=` qualifiers.
-  After the first successful edit, every sampler reads unit 0. The reload
-  also runs every 60 frames rather than every second, and a compositor file
-  that is broken at launch has no built-in fallback.
-- If the game phase fails, the Semu menu goes with it
-  (`libsemurenderer.btrc:197`, `:221-224`). A missing layer, a bad preset,
-  or turning SHADER ON for a system with no preset removes the menu and its
-  toggles.
-- A preset that fails is recompiled every frame (`:1362-1374`). A failed
-  `initialize` rereads both GLSL files every frame. `layer_textures[32]`
-  leaks on a context change (a GBA layer is about 45 MB). The compositor
-  source buffers leak on each reset (`:924`, `:940`).
-- The GL state guard saves texture units 0-6 only. It does not save units 7
-  and up, indexed UBO bindings (librashader and PCSX2 both use them), or
-  the clear colour (`renderer_gl_api.btrc:468-548`). Needs a live check.
-- Placement uses fixed fractions, against the standing ruling ("largest
-  integer native scale vs the actual screen"):
-  - fixed bezels are contain-fitted fractionally with integer scaling
-    forced off (`:826`, `:845`)
-  - the dual-layout gap is `areaWidth/64` (`:755`)
-  - the frame width is a fraction of screen height (`:819`)
-  - the inset is multiplied by 0.45 (`:376`)
-  - the widescreen switch is fixed at aspect 1.55 (`:530`)
-  - the menu is 2/5 of the screen width from a 384x468 texture scaled
-    LINEAR, so its text is blurry (`renderer_post_ui.btrc:506-513`)
-- Plates up to 4400 px are drawn with LINEAR and no mipmaps
-  (`:969-984`), so they alias on the Deck's 1280x800. All four variants'
-  plates load synchronously on the render thread.
-- The preload shim assumes the emulator letterboxes the game centred at
-  `SEMU_RENDER_ASPECT`, and reports that aspect as the live one, so the
-  widescreen switch never fires. Its `context_generation` is always 1.
-  PCSX2 reads back its already-stretched output and scales it again.
-- The emitter and the renderer disagree on the environment.
-  `SEMU_RENDER_BEZEL_ID` is emitted but never read. `SEMU_RENDER_FPS`,
-  `SEMU_RENDER_FRAME_DELTA_MS` and variants `_C`/`_D` are read but never
-  emitted. The rejected reflection "reach" survives as dead code
-  (`uRingReach`, REFLECT fields 4-5, `editor.btrc:111`).
-- The emulators link the renderer directly, so any edit under
-  `src/renderer` rebuilds RetroArch and PCSX2. Root `emulator-pcsx2` does
-  not follow `renderer` (`flake.nix:26`), so PCSX2 links a second
-  libsemurenderer built with BTRC fad4b470.
-- **Done when:** a compositor edit during a live game keeps bezel, glass,
-  background, second screen and menu correct (capture inspected). Fault
-  injection (a missing layer, a bad preset, a broken compositor file) keeps
-  the menu and logs once. The listed fractions are replaced by
-  integer-scale rules or settings. Plates are mipmapped. Every emitted
-  `SEMU_RENDER_*` has a reader and vice versa, enforced by a contract. The
-  renderer is loaded with dlopen against the ABI header, and PCSX2 follows
-  the root renderer.
+### G4. Bezel look and variants — done
 
-### G4. Bezel look and variants (P0: users see this)
+- Recolours are layer tints (`recolor`), the TV scenes carry their night plate again
+  (`ambient`); seen in the editor and in the real renderer: arctic white, berry magenta, red PSP,
+  night-lit NES.
+- M9 again: black-edition NES, purple-trim SNES and Soqueroeu's speaker TV for n64, genesis,
+  psx, ps2, dreamcast, gc and wii are the alternates; `none` turns one system's bezel or shader
+  off (it used to fall back to the default), offered on every system page. 60-cell matrix
+  (default, alternate bezel, alternate shader, off) for 15 systems rendered and inspected.
+- Layers are bundled (`.#bezel-layers`, verbatim, with each upstream's licence); a package is
+  usable from its layers alone. Scenes whose canvas is the room cover-fit the screen when every
+  tube stays visible, so 16:10 no longer letterboxes.
+- The editor opens fitted (smaller zoom steps, refit on resize), answers only its own loopback
+  origin, serves the night plate, reports failed saves and drops the rejected `reach`.
+- M11.5/M11.6: `tests/visual/gallery.sh` renders every variant at Deck and 4K through the real
+  renderer and lights a flat card per fixed screen: 68 of 68 within 2 px (full run 4 min 8 s,
+  `--quick` 39 s), plus the dimensions table and plate overlays, all inspected.
+- `placement.btrc:303` `resX *=` is Mega Bezel's own (`cache-info.inc:183`), ported faithfully.
+- Remaining: the DMG and GBC shells are contain-fitted whole, so their LCD is about 1.15x on the
+  Deck; the owner's placement modes (integer game, bezel grown or cropped around it) are not
+  implemented and `minimumApertureCanvas` is unused.
 
-- **Recolour alternates render as their defaults.** In the editor,
-  `gba-arctic` showed the indigo GBA, `gbc-berry` the teal GBC and
-  `psp-red` the black PSP. `semu render-env --system gba` emits the same
-  seven upstream `SEMU_RENDER_LAYER_*` for `arctic` as for `shell`, and in
-  layered mode the renderer ignores `SEMU_RENDER_ART`. The recoloured
-  plates (`config/assets/bezels/{gba/arctic,gbc/berry,psp/red}.png`) look
-  right on their own, but they are only drawn when the layers do not
-  resolve. So a repo launch and an installed-bundle launch show different
-  art. This violates "no fake variants".
-- **Layered TV scenes lose the night lighting.** The committed Soqueroeu
-  plates (`tv/soqueroeu/*.png`) are night-lit and vignetted, which is the
-  M10 look. The layer stack draws the flat, daylight upstream background
-  for nes, psx, wii-16x9 and genesis (seen in the editor), because Mega
-  Bezel's night lighting is a shader texture, not a layer. **Ruling
-  needed:** bake night lighting and recolours into layers (for example a
-  `lighting`/`recolor` pass over the layer stack), or keep flat plates for
-  those packages.
-- **M9 is no longer met.** Since the crt-premium and crt-silver deletion,
-  dreamcast, gc, genesis, n64, nes, ps2, psx and snes have one bezel
-  variant each. Wii's two (`tv`, `tv_wide`) are the widescreen switch, not
-  an alternate. No `bezels.json` has a per-system disabled variant; only
-  the global `visual.bezels` switch exists. `settings_ui.btrc:88` hides the
-  bezel picker below two variants.
-- The layer files resolve only through `<repo>/build/bezel/shaders`
-  (`rendering.btrc:46`), so an installed bundle never gets layers. This was
-  already open in Status.
-- Package geometry is computed at a fixed 3840x2160 viewport
-  (`package.btrc:187`). The Deck's 16:10 screen gets 16:9 placement.
-- The slang tree is nixpkgs `libretro-shaders-slang` used as-is
-  (`config/assets/shaders.json:9`). The Mega Bezel `HSM_*` defaults, and
-  with them the M11 geometry, move whenever nixpkgs moves.
-- Suspected bug: `placement.btrc:303` has `resX = resX * (…)` (pixel²) on
-  the dual-mode-2 integer path, which none of the seven captures covers.
-- Package count: 26 on disk, 22 in the editor (the upstream and inheriting
-  ones), 25 in the contract. PLAN says 29 and "3 Semu CRTs".
-- M11.5 and M11.6 are not done. The dimensions and overlay sheets have no
-  generator. `tools/bezel_fake.py` does not know `LAYER_*`, `CANVAS`,
-  `RING` or `REFLECT`, and is Python (G8).
-- Editor: it opens unfitted (at 12.5 %, Fit needed). `/api/save` checks no
-  Origin or Host (any page in the browser can rewrite packages). Save
-  reports success when the write fails (`editor.btrc:102`,
-  `package.btrc:146`).
-- **Done when:** every alternate is visibly distinct from its default in
-  both the repo and installed-bundle launches (captures inspected side by
-  side). The TV scenes look the same layered as the committed plates, or
-  the owner rules otherwise. Every non-modern system again has disabled,
-  default and one materially different alternate (M9). Layers ship in the
-  asset tree from a pinned slang tree. Geometry follows the actual output
-  aspect, with Deck and 4K cells both inspected. The M11.5 sheets exist in
-  BTRC.
+### G5. Launch, input, settings, owned paths — done, rulings pending
 
-### G5. Launch, input, settings, owned paths (P1)
+- The quit chord comes from config; RetroArch gets `QUIT` over its command port (port read from
+  its profile) before SIGTERM and the bounded SIGKILL; the group is ended after a normal exit;
+  device slots are reused; slot next/prev journal their own codes.
+- Settings writes never replace a malformed `semu.json`; malformed overrides are diagnostics.
+- One owned-write helper: normalized paths, no writes into a checkout's `src`/`config` except a
+  bezel package, temporary-then-rename. Steam Input icons copy as bytes (they were cut to 8
+  bytes); `sync stop` checks it is Syncthing; peers are XML-escaped; seeds refuse symlinks and
+  stay inside the state root; unresolved `${...}` fails a launch; the Wii controller mode and
+  the RetroArch port are data; the supervisor is split under 500 lines.
+- Remaining: `semu steam input` does not write the default controller profile nor remove the
+  deprecated app ids, and accepts any output directory; the supervisor ignores the gamepad
+  identities in `steam_input.json`; seed copies are not atomic; ES-DE install follows a symlink
+  above the ES-DE home (the owner's `~/ES-DE` → Drive layout depends on it: **ruling needed**).
 
-- The quit chord is hardcoded to `BTN_START`/`BTN_SELECT`
-  (`supervisor.btrc:587-590`); `SemuInput.quitChord()` (`model.btrc:148`)
-  is never read. `SemuQuitChord`'s pad logic in `process.btrc:128-248` is
-  dead.
-- Quit is SIGTERM then SIGKILL after 250 ms, RetroArch included, although
-  its UDP `QUIT` is available (`process.btrc:114-125`). SRAM, memory-card
-  and NAND flushes can be cut off.
-- When the direct child exits normally, the rest of its process group keeps
-  running (`supervisor.btrc:628`), against M3's "no orphans".
-- Slot next and previous are journalled as `state.load`
-  (`supervisor.btrc:315`). Device slots are never reused after unplug
-  (`:654`), so after 64 plug events no new device is accepted.
-- `settings put` over a malformed `semu.json` replaces it with `{}` and
-  writes that out, losing the user's settings (`lib/settings.btrc:24`). A
-  malformed `overrides/*.json` is ignored with no diagnostic
-  (`resolve.btrc:67-70,88`).
-- The owned-paths boundary is not what PLAN carried over. `inside()`
-  compares string prefixes without normalizing `..` (`lib/paths.btrc:16,36`),
-  and there is no deny list for `src/`/`config/`. `bezel emit` and editor
-  Save write `config/bezels/*` directly. **Ruling needed:** is `config/`
-  writable by `semu bezel`, as M11.4 requires?
-- Steam Input icons are copied with `readText`/`writeText`
-  (`steam/input_template.btrc:355`), which truncates PNGs at the first NUL.
-  `shortcuts.vdf` is rewritten in place with no temp file and rename
-  (`steam/shortcuts.btrc:60`).
-- `sync stop` kills the process group of a PID from a pidfile without
-  checking it is Syncthing. Peer ids go into the XML unescaped
-  (`sync/syncthing.btrc:46-57,208`).
-- Hardcoded ids in BTRC, against "no system id in BTRC":
-  - `settings_ui.btrc:105` (`dolphin`) and `:138` (`input.systems.wii…`)
-  - pack names duplicated in `rendering.btrc:30-34` and `preset.btrc:82-88`
-  - the RetroArch port 55355 in `plan.btrc:166`
-  - the X11 `dolphin_pointer` in `input.json`
-- `supervisor.btrc` is 677 lines, over the roughly 500-line limit. Six
-  files still have block comments, and `placement.btrc` uses one- and
-  two-letter names (the style directive).
-- **Done when:** the quit chord comes from config and is contract-tested.
-  RetroArch quits through `QUIT` before any signal. There are no orphans
-  after a normal exit. Settings writes never destroy unparseable input.
-  Icons copy byte-for-byte. Shortcuts are written atomically. The
-  owned-paths rule is decided and enforced in one helper.
+### G6. Packaging and directive compliance — mostly done
 
-### G6. Packaging and directive compliance (P1)
+- Dead fields (`gl_wrapper`, `sandbox`, `backend`, `launch_contract`, `managed_profile_files`,
+  `settings_overrides`, `fallbacks`, `build_contract`), `install.json`, the unused PCSX2 patch,
+  `retroarch.nix` and the Python gallery template are gone; RetroArch patches apply with
+  `--fuzz=0`; the Deck's Steam Virtual Gamepad autoconfig ships in the bundle; PCSX2 follows the
+  root renderer and btrc; the slang tree is pinned by rev; the platform matrix also checks
+  `emulator.json` slices and `package.json` systems against each flake.
+- Remaining: nixpkgs still tracks `nixos-unstable`; ES-DE's nixpkgs (2026-01-02, insecure
+  FreeImage) and the pins M4 names (Cemu v2.6, Ryujinx 1.3.3, ES-DE, RetroArch 1.22.2, PCSX2
+  v2.6.3) are not refreshed; `librashader`, `syncthing` and `retroarch-joypad-autoconfig` are
+  nixpkgs packages used as-is; the two targets and input files are copies, not inheritance.
 
-- The root nixpkgs tracks `nixos-unstable` (e554fab, 2026-09-17); M1 says a
-  release branch. The ES-DE flake's nixpkgs is ac62194 (2026-01-02) and
-  allows insecure FreeImage. Pins M4 would refresh: Cemu v2.6 (2025-02),
-  Ryujinx 1.3.3 (2025-10), ES-DE (2025-11), RetroArch 1.22.2 (2025-11),
-  PCSX2 v2.6.3 (2026-01). The sub-flake locks still pin BTRC fad4b470.
-- nixpkgs packages shipped as-is, which the directive calls a regression:
-  `librashader`, `syncthing`, `retroarch-joypad-autoconfig` and the slang
-  shader tree.
-- The `emulator.json` platform slices contradict the flakes:
-  - RetroArch has a macOS slice, but its flake says `macos = false`.
-  - Azahar, Flycast and melonDS flakes build for macOS, but their
-    `emulator.json` has no macOS slice.
-  - No macOS target exists.
-- Leftovers from the delete list:
-  - `gl_wrapper: ${asset_root}/bin/nixGL` in all 8 standalone
-    `emulator.json` files
-  - `config/settings/install.json`, which names the AppImage, defaults to
-    `steam-deck`, and is read by nothing
-  - AppImage `doc` strings
-  - `aspect_probe`
-  - the `compiler.{bindings,line_groups}` DSL. The keep list says drop it,
-    but `emit/profiles.btrc:184,225` needs it. Decide which is right.
-- The keep list names files that are gone: `packaging/nix/renderer.nix`,
-  `render-hook.nix` and `semu_app.nix`. `config/assets/bezels.nix` cites a
-  `nix run .#bake-bezels` app that does not exist.
-  `pcsx2/system-cubeb.patch` is declared and never applied.
-  `assets/shaders/fallback/crt.slangp` is referenced by nothing.
-  `sharp`/`screen` naming is reversed in gc, dreamcast, ps2 and wii. The two
-  target files and the two `input.json` files are full copies, not
-  inheritance.
-- **Done when:** the `platform-matrix` check also asserts that each
-  `emulator.json` slice matches its flake's platforms. Nothing on the
-  delete list is left. Every pin is current or noted as held back, with a
-  reason.
+### G7. Art licence — done, history is the owner's call
 
-### G7. Art licence (P0 before any release)
+- `config/assets/NOTICE.md` attributes Duimon (CC BY-NC-ND 4.0) and Soqueroeu (credit, no
+  profit); the bundle ships each upstream's licence beside its plates; the derived PNGs left the
+  repository and are baked by the nix stager on the building machine.
+- Remaining: the derived PNGs are still in git history (rewriting published history is the
+  owner's decision).
 
-The Duimon and Soqueroeu art is CC-BY-NC-ND and ships in the repo and in
-the `Semu-x86_64.tar.zst` release. The repo records no licence or
-attribution for it (`config/assets/bezels.json` provenance has no licence
-field). The recolours and night-lit scenes are derivatives, which ND
-forbids distributing. **Done when:** a NOTICE carries the attribution and
-licence for each pack, and the owner has ruled on shipping derivatives
-(bake them at install time from the pinned upstream, or drop them).
+### G8. Python in the tree — done
 
-### G8. Python in the tree (P1, standing rule)
+`git ls-files '*.py'` is empty and no script, check or Makefile calls python. The virtual gamepad
+is `tests/visual/virtual_pad.btrc` (uinput), the gallery is bash + the render host, M11.7's
+cleanup is done and the README and memory notes describe the new tools.
 
-The rule is no Python anywhere. Still present:
+### G9. Observation still missing (needs hardware)
 
-- `tools/bezel-gallery.py`, `tools/bezel_fake.py`, `tools/bezel_measure.py`
-  and `tools/bezel-measure.py`
-- `tests/visual/virtualpad.py`, run through `nix-shell -p
-  python3Packages.evdev`
-- `tests/integration/retroarch-headless.sh:8-17`, which embeds `python3`
-  for UDP, with `pkgs.python3` in `checks.nix:51`
-- the Status line "an independent Python parse" (M7c)
-- M10 and M11 prose, and README lines 131-133, which still point at the
-  Python tools
-
-M11.7 is not done: `tools/bezel-calibrate.py` is gone, but PLAN still cites
-`tools/bezel-dimensions.py`, which does not exist. **Done when:** `git
-ls-files | grep '\.py$'` and a grep for `python` over `tests/`, `tools/`
-and `packaging/` come back empty. The gallery, the virtual pad (the
-supervisor already builds uinput devices) and the UDP client are BTRC.
-
-### G9. Observation still missing (carried, needs hardware)
-
-- On FRACTAL-NORTH: Xbox pad input, Start+Select on hardware, save and load
-  by pad, reboot survival (M2 to M4). Captures of wii, ps2 and n3ds (M9). A
-  16:9 title for the widescreen switch. Azahar and Cemu GL after a reboot.
-  Steam launching the shortcut.
-- On the Deck: everything in M5, plus the Deck halves of M6 and M8.
-- The screenshots Status cites are not in the repo or in this checkout's
-  `build/`. The verification rule wants them retained: keep inspected
-  captures under `build/verification/<host>/<date>/` and commit a small
-  index (host, revision, file, verdict).
+- On FRACTAL-NORTH: Xbox pad input, Start+Select on hardware, save and load by pad, reboot
+  survival (M2-M4); `menu-e2e.sh` with the BTRC pad; captures of wii, ps2 and n3ds through real
+  emulators; a 16:9 title for the widescreen switch; Azahar and Cemu GL after a reboot; Steam
+  launching the shortcut; `nix flake check` built on x86_64-linux.
+- On the Deck: all of M5 and the Deck halves of M6 and M8.
+- Inspected Mac captures are retained under `build/verification/mbp21/2026-09-23/` (M9 matrix,
+  gallery with verification table and overlays).
 
 ## Verification rules
 
@@ -781,7 +598,7 @@ supervisor already builds uinput devices) and the UDP client are BTRC.
 
 Update this block whenever a milestone criterion changes state.
 
-- M1 reset: partly met, see G1 and G2 (2026-09-22). Was: done 2026-09-19 (`make build && make test` pass in about ten
+- M1 reset: met on the Mac 2026-09-23 except the one-minute bound (G1, G2: spec tests ported, 2601 checks, no skips; `make -j2 build test` from a touched source takes 61 s, all of it BTRC transpiling; the contracts alone take 2 s). Was: done 2026-09-19 (`make build && make test` pass in about ten
   seconds with 79 checks; `build configs --target linux-desktop` emits ES-DE
   and RetroArch files with no Deck path; `nix flake check --no-build` passes;
   commit eb909a7)
@@ -914,7 +731,7 @@ Update this block whenever a milestone criterion changes state.
   renders the Deck's Neptune templates (gamepad set, hotkey set, quick and
   menu trackpad radials with semantic icons, Wii controller layer) and
   copies the icons, covered by a contract test; not yet loaded on a Deck.
-- M9 bezel and shader fidelity: REOPENED 2026-09-22 (G4). Was done on the desktop 2026-09-19 (late) for
+- M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a
   default and a materially different alternate for both shader and bezel
@@ -1081,40 +898,28 @@ Update this block whenever a milestone criterion changes state.
   the asset tree (today they resolve through `build/bezel/shaders`, so only
   a launch from the repository checkout reaches them; the installed bundle
   falls back to the flat plate), the DS/3DS/PSP captures, the fast/real
-  galleries, and the glass-asset crop.
-- Active milestone: close the P0 gaps from the 2026-09-22 review first, in
-  this order:
-  1. G1: build and test on the Mac and in the checks from pinned inputs.
-  2. G2: tests that actually run, and no silent skips.
-  3. G3: the hot-reload sampler bug.
-  4. G4: variants that differ, the TV night look, and the M9 alternates.
-  5. G7: the art licence.
-  Then return to the old order: M11 layer bundling into the asset tree
-  and galleries, then M5/M6 hardware acceptance once a Deck is reachable
-  (`DECK_HOST=deck tests/deck/deploy.sh install`), then the native-emulator
-  render hook. Three rulings are needed from the owner:
-  - macOS as a target or a development host only (G1)
-  - how recolours and night lighting reach the layer stack (G4)
-  - whether `semu bezel` may write `config/` (G5)
-- Review 2026-09-22 (Mac, no production host reachable): see *Gap review*
-  above. The contracts compiled in a Linux VM print `PASS: 371 checks` in
-  63 s, but the placement and layer-stack contracts skip and count as passes,
-  and none of the nine `tests/spec` files is compiled. The corrections to the
-  lines above are:
-  - M1 is only partly met: the spec tests are not ported, the run is over a
-    minute, and `make build` fails on macOS.
-  - M4: the emulators are now pinned-source flakes that `overrideAttrs` the
-    nixpkgs recipes, not thin `package.nix` recipes.
-  - M9 is reopened: 8 TV systems lost their bezel alternate with the
-    crt-silver deletion, and the recolour alternates render as their
-    defaults in layered mode.
-  - M10 count: 26 packages on disk, not 29, and no Semu CRTs are left.
-  - Build structure: 24 flakes (13 cores), 12 of them macOS-enabled cores.
-    RetroArch, ES-DE, the renderer, PCSX2, Cemu and PPSSPP are Linux-only,
-    and the root flake exposes only `x86_64-linux`.
-  - Last observed: 371 checks, not 230.
-  - The renderer's hot reload is broken after the first successful edit
-    (G3).
+  galleries, and the glass-asset crop. (2026-09-23: bundling and both galleries done, see G4.)
+- Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
+  Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
+  1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,
+     retroarch-headless with socat, installer, platform-matrix), `tests/visual/menu-e2e.sh`
+     with the BTRC virtual pad, the pad/Start+Select/reboot items of M2-M4, real-emulator
+     captures of wii, ps2 and n3ds.
+  2. The Deck: M5 acceptance (`DECK_HOST=deck tests/deck/deploy.sh install`), then the Deck
+     halves of M6 and M8.
+  3. Engineering that needs no hardware, in order: the handheld placement modes (integer LCD
+     on the Deck, G4), per-system integration checks through `semu launch` (G2), the Steam
+     Input default profile and output-directory checks (G5), nixpkgs on a release branch and
+     the M4 pin refresh (G6), dlopen for the renderer (G3).
+  Rulings needed from the owner: the ES-DE symlink above the ES-DE home (G5), rewriting git
+  history to drop the derived art (G7), and confirmation of the three defaults recorded at
+  the top of the gap section.
+- Implementation 2026-09-23 (Mac, commits dd2d43b..aa75831): 2601 contract checks pass
+  natively and in the darwin flake check with no skips; the real renderer runs offscreen on
+  the Mac (`tests/visual/render_host.btrc`); the full gallery verifies 68 of 68 fixed screens
+  within 2 px at Deck and 4K; hot reload proven; no Python in the tree. Corrections to older
+  lines: 29 packages on disk (26 plus 3 TV alternates, no Semu CRTs); build structure is 24 flakes and the
+  root flake exposes aarch64-darwin for development outputs.
 - Build structure (2026-09-19 evening): 22 flakes, one per emulator (8),
   per core (11), RetroArch, ES-DE and the renderer, each with its own
   pinned source input and lock, composed by the root flake through path
