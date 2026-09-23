@@ -391,6 +391,7 @@ class SemuRenderEnvironment {
         env.set("SEMU_RENDER_BEZELS", bezels ? "1" : "0");
         env.set("SEMU_RENDER_INTEGER_SCALE", SemuJson.boolAt(settings, "visual.integer_scaling", true) ? "1" : "0");
         string placement = SemuJson.textAt(settings, "visual.systems." + system.id + ".placement");
+        if (placement.isEmpty()) { placement = SemuJson.textAt(system.bezels, "placement"); }  // the system's own default, e.g. game for handhelds
         if (placement.isEmpty()) { placement = SemuJson.textAt(settings, "visual.placement"); }
         env.set("SEMU_RENDER_PLACEMENT", placement.equals("game") || placement.equals("bezel") ? placement : "fit");  // integer picture: shell cropped, or shell whole
         JSONValue display = system.definition.get("display");

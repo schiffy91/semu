@@ -444,6 +444,29 @@ class SteamInputInstallContract {  // one Steam root holds the templates, icons 
     }
 }
 
+class LibrarySettingsContract {  // the ROM folder is chosen from ES-DE, and a link to an external drive is fine
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string external = PathTools.join(fixture.scratch, "external-drive/roms");
+        FileSystem.mkdirp(external);
+        string link = PathTools.join(fixture.scratch, "roms-link");
+        FileSystem.symlink(external, link);
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuPlan plan = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"paths\":{\"roms\":\"" + link + "\"}}", diagnostics);
+        JSONValue document = SemuSettingsUi.document(fixture.model, plan);
+        bool offered = false;
+        JSONValue sections = document.get("sections");
+        for (int index = 0; index < sections.size(); index++) {
+            JSONValue fields = sections.at(index).get("fields");
+            for (int field = 0; fields != null && fields.isArray() && field < fields.size(); field++) {
+                if (SemuJson.textAt(fields.at(field), "key").equals("paths.roms") && SemuJson.textAt(fields.at(field), "type").equals("path") && SemuJson.textAt(fields.at(field), "value").equals(link)) { offered = true; }
+            }
+        }
+        contract.expect(offered, "SEMU SETTINGS offers the ROM folder as a path, showing the one in use");
+        contract.contains(SemuEsDeDocuments.settings("", plan), link, "a ROM folder that is a link to an external drive reaches ES-DE as chosen");
+    }
+}
+
 class RenderResolutionContract {  // the 3D cores render at the largest whole multiple the display holds
     class string mupen(Fixture fixture, string overlay) {
         SemuDiagnostics diagnostics = SemuDiagnostics();
@@ -460,8 +483,9 @@ class RenderResolutionContract {  // the 3D cores render at the largest whole mu
         contract.lacks(RenderResolutionContract.mupen(desktop, "{\"visual\":{\"render_resolution\":\"native\"}}"), "43screensize", "native leaves the core its own default");
         contract.lacks(RenderResolutionContract.mupen(desktop, "{}"), "169screensize", "the widescreen size stays unset for 4:3 play");
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuPlan game = SemuResolver.plan(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"systems\":{\"gb\":{\"placement\":\"game\"}}}}", diagnostics);
-        contract.expect(SemuRenderEnvironment.compile(game, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=game") && SemuRenderEnvironment.compile(deck.plan, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=fit"), "placement is fit by default and game per system");
+        SemuPlan fitted = SemuResolver.plan(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"systems\":{\"gb\":{\"placement\":\"fit\"}}}}", diagnostics);
+        contract.expect(SemuRenderEnvironment.compile(deck.plan, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=game") && SemuRenderEnvironment.compile(deck.plan, deck.model.system("nes"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=fit"), "handhelds default to an integer picture, TVs fit");
+        contract.expect(SemuRenderEnvironment.compile(fitted, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=fit"), "a per-system setting overrides the system's default placement");
     }
 }
 
@@ -716,6 +740,7 @@ int main() {
     OwnedPathsContract.run(contract);
     RenderResolutionContract.run(contract);
     SteamInputInstallContract.run(contract);
+    LibrarySettingsContract.run(contract);
     RetroArchSpecContract.run(contract);
     EmulatorRuntimeSpecContract.run(contract);
     StandaloneSpecContract.run(contract);

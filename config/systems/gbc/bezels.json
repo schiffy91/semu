@@ -14,5 +14,6 @@
       "label": "Berry",
       "bezel": "gbc-berry"
     }
-  ]
+  ],
+  "placement": "game"
 }

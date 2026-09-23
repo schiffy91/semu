@@ -23,7 +23,7 @@ verdicts=""
 
 environment() {  # SYSTEM VARIANT [SHADER]: the launcher's render environment for that choice
   "$semu" render-env --system "$1" --project "$root/config" --asset-root "$assets" \
-    --settings-json "{\"visual\":{\"systems\":{\"$1\":{\"bezel_variant\":\"$2\"${3:+,\"shader_variant\":\"$3\"}}}}}"
+    --settings-json "{\"visual\":{\"systems\":{\"$1\":{\"bezel_variant\":\"$2\"${3:+,\"shader_variant\":\"$3\",\"placement\":\"fit\"}}}}}"  # a measuring render checks the package geometry, so fit
 }
 
 render() {  # SYSTEM VARIANT WIDTH HEIGHT OUT.ppm [CARD LIT]: a lit card measures geometry, so its shader is off
