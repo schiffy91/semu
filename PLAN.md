@@ -527,9 +527,11 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   renderer and lights a flat card per fixed screen: 68 of 68 within 2 px (full run 4 min 8 s,
   `--quick` 39 s), plus the dimensions table and plate overlays, all inspected.
 - `placement.btrc:303` `resX *=` is Mega Bezel's own (`cache-info.inc:183`), ported faithfully.
-- Remaining: the DMG and GBC shells are contain-fitted whole, so their LCD is about 1.15x on the
-  Deck; the owner's placement modes (integer game, bezel grown or cropped around it) are not
-  implemented and `minimumApertureCanvas` is unused.
+- Placement modes (d1b9014): `visual.placement` or `visual.systems.<id>.placement` = `fit`
+  (default), `game` (the picture at the largest whole multiple the screen holds, shell cropped:
+  DMG, GBC and GBA reach 5x on the Deck) or `bezel` (largest whole multiple with the shell
+  whole); inspected at 1280x800. **Ruling needed:** which default per system (today `fit`,
+  so the DMG LCD stays about 1.15x on the Deck).
 
 ### G5. Launch, input, settings, owned paths — done, rulings pending
 
@@ -542,8 +544,9 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   bytes); `sync stop` checks it is Syncthing; peers are XML-escaped; seeds refuse symlinks and
   stay inside the state root; unresolved `${...}` fails a launch; the Wii controller mode and
   the RetroArch port are data; the supervisor is split under 500 lines.
-- Remaining: `semu steam input` does not write the default controller profile nor remove the
-  deprecated app ids, and accepts any output directory; the supervisor ignores the gamepad
+- `semu steam input [--steam-root]` (66cec43) derives every destination from one Steam root,
+  writes each user's default FULL profile and removes only Semu's file from retired ids.
+- Remaining: the supervisor ignores the gamepad
   identities in `steam_input.json`; seed copies are not atomic; ES-DE install follows a symlink
   above the ES-DE home (the owner's `~/ES-DE` → Drive layout depends on it: **ruling needed**).
 
@@ -907,12 +910,12 @@ Update this block whenever a milestone criterion changes state.
      captures of wii, ps2 and n3ds.
   2. The Deck: M5 acceptance (`DECK_HOST=deck tests/deck/deploy.sh install`), then the Deck
      halves of M6 and M8.
-  3. Engineering that needs no hardware, in order: the handheld placement modes (integer LCD
-     on the Deck, G4), per-system integration checks through `semu launch` (G2), the Steam
-     Input default profile and output-directory checks (G5), nixpkgs on a release branch and
-     the M4 pin refresh (G6), dlopen for the renderer (G3).
-  Rulings needed from the owner: the ES-DE symlink above the ES-DE home (G5), rewriting git
-  history to drop the derived art (G7), and confirmation of the three defaults recorded at
+  3. Engineering that needs a Linux builder to verify (none reachable from the Mac): per-system
+     integration checks through `semu launch` (G2), nixpkgs on a release branch and the M4 pin
+     refresh (G6), dlopen for the renderer (G3). Needs a design choice: a built-in fallback
+     compositor (G3; the GLSL lives outside the renderer flake).
+  Rulings needed from the owner: the default placement per system (G4), the ES-DE symlink
+  above the ES-DE home (G5), rewriting git history to drop the derived art (G7), and confirmation of the three defaults recorded at
   the top of the gap section.
 - Implementation 2026-09-23 (Mac, commits dd2d43b..aa75831): 2601 contract checks pass
   natively and in the darwin flake check with no skips; the real renderer runs offscreen on
