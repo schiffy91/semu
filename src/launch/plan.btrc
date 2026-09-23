@@ -87,6 +87,7 @@ class SemuLauncher {
     class string romPath(SemuPlan plan, SemuSystem system, string rom) {  // ROM must live inside the system's ROM directory
         string root = PathTools.join(plan.romsRoot(), system.romDir);
         string path = PathTools.isAbsolute(rom) ? rom : PathTools.join(root, rom);
+        if (FileSystem.isDir(path)) { path = PathTools.join(path, PathTools.basename(path)); }  // an ES-DE directory-as-file: the same-named file inside is the game
         string realRoot = UnixFileSystem.realPath(root);
         string realPath = UnixFileSystem.realPath(path);
         if (realRoot.isEmpty() || realPath.isEmpty() || !SemuPaths.inside(realRoot, realPath)) { return ""; }

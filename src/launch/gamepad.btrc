@@ -1,0 +1,180 @@
+// Game controllers for the input supervisor on macOS: Apple's GameController framework reached at run
+// time through the Objective-C runtime, each pad reduced to evdev button codes. Where the runtime or
+// the framework cannot be loaded (Linux) no pad is ever reported.
+
+#include <dlfcn.h>
+#include <string.h>
+#include "semu_evdev.h"
+
+#define SEMU_GAMEPAD_BUTTONS 17
+
+struct SemuGameControllerRuntime {
+    int attempted;
+    int ready;
+    void* getClass;       // objc_getClass
+    void* registerName;   // sel_registerName
+    void* send;           // objc_msgSend, cast per call signature
+    void* poolPush;       // objc_autoreleasePoolPush
+    void* poolPop;        // objc_autoreleasePoolPop
+    void* runLoop;        // CFRunLoopRunInMode
+    void** defaultMode;   // &kCFRunLoopDefaultMode
+};
+
+struct SemuGameControllerRuntime SemuGameControllerLoaded;
+
+class SemuGameControllerFramework {
+    class void* selector(char* name) {
+        __fn_ptr<void*, const char*> call;
+        memcpy(&call, &SemuGameControllerLoaded.registerName, sizeof(call));
+        return call(name);
+    }
+
+    class void* named(char* name) {
+        __fn_ptr<void*, const char*> call;
+        memcpy(&call, &SemuGameControllerLoaded.getClass, sizeof(call));
+        return call(name);
+    }
+
+    class void* message(void* receiver, char* name) {  // an object-returning message with no arguments
+        if (receiver == null) { return null; }
+        __fn_ptr<void*, void*, void*> call;
+        memcpy(&call, &SemuGameControllerLoaded.send, sizeof(call));
+        return call(receiver, SemuGameControllerFramework.selector(name));
+    }
+
+    class bool pressed(void* element) {
+        if (element == null) { return false; }
+        __fn_ptr<unsigned char, void*, void*> call;
+        memcpy(&call, &SemuGameControllerLoaded.send, sizeof(call));
+        return call(element, SemuGameControllerFramework.selector("isPressed")) != 0;
+    }
+
+    class unsigned long count(void* array) {
+        __fn_ptr<unsigned long, void*, void*> call;
+        memcpy(&call, &SemuGameControllerLoaded.send, sizeof(call));
+        return call(array, SemuGameControllerFramework.selector("count"));
+    }
+
+    class void* item(void* array, unsigned long index) {
+        __fn_ptr<void*, void*, void*, unsigned long> call;
+        memcpy(&call, &SemuGameControllerLoaded.send, sizeof(call));
+        return call(array, SemuGameControllerFramework.selector("objectAtIndex:"), index);
+    }
+
+    class void pump(double seconds) {  // controllers connect and update on the run loop
+        __fn_ptr<int, const void*, double, unsigned char> call;
+        memcpy(&call, &SemuGameControllerLoaded.runLoop, sizeof(call));
+        call(*SemuGameControllerLoaded.defaultMode, seconds, (unsigned char)1);
+    }
+
+    class void* poolPush() {
+        __fn_ptr<void*> call;
+        memcpy(&call, &SemuGameControllerLoaded.poolPush, sizeof(call));
+        return call();
+    }
+
+    class void poolPop(void* pool) {
+        __fn_ptr<void, void*> call;
+        memcpy(&call, &SemuGameControllerLoaded.poolPop, sizeof(call));
+        call(pool);
+    }
+
+    class bool begin() {  // loads once; asks for background events so the focused emulator keeps its own
+        if (SemuGameControllerLoaded.attempted != 0) { return SemuGameControllerLoaded.ready != 0; }
+        SemuGameControllerLoaded.attempted = 1;
+        int flags = (int)RTLD_NOW;
+        void* runtime = dlopen("/usr/lib/libobjc.A.dylib", flags);
+        void* framework = dlopen("/System/Library/Frameworks/GameController.framework/GameController", flags);
+        void* foundation = dlopen("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", flags);
+        if (runtime == null || framework == null || foundation == null) { return false; }
+        SemuGameControllerLoaded.getClass = dlsym(runtime, "objc_getClass");
+        SemuGameControllerLoaded.registerName = dlsym(runtime, "sel_registerName");
+        SemuGameControllerLoaded.send = dlsym(runtime, "objc_msgSend");
+        SemuGameControllerLoaded.poolPush = dlsym(runtime, "objc_autoreleasePoolPush");
+        SemuGameControllerLoaded.poolPop = dlsym(runtime, "objc_autoreleasePoolPop");
+        SemuGameControllerLoaded.runLoop = dlsym(foundation, "CFRunLoopRunInMode");
+        SemuGameControllerLoaded.defaultMode = (void**)dlsym(foundation, "kCFRunLoopDefaultMode");
+        if (SemuGameControllerLoaded.getClass == null || SemuGameControllerLoaded.registerName == null || SemuGameControllerLoaded.send == null
+                || SemuGameControllerLoaded.poolPush == null || SemuGameControllerLoaded.poolPop == null
+                || SemuGameControllerLoaded.runLoop == null || SemuGameControllerLoaded.defaultMode == null) { return false; }
+        void* controllerClass = SemuGameControllerFramework.named("GCController");
+        if (controllerClass == null) { return false; }
+        void* monitor = SemuGameControllerFramework.selector("setShouldMonitorBackgroundEvents:");
+        __fn_ptr<unsigned char, void*, void*, void*> responds;
+        memcpy(&responds, &SemuGameControllerLoaded.send, sizeof(responds));
+        if (responds(controllerClass, SemuGameControllerFramework.selector("respondsToSelector:"), monitor) != 0) {
+            __fn_ptr<void, void*, void*, unsigned char> enable;
+            memcpy(&enable, &SemuGameControllerLoaded.send, sizeof(enable));
+            enable(controllerClass, monitor, (unsigned char)1);
+        }
+        SemuGameControllerLoaded.ready = 1;
+        SemuGameControllerFramework.pump(0.3);  // connected controllers are announced on the run loop
+        return true;
+    }
+
+    class char* element(int bit) {  // extendedGamepad elements in the order of the evdev codes below
+        if (bit == 0) { return "buttonA"; }
+        if (bit == 1) { return "buttonB"; }
+        if (bit == 2) { return "buttonX"; }
+        if (bit == 3) { return "buttonY"; }
+        if (bit == 4) { return "leftShoulder"; }
+        if (bit == 5) { return "rightShoulder"; }
+        if (bit == 6) { return "leftTrigger"; }
+        if (bit == 7) { return "rightTrigger"; }
+        if (bit == 8) { return "buttonOptions"; }  // View, the Select of an Xbox pad
+        if (bit == 9) { return "buttonMenu"; }     // Menu, the Start
+        if (bit == 10) { return "buttonHome"; }
+        if (bit == 11) { return "leftThumbstickButton"; }
+        if (bit == 12) { return "rightThumbstickButton"; }
+        if (bit == 13) { return "up"; }  // bits 13 to 16 are read from the d-pad
+        if (bit == 14) { return "down"; }
+        if (bit == 15) { return "left"; }
+        return "right";
+    }
+
+    class int code(int bit) {
+        if (bit == 0) { return BTN_SOUTH; }
+        if (bit == 1) { return BTN_EAST; }
+        if (bit == 2) { return BTN_WEST; }
+        if (bit == 3) { return BTN_NORTH; }
+        if (bit == 4) { return BTN_TL; }
+        if (bit == 5) { return BTN_TR; }
+        if (bit == 6) { return BTN_TL2; }
+        if (bit == 7) { return BTN_TR2; }
+        if (bit == 8) { return BTN_SELECT; }
+        if (bit == 9) { return BTN_START; }
+        if (bit == 10) { return BTN_MODE; }
+        if (bit == 11) { return BTN_THUMBL; }
+        if (bit == 12) { return BTN_THUMBR; }
+        if (bit == 13) { return BTN_DPAD_UP; }
+        if (bit == 14) { return BTN_DPAD_DOWN; }
+        if (bit == 15) { return BTN_DPAD_LEFT; }
+        if (bit == 16) { return BTN_DPAD_RIGHT; }
+        return 0;
+    }
+
+    class int poll(void** identities, unsigned int* pressed, int capacity) {  // each pad's object and button bits; the pool frees what the calls return
+        if (!SemuGameControllerFramework.begin()) { return 0; }
+        void* pool = SemuGameControllerFramework.poolPush();
+        SemuGameControllerFramework.pump(0.0);
+        void* list = SemuGameControllerFramework.message(SemuGameControllerFramework.named("GCController"), "controllers");
+        unsigned long total = list == null ? 0UL : SemuGameControllerFramework.count(list);
+        int found = 0;
+        for (unsigned long index = 0UL; index < total && found < capacity; index++) {
+            void* controller = SemuGameControllerFramework.item(list, index);
+            void* pad = SemuGameControllerFramework.message(controller, "extendedGamepad");
+            if (pad == null) { continue; }
+            void* directions = SemuGameControllerFramework.message(pad, "dpad");
+            unsigned int bits = 0u;
+            for (int bit = 0; bit < SEMU_GAMEPAD_BUTTONS; bit++) {
+                void* owner = bit >= 13 ? directions : pad;
+                if (SemuGameControllerFramework.pressed(SemuGameControllerFramework.message(owner, SemuGameControllerFramework.element(bit)))) { bits = bits | (1u << bit); }
+            }
+            identities[found] = controller;  // stable for as long as the pad stays connected
+            pressed[found] = bits;
+            found++;
+        }
+        SemuGameControllerFramework.poolPop(pool);
+        return found;
+    }
+}
