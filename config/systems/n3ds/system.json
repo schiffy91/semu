@@ -38,8 +38,7 @@
       "label": "Azahar (libretro)",
       "core": "azahar",
       "platforms": [
-        "linux",
-        "macos"
+        "linux"
       ]
     },
     {
@@ -47,8 +46,7 @@
       "label": "Citra (libretro)",
       "core": "citra",
       "platforms": [
-        "linux",
-        "macos"
+        "linux"
       ]
     },
     {
