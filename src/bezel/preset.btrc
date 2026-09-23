@@ -7,20 +7,12 @@ import Library.FileSystem;
 import Library.JSON;
 import Library.Map;
 import Library.Platform;
-import Library.Process;
 import Library.Strings;
 import Library.Vector;
+import ../lib/paths.btrc;
 
 class BezelPaths {
-    class string normalize(string path) {  // lexical: collapses . and .. without touching the disk
-        Vector<string> kept = [];
-        for part in Strings.split(path, "/") {
-            if (part.isEmpty() || part.equals(".")) { continue; }
-            if (part.equals("..")) { if (kept.size() > 0) { kept.pop(); } continue; }
-            kept.push(part);
-        }
-        return (path.startsWith("/") ? "/" : "") + Strings.join(kept, "/");
-    }
+    class string normalize(string path) { return SemuPaths.normalize(path); }  // lexical, shared with the owned-path checks
 
     class string resolve(string from, string relative) {  // a preset's reference, relative to its own directory
         if (relative.startsWith("/")) { return BezelPaths.normalize(relative); }
@@ -39,74 +31,69 @@ class BezelPaths {
     }
 }
 
-class MegaBezelTree {  // the pinned shader tree and packs, staged the way RetroArch sees them
+class MegaBezelTree {  // the pinned slang tree and packs, as the bezel-tree package lays them out
     public string configRoot;
-    public string root;  // <build>/shaders: shaders_slang plus Mega_Bezel_Packs symlinks
+    public string root;  // shaders_slang plus Mega_Bezel_Packs/<pack>
     public string slang;
-    public Map<string, string> upstreams;  // manifest name -> store path
+    public Map<string, string> upstreams;  // manifest name -> pack directory
     public Map<string, double> defaults;   // pragma defaults by parameter name
     public bool ready;
     public string failure;
 
-    public MegaBezelTree(string configRoot, string buildRoot) {
+    public MegaBezelTree(string configRoot, string root) {
         self.configRoot = configRoot;
-        self.root = PathTools.join(FileSystem.absolutePath(buildRoot), "shaders");
+        self.root = root;
+        self.slang = PathTools.join(root, "shaders_slang");
         self.upstreams = {};
         self.defaults = {};
         self.ready = false;
         self.failure = "";
-        string installed = PathTools.dirname(UnixFileSystem.realPath("/run/current-system/sw/bin/semu"));
-        self.slang = Environment.get("SEMU_SHADERS_SLANG", PathTools.join(PathTools.dirname(installed), "share/libretro/shaders/shaders_slang"));
+        if (root.isEmpty() || !FileSystem.isDir(root)) { self.failure = "no bezel tree (build it with `make bezel-tree` or set SEMU_BEZEL_TREE)"; return; }
         JSONValue manifest = JSONValue.readFile(PathTools.join(configRoot, "assets/bezels.json"));
         JSONValue sources = manifest == null ? null : manifest.get("upstreams");
         if (sources == null || !sources.isObject()) { self.failure = "config/assets/bezels.json has no upstreams"; return; }
         for name in sources.keys() {
-            string path = MegaBezelTree.fetch(sources.get(name));
-            if (path.isEmpty()) { self.failure = "could not fetch upstream " + name; return; }
-            self.upstreams.put(name, path);
+            string pack = SemuJsonText.at(sources.get(name), "pack");
+            if (pack.isEmpty()) { continue; }
+            string directory = PathTools.join(PathTools.join(root, "Mega_Bezel_Packs"), pack);
+            if (!FileSystem.isDir(directory)) { self.failure = f"the bezel tree has no pack {pack} for {name}"; return; }
+            self.upstreams.put(name, directory);
         }
         if (!FileSystem.isDir(PathTools.join(self.slang, "bezel/Mega_Bezel"))) { self.failure = "no Mega Bezel shader tree at " + self.slang; return; }
-        self.stage();
         MegaBezelTree.pragmaDefaults(PathTools.join(self.slang, "bezel/Mega_Bezel/shaders"), self.defaults, 0);
         if (!self.defaults.has("HSM_NON_INTEGER_SCALE")) { self.failure = "no Mega Bezel parameters under " + self.slang; return; }
         self.ready = true;
     }
 
-    class string fetch(JSONValue spec) {  // the pinned tree, into the store (a no-op once cached)
-        string expression = f"(import <nixpkgs> {{}}).fetchFromGitHub {{ owner = \"{SemuJsonText.at(spec, "owner")}\"; repo = \"{SemuJsonText.at(spec, "repo")}\"; rev = \"{SemuJsonText.at(spec, "rev")}\"; hash = \"{SemuJsonText.at(spec, "nar_hash")}\"; }}";
-        UnixPipe pipe = UnixProcess.pipe("nix-build -E " + ShellWords.quote(expression) + " --no-out-link 2>/dev/null");
-        string output = pipe.readAll().trim();
-        return pipe.close().ok() && output.startsWith("/nix/store/") ? output : "";
+    class string locate(string configRoot, string assetRoot) {  // SEMU_BEZEL_TREE, then the bundle, then the checkout's build link
+        string explicit = Environment.get("SEMU_BEZEL_TREE", "");
+        if (!explicit.isEmpty()) { return explicit; }
+        string bundled = PathTools.join(assetRoot, "share/semu/bezel/shaders");
+        if (!assetRoot.isEmpty() && FileSystem.isDir(bundled)) { return bundled; }
+        string checkout = PathTools.join(PathTools.dirname(configRoot), "build/bezel-tree/share/semu/bezel/shaders");
+        return FileSystem.isDir(checkout) ? checkout : "";
     }
 
-    class string pack(string upstream) {
-        if (upstream.equals("duimon_mega_bezel")) { return "Duimon-Mega-Bezel"; }
-        if (upstream.equals("soqueroeu_tv")) { return "Soqueroeu-TV-Backgrounds_V2.0"; }
-        return upstream;
+    class string packFile(string configRoot, string treeRoot, string upstream, string relative) {  // one upstream file, for callers without a loaded tree
+        JSONValue manifest = JSONValue.readFile(PathTools.join(configRoot, "assets/bezels.json"));
+        JSONValue sources = manifest == null ? null : manifest.get("upstreams");
+        string pack = sources == null ? "" : SemuJsonText.at(sources.get(upstream), "pack");
+        if (treeRoot.isEmpty() || pack.isEmpty()) { return ""; }
+        string path = PathTools.join(PathTools.join(PathTools.join(treeRoot, "Mega_Bezel_Packs"), pack), relative);
+        return FileSystem.isFile(path) ? path : "";
     }
 
-    class string upstreamFor(string preset) { return preset.startsWith("Presets/") ? "duimon_mega_bezel" : "soqueroeu_tv"; }
+    public string presetPath(string source, string preset) { return self.upstreams.has(source) ? PathTools.join(self.upstreams.get(source), preset) : ""; }
 
-    public void stage() {  // packs reference ../../../../shaders_slang next to Mega_Bezel_Packs
-        string packs = PathTools.join(self.root, "Mega_Bezel_Packs");
-        FileSystem.mkdirp(packs);
-        MegaBezelTree.link(PathTools.join(self.root, "shaders_slang"), self.slang);
-        for name in self.upstreams.keys() { MegaBezelTree.link(PathTools.join(packs, MegaBezelTree.pack(name)), self.upstreams.get(name)); }
+    public string packagePreset(JSONValue package) {  // upstream.source names the pack, upstream.preset the file inside it
+        JSONValue upstream = package == null ? null : package.get("upstream");
+        return self.presetPath(SemuJsonText.at(upstream, "source"), SemuJsonText.at(upstream, "preset"));
     }
 
-    class void link(string path, string target) {
-        if (FileSystem.isSymlink(path)) { FileSystem.removeRecursive(path); }
-        FileSystem.symlink(target, path);
-    }
-
-    public string presetPath(string preset) { return PathTools.join(PathTools.join(PathTools.join(self.root, "Mega_Bezel_Packs"), MegaBezelTree.pack(MegaBezelTree.upstreamFor(preset))), preset); }
-
-    public string reference(string path) {  // store or staged path -> "upstream:relative", else "semu:config-relative", else the path itself
+    public string reference(string path) {  // pack path -> "upstream:relative", else "semu:config-relative", else the path itself
         for name in self.upstreams.keys() {
             string root = self.upstreams.get(name) + "/";
             if (path.startsWith(root)) { return name + ":" + path.substring(root.len(), path.len() - root.len()); }
-            string staged = PathTools.join(PathTools.join(self.root, "Mega_Bezel_Packs"), MegaBezelTree.pack(name)) + "/";
-            if (path.startsWith(staged)) { return name + ":" + path.substring(staged.len(), path.len() - staged.len()); }
         }
         string config = self.configRoot + "/";
         if (path.startsWith(config)) { return "semu:" + path.substring(config.len(), path.len() - config.len()); }

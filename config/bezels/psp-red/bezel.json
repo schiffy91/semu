@@ -187,5 +187,12 @@
       "blend": "normal",
       "opacity": 1
     }
-  ]
+  ],
+  "recolor": {
+    "layers": [
+      "device"
+    ],
+    "color": "#a3161c",
+    "brightness": 2.1
+  }
 }

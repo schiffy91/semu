@@ -14,10 +14,11 @@ forAllSystems (system:
         fileset = lib.fileset.unions [ ../../../src ../../../tests/contracts ../../../config ];
       };
       nativeBuildInputs = [ packages.btrcpy ];
+      SEMU_BEZEL_TREE = "${packages.bezel-tree}/share/semu/bezel/shaders";  # the placement and layer contracts run from pinned inputs
       dontConfigure = true;
       buildPhase = ''
         btrcpy tests/contracts/main.btrc -o contracts.c --strict-imports --no-cache --no-stdlib
-        $CC contracts.c -std=c11 -O1 -o contracts -lm
+        $CC contracts.c -std=c11 -O1 -Isrc/launch -o contracts -lm
       '';
       installPhase = ''
         export HOME="$TMPDIR/home"
@@ -95,8 +96,8 @@ forAllSystems (system:
             source = meta.source or null;
           };
       in pkgs.writeText "semu-platform-matrix.json" (builtins.toJSON (lib.mapAttrs row flakes));
-  in {
-    inherit contracts installer;
+  in { inherit contracts; } // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+    inherit installer;
     platform-matrix = platformMatrix;
     synthetic-core = syntheticCore;
     retroarch-headless = retroarchHeadless;

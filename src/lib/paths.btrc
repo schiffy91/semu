@@ -3,6 +3,7 @@ import Library.Platform;
 import Library.Strings;
 import Library.Vector;
 
+#include <stdio.h>
 #include <unistd.h>
 
 class SemuPaths {
@@ -13,18 +14,42 @@ class SemuPaths {
         return path.replace("${home}", SemuPaths.home());
     }
 
-    class bool inside(string root, string path) {
-        string base = root.endsWith("/") ? root : root + "/";
-        return path.equals(root) || path.startsWith(base);
+    class string normalize(string path) {  // lexical: collapses . and .. without touching the disk
+        Vector<string> kept = [];
+        for part in Strings.split(path, "/") {
+            if (part.isEmpty() || part.equals(".")) { continue; }
+            if (part.equals("..")) { if (kept.size() > 0) { kept.pop(); } continue; }
+            kept.push(part);
+        }
+        return (path.startsWith("/") ? "/" : "") + Strings.join(kept, "/");
+    }
+
+    class bool inside(string root, string path) {  // after normalizing both, so root/../x is outside
+        string normalRoot = SemuPaths.normalize(root);
+        string normalPath = SemuPaths.normalize(path);
+        string base = normalRoot.endsWith("/") ? normalRoot : normalRoot + "/";
+        return normalPath.equals(normalRoot) || normalPath.startsWith(base);
     }
 
     class bool ancestorsAreRealDirectories(string root, string path) {  // no symlink may sit between root and path
-        string current = PathTools.dirname(path);
-        while (current.len() > root.len() && SemuPaths.inside(root, current)) {
+        string current = PathTools.dirname(SemuPaths.normalize(path));
+        string normalRoot = SemuPaths.normalize(root);
+        while (current.len() > normalRoot.len() && SemuPaths.inside(normalRoot, current)) {
             if (FileSystem.isSymlink(current)) { return false; }
             current = PathTools.dirname(current);
         }
-        return !FileSystem.isSymlink(root);
+        return !FileSystem.isSymlink(normalRoot);
+    }
+
+    class bool inSourceTree(string path) {  // under src/ or config/ of a Semu checkout, which only a person edits
+        string current = PathTools.dirname(SemuPaths.normalize(path));
+        while (current.len() > 1) {
+            string name = PathTools.basename(current);
+            string parent = PathTools.dirname(current);
+            if ((name.equals("src") || name.equals("config")) && FileSystem.isFile(PathTools.join(parent, "src/semu.btrc")) && FileSystem.isDir(PathTools.join(parent, "config/systems"))) { return true; }
+            current = parent;
+        }
+        return false;
     }
 
     class bool prepareDirectory(string path) {
@@ -33,12 +58,29 @@ class SemuPaths {
         return FileSystem.mkdirp(path) == 0 && FileSystem.isDir(path);
     }
 
-    class bool writeOwned(string root, string path, string content) {  // refuse escapes and symlinked ancestors
-        if (root.isEmpty() || !PathTools.isAbsolute(root) || !SemuPaths.inside(root, path)) { return false; }
-        if (!SemuPaths.prepareDirectory(root) || !SemuPaths.ancestorsAreRealDirectories(root, path)) { return false; }
-        if (FileSystem.isSymlink(path) || FileSystem.isDir(path)) { return false; }
-        if (!SemuPaths.prepareDirectory(PathTools.dirname(path))) { return false; }
-        return FileSystem.writeText(path, content);
+    class bool replace(string path, string content) {  // write beside, then rename over: readers never see half a file
+        string temporary = path + ".semu-tmp";
+        if (!FileSystem.writeText(temporary, content)) { unlink(temporary); return false; }
+        if (rename(temporary, path) != 0) { unlink(temporary); return false; }
+        return true;
+    }
+
+    class bool writeOwned(string root, string path, string content) {  // refuse escapes, symlinked ancestors and the source tree
+        if (root.isEmpty() || !PathTools.isAbsolute(root) || !SemuPaths.inside(root, path) || SemuPaths.inSourceTree(path)) { return false; }
+        string target = SemuPaths.normalize(path);
+        if (!SemuPaths.prepareDirectory(root) || !SemuPaths.ancestorsAreRealDirectories(root, target)) { return false; }
+        if (FileSystem.isSymlink(target) || FileSystem.isDir(target)) { return false; }
+        if (!SemuPaths.prepareDirectory(PathTools.dirname(target))) { return false; }
+        return SemuPaths.replace(target, content);
+    }
+
+    class bool writeSource(string configRoot, string path, string content) {  // the one way into config/: a bezel package's own bezel.json
+        string relative = SemuPaths.normalize(path);
+        string root = SemuPaths.normalize(configRoot);
+        if (!SemuPaths.inside(root + "/bezels", relative) || !relative.endsWith("/bezel.json")) { return false; }
+        Vector<string> parts = Strings.split(relative.substring(root.len() + 1, relative.len() - root.len() - 1), "/");
+        if (parts.size() != 3 || FileSystem.isSymlink(relative) || !SemuPaths.ancestorsAreRealDirectories(root, relative)) { return false; }
+        return SemuPaths.replace(relative, content);
     }
 
     class string join(string left, string right) { return PathTools.join(left, right); }

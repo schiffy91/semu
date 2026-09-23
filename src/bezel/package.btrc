@@ -12,6 +12,7 @@ import Library.Map;
 import Library.Strings;
 import Library.Vector;
 import ../lib/json.btrc;
+import ../lib/paths.btrc;
 import ./preset.btrc;
 import ./placement.btrc;
 
@@ -143,7 +144,7 @@ class BezelRepository {  // the packages and the systems that bind them
         return ids;
     }
 
-    public void save(string id, JSONValue package) { FileSystem.writeText(self.packagePath(id), package.stringifyPretty(2) + "\n"); }
+    public bool save(string id, JSONValue package) { return SemuPaths.writeSource(self.configRoot, self.packagePath(id), package.stringifyPretty(2) + "\n"); }
 }
 
 class BezelGeometry {  // one package: its preset, screens, layers and the canvas they map into
@@ -180,7 +181,7 @@ class BezelGeometry {  // one package: its preset, screens, layers and the canva
             if (w > coreWidth) { coreWidth = w; }
             coreHeight = coreHeight + h;
         }
-        self.preset = MegaBezelPreset(tree.presetPath(SemuJson.textAt(package, "upstream.preset")));
+        self.preset = MegaBezelPreset(tree.packagePreset(package));
         if (self.preset.chain.size() == 0) { self.failure = "preset not found: " + SemuJson.textAt(package, "upstream.preset"); return; }
         if (self.preset.missing.size() > 0) { self.failure = "missing textures: " + Strings.join(self.preset.missing, ", "); return; }
         self.params = MegaBezelParams(self.preset, tree.defaults);
@@ -303,8 +304,7 @@ class BezelPackageWriter {
         JSONValue screens = package.get("screens");
         if (screens == null || !screens.isArray() || screens.size() != geometry.count) { return f"{geometry.count} screens on the system, {screens == null ? 0 : screens.size()} in the package"; }
         for (int index = 0; index < geometry.count; index++) { self.screen(geometry, index, screens.at(index)); }
-        self.repository.save(packageId, package);
-        return "";
+        return self.repository.save(packageId, package) ? "" : "could not write the package";
     }
 
     public void screen(BezelGeometry geometry, int index, JSONValue screen) {
@@ -382,8 +382,7 @@ class BezelPackageWriter {
             screens.at(index).set("inset", JSONValue.makeNull());
             screens.at(index).set("measurement", JSONValue.makeNull());
         }
-        self.repository.save(packageId, package);
-        return "";
+        return self.repository.save(packageId, package) ? "" : "could not write the package";
     }
 
     public string plain(string packageId) {  // a Semu-owned plate with no preset: its art is the one layer and the canvas
@@ -391,7 +390,7 @@ class BezelPackageWriter {
         if (package == null) { return ""; }
         if (package.has("layers")) {  // already layered: only the cutouts layer's name may need the current spelling
             JSONValue layers = package.get("layers");
-            for (int index = 0; index < layers.size(); index++) { if (SemuJson.textAt(layers.at(index), "id").equals("screens")) { layers.at(index).set("id", JSONValue.makeString("cutouts")); self.repository.save(packageId, package); } }
+            for (int index = 0; index < layers.size(); index++) { if (SemuJson.textAt(layers.at(index), "id").equals("screens")) { layers.at(index).set("id", JSONValue.makeString("cutouts")); if (!self.repository.save(packageId, package)) { return "could not write the package"; } } }
             return "";
         }
         string art = SemuJson.textAt(package, "art");
@@ -415,7 +414,6 @@ class BezelPackageWriter {
         layers.push(screens.toJson(null, canvasWidth, canvasHeight));
         package.set("layers", layers);
         package.set("canvas_layer", JSONValue.makeString("art"));
-        self.repository.save(packageId, package);
-        return "";
+        return self.repository.save(packageId, package) ? "" : "could not write the package";
     }
 }

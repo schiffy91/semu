@@ -142,7 +142,8 @@
   },
   "upstream": {
     "kind": "scene",
-    "preset": "presets/TV-Console/Sega_Dreamcast-[FLAT].slangp"
+    "preset": "presets/TV-Console/Sega_Dreamcast-[FLAT].slangp",
+    "source": "soqueroeu_tv"
   },
   "canvas_layer": "background",
   "layers": [
@@ -194,5 +195,9 @@
       "blend": "normal",
       "opacity": 1
     }
-  ]
+  ],
+  "ambient": {
+    "file": "duimon_mega_bezel:Graphics/_Night/NightLighting_1920x1080.png",
+    "opacity": 0.8
+  }
 }

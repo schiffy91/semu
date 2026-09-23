@@ -12,14 +12,16 @@
       "owner": "Duimon",
       "repo": "Duimon-Mega-Bezel",
       "rev": "d03dabf6e6b190dbf9b692efd492d8edd21abbb9",
-      "nar_hash": "sha256-EvWkMiw5ne0Im43404NVTJiQO5mWhMVNEk7fdpgb5rY="
+      "nar_hash": "sha256-EvWkMiw5ne0Im43404NVTJiQO5mWhMVNEk7fdpgb5rY=",
+      "pack": "Duimon-Mega-Bezel"
     },
     "soqueroeu_tv": {
       "kind": "github",
       "owner": "soqueroeu",
       "repo": "Soqueroeu-TV-Backgrounds_V2.0",
       "rev": "52bc4588d88c7bd319f922659d3ba74ed81ce959",
-      "nar_hash": "sha256-8IoaMLw7i4TttFR08Ycji6COuaxaeNeBwPCLyfyTD90="
+      "nar_hash": "sha256-8IoaMLw7i4TttFR08Ycji6COuaxaeNeBwPCLyfyTD90=",
+      "pack": "Soqueroeu-TV-Backgrounds_V2.0"
     }
   },
   "assets": {

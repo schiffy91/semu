@@ -139,7 +139,8 @@
   "upstream": {
     "kind": "device",
     "preset": "Presets/Standard/SONY_PSP/PSP-[STD]-[Guest].slangp",
-    "silhouette": "Graphics/SONY_PSP/PSP_Wide.png"
+    "silhouette": "Graphics/SONY_PSP/PSP_Wide.png",
+    "source": "duimon_mega_bezel"
   },
   "canvas_layer": "device",
   "layers": [

@@ -5,8 +5,11 @@
   },
   "upstreams": {
     "libretro_slang": {
-      "kind": "nixpkgs",
-      "attr": "libretro-shaders-slang"
+      "kind": "github",
+      "owner": "libretro",
+      "repo": "slang-shaders",
+      "rev": "4812a82f6c9a11cc8b5a7447040a98c9fc80c00e",
+      "nar_hash": "sha256-SDjxvbhF4y1JBrwsHYhbjhM3YYbkY2YLmmRMG4CmADk="
     }
   },
   "trees": {

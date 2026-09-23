@@ -1,0 +1,214 @@
+// The real Semu renderer, offscreen on macOS (CGL, OpenGL 4.1 core): a test card stands in for the
+// emulator's picture, SEMU_RENDER_* comes from `semu render-env`, and the frame is written as PPM.
+#include <OpenGL/OpenGL.h>
+#include <OpenGL/gl3.h>
+#include <dlfcn.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+import Library.Console;
+import Library.Strings;
+import ../../src/renderer/libsemurenderer.btrc;
+
+void* semuHostProcedure(const char* name) { return dlsym((void*)RTLD_DEFAULT, name); }  // the emulator's get_proc
+
+class RenderHostContext {  // a core-profile context with nothing on screen; CGL constants by value, which BTRC cannot see
+    class bool create() {
+        int attributes[5];
+        attributes[0] = 99;      // kCGLPFAOpenGLProfile
+        attributes[1] = 16640;   // kCGLOGLPVersion_GL4_Core
+        attributes[2] = 73;      // kCGLPFAAccelerated
+        attributes[3] = 96;      // kCGLPFAAllowOfflineRenderers
+        attributes[4] = 0;
+        void* format = null;
+        int formats = 0;
+        if ((int)CGLChoosePixelFormat((void*)attributes, &format, &formats) != 0 || format == null) { return false; }
+        void* context = null;
+        int created = (int)CGLCreateContext(format, null, &context);
+        CGLDestroyPixelFormat(format);
+        return created == 0 && context != null && (int)CGLSetCurrentContext(context) == 0;
+    }
+}
+
+class RenderHostTestCard {  // the editor's card: blue over green (orange over yellow on the second screen), checkered corners, centre lines
+    class unsigned char* pixels(int width, int height, int screen) {
+        unsigned char* data = (unsigned char*)malloc((size_t)(width * height * 4));
+        int cell = width < height ? width / 40 : height / 40;
+        if (cell < 2) { cell = 2; }
+        int corner = cell * 4;
+        for (int row = 0; row < height; row++) {
+            for (int column = 0; column < width; column++) {
+                int red = row < height * 2 / 3 ? (screen == 0 ? 59 : 214) : (screen == 0 ? 91 : 228);
+                int green = row < height * 2 / 3 ? (screen == 0 ? 91 : 96) : (screen == 0 ? 192 : 176);
+                int blue = row < height * 2 / 3 ? (screen == 0 ? 219 : 60) : (screen == 0 ? 91 : 64);
+                bool nearX = column < corner || column >= width - corner;
+                bool nearY = row < corner || row >= height - corner;
+                if (nearX && nearY) { int shade = ((column / cell) + (row / cell)) % 2 == 0 ? 255 : 0; red = shade; green = shade; blue = shade; }
+                if (column == width / 2 || row == height / 2) { red = 235; green = 235; blue = 235; }
+                int at = ((height - 1 - row) * width + column) * 4;  // GL rows start at the bottom
+                data[at] = (unsigned char)red;
+                data[at + 1] = (unsigned char)green;
+                data[at + 2] = (unsigned char)blue;
+                data[at + 3] = (unsigned char)255;
+            }
+        }
+        return data;
+    }
+}
+
+class RenderHostTarget {  // the emulator's backbuffer: an FBO with the game drawn at native size in its corner
+    public unsigned int framebuffer;
+    public unsigned int color;
+    public int width;
+    public int height;
+
+    public RenderHostTarget(int width, int height) {
+        self.width = width;
+        self.height = height;
+        self.framebuffer = 0u;
+        self.color = 0u;
+        glGenTextures(1, &self.color);
+        glBindTexture((unsigned int)GL_TEXTURE_2D, self.color);
+        glTexImage2D((unsigned int)GL_TEXTURE_2D, 0, (unsigned int)GL_RGBA8, width, height, 0, (unsigned int)GL_RGBA, (unsigned int)GL_UNSIGNED_BYTE, null);
+        glGenFramebuffers(1, &self.framebuffer);
+        glBindFramebuffer((unsigned int)GL_FRAMEBUFFER, self.framebuffer);
+        glFramebufferTexture2D((unsigned int)GL_FRAMEBUFFER, (unsigned int)GL_COLOR_ATTACHMENT0, (unsigned int)GL_TEXTURE_2D, self.color, 0);
+    }
+
+    public bool complete() { return (unsigned int)glCheckFramebufferStatus((unsigned int)GL_FRAMEBUFFER) == (unsigned int)GL_FRAMEBUFFER_COMPLETE; }
+
+    public void clear() {
+        glBindFramebuffer((unsigned int)GL_FRAMEBUFFER, self.framebuffer);
+        glViewport(0, 0, self.width, self.height);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear((unsigned int)GL_COLOR_BUFFER_BIT);
+    }
+
+    public void paint(int x, int width, int height, int screen) {
+        unsigned char* card = RenderHostTestCard.pixels(width, height, screen);
+        glBindTexture((unsigned int)GL_TEXTURE_2D, self.color);
+        glTexSubImage2D((unsigned int)GL_TEXTURE_2D, 0, x, 0, width, height, (unsigned int)GL_RGBA, (unsigned int)GL_UNSIGNED_BYTE, card);
+        free((void*)card);
+    }
+
+    public bool writePortablePixmap(string path) {  // P6, top row first
+        unsigned char* data = (unsigned char*)malloc((size_t)(self.width * self.height * 4));
+        glBindFramebuffer((unsigned int)GL_READ_FRAMEBUFFER, self.framebuffer);
+        glReadBuffer((unsigned int)GL_COLOR_ATTACHMENT0);
+        glPixelStorei((unsigned int)GL_PACK_ALIGNMENT, 1);
+        glReadPixels(0, 0, self.width, self.height, (unsigned int)GL_RGBA, (unsigned int)GL_UNSIGNED_BYTE, data);
+        FILE* file = fopen(path, "wb");
+        if (file == null) { free((void*)data); return false; }
+        fprintf(file, "P6\n%d %d\n255\n", self.width, self.height);
+        for (int row = self.height - 1; row >= 0; row--) {
+            for (int column = 0; column < self.width; column++) {
+                int at = (row * self.width + column) * 4;
+                fputc((int)data[at], file);
+                fputc((int)data[at + 1], file);
+                fputc((int)data[at + 2], file);
+            }
+        }
+        fclose(file);
+        free((void*)data);
+        return true;
+    }
+}
+
+class RenderHost {
+    class int nativeWidth(int screen) { return RenderHost.nativePart(screen, 0); }
+
+    class int nativeHeight(int screen) { return RenderHost.nativePart(screen, 1); }
+
+    class int nativePart(int screen, int part) {  // SEMU_RENDER_SURFACE_<n>_NATIVE=WxH
+        char name[64];
+        snprintf(name, sizeof(name), "SEMU_RENDER_SURFACE_%d_NATIVE", screen);
+        char* value = getenv(name);
+        int width = 0;
+        int height = 0;
+        if (value == null || sscanf(value, "%dx%d", &width, &height) != 2) { return 0; }
+        return part == 0 ? width : height;
+    }
+
+    class float aspect() {  // SEMU_RENDER_ASPECT=W:H, else the native shape
+        char* value = getenv("SEMU_RENDER_ASPECT");
+        int width = 0;
+        int height = 0;
+        if (value != null && sscanf(value, "%d:%d", &width, &height) == 2 && width > 0 && height > 0) { return (float)width / (float)height; }
+        return 0.0f;
+    }
+
+    class int frame(RenderHostTarget target, unsigned long long frameId) {
+        char* countText = getenv("SEMU_RENDER_SURFACE_COUNT");
+        int screens = countText == null ? 1 : atoi(countText);
+        if (screens < 1) { screens = 1; }
+        if (screens > 2) { screens = 2; }
+        target.clear();
+        struct SemuRenderFrameGl frame;
+        memset(&frame, 0, sizeof(struct SemuRenderFrameGl));
+        frame.abi = 3u;
+        frame.struct_size = (unsigned int)sizeof(struct SemuRenderFrameGl);
+        frame.frame_id = frameId;
+        frame.framebuffer = target.framebuffer;
+        frame.color_buffer = (unsigned int)GL_COLOR_ATTACHMENT0;
+        frame.framebuffer_width = target.width;
+        frame.framebuffer_height = target.height;
+        frame.presentation_aspect = RenderHost.aspect();
+        frame.layout_variant = 0u;
+        frame.surface_count = screens;
+        frame.get_proc = semuHostProcedure;
+        frame.context_generation = 1ULL;
+        int x = 0;
+        for (int screen = 0; screen < screens; screen++) {
+            int width = RenderHost.nativeWidth(screen);
+            int height = RenderHost.nativeHeight(screen);
+            if (width < 1 || height < 1) { Console.error(f"render-host: no SEMU_RENDER_SURFACE_{screen}_NATIVE"); return 2; }
+            target.paint(x, width, height, screen);
+            frame.surfaces[screen].x = x;
+            frame.surfaces[screen].y = 0;
+            frame.surfaces[screen].width = width;
+            frame.surfaces[screen].height = height;
+            frame.surfaces[screen].native_width = width;
+            frame.surfaces[screen].native_height = height;
+            frame.surfaces[screen].origin = 0;
+            x += width;
+        }
+        int game = semu_render_game_gl(&frame);
+        int menu = semu_render_post_ui_gl(&frame);
+        glFinish();
+        if (game != 1) { Console.error(f"render-host: semu_render_game_gl returned {game}, post-ui {menu}"); return 3; }
+        return 0;
+    }
+
+    class void touchCompositor() {  // an edit the hot reload must pick up: one more comment line in the fragment shader
+        char* dir = getenv("SEMU_RENDER_COMPOSITOR_DIR");
+        if (dir == null) { return; }
+        char path[4096];
+        snprintf(path, sizeof(path), "%s/compositor.frag", dir);
+        FILE* file = fopen(path, "ab");
+        if (file == null) { return; }
+        fputs("// render-host: edited\n", file);
+        fclose(file);
+    }
+}
+
+int main(int argc, char** argv) {  // render_host WIDTH HEIGHT OUT.ppm [--reload OUT2.ppm]
+    if (argc < 4) { Console.error("usage: render_host WIDTH HEIGHT OUT.ppm [--reload SECOND.ppm]"); return 64; }
+    int width = atoi(argv[1]);
+    int height = atoi(argv[2]);
+    if (width < 16 || height < 16 || !RenderHostContext.create()) { Console.error("render-host: no OpenGL 4.1 core context"); return 1; }
+    RenderHostTarget target = RenderHostTarget(width, height);
+    if (!target.complete()) { Console.error("render-host: the framebuffer is incomplete"); return 1; }
+    int result = RenderHost.frame(target, 1ULL);
+    if (result != 0) { return result; }
+    if (!target.writePortablePixmap(argv[3])) { return 1; }
+    if (argc >= 6 && (int)strcmp(argv[4], "--reload") == 0) {  // edit the compositor, wait out the one-second check, draw again
+        RenderHost.touchCompositor();
+        usleep(1200000);
+        result = RenderHost.frame(target, 2ULL);
+        if (result != 0) { return result; }
+        if (!target.writePortablePixmap(argv[5])) { return 1; }
+    }
+    return 0;
+}

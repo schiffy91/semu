@@ -158,7 +158,7 @@ class SemuSync {  // Semu-owned Syncthing home sharing content_root (saves, stat
             Console.error("semu: could not start syncthing");
             return 1;
         }
-        return SemuQuitChord.supervise(child, 0, false);
+        return SemuProcessGroup.supervise(child);
     }
 
     class int start(SemuPlan plan) {  // detached, only when enabled and not already listening

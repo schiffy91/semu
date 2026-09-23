@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "stb_image.h"
 
 import ./renderer_abi.btrc;
@@ -145,7 +146,7 @@ struct RendererScreenConfig {
     int shader_available;
 };
 
-struct RendererLayerConfig {  // one layer of the package's stack: SEMU_RENDER_LAYER_<n> = file|x,y,w,h or cover|above|blend|opacity
+struct RendererLayerConfig {  // one layer of the package stack: SEMU_RENDER_LAYER_<n>, see parseLayer
     int set;
     struct RendererPath file;
     struct RendererNormalizedHole rect;
@@ -153,6 +154,8 @@ struct RendererLayerConfig {  // one layer of the package's stack: SEMU_RENDER_L
     int above;   // drawn after the screens
     int blend;   // 0 normal, 1 add, 2 multiply
     float opacity;
+    float tint[4];  // r, g, b, brightness: grayscale times brightness times colour; brightness 0 is untinted
+    float lift;     // blends the texel toward white first, so a multiply plate lightens
 };
 
 struct RendererVariantConfig {
@@ -193,6 +196,7 @@ struct RendererConfig {
 };
 
 struct RendererGlResources {
+    long long compositor_checked_ms;  // last look at the compositor files for an edit
     int ready;
     unsigned long long owner_context_generation;
     unsigned int program;
@@ -266,6 +270,7 @@ struct RendererGlResources {
     int uniform_ring_color;
     int uniform_ring_color2;
     int uniform_layer;
+    int uniform_layer_tint;
     int uniform_bulge;
     int uniform_rotation;
     int uniform_pass;
@@ -394,7 +399,7 @@ class RendererConfiguration {
         screen->shader_available = RendererFileHash.sha256(screen->shader.value, screen->shader_sha256) ? 1 : 0;
     }
 
-    class bool parseLayer(struct RendererLayerConfig* layer, char* value) {  // file|x,y,w,h or cover|above|blend|opacity
+    class bool parseLayer(struct RendererLayerConfig* layer, char* value) {  // file|x,y,w,h or cover|above|blend|opacity|tint|lift
         memset(layer, 0, sizeof(struct RendererLayerConfig));
         if (value == null || value[0] == 0) { return false; }
         char* bar = strchr(value, '|');
@@ -418,6 +423,11 @@ class RendererConfiguration {
         layer->above = above != 0 ? 1 : 0;
         layer->blend = blend < 0 ? 0 : (blend > 2 ? 2 : blend);
         layer->opacity = RendererConfiguration.clamp01(opacity);
+        char* field = rest;
+        for (int skipped = 0; skipped < 3 && field != null; skipped++) { field = strchr(field + 1, (int)'|'); }  // the tint field follows opacity
+        if (field != null && field[1] != '-') { sscanf(field + 1, "%f,%f,%f,%f", &layer->tint[0], &layer->tint[1], &layer->tint[2], &layer->tint[3]); }
+        char* liftField = field == null ? null : strchr(field + 1, (int)'|');
+        if (liftField != null) { layer->lift = RendererConfiguration.clamp01((float)atof(liftField + 1)); }
         layer->set = 1;
         return true;
     }
@@ -1019,6 +1029,17 @@ class RendererResources {
         return uploaded;
     }
 
+    class void bindSamplers(struct RendererGlApi* gl, struct RendererGlResources* resources) {  // a program starts with every sampler on unit 0; every link needs this
+        gl->use_program(resources->program);
+        if (resources->uniform_game >= 0) { gl->uniform_1i(resources->uniform_game, 0); }
+        if (resources->uniform_bezel >= 0) { gl->uniform_1i(resources->uniform_bezel, 1); }
+        if (resources->uniform_glass >= 0) { gl->uniform_1i(resources->uniform_glass, 2); }
+        if (resources->uniform_menu >= 0) { gl->uniform_1i(resources->uniform_menu, 3); }
+        if (resources->uniform_game2 >= 0) { gl->uniform_1i(resources->uniform_game2, 4); }
+        if (resources->uniform_glass2 >= 0) { gl->uniform_1i(resources->uniform_glass2, 5); }
+        if (resources->uniform_background >= 0) { gl->uniform_1i(resources->uniform_background, 6); }
+    }
+
     class void lookupUniforms(struct RendererGlApi* gl, struct RendererGlResources* resources) {
         resources->uniform_game = RendererResources.uniform(gl, resources, "uGame");
         resources->uniform_game2 = RendererResources.uniform(gl, resources, "uGame2");
@@ -1056,6 +1077,7 @@ class RendererResources {
         resources->uniform_ring_color = RendererResources.uniform(gl, resources, "uRingColor");
         resources->uniform_ring_color2 = RendererResources.uniform(gl, resources, "uRingColor2");
         resources->uniform_layer = RendererResources.uniform(gl, resources, "uLayer");
+        resources->uniform_layer_tint = RendererResources.uniform(gl, resources, "uLayerTint");
         resources->uniform_bulge = RendererResources.uniform(gl, resources, "uBulge");
         resources->uniform_rotation = RendererResources.uniform(gl, resources, "uRotation");
         resources->uniform_pass = RendererResources.uniform(gl, resources, "uPass");
@@ -1089,6 +1111,7 @@ class RendererResources {
         if (gl->delete_program != null && resources->program != 0u) { gl->delete_program(resources->program); }
         resources->program = program;
         RendererResources.lookupUniforms(gl, resources);
+        RendererResources.bindSamplers(gl, resources);
         fprintf(stderr, "semu-renderer: compositor shader reloaded\n");
     }
 
@@ -1186,14 +1209,7 @@ class RendererResources {
         }
 
         RendererResources.lookupUniforms(gl, resources);
-        gl->use_program(resources->program);
-        if (resources->uniform_game >= 0) { gl->uniform_1i(resources->uniform_game, 0); }
-        if (resources->uniform_bezel >= 0) { gl->uniform_1i(resources->uniform_bezel, 1); }
-        if (resources->uniform_glass >= 0) { gl->uniform_1i(resources->uniform_glass, 2); }
-        if (resources->uniform_menu >= 0) { gl->uniform_1i(resources->uniform_menu, 3); }
-        if (resources->uniform_game2 >= 0) { gl->uniform_1i(resources->uniform_game2, 4); }
-        if (resources->uniform_glass2 >= 0) { gl->uniform_1i(resources->uniform_glass2, 5); }
-        if (resources->uniform_background >= 0) { gl->uniform_1i(resources->uniform_background, 6); }
+        RendererResources.bindSamplers(gl, resources);
         if (!RendererGlErrors.none(gl)) {
             RendererResources.releaseCurrentContext(gl, resources,
                 contextGeneration);
@@ -1508,7 +1524,8 @@ class RendererCompositor {
             gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->layer_textures[slot]);
             gl->active_texture((unsigned int)RGL_TEXTURE0);
             if (resources->uniform_bezel_rect >= 0) { gl->uniform_4f(resources->uniform_bezel_rect, x, y, width, height); }
-            RendererCompositor.set4(gl, resources->uniform_layer, layer->opacity, (float)layer->blend, 0.0f, 0.0f);
+            RendererCompositor.set4(gl, resources->uniform_layer, layer->opacity, (float)layer->blend, layer->lift, 0.0f);
+            RendererCompositor.set4(gl, resources->uniform_layer_tint, layer->tint[0], layer->tint[1], layer->tint[2], layer->tint[3]);
             gl->enable((unsigned int)RGL_BLEND);
             if (layer->blend == 1) {
                 gl->blend_function_separate((unsigned int)RGL_SRC_ALPHA, (unsigned int)RGL_ONE, (unsigned int)RGL_ZERO, (unsigned int)RGL_ONE);  // add: black adds nothing
@@ -1665,7 +1682,10 @@ class RendererCompositor {
             return RendererResourceFailure.set(resources,
                 SEMU_RENDER_PIPELINE_FAILED, "framebuffer_state_invalid");
         }
-        if ((frame->frame_id % 60ULL) == 0ULL) { RendererResources.relinkIfChanged(gl, resources); }  // the files are data: an edit shows within a second
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        long long nowMs = (long long)now.tv_sec * 1000LL + (long long)(now.tv_nsec / 1000000L);
+        if (nowMs - resources->compositor_checked_ms >= 1000LL) { resources->compositor_checked_ms = nowMs; RendererResources.relinkIfChanged(gl, resources); }  // the files are data: an edit shows within a second
         gl->use_program(resources->program);
         gl->bind_vertex_array(resources->vertex_array);
 

@@ -129,7 +129,7 @@
   </table>
 </div>
 <script>
-const ZOOMS = [0.125, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
+const ZOOMS = [0.03125, 0.0625, 0.125, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
 const COLORS = { tube: "#ff2d92", image: "#30d158", inner: "#64d2ff", outer: "#ffd60a", layer: "#0a84ff" };
 const NAMES = { tube: "opening", image: "picture", inner: "bezel inner", outer: "bezel outer" };  // the reflection lands between bezel inner and bezel outer
 const CUTOUTS = "cutouts";
@@ -253,6 +253,7 @@ async function open(id) {
     image.onerror = () => { pending--; status(`layer ${layer.id} failed to load`); draw(); };
     image.src = `/layer/${id}/${layer.id}`;
   }
+  if (state.current.ambient) { const night = new Image(); night.onload = () => { state.images.__ambient = liftedCopy(night, 1 - (state.current.ambient.opacity ?? 1)); draw(); }; night.src = `/layer/${id}/ambient`; }
   status("loading layers…");
   const wanted = new URLSearchParams(location.search).get("select");  // ?select=0:tube opens with that cutout rectangle selected
   if (wanted && wanted.startsWith("layer:")) { if (layerById(wanted.slice(6))) state.selected = { kind: "layer", id: wanted.slice(6) }; }
@@ -503,11 +504,13 @@ function fit() {
   const scale = Math.min(canvas.width / c.w, canvas.height / c.h);
   state.zoom = ZOOMS.filter(z => z <= scale).pop() || ZOOMS[0];
   state.ox = Math.round((canvas.width - c.w * state.zoom) / 2);
+  state.fitted = true;
   state.oy = Math.round((canvas.height - c.h * state.zoom) / 2);
   draw();
 }
 function zoomTo(next, sx, sy) {
   const [px, py] = toPlate(sx, sy);
+  state.fitted = false;
   state.zoom = next;
   state.ox = Math.round(sx - px * next); state.oy = Math.round(sy - py * next);
   draw();
@@ -516,7 +519,7 @@ function resize() {
   const box = canvas.parentElement.getBoundingClientRect();
   canvas.width = Math.floor(box.width * devicePixelRatio);
   canvas.height = Math.floor(box.height * devicePixelRatio);
-  draw();
+  if (state.fitted && state.current) fit(); else draw();  // a fitted view stays fitted as the window changes
 }
 function toScreen(x, y) { return [state.ox + x * state.zoom, state.oy + y * state.zoom]; }
 function toPlate(sx, sy) { return [(sx - state.ox) / state.zoom, (sy - state.oy) / state.zoom]; }
@@ -640,6 +643,36 @@ function drawCutouts(layer) {  // like Mega Bezel: the ring, the black edge insi
   }
   ctx.restore();
 }
+function hexRgb(hex) { const n = parseInt((hex || "#ffffff").slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function tintedCopy(image, recolor) {  // the renderer's tint: HSL lightness times brightness, times the colour
+  const out = document.createElement("canvas"); out.width = image.width; out.height = image.height;
+  const o = out.getContext("2d"); o.drawImage(image, 0, 0);
+  const data = o.getImageData(0, 0, out.width, out.height), px = data.data, [r, g, b] = hexRgb(recolor.color), k = recolor.brightness ?? 1;
+  for (let i = 0; i < px.length; i += 4) { const l = Math.min(1, (Math.max(px[i], px[i + 1], px[i + 2]) + Math.min(px[i], px[i + 1], px[i + 2])) / 510 * k); px[i] = l * r; px[i + 1] = l * g; px[i + 2] = l * b; }
+  o.putImageData(data, 0, 0); return out;
+}
+function liftedCopy(image, lift) {  // the night plate pushed toward white, as the renderer lifts it before multiplying
+  const out = document.createElement("canvas"); out.width = image.width; out.height = image.height;
+  const o = out.getContext("2d"); o.drawImage(image, 0, 0); o.globalAlpha = Math.max(0, Math.min(1, lift)); o.fillStyle = "#fff"; o.fillRect(0, 0, out.width, out.height); return out;
+}
+function layerImage(layer) {
+  const image = state.images[layer.id], recolor = state.current.recolor;
+  if (!image || !recolor || !(recolor.layers || []).includes(layer.id)) return image;
+  state.tinted = state.tinted || {};
+  const key = `${state.current.id}/${layer.id}`;
+  if (!state.tinted[key]) state.tinted[key] = tintedCopy(image, recolor);
+  return state.tinted[key];
+}
+function drawPlaced(image, layer, c, cx0, cy0) {
+  if (layer.follow === "viewport" && !(layer.size && layer.size.w === c.w && layer.size.h === c.h)) {
+    const scale = Math.max(c.w / image.width, c.h / image.height);
+    const w = image.width * scale, h = image.height * scale;
+    const [x, y] = toScreen((c.w - w) / 2, (c.h - h) / 2);
+    ctx.beginPath(); ctx.rect(cx0, cy0, c.w * state.zoom, c.h * state.zoom); ctx.clip();
+    ctx.drawImage(image, x, y, w * state.zoom, h * state.zoom);
+  } else if (layer.rect) { const [x, y] = toScreen(layer.rect.x, layer.rect.y); ctx.drawImage(image, x, y, layer.rect.w * state.zoom, layer.rect.h * state.zoom); }
+  else if (layer.follow === "viewport") { const [x, y] = toScreen(0, 0); ctx.drawImage(image, x, y, c.w * state.zoom, c.h * state.zoom); }
+}
 function draw() {
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = "#111113";
@@ -650,19 +683,14 @@ function draw() {
   for (const layer of layersBottomFirst()) {
     if (layer.visible === false) continue;
     if (layer.id === CUTOUTS) { drawCutouts(layer); continue; }
-    const image = state.images[layer.id];
+    const image = layerImage(layer);
     if (!image) continue;
     ctx.save();
     ctx.globalCompositeOperation = layer.blend === "add" ? "lighter" : (layer.blend === "multiply" ? "multiply" : "source-over");
     ctx.globalAlpha = layer.opacity === undefined ? 1 : Math.max(0, Math.min(1, layer.opacity));
-    if (layer.follow === "viewport" && !(layer.size && layer.size.w === c.w && layer.size.h === c.h)) {
-      const scale = Math.max(c.w / image.width, c.h / image.height);
-      const w = image.width * scale, h = image.height * scale;
-      const [x, y] = toScreen((c.w - w) / 2, (c.h - h) / 2);
-      ctx.beginPath(); ctx.rect(cx0, cy0, c.w * state.zoom, c.h * state.zoom); ctx.clip();
-      ctx.drawImage(image, x, y, w * state.zoom, h * state.zoom);
-    } else if (layer.rect) { const [x, y] = toScreen(layer.rect.x, layer.rect.y); ctx.drawImage(image, x, y, layer.rect.w * state.zoom, layer.rect.h * state.zoom); }
+    drawPlaced(image, layer, c, cx0, cy0);
     ctx.restore();
+    if (layer.id === "background" && state.images.__ambient) { ctx.save(); ctx.globalCompositeOperation = "multiply"; drawPlaced(state.images.__ambient, layer, c, cx0, cy0); ctx.restore(); }
   }
   ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 1; ctx.setLineDash([6, 4]);
   ctx.strokeRect(cx0 + 0.5, cy0 + 0.5, c.w * state.zoom, c.h * state.zoom);
@@ -822,7 +850,7 @@ canvas.addEventListener("mousemove", event => {
     if (changed) draw(); else { const [px, py] = toPlate(sx, sy); hud.textContent = hud.textContent.replace(/· -?\d+, -?\d+/, `· ${Math.floor(px)}, ${Math.floor(py)}`); }
     return;
   }
-  if (state.drag.pan) { state.ox = state.drag.ox + (sx - state.drag.sx); state.oy = state.drag.oy + (sy - state.drag.sy); draw(); return; }
+  if (state.drag.pan) { state.fitted = false; state.ox = state.drag.ox + (sx - state.drag.sx); state.oy = state.drag.oy + (sy - state.drag.sy); draw(); return; }
   const dx = Math.round((sx - state.drag.sx) / state.zoom), dy = Math.round((sy - state.drag.sy) / state.zoom);
   const s = state.drag.start, h = state.drag.handle;
   const screen = state.selected.kind === "screen" ? state.current.screens[state.selected.screen] : null;
@@ -878,6 +906,7 @@ canvas.addEventListener("wheel", event => {
     return;
   }
   wheelAccumulated = 0;
+  state.fitted = false;
   state.ox -= event.deltaX * scale * devicePixelRatio;  // plain wheel pans: horizontal delta pans sideways
   state.oy -= event.deltaY * scale * devicePixelRatio;
   draw();

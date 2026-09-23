@@ -243,7 +243,7 @@ class SemuCli {
         string action = self.line.operand(1, "");
         string configRoot = self.configRoot();
         BezelRepository repository = BezelRepository(configRoot);
-        MegaBezelTree tree = MegaBezelTree(configRoot, PathTools.join(PathTools.dirname(configRoot), "build/bezel"));
+        MegaBezelTree tree = MegaBezelTree(configRoot, MegaBezelTree.locate(configRoot, self.option("asset-root", Environment.get("SEMU_ASSET_ROOT", ""))));
         if (!tree.ready) { Console.error("bezel: " + tree.failure); return 1; }
         Vector<string> wanted = self.option("packages", "").isEmpty() ? repository.upstreamIds() : Strings.split(self.option("packages", ""), ",");
         if (action.equals("edit")) { return BezelEditor(repository, tree).serve(Strings.toInt(self.option("port", "8765"))); }
@@ -251,7 +251,7 @@ class SemuCli {
             for id in wanted {
                 JSONValue package = repository.package(id);
                 if (package == null) { Console.error(f"{id}: no such package"); continue; }
-                MegaBezelPreset preset = MegaBezelPreset(tree.presetPath(SemuJson.textAt(package, "upstream.preset")));
+                MegaBezelPreset preset = MegaBezelPreset(tree.packagePreset(package));
                 Console.log(f"{id}: {preset.chain.size()} files, {preset.values.size()} values, {preset.textures.size()} textures" + (preset.missing.size() > 0 ? ", MISSING " + Strings.join(preset.missing, ", ") : ""));
                 for name in ["HSM_NON_INTEGER_SCALE", "HSM_ASPECT_RATIO_MODE", "HSM_SCREEN_POSITION_X", "HSM_SCREEN_POSITION_Y", "HSM_DUALSCREEN_MODE", "HSM_FLIP_VIEWPORT_VERTICAL", "HSM_BZL_WIDTH", "HSM_BZL_HEIGHT", "HSM_TUBE_BLACK_EDGE_THICKNESS", "HSM_DEVICE_SCALE", "HSM_DEVICE_POS_Y"] {
                     if (preset.has(name)) { Console.log(f"    {name} = {preset.value(name)}"); }

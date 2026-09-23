@@ -172,7 +172,8 @@
   "upstream": {
     "kind": "device",
     "preset": "Presets/Advanced/Nintendo_GBA/GBA-[ADV]-[LCD-GRID].slangp",
-    "silhouette": "Graphics/Nintendo_GBA/GBA_Device.png"
+    "silhouette": "Graphics/Nintendo_GBA/GBA_Device.png",
+    "source": "duimon_mega_bezel"
   },
   "canvas_layer": "device",
   "layers": [

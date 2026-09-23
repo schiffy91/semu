@@ -7,6 +7,7 @@ import Library.Platform;
 import Library.Strings;
 import Library.Vector;
 import ../../src/lib/json.btrc;
+import ../../src/lib/paths.btrc;
 import ../../src/model.btrc;
 import ../../src/resolve.btrc;
 import ../../src/check.btrc;
@@ -37,6 +38,13 @@ class Contract {
             self.failures++;
             Console.error("FAIL: " + message);
         }
+    }
+
+    public void skip(string label, string reason) {  // a skip fails unless SEMU_ALLOW_SKIP=1 says the host lacks it
+        bool allowed = Environment.get("SEMU_ALLOW_SKIP", "").equals("1");
+        Console.error((allowed ? "SKIP: " : "FAIL: ") + label + ": " + reason);
+        self.checks++;
+        if (!allowed) { self.failures++; }
     }
 
     public void contains(string haystack, string needle, string message) {
@@ -360,9 +368,10 @@ class RenderingContract {
             if (entry.startsWith("SEMU_RENDER_LAYER_") && entry.contains("/NDS_Top.png|0,0,1,1|1|0|")) { topAbove = true; }
             if (entry.startsWith("SEMU_RENDER_LAYER_") && entry.contains("/Canvas_Background.jpg|0,0,1,1|0|0|")) { coverBackground = true; }
         }
-        if (layerCount > 0) { contract.expect(deviceBelow && topAbove && coverBackground, "the DS layer stack reaches the compositor: the canvas-sized background and face under the screens, the top plate over them"); }
-        else { Console.log("layer stack: skipped, the upstream layers are not staged on this host"); }
-        contract.expect(dual.contains("SEMU_RENDER_CANVAS=3840,2160") || layerCount == 0, "the layer canvas is the DS face's own pixel grid");
+        if (layerCount > 0) {
+            contract.expect(deviceBelow && topAbove && coverBackground, "the DS layer stack reaches the compositor: the canvas-sized background and face under the screens, the top plate over them");
+            contract.expect(dual.contains("SEMU_RENDER_CANVAS=3840,2160"), "the layer canvas is the DS face's own pixel grid");
+        } else { contract.skip("layer stack", "the upstream layers resolve nowhere (no bundle layers, no bezel tree)"); }
         SemuPlan computed = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"main_right\"}}}}", diagnostics);
         Vector<string> computedEnv = SemuRenderEnvironment.compile(computed, nds, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(computedEnv.contains("SEMU_RENDER_BEZELS=1") && computedEnv.contains("SEMU_RENDER_LAYOUT=main_right") && computedEnv.contains("SEMU_RENDER_BEZEL_ID=dual-main-right"), "the computed main-right layout is an alternate that needs no plate");
@@ -429,9 +438,60 @@ class BezelPackageContract {  // every calibrated package: the picture sits insi
     }
 }
 
+class LayerLookContract {  // recolour tints and the night plate reach the compositor from bundled layers
+    class void bundle(string assets, string packageId, string layer) {
+        string directory = PathTools.join(assets, "share/semu/assets/bezels/layers/" + packageId);
+        FileSystem.mkdirp(directory);
+        FileSystem.writeText(PathTools.join(directory, layer), "png");
+    }
+
+    class string layerWith(Vector<string> env, string needle) {
+        for entry in env { if (entry.startsWith("SEMU_RENDER_LAYER_") && entry.contains(needle)) { return entry; } }
+        return "";
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string assets = fixture.plan.assetRoot;
+        for layer in ["background.jpg", "led.png", "decal.png", "device.png", "device_led.png", "glass.png", "top.png"] { LayerLookContract.bundle(assets, "gba-shell", layer); LayerLookContract.bundle(assets, "gba-arctic", layer); }
+        for layer in ["background.png", "led.png", "ambient.png"] { LayerLookContract.bundle(assets, "tv-soqueroeu-nes", layer); }
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuPlan arctic = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"gba\":{\"bezel_variant\":\"arctic\"}}}}", diagnostics);
+        Vector<string> arcticEnv = SemuRenderEnvironment.compile(arctic, fixture.model.system("gba"), "retroarch", "/state/retroarch", diagnostics);
+        Vector<string> shellEnv = SemuRenderEnvironment.compile(fixture.plan, fixture.model.system("gba"), "retroarch", "/state/retroarch", diagnostics);
+        string tinted = LayerLookContract.layerWith(arcticEnv, "/layers/gba-arctic/device.png|");
+        contract.expect(tinted.endsWith("|0.933333,0.945098,0.956863,1.9|0"), "the arctic variant tints its device layer: " + tinted);
+        contract.expect(LayerLookContract.layerWith(arcticEnv, "/layers/gba-arctic/decal.png|").endsWith("|-|0"), "layers the recolour does not name stay untinted");
+        contract.expect(LayerLookContract.layerWith(shellEnv, "/layers/gba-shell/device.png|").endsWith("|-|0"), "the default GBA shell is untinted, so the two variants differ");
+        Vector<string> nesEnv = SemuRenderEnvironment.compile(fixture.plan, fixture.model.system("nes"), "retroarch", "/state/retroarch", diagnostics);
+        string night = LayerLookContract.layerWith(nesEnv, "/layers/tv-soqueroeu-nes/ambient.png|");
+        contract.expect(night.endsWith("|0|2|1|-|0.2"), "the TV scene multiplies the night plate, lifted by one minus its opacity: " + night);
+        contract.expect(nesEnv.contains("SEMU_RENDER_LAYER_COUNT=3"), "background, night plate and LED make the NES stack");
+        contract.expect(diagnostics.ok(), "the layer stacks compile without diagnostics: " + diagnostics.render());
+    }
+}
+
+class OwnedPathsContract {  // what Semu may write: owned roots after normalizing, never the checkout's src or config except one bezel file
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string root = PathTools.join(fixture.scratch, "owned");
+        contract.expect(!SemuPaths.inside(root, root + "/../escape"), "a .. that climbs out of the root is outside it");
+        contract.expect(SemuPaths.inside(root, root + "/a/../b"), "a .. that stays inside is inside");
+        contract.expect(!SemuPaths.writeOwned(root, root + "/../escape.json", "{}"), "writeOwned refuses a path that climbs out");
+        contract.expect(SemuPaths.writeOwned(root, root + "/deep/file.json", "{}") && FileSystem.readText(root + "/deep/file.json").equals("{}") && !FileSystem.isFile(root + "/deep/file.json.semu-tmp"), "writeOwned writes through a temporary and leaves none behind");
+        string project = fixture.project;
+        contract.expect(!SemuPaths.writeOwned(project, PathTools.join(project, "src/owned-test.txt"), "x") && !FileSystem.isFile(PathTools.join(project, "src/owned-test.txt")), "writeOwned never writes into the checkout's src");
+        contract.expect(!SemuPaths.writeOwned(project, PathTools.join(project, "config/systems/owned-test.json"), "x"), "writeOwned never writes into the checkout's config");
+        string configRoot = fixture.plan.configRoot;
+        contract.expect(!SemuPaths.writeSource(configRoot, PathTools.join(configRoot, "systems/gb/system.json"), "x"), "writeSource refuses anything but a bezel package");
+        contract.expect(!SemuPaths.writeSource(configRoot, PathTools.join(configRoot, "bezels/../systems/gb/bezel.json"), "x"), "writeSource refuses a bezel path that climbs out");
+        contract.expect(!SemuPaths.writeSource(configRoot, PathTools.join(configRoot, "bezels/gb-dmg-shell/extra/bezel.json"), "x"), "writeSource takes only config/bezels/<id>/bezel.json");
+    }
+}
+
 class BezelPlacementContract {  // the Mega Bezel port against the last render-based captures (2026-09-19, 3840x2160): every edge within 2 px
     class void check(Contract contract, MegaBezelTree tree, string preset, int coreWidth, int coreHeight, double zoom, double x0, double y0, double x1, double y1, string label) {
-        MegaBezelPlacement placement = MegaBezelPlacement(MegaBezelParams(MegaBezelPreset(tree.presetPath(preset)), tree.defaults), coreWidth, coreHeight, 3840, 2160);
+        MegaBezelPlacement placement = MegaBezelPlacement(MegaBezelParams(MegaBezelPreset(tree.presetPath(preset.startsWith("Presets/") ? "duimon_mega_bezel" : "soqueroeu_tv", preset)), tree.defaults), coreWidth, coreHeight, 3840, 2160);
         BezelRect shown = placement.toScreen(placement.screen(1).picture, zoom).scaled(3840.0, 2160.0);
         double worst = BezelNumber.absDouble(shown.x - x0);
         for delta in [BezelNumber.absDouble(shown.y - y0), BezelNumber.absDouble(shown.x + shown.w - x1), BezelNumber.absDouble(shown.y + shown.h - y1)] { if (delta > worst) { worst = delta; } }
@@ -440,8 +500,8 @@ class BezelPlacementContract {  // the Mega Bezel port against the last render-b
 
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
-        MegaBezelTree tree = MegaBezelTree(fixture.plan.configRoot, PathTools.join(fixture.scratch, "bezel"));
-        if (!tree.ready) { Console.log("bezel placement: skipped, " + tree.failure); contract.expect(true, "bezel placement skipped without the pinned trees"); return; }
+        MegaBezelTree tree = MegaBezelTree(fixture.plan.configRoot, MegaBezelTree.locate(fixture.plan.configRoot, ""));
+        if (!tree.ready) { contract.skip("bezel placement", tree.failure); return; }
         BezelPlacementContract.check(contract, tree, "presets/TV-Console/Nintendo_NES.slangp", 256, 240, 1.0, 1059.0, 266.0, 2780.0, 1557.0, "nes");
         BezelPlacementContract.check(contract, tree, "presets/TV-Console/Sega_Genesis.slangp", 320, 224, 1.0, 1030.0, 279.0, 2809.0, 1613.0, "genesis");
         BezelPlacementContract.check(contract, tree, "presets/TV-Console/Nintendo_GameCube-[FLAT].slangp", 640, 480, 1.0, 993.0, 292.0, 2847.0, 1682.0, "gc");
@@ -449,9 +509,9 @@ class BezelPlacementContract {  // the Mega Bezel port against the last render-b
         BezelPlacementContract.check(contract, tree, "Presets/Standard/Nintendo_Game_Boy/Gameboy_DMG01-[STD]-[LCD-GRID].slangp", 160, 144, 0.4, 1638.0, 752.0, 2202.0, 1260.0, "gb");
         BezelPlacementContract.check(contract, tree, "Presets/Standard/Nintendo_Game_Boy_Color/GBC-[STD]-[LCD-GRID].slangp", 160, 144, 0.4, 1637.0, 715.0, 2202.0, 1224.0, "gbc");
         BezelPlacementContract.check(contract, tree, "Presets/Standard/Nintendo_GBA/GBA-[STD]-[LCD-GRID].slangp", 240, 160, 0.4, 1547.0, 832.0, 2293.0, 1328.0, "gba");
-        MegaBezelPreset gamecube = MegaBezelPreset(tree.presetPath("presets/TV-Console/Nintendo_GameCube-[FLAT].slangp"));
+        MegaBezelPreset gamecube = MegaBezelPreset(tree.presetPath("soqueroeu_tv", "presets/TV-Console/Nintendo_GameCube-[FLAT].slangp"));
         contract.expect(gamecube.value("HSM_NON_INTEGER_SCALE").equals("64.370285"), "a key assigned twice in one preset keeps its first value, as RetroArch's config_file does");
-        MegaBezelPreset dmg = MegaBezelPreset(tree.presetPath("Presets/Standard/Nintendo_Game_Boy/Gameboy_DMG01-[STD]-[LCD-GRID].slangp"));
+        MegaBezelPreset dmg = MegaBezelPreset(tree.presetPath("duimon_mega_bezel", "Presets/Standard/Nintendo_Game_Boy/Gameboy_DMG01-[STD]-[LCD-GRID].slangp"));
         contract.expect(dmg.value("HSM_ASPECT_RATIO_MODE").equals("1.000000") && dmg.value("HSM_ASPECT_RATIO_EXPLICIT").equals("1.110000"), "a referencing preset overrides the base it references");
         contract.expect(dmg.missing.size() == 0 && dmg.textures.has("DeviceImage") && dmg.textures.has("CabinetGlassImage"), "every texture the DMG preset draws resolves to a file");
         BezelRepository repository = BezelRepository(fixture.plan.configRoot);
@@ -657,6 +717,8 @@ int main() {
     RenderingContract.run(contract);
     BezelPackageContract.run(contract);
     BezelPlacementContract.run(contract);
+    LayerLookContract.run(contract);
+    OwnedPathsContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);
