@@ -425,6 +425,24 @@ class LayerLookContract {  // recolour tints and the night plate reach the compo
     }
 }
 
+class RenderResolutionContract {  // the 3D cores render at the largest whole multiple the display holds
+    class string mupen(Fixture fixture, string overlay) {
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuPlan plan = SemuResolver.plan(fixture.model, fixture.plan.target.id, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
+        return SemuLauncher.coreOptions(plan, fixture.model.emulator("retroarch").platform("linux"), "mupen64plus_next", fixture.model.system("n64"));
+    }
+
+    class void run(Contract contract) {
+        Fixture desktop = Fixture("linux-desktop");
+        Fixture deck = Fixture("steam-deck");
+        contract.contains(RenderResolutionContract.mupen(desktop, "{}"), "mupen64plus-43screensize = \"2880x2160\"", "a 4K desktop renders the N64 at 9x");
+        contract.contains(RenderResolutionContract.mupen(deck, "{}"), "mupen64plus-43screensize = \"960x720\"", "the Deck renders the N64 at 3x");
+        contract.contains(RenderResolutionContract.mupen(desktop, "{\"visual\":{\"render_resolution\":\"1x\"}}"), "mupen64plus-43screensize = \"320x240\"", "1x keeps the native size");
+        contract.lacks(RenderResolutionContract.mupen(desktop, "{\"visual\":{\"render_resolution\":\"native\"}}"), "43screensize", "native leaves the core its own default");
+        contract.lacks(RenderResolutionContract.mupen(desktop, "{}"), "169screensize", "the widescreen size stays unset for 4:3 play");
+    }
+}
+
 class OwnedPathsContract {  // what Semu may write: owned roots after normalizing, never the checkout's src or config except one bezel file
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
@@ -674,6 +692,7 @@ int main() {
     BezelPlacementContract.run(contract);
     LayerLookContract.run(contract);
     OwnedPathsContract.run(contract);
+    RenderResolutionContract.run(contract);
     RetroArchSpecContract.run(contract);
     EmulatorRuntimeSpecContract.run(contract);
     StandaloneSpecContract.run(contract);

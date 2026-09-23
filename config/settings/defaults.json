@@ -12,7 +12,12 @@
   "visual": {
     "crt_shaders": true,
     "bezels": true,
-    "integer_scaling": true
+    "integer_scaling": true,
+    "render_resolution": "integer",
+    "display": {
+      "width": 3840,
+      "height": 2160
+    }
   },
   "ui": {
     "theme": "slate-es-de",

@@ -19,6 +19,12 @@
     },
     "ui": {
       "display_index": 0
+    },
+    "visual": {
+      "display": {
+        "width": 1280,
+        "height": 800
+      }
     }
   },
   "steam": {

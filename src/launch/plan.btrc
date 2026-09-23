@@ -96,15 +96,39 @@ class SemuLauncher {
         return "";
     }
 
-    class string coreOptions(SemuPlan plan, JSONValue platform, string core) {  // literal core options only
+    class string renderSize(SemuPlan plan, SemuSystem system, JSONValue source) {  // WxH for a render_resolution option; "" keeps the core's default
+        string mode = SemuJson.textAt(plan.settings, "visual.render_resolution");
+        JSONValue screens = system == null ? null : SemuJson.get(system.definition, "display.screens");
+        if (mode.equals("native") || screens == null || !screens.isArray() || screens.size() == 0) { return ""; }
+        int width = 0;
+        int height = 0;
+        int count = SemuJson.textAt(source, "basis").equals("screen") ? 1 : screens.size();  // combined stacks the screens
+        for (int index = 0; index < count; index++) {
+            int screenWidth = SemuJson.intAt(screens.at(index), "native.w", 0);
+            if (screenWidth > width) { width = screenWidth; }
+            height += SemuJson.intAt(screens.at(index), "native.h", 0);
+        }
+        if (width < 1 || height < 1) { return ""; }
+        int scale = 1;
+        if (!mode.equals("1x")) {  // integer: the largest whole multiple the display holds
+            int across = SemuJson.intAt(plan.settings, "visual.display.width", 1280) / width;
+            int down = SemuJson.intAt(plan.settings, "visual.display.height", 800) / height;
+            scale = across < down ? across : down;
+            if (scale < 1) { scale = 1; }
+        }
+        return f"{width * scale}x{height * scale}";
+    }
+
+    class string coreOptions(SemuPlan plan, JSONValue platform, string core, SemuSystem system) {  // literal options, and render sizes from the display
         Vector<string> lines = [];
         JSONValue options = SemuJson.get(platform, "retroarch.core_options." + core);
         if (options != null && options.isArray()) {
             for (int index = 0; index < options.size(); index++) {
                 JSONValue option = options.at(index);
-                if (!SemuJson.textAt(option, "source.kind").equals("literal")) { continue; }
                 if (option.has("aspect") && !SemuJson.textAt(option, "aspect").equals("standard")) { continue; }
-                lines.push(f"{SemuJson.textAt(option, "key")} = \"{SemuJson.textAt(option, "source.value")}\"");
+                string kind = SemuJson.textAt(option, "source.kind");
+                string value = kind.equals("literal") ? SemuJson.textAt(option, "source.value") : (kind.equals("render_resolution") ? SemuLauncher.renderSize(plan, system, option.get("source")) : "");
+                if (!value.isEmpty()) { lines.push(f"{SemuJson.textAt(option, "key")} = \"{value}\""); }
             }
         }
         return lines.join("\n") + "\n";
@@ -276,7 +300,7 @@ class SemuLauncher {
             launch.argv.push("--config");
             launch.argv.push(config);
             SemuPaths.writeOwned(stateRoot, PathTools.join(PathTools.dirname(config), "retroarch-core-options.cfg"),
-                SemuLauncher.coreOptions(plan, platform, binding.core));
+                SemuLauncher.coreOptions(plan, platform, binding.core, system));
             string overrides = SemuLauncher.coreOverrides(plan, platform, binding.core);
             if (!overrides.isEmpty()) {  // per-core retroarch.cfg keys, e.g. a different video driver
                 string overrideFile = PathTools.join(PathTools.dirname(config), "core-" + binding.core + ".cfg");
