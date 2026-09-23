@@ -1,0 +1,11 @@
+{
+  "doc": "Freely licensed test programs that real cores boot in the real-cores check. pinobatch's 240p Test Suite ports (GPL-2.0-or-later), pinned by release and hash.",
+  "source": "https://github.com/pinobatch/240p-test-mini/releases/tag/v0.23",
+  "licence": "GPL-2.0-or-later",
+  "roms": [
+    { "system": "gb", "core": "gambatte", "file": "gb240p.gb", "url": "https://github.com/pinobatch/240p-test-mini/releases/download/v0.23/gb240p.gb", "hash": "sha256-cz625+wHGXUt3V/NpOcVwvLiD0rEvJccS9HUknL5uwQ=" },
+    { "system": "gbc", "core": "gambatte", "file": "gb240p.gb", "url": "https://github.com/pinobatch/240p-test-mini/releases/download/v0.23/gb240p.gb", "hash": "sha256-cz625+wHGXUt3V/NpOcVwvLiD0rEvJccS9HUknL5uwQ=" },
+    { "system": "gba", "core": "mgba", "file": "240pee_mb.gba", "url": "https://github.com/pinobatch/240p-test-mini/releases/download/v0.23/240pee_mb.gba", "hash": "sha256-R4RPcUBzigb487wJeA2jqwlVOaJQuHD2FP7tVh2dbzQ=" },
+    { "system": "nes", "core": "mesen", "file": "240pee.nes", "url": "https://github.com/pinobatch/240p-test-mini/releases/download/v0.23/240pee.nes", "hash": "sha256-BPAdc3L2bqK+/jJbm9ZVqfzDlaMfpG2UZihruPnS5i4=" }
+  ]
+}

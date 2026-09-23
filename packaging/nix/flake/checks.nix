@@ -86,6 +86,29 @@ forAllSystems (system:
         touch "$out"
       '';
     };
+    realCores = let  # real cores booting freely licensed test programs (tests/integration/test_roms.json)
+      manifest = lib.importJSON (repositoryRoot + "/tests/integration/test_roms.json");
+      coreFile = core: "${coreFlakes.${core}.packages.${system}.default}/lib/retroarch/cores/${core}_libretro.so";
+      cases = lib.concatMapStringsSep "\n" (rom: "${rom.system} ${rom.core} ${pkgs.fetchurl { inherit (rom) url hash; name = rom.file; }} ${coreFile rom.core}") manifest.roms;
+    in pkgs.stdenv.mkDerivation {
+      name = "semu-real-cores";
+      src = lib.fileset.toSource { root = repositoryRoot; fileset = ../../../tests/integration/real-cores.sh; };
+      nativeBuildInputs = [ pkgs.xvfb-run pkgs.socat pkgs.jq pkgs.imagemagick pkgs.mesa pkgs.findutils ];
+      dontConfigure = true;
+      dontBuild = true;
+      installPhase = ''
+        export SEMU_CLI="${packages.semu-cli}/bin/semu"
+        export RETROARCH="${packages.retroarch.unwrapped or packages.retroarch}/bin/retroarch"
+        export RENDERER="${packages.semu-renderer}/lib"
+        export CASES="${cases}"
+        export LIBGL_DRIVERS_PATH="${pkgs.mesa}/lib/dri"
+        export __EGL_VENDOR_LIBRARY_DIRS="${pkgs.mesa}/share/glvnd/egl_vendor.d"
+        export __GLX_VENDOR_LIBRARY_NAME=mesa
+        export LD_LIBRARY_PATH="${pkgs.mesa}/lib"
+        xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" sh tests/integration/real-cores.sh
+        touch "$out"
+      '';
+    };
     installer = pkgs.stdenv.mkDerivation {
       name = "semu-installer-contract";
       src = lib.fileset.toSource {
@@ -137,6 +160,7 @@ forAllSystems (system:
     inherit installer;
     platform-matrix = platformMatrix;
     launch-systems = launchSystems;
+    real-cores = realCores;
     synthetic-core = syntheticCore;
     retroarch-headless = retroarchHeadless;
     semu = packages.semu;
