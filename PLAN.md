@@ -626,13 +626,25 @@ state under `~/Library/Application Support/Semu`. Done and observed on mbp21:
   mupen64plus_next builds against nixpkgs zlib and libpng on darwin (its bundled copies
   take Apple headers for classic Mac OS) and, like upstream's osx build, without the dynarec
   (its arm64 linkage is ELF assembly).
+- The darwin bundle builds (`nix build .#packages.aarch64-darwin.semu`, 0e500d6): Semu.app,
+  ES-DE.app (built against Nix libraries), RetroArch.app, Dolphin.app, Ryujinx (`bin/Ryujinx`;
+  nixpkgs builds no .app, fixed in 04a64c2) and the ten darwin cores. `semu doctor --target
+  macos` against it resolves every library path and all three emulators. `semu-es-de` now puts
+  the bundle's `bin` on PATH, since Semu.app opened from Finder has only `/usr/bin:/bin` and
+  ES-DE finds the `semu-*` shims there (85422fb).
+- `semu <command> --help` used to run the command: `prepare --help` wrote an ES-DE home under
+  `~/Games/Emulation` on the Mac (removed; nothing was there before). Help now wins over
+  everything and is contract-tested (c56b0fb, 0d60d8c).
 
 Still open on the Mac:
-- Why QUIT outran the grace window for gba, nes, snes and genesis on macOS (needs a Mac run
-  that stays off the real display, or the owner's go-ahead).
-  A background RetroArch pauses (`pause_nonactive`) before it acts on SAVE_STATE, but QUIT is
-  handled before that pause.
-- Launch ES-DE and Semu.app from the darwin bundle; standalone emulators' macOS slices.
+- Why QUIT outran the grace window for gba, nes, snes and genesis on macOS. A background
+  RetroArch pauses (`pause_nonactive`) before it acts on SAVE_STATE, but QUIT is handled
+  before that pause.
+- On-screen observation: Semu.app launching ES-DE over the real library, a game from ES-DE,
+  Dolphin and Ryujinx (MoltenVK is on `LD_LIBRARY_PATH` in the nixpkgs wrapper, which macOS's
+  loader may ignore). The first `semu-es-de` run installs ES-DE documents into `~/ES-DE`, the
+  owner's live ES-DE home, so run it against a scratch home first. The screen was locked
+  after the owner left; GL apps die on a locked screen.
 
 ### G9. Observation still missing (needs hardware)
 
