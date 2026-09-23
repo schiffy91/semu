@@ -1,7 +1,7 @@
 SHELL := /bin/sh
 BTRC ?= $(shell command -v btrcpy 2>/dev/null || echo "nix run --no-warn-dirty .\#btrcpy --")
 CC ?= cc
-CFLAGS ?= -std=c11 -O1
+CFLAGS ?= -std=c11 -O1 -Wno-unknown-warning-option -Wno-incompatible-pointer-types-discards-qualifiers -Wno-discarded-qualifiers  # BTRC passes volatile error slots
 INCLUDES := -I"$(CURDIR)/src/launch"
 LIBS ?= -lm
 TRANSPILE := $(BTRC) --strict-imports --no-cache --no-stdlib

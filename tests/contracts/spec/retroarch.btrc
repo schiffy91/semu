@@ -83,7 +83,7 @@ class RetroArchSpecProfile {  // retroarch.cfg per target: fullscreen, shader ow
         }
         contract.expect(saveRow && loadRow, label + ": the profile keymap consumes state.save and state.load");
         JSONValue linux = emulator.platform("linux");
-        string mupen = SemuLauncher.coreOptions(fixture.plan, linux, "mupen64plus_next");
+        string mupen = SemuLauncher.coreOptions(fixture.plan, linux, "mupen64plus_next", fixture.model.system("n64"));
         RetroArchSpecText.fixtureLines(contract, fixture, "n64-software-core-options.cfg", mupen, "", "", "mupen64plus_next core options on " + target);
         contract.expect(fixture.diagnostics.ok(), label + " has no diagnostics: " + fixture.diagnostics.render());
     }
