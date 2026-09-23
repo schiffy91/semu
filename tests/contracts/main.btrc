@@ -520,6 +520,23 @@ class RenderResolutionContract {  // the 3D cores render at the largest whole mu
     }
 }
 
+class HelpContract {  // help on any command prints usage and writes nothing
+    class bool quiet(char* flag) {  // prepare with a help flag, into a home that must stay absent
+        char* arguments[5];
+        arguments[0] = "semu";
+        arguments[1] = "prepare";
+        arguments[2] = flag;
+        arguments[3] = "--es-de-home";
+        arguments[4] = "/tmp/semu-help-contract-es-de-home";
+        return SemuCli(CLIArgs(5, arguments)).run() == 0 && !FileSystem.exists("/tmp/semu-help-contract-es-de-home");
+    }
+
+    class void run(Contract contract) {
+        contract.expect(HelpContract.quiet("--help"), "prepare --help prints usage and prepares nothing");
+        contract.expect(HelpContract.quiet("-h"), "prepare -h prints usage and prepares nothing");
+    }
+}
+
 class OwnedPathsContract {  // what Semu may write: owned roots after normalizing, never the checkout's src or config except one bezel file
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
@@ -769,6 +786,7 @@ int main() {
     BezelPlacementContract.run(contract);
     LayerLookContract.run(contract);
     OwnedPathsContract.run(contract);
+    HelpContract.run(contract);
     RenderResolutionContract.run(contract);
     SteamInputInstallContract.run(contract);
     LibrarySettingsContract.run(contract);
