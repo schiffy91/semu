@@ -164,6 +164,7 @@ struct RendererVariantConfig {
     struct RendererPath art;
     struct RendererPath background;
     int canvas_width;   // SEMU_RENDER_CANVAS: the pixel grid the layers and screens are addressed in
+    int canvas_cover;   // SEMU_RENDER_CANVAS_FIT=cover: a scene fills the screen instead of letterboxing
     int canvas_height;
     int layer_count;
     struct RendererLayerConfig layers[8];
@@ -219,6 +220,7 @@ struct RendererGlResources {
     int lane_shader_output_height[2];
     unsigned long long lane_history[2];
     struct RendererPath lane_shader_presets[2];
+    struct RendererPath lane_shader_failed[2];  // a preset that would not build or run here: logged once, never retried
     int art_width[4];
     int art_height[4];
     int art_loaded[4];
@@ -458,6 +460,9 @@ class RendererConfiguration {
             variant->canvas_width = 0;
             variant->canvas_height = 0;
         }
+        snprintf(name, sizeof(name), "SEMU_RENDER_CANVAS_FIT%s", suffix);
+        char* canvasFit = getenv(name);
+        variant->canvas_cover = canvasFit != null && strcmp(canvasFit, "cover") == 0 ? 1 : 0;
         snprintf(name, sizeof(name), "SEMU_RENDER_LAYER_COUNT%s", suffix);
         char* countText = getenv(name);
         int declaredLayers = countText == null ? 0 : atoi(countText);
@@ -590,6 +595,27 @@ class RendererConfiguration {
 }
 
 class RendererGeometry {
+    class void coverKeepingTubes(struct SemuRenderFrameGl* frame, struct RendererVariantConfig* variant, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas) {  // scale the canvas to fill the area; keep contain if a tube would leave it
+        if (canvas->width <= 0.0f || canvas->height <= 0.0f) { return; }
+        float horizontal = (float)areaWidth / canvas->width;
+        float vertical = (float)areaHeight / canvas->height;
+        float grow = horizontal > vertical ? horizontal : vertical;
+        float width = canvas->width * grow;
+        float height = canvas->height * grow;
+        float x = ((float)areaWidth - width) * 0.5f;
+        float y = ((float)areaHeight - height) * 0.5f;
+        for (int index = 0; index < frame->surface_count && index < 2; index++) {
+            struct RendererNormalizedHole* tube = &variant->screens[index].tube;
+            float left = x + tube->x * width;
+            float top = y + tube->y * height;
+            if (left < 0.0f || top < 0.0f || left + tube->width * width > (float)areaWidth || top + tube->height * height > (float)areaHeight) { return; }
+        }
+        canvas->x = x;
+        canvas->y = y;
+        canvas->width = width;
+        canvas->height = height;
+    }
+
     class void fit(int areaX, int areaY, int areaWidth, int areaHeight,
                    int nativeWidth, int nativeHeight, float declaredAspect,
                    int integerScaling, struct RendererLaneGeometry* lane) {
@@ -836,6 +862,7 @@ class RendererGeometry {
             RendererCompositionContract.contain(areaWidth, areaHeight,
                 layered ? variant->canvas_width : resources->art_width[variantIndex],
                 layered ? variant->canvas_height : resources->art_height[variantIndex], &canvas);
+            if (layered && variant->canvas_cover != 0) { RendererGeometry.coverKeepingTubes(frame, variant, areaWidth, areaHeight, &canvas); }
             geometry->bezel_x = canvas.x;
             geometry->bezel_y = canvas.y;
             geometry->bezel_width = canvas.width;
@@ -1361,6 +1388,7 @@ class RendererShaderPasses {
             || !RendererShaderPasses.presetAvailable(config)) { return false; }
         char* preset = RendererConfiguration.lanePreset(config, index);
         if (preset == null || preset[0] == 0) { return false; }
+        if (strcmp(resources->lane_shader_failed[index].value, preset) == 0) { return false; }
         SemuLibrashaderOpenGLChain chain = RendererShaderPasses.lane(index);
         bool presetChanged = resources->lane_shader_presets[index].value[0] != 0
             && strcmp(resources->lane_shader_presets[index].value, preset) != 0;
@@ -1381,10 +1409,9 @@ class RendererShaderPasses {
             chain = new SemuLibrashaderOpenGLChain(loader, frame->context_generation);
             if (!chain.create(preset, 330, false, false,
                     true, true, true)) {
-                if (getenv("SEMU_RENDER_DEBUG") != null) {
-                    fprintf(stderr, "semu-renderer: shader chain failed for %s (failure %d, library %d)\n", preset, chain.lastFailure(), chain.lastLibraryErrorCode());
-                    chain.printLibraryError();
-                }
+                fprintf(stderr, "semu-renderer: shader chain failed for %s (failure %d, library %d); the game runs unfiltered\n", preset, chain.lastFailure(), chain.lastLibraryErrorCode());
+                chain.printLibraryError();
+                snprintf(resources->lane_shader_failed[index].value, 4096, "%s", preset);
                 chain = null;  // ARC releases the last reference
                 return false;
             }
@@ -1404,6 +1431,8 @@ class RendererShaderPasses {
             frame->context_generation);
         if (result != SEMU_LIBRASHADER_RENDERED
                 || !RendererGlErrors.none(gl)) {
+            fprintf(stderr, "semu-renderer: shader chain for %s stopped rendering; the game runs unfiltered\n", preset);
+            snprintf(resources->lane_shader_failed[index].value, 4096, "%s", preset);
             RendererShaderPasses.resetLane(index, resources,
                 frame->context_generation);
             return false;
@@ -1620,16 +1649,9 @@ class RendererCompositor {
                 return RendererResourceFailure.set(resources,
                     SEMU_RENDER_PIPELINE_FAILED, "surface_extract_failed");
             }
-            if (shaderRequested) {
-                if (!RendererShaderPasses.render(gl, config, resources,
-                        frame, &geometry->lanes[index], index)) {
-                    return RendererResourceFailure.set(resources,
-                        SEMU_RENDER_PIPELINE_FAILED, "shader_render_failed");
-                }
-                filtered[index] = 1;
-            }
+            if (shaderRequested && RendererShaderPasses.render(gl, config, resources, frame, &geometry->lanes[index], index)) { filtered[index] = 1; }  // a failed chain leaves this lane unfiltered, never the frame bare
         }
-        resources->shader_actual = shaderRequested ? 1 : 0;
+        resources->shader_actual = filtered[0] != 0 ? 1 : 0;
 
         if (!RendererGlAtomicComposition.prepare(gl, &resources->composition,
                 frame->framebuffer_width, frame->framebuffer_height)) {

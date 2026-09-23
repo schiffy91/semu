@@ -13,6 +13,11 @@
       "id": "tv_wide",
       "label": "Living room CRT (widescreen)",
       "bezel": "tv-soqueroeu-wii-16x9"
+    },
+    {
+      "id": "speakers",
+      "label": "CRT with speakers",
+      "bezel": "tv-soqueroeu-generic"
     }
   ]
 }

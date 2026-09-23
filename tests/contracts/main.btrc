@@ -418,9 +418,10 @@ class BezelPackageContract {  // every calibrated package: the picture sits insi
                     JSONValue native = screens.at(screenIndex).get("native");
                     JSONValue screen = SemuBezelPackage.screen(package, screens.size() == 1 ? "main" : SemuJson.textAt(screens.at(screenIndex), "id"));
                     JSONValue image = screen.isObject() ? screen.get("image") : null;
-                    if (image == null || !image.isObject()) { continue; }
-                    calibrated++;
                     string where = SemuJson.textAt(package, "id") + "/" + SemuJson.textAt(screen, "id");
+                    bool derived = package.has("upstream") || !SemuJson.textAt(package, "geometry_from").isEmpty();
+                    if (image == null || !image.isObject()) { contract.expect(!derived, where + ": an upstream or recolour package carries a picture rectangle"); continue; }
+                    calibrated++;
                     contract.expect(BezelPackageContract.inside(screen.get("image"), screen.get("tube")), where + ": the picture sits inside the opening");
                     double declared = BezelPackageContract.aspectOf(native);
                     if (screens.size() == 1) {
@@ -434,7 +435,7 @@ class BezelPackageContract {  // every calibrated package: the picture sits insi
                 }
             }
         }
-        contract.expect(calibrated == 25, f"every upstream package and recolor carries a picture rectangle: {calibrated} screens");
+        contract.expect(calibrated > 0, f"the picture rectangles were checked: {calibrated} screens");
     }
 }
 
@@ -467,6 +468,9 @@ class LayerLookContract {  // recolour tints and the night plate reach the compo
         string night = LayerLookContract.layerWith(nesEnv, "/layers/tv-soqueroeu-nes/ambient.png|");
         contract.expect(night.endsWith("|0|2|1|-|0.2"), "the TV scene multiplies the night plate, lifted by one minus its opacity: " + night);
         contract.expect(nesEnv.contains("SEMU_RENDER_LAYER_COUNT=3"), "background, night plate and LED make the NES stack");
+        SemuPlan off = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"gba\":{\"bezel_variant\":\"none\",\"shader_variant\":\"none\"}}}}", diagnostics);
+        Vector<string> offEnv = SemuRenderEnvironment.compile(off, fixture.model.system("gba"), "retroarch", "/state/retroarch", diagnostics);
+        contract.expect(offEnv.contains("SEMU_RENDER_BEZELS=0") && offEnv.contains("SEMU_RENDER_SHADERS=0"), "bezel and shader variant none turn this system's look off");
         contract.expect(diagnostics.ok(), "the layer stacks compile without diagnostics: " + diagnostics.render());
     }
 }
@@ -560,6 +564,7 @@ class SettingsUiContract {  // the document ES-DE's SEMU SETTINGS menu validates
             if (type.equals("integer")) { contract.expect(field.get("value").isNumber(), "integer value: " + key); }
             if (type.equals("choice")) {
                 contract.expect(SemuJson.strings(field.get("choices")).contains(SemuJson.text(field.get("value"))), "choice value is declared: " + key);
+                if (key.endsWith(".bezel_variant") || key.endsWith(".shader_variant")) { contract.expect(SemuJson.strings(field.get("choices")).contains("none"), "a system's look can be turned off on its own page: " + key); }
             }
         }
         if (!page.has("commands")) { return; }
