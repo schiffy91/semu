@@ -25,6 +25,9 @@
           buildInputs = (previous.buildInputs or [ ]) ++ [ pkgs.moltenvk ];  # upstream downloads MoltenVK at configure time; the sandbox has no network
           cmakeFlags = (previous.cmakeFlags or [ ]) ++ [ "-DUSE_SYSTEM_MOLTENVK=ON" "-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0" ];  # the Nix libraries target macOS 14
           env = (previous.env or { }) // { NIX_LDFLAGS = ((previous.env or { }).NIX_LDFLAGS or "") + " -framework QuartzCore"; };  # CAMetalLayer for the Vulkan surface
+          postPatch = (previous.postPatch or "") + ''
+            substituteInPlace src/citra_qt/citra_qt.cpp --replace-fail 'if (AppleUtils::IsRunningFromTerminal()) {' 'if (false) {'
+          '';  # Semu starts azahar as its child: without this, every launch stops at a "run it through open" dialog
         });
     in {
       semu = {
