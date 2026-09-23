@@ -479,6 +479,10 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
         Fixture desktop = Fixture("linux-desktop");
         contract.expect(mac.diagnostics.ok() && mac.plan.platform.equals("macos"), "the macos target resolves: " + mac.diagnostics.render());
         string macProfile = mac.profile("retroarch", "retroarch.cfg");
+        contract.contains(mac.profile("azahar", "config/azahar-emu/qt-config.ini"), "graphics_api=2\n", "macOS Azahar uses Vulkan: Apple builds have no OpenGL renderer");
+        contract.contains(desktop.profile("azahar", "config/azahar-emu/qt-config.ini"), "graphics_api=1\n", "Linux Azahar keeps OpenGL");
+        contract.contains(macProfile, "video_gpu_screenshot = \"false\"", "screenshots are the core frame: a GPU capture at 6K made the PNG encoder stall the task queue, so SAVE_STATE and QUIT waited");
+        contract.contains(macProfile, "history_list_enable = \"false\"", "RetroArch keeps no history in ~/Documents on macOS");
         contract.contains(macProfile, "input_joypad_driver = \"hid\"", "macOS RetroArch reads pads through HID");
         contract.contains(macProfile, "audio_driver = \"coreaudio\"", "macOS RetroArch plays through Core Audio");
         contract.contains(macProfile, "input_driver = \"cocoa\"", "macOS RetroArch takes Cocoa keyboard input");

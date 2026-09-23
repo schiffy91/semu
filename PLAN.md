@@ -640,12 +640,25 @@ state under `~/Library/Application Support/Semu`. Done and observed on mbp21:
   `~/Games/Emulation` on the Mac (removed; nothing was there before). Help now wins over
   everything and is contract-tested (c56b0fb, 0d60d8c).
 
+- The QUIT stall is fixed (2026-09-23, observed on screen after the owner unlocked the Mac).
+  RetroArch took GPU screenshots at the whole viewport, 4800x3200 on the 6K display, and its
+  PNG encoder took seconds. RetroArch's tasks run one at a time, so SAVE_STATE waited behind
+  the screenshot, and QUIT waits for pending tasks. The profile now captures the core's frame
+  (`video_gpu_screenshot = "false"`). RetroArch also wrote its content history to
+  `~/Documents/RetroArch` on macOS; history is off now, and its playlist, log, cache,
+  thumbnail, remap and menu-config directories live under the state root. With the bundle,
+  every RetroArch system (gb, gbc, gba, nes, snes, genesis, n64, psx through the `.m3u`
+  folder, nds, psp) booted a real library ROM with its bezel, saved and loaded a state and
+  quit through QUIT in about 1 s. Nothing new appeared in `~/Documents/RetroArch`. Linux
+  checks (contracts, launch-systems, real-cores) pass in the VM with the change.
+- Dolphin ran a GameCube game fullscreen on the Mac (OpenGL, with Dolphin's "no
+  ARB_buffer_storage, performance may be poor" notice). A Vulkan (MoltenVK) trial exited
+  before capture while the screen was locking, so it is not adopted.
+
 Still open on the Mac:
-- Why QUIT outran the grace window for gba, nes, snes and genesis on macOS. A background
-  RetroArch pauses (`pause_nonactive`) before it acts on SAVE_STATE, but QUIT is handled
-  before that pause.
+- Dolphin on Vulkan (MoltenVK ships in the build): try it on an unlocked screen.
 - On-screen observation: Semu.app launching ES-DE over the real library, a game from ES-DE,
-  Dolphin and Ryujinx (MoltenVK is on `LD_LIBRARY_PATH` in the nixpkgs wrapper, which macOS's
+  Wii through Dolphin, Azahar and Ryujinx (MoltenVK is on `LD_LIBRARY_PATH` in the nixpkgs wrapper, which macOS's
   loader may ignore). The first `semu-es-de` run installs ES-DE documents into `~/ES-DE`, the
   owner's live ES-DE home, so run it against a scratch home first. The screen was locked
   after the owner left; GL apps die on a locked screen.
