@@ -20,6 +20,7 @@
       packages = lib.genAttrs systems (system:
         let pkgs = nixpkgs.legacyPackages.${system}; in {
           default = pkgs.callPackage ./package.nix { btrcpy = btrc.packages.${system}.btrcpy; rendererRoot = ./.; };
+          loader = pkgs.callPackage ./loader.nix { btrcpy = btrc.packages.${system}.btrcpy; rendererRoot = ./.; };  # what emulators link
         });
     };
 }

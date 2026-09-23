@@ -50,6 +50,10 @@ stdenv.mkDerivation {
     nm -D --defined-only "$out/lib/libsemurenderer.so" | awk '{ print $3 }' | sort > actual
     printf '%s\n' semu_render_context_invalidate_gl semu_render_game_gl semu_render_post_ui_gl | sort > expected
     cmp expected actual
+    btrcpy loader/loader_probe.btrc -o loader_probe.c --strict-imports --no-cache --no-stdlib --no-dce  # emulators link the loader: prove it forwards
+    $CC loader_probe.c -std=c11 -O1 -o loader_probe -ldl
+    test "$(SEMU_RENDERER_LIBRARY="$out/lib/libsemurenderer.so" ./loader_probe)" = "-1"
+    test "$(SEMU_RENDERER_LIBRARY=/nonexistent/libsemurenderer.so ./loader_probe 2>/dev/null)" = "0"
   '';
 
   passthru = { abi = 3; header = rendererHeader; };

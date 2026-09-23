@@ -308,7 +308,8 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
                 break;
             }
             if (SemuStopSignals.pending() != 0) {
-                SemuProcessGroup.stop(child, launch.retroarchPort);
+                bool honoured = SemuProcessGroup.stop(child, launch.retroarchPort);
+                Console.error(honoured ? "semu: stopped; the emulator honoured QUIT" : "semu: stopped by signal");
                 exitCode = 128 + SemuStopSignals.pending();
                 break;
             }
@@ -317,8 +318,8 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
             if (ticks % rescanTicks == 0) { SemuInputDevices.scan(launch.watchPads); }
             SemuSupervisor.pollDevices(launch);
             if (SemuSupervisorRuntime.quit != 0) {
-                Console.error("semu: quit");
-                SemuProcessGroup.stop(child, launch.retroarchPort);
+                bool honoured = SemuProcessGroup.stop(child, launch.retroarchPort);
+                Console.error(honoured ? "semu: quit; the emulator honoured QUIT" : "semu: quit");
                 exitCode = 0;
                 break;
             }

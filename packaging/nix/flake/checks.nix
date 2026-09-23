@@ -54,13 +54,35 @@ forAllSystems (system:
       dontBuild = true;
       installPhase = ''
         export SEMU_CLI="${packages.semu-cli}/bin/semu"
-        export RETROARCH="${packages.retroarch}/bin/retroarch"
+        export RETROARCH="${packages.retroarch.unwrapped or packages.retroarch}/bin/retroarch"  # the synthetic core needs no core packages
         export CORE="${syntheticCore}/lib/retroarch/cores/synthetic_libretro.so"
         export LIBGL_DRIVERS_PATH="${pkgs.mesa}/lib/dri"
         export __EGL_VENDOR_LIBRARY_DIRS="${pkgs.mesa}/share/glvnd/egl_vendor.d"
         export __GLX_VENDOR_LIBRARY_NAME=mesa
         export LD_LIBRARY_PATH="${pkgs.mesa}/lib"
         xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" sh tests/integration/retroarch-headless.sh
+        touch "$out"
+      '';
+    };
+    launchSystems = pkgs.stdenv.mkDerivation {  # every RetroArch system through semu launch, the synthetic core as each core file
+      name = "semu-launch-systems";
+      src = lib.fileset.toSource {
+        root = repositoryRoot;
+        fileset = ../../../tests/integration/launch-systems.sh;
+      };
+      nativeBuildInputs = [ pkgs.xvfb-run pkgs.socat pkgs.jq pkgs.procps pkgs.mesa pkgs.findutils ];
+      dontConfigure = true;
+      dontBuild = true;
+      installPhase = ''
+        export SEMU_CLI="${packages.semu-cli}/bin/semu"
+        export RETROARCH="${packages.retroarch.unwrapped or packages.retroarch}/bin/retroarch"  # the synthetic core needs no core packages
+        export CORE="${syntheticCore}/lib/retroarch/cores/synthetic_libretro.so"
+        export RENDERER="${packages.semu-renderer}/lib"
+        export LIBGL_DRIVERS_PATH="${pkgs.mesa}/lib/dri"
+        export __EGL_VENDOR_LIBRARY_DIRS="${pkgs.mesa}/share/glvnd/egl_vendor.d"
+        export __GLX_VENDOR_LIBRARY_NAME=mesa
+        export LD_LIBRARY_PATH="${pkgs.mesa}/lib"
+        xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" sh tests/integration/launch-systems.sh
         touch "$out"
       '';
     };
@@ -114,6 +136,7 @@ forAllSystems (system:
   in { inherit contracts; } // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
     inherit installer;
     platform-matrix = platformMatrix;
+    launch-systems = launchSystems;
     synthetic-core = syntheticCore;
     retroarch-headless = retroarchHeadless;
     semu = packages.semu;

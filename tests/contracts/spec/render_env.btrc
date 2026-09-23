@@ -24,13 +24,13 @@ class RenderEnvSpecSources {  // the names the renderer sources ask for, as lite
     }
 
     class void scan(string text, Vector<string> names) {
-        int start = Strings.find(text, "\"SEMU_RENDER_", 0);
+        int start = Strings.find(text, "\"SEMU_RENDER", 0);  // SEMU_RENDER_* and the loader's SEMU_RENDERER_LIBRARY
         while (start >= 0) {
             int close = Strings.find(text, "\"", start + 1);
             if (close < 0) { return; }
             string name = text.substring(start + 1, close - start - 1);
             if (!names.contains(name)) { names.push(name); }
-            start = Strings.find(text, "\"SEMU_RENDER_", close + 1);
+            start = Strings.find(text, "\"SEMU_RENDER", close + 1);
         }
     }
 
