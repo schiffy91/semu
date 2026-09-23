@@ -18,6 +18,11 @@
           src = source;
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
           includeRetroArch = false;  # Semu wraps RetroArch itself; the nixpkgs launcher would drag in a Darwin-broken RetroArch
+        } // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
+          makeFlags = lib.filter (flag: !(lib.hasPrefix "WITH_DYNAREC=" flag)) (previous.makeFlags or [ ])  # upstream's osx build has no dynarec: its arm64 linkage is ELF assembly
+            ++ [ "SYSTEM_LIBPNG=1" "SYSTEM_ZLIB=1" ];  # the bundled zlib and libpng take Apple headers for classic Mac OS (fp.h, no fdopen)
+          nativeBuildInputs = (previous.nativeBuildInputs or [ ]) ++ [ pkgs.pkg-config ];
+          buildInputs = (previous.buildInputs or [ ]) ++ [ pkgs.libpng pkgs.zlib ];
         });
     in {
       semu = {

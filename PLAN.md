@@ -622,7 +622,8 @@ state under `~/Library/Application Support/Semu`. Done and observed on mbp21:
 - Darwin cores built: gambatte, mgba, mesen, snes9x, genesis_plus_gx, mednafen_psx, ppsspp,
   melonds (the Linux-only `-z noexecstack` is now gated) and desmume (deployment target 11.0).
   mupen64plus_next builds against nixpkgs zlib and libpng on darwin (its bundled copies
-  take Apple headers for classic Mac OS).
+  take Apple headers for classic Mac OS) and, like upstream's osx build, without the dynarec
+  (its arm64 linkage is ELF assembly).
 
 Still open on the Mac:
 - Why QUIT outran the grace window for gba, nes, snes and genesis on macOS (needs a Mac run
