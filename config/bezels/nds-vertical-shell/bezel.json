@@ -319,7 +319,8 @@
   "upstream": {
     "kind": "device",
     "preset": "Presets/Standard/Nintendo_NDS/NDS_Vertical-[STD]-[LCD-GRID]-[Integer].slangp",
-    "silhouette": "Graphics/Nintendo_NDS/NDS_Vertical.png"
+    "silhouette": "Graphics/Nintendo_NDS/NDS_Vertical.png",
+    "source": "duimon_mega_bezel"
   },
   "canvas_layer": "device",
   "layers": [

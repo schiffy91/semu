@@ -291,5 +291,12 @@
         "h": 6116
       }
     }
-  ]
+  ],
+  "recolor": {
+    "layers": [
+      "device"
+    ],
+    "color": "#e0457b",
+    "brightness": 1.25
+  }
 }

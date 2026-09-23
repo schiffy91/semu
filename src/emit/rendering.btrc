@@ -5,6 +5,7 @@ import Library.Vector;
 import ../lib/json.btrc;
 import ../model.btrc;
 import ../resolve.btrc;
+import ../bezel/preset.btrc;
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,12 +28,6 @@ class SemuRenderAssets {
 }
 
 class SemuRenderLayers {  // the package's layer stack for the compositor: file, extent, blend, above or below the screens
-    class string pack(string upstream) {
-        if (upstream.equals("duimon_mega_bezel")) { return "Duimon-Mega-Bezel"; }
-        if (upstream.equals("soqueroeu_tv")) { return "Soqueroeu-TV-Backgrounds_V2.0"; }
-        return upstream;
-    }
-
     class string file(SemuPlan plan, string packageId, string layerId, string reference) {  // "semu:assets/..." or "<upstream>:<relative>" -> a file the renderer can open
         int colon = Strings.find(reference, ":", 0);
         if (colon <= 0) { return FileSystem.isFile(reference) ? reference : ""; }
@@ -43,8 +38,26 @@ class SemuRenderLayers {  // the package's layer stack for the compositor: file,
         string extension = dot > 0 ? rest.substring(dot, rest.len() - dot) : "";
         string bundled = SemuRenderAssets.image(plan, "assets/bezels/layers/" + packageId + "/" + layerId + extension);
         if (!bundled.isEmpty()) { return bundled; }
-        string staged = PathTools.join(PathTools.join(PathTools.join(PathTools.dirname(plan.configRoot), "build/bezel/shaders/Mega_Bezel_Packs"), SemuRenderLayers.pack(name)), rest);
-        return FileSystem.isFile(staged) ? staged : "";
+        return MegaBezelTree.packFile(plan.configRoot, MegaBezelTree.locate(plan.configRoot, plan.assetRoot), name, rest);
+    }
+
+    class string tint(JSONValue recolor, string layerId) {  // r,g,b,brightness when the package recolors this layer, else "-"
+        JSONValue targets = recolor == null || !recolor.isObject() ? null : recolor.get("layers");
+        if (targets == null || !targets.isArray()) { return "-"; }
+        for (int index = 0; index < targets.size(); index++) {
+            JSONValue target = targets.at(index);
+            if (target != null && target.isString() && target.asString().equals(layerId)) {
+                return SemuRenderEnvironment.color(SemuJson.textAt(recolor, "color"), "1,1,1") + "," + SemuRenderEnvironment.numberOr(recolor, "brightness", "1");
+            }
+        }
+        return "-";
+    }
+
+    class void place(Vector<string> lines, Vector<double> orders, string line, double order) {  // keeps the stack sorted bottom first
+        int at = 0;
+        while (at < orders.size() && orders[at] <= order) { at++; }
+        lines.insert(at, line);
+        orders.insert(at, order);
     }
 
     class void emit(SemuRenderEnvironment env, SemuPlan plan, JSONValue package, string suffix, SemuDiagnostics diagnostics) {
@@ -54,33 +67,39 @@ class SemuRenderLayers {  // the package's layer stack for the compositor: file,
         string packageId = SemuJson.textAt(package, "id");
         int canvasWidth = SemuJson.intAt(canvas, "w", 0);
         int canvasHeight = SemuJson.intAt(canvas, "h", 0);
+        JSONValue recolor = package.get("recolor");
         double screensOrder = 0.0;
         for (int index = 0; index < layers.size(); index++) { if (SemuJson.textAt(layers.at(index), "id").equals("cutouts")) { screensOrder = atof(SemuRenderEnvironment.numberOr(layers.at(index), "order", "0")); } }
-        int count = 0;
         Vector<string> lines = [];
         Vector<double> orders = [];
+        string backgroundExtent = "";
+        double backgroundOrder = 0.0;
         for (int index = 0; index < layers.size(); index++) {
             JSONValue layer = layers.at(index);
             string id = SemuJson.textAt(layer, "id");
             if (id.equals("cutouts") || !SemuJson.boolAt(layer, "visible", true)) { continue; }
             string file = SemuRenderLayers.file(plan, packageId, id, SemuJson.textAt(layer, "file"));
-            if (file.isEmpty()) { continue; }  // not bundled and not staged: the renderer skips the layer rather than the launch failing
+            if (file.isEmpty()) { continue; }  // not bundled and no bezel tree: the renderer skips the layer rather than the launch failing
             double order = atof(SemuRenderEnvironment.numberOr(layer, "order", "0"));
             bool canvasSized = SemuJson.intAt(layer.get("size"), "w", 0) == canvasWidth && SemuJson.intAt(layer.get("size"), "h", 0) == canvasHeight;
             string extent = SemuJson.textAt(layer, "follow").equals("viewport") ? (canvasSized ? "0,0,1,1" : "cover") : SemuRenderEnvironment.rect(layer.get("rect"), canvas);  // a viewport-following plate the size of the canvas is the canvas
-            if (extent.isEmpty()) { continue; }
+            if (extent.isEmpty()) { diagnostics.add(packageId, "layers." + id, "the layer's rectangle does not fit the canvas"); continue; }
+            if (id.equals("background")) { backgroundExtent = extent; backgroundOrder = order; }
             string blend = SemuJson.textAt(layer, "blend");
             string blendCode = blend.equals("add") ? "1" : (blend.equals("multiply") ? "2" : "0");
-            string line = f"{file}|{extent}|{order > screensOrder ? "1" : "0"}|{blendCode}|{SemuRenderEnvironment.numberOr(layer, "opacity", "1")}";
-            int at = 0;
-            while (at < orders.size() && orders[at] <= order) { at++; }
-            lines.insert(at, line);
-            orders.insert(at, order);
+            SemuRenderLayers.place(lines, orders, f"{file}|{extent}|{order > screensOrder ? "1" : "0"}|{blendCode}|{SemuRenderEnvironment.numberOr(layer, "opacity", "1")}|{SemuRenderLayers.tint(recolor, id)}|0", order);
+        }
+        JSONValue ambient = package.get("ambient");
+        if (ambient != null && ambient.isObject() && !backgroundExtent.isEmpty()) {  // the late-night light, multiplied over the scene below the screens
+            string file = SemuRenderLayers.file(plan, packageId, "ambient", SemuJson.textAt(ambient, "file"));
+            double opacity = atof(SemuRenderEnvironment.numberOr(ambient, "opacity", "1"));
+            if (!file.isEmpty()) { SemuRenderLayers.place(lines, orders, f"{file}|{backgroundExtent}|0|2|1|-|{SemuRenderEnvironment.fraction(1.0 - opacity)}", backgroundOrder + 0.5); }
         }
         if (lines.size() == 0) { return; }
+        if (lines.size() > 8) { diagnostics.add(packageId, "layers", f"{lines.size()} drawable layers, the compositor holds 8"); return; }
         env.set("SEMU_RENDER_CANVAS" + suffix, f"{SemuRenderEnvironment.numberOr(canvas, "w", "0")},{SemuRenderEnvironment.numberOr(canvas, "h", "0")}");
-        for (int index = 0; index < lines.size() && index < 8; index++) { env.set(f"SEMU_RENDER_LAYER_{index}{suffix}", lines[index]); count++; }
-        env.set("SEMU_RENDER_LAYER_COUNT" + suffix, f"{count}");
+        for (int index = 0; index < lines.size(); index++) { env.set(f"SEMU_RENDER_LAYER_{index}{suffix}", lines[index]); }
+        env.set("SEMU_RENDER_LAYER_COUNT" + suffix, f"{lines.size()}");
     }
 }
 

@@ -17,7 +17,7 @@ stdenv.mkDerivation {
 
   buildPhase = ''
     btrcpy src/semu.btrc -o semu.c --strict-imports --no-cache --no-stdlib
-    $CC semu.c -std=c11 -O2 -o semu-btrc -lm
+    $CC semu.c -std=c11 -O2 -Isrc/launch -o semu-btrc -lm
   '';
 
   installPhase = ''

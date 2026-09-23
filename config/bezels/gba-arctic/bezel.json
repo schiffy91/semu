@@ -320,5 +320,12 @@
       "blend": "normal",
       "opacity": 1
     }
-  ]
+  ],
+  "recolor": {
+    "layers": [
+      "device"
+    ],
+    "color": "#eef1f4",
+    "brightness": 1.9
+  }
 }

@@ -20,8 +20,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-#include <linux/input.h>
-#include <linux/uinput.h>
+#include "semu_evdev.h"
 
 import Library.Console;
 import Library.FileSystem;
@@ -38,6 +37,7 @@ import ./plan.btrc;
 #define SEMU_SUPERVISOR_DEVICES 64
 #define SEMU_SUPERVISOR_KEYS 768
 #define SEMU_SUPERVISOR_RESCAN_TICKS 200
+#define SEMU_BIT_WORDS 16
 
 struct SemuInputDevice {
     int fd;

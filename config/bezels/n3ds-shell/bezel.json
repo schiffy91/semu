@@ -318,7 +318,8 @@
   },
   "upstream": {
     "kind": "scene",
-    "preset": "Presets/Standard/Nintendo_3DS/3DS-[STD]-[Guest].slangp"
+    "preset": "Presets/Standard/Nintendo_3DS/3DS-[STD]-[Guest].slangp",
+    "source": "duimon_mega_bezel"
   },
   "canvas_layer": "device",
   "layers": [
