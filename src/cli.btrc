@@ -318,12 +318,12 @@ class SemuCli {
     }
 
     public int run() {
+        if (self.helpRequested()) { return self.usage(0); }  // help on any command changes nothing, even beside a malformed option
         if (!self.line.ok()) {
             Console.error(self.line.errors.join("\n"));
             return self.usage(64);
         }
         string command = self.line.operand(0, "");
-        if (self.helpRequested()) { return self.usage(0); }  // help on any command changes nothing
         if (command.equals("build") && self.line.operand(1, "").equals("configs")) { return self.buildConfigs(); }
         if (command.equals("prepare")) { return self.prepare(); }
         if (command.equals("launch")) { return self.launch(); }
