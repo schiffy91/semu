@@ -577,6 +577,22 @@ Rulings taken as defaults because the owner was not available (reversible; say i
 is `tests/visual/virtual_pad.btrc` (uinput), the gallery is bash + the render host, M11.7's
 cleanup is done and the README and memory notes describe the new tools.
 
+### Linux builds from the Mac (2026-09-23, e1f1f91)
+
+A stock `nixos/nix` x86_64 container on this Mac's podman VM builds x86_64-linux with the sandbox
+on (only Nix's syscall filter is off, since seccomp cannot load under emulation). Built and run
+there: `checks.contracts` (2611), `checks.installer`, `checks.retroarch-headless` (RetroArch built
+with the renderer loader, driven through socat) and the new `checks.launch-systems`: all 12
+RetroArch systems launched through `semu launch` with the synthetic core as their core file,
+answered on the command port and ended through their own QUIT with nothing left over. The
+renderer now reaches RetroArch and PCSX2 through `libsemurendererloader` (dlopen of
+`SEMU_RENDERER_LIBRARY`), so renderer edits no longer rebuild them; the renderer's install check
+proves the forwarding. Not built there: PCSX2 with the loader and `checks.platform-matrix` (the
+VM disk filled while fetching every emulator source; the matrix evaluates on the Mac), and the
+whole bundle. Still open: one check per system with its real core and a real, freely
+licensed test ROM (M3's wording), and nixpkgs on a release branch with the M4 pin refresh
+(both need a full emulator rebuild, beyond this disk).
+
 ### G9. Observation still missing (needs hardware)
 
 - On FRACTAL-NORTH: Xbox pad input, Start+Select on hardware, save and load by pad, reboot
@@ -910,10 +926,11 @@ Update this block whenever a milestone criterion changes state.
      captures of wii, ps2 and n3ds.
   2. The Deck: M5 acceptance (`DECK_HOST=deck tests/deck/deploy.sh install`), then the Deck
      halves of M6 and M8.
-  3. Engineering that needs a Linux builder to verify (none reachable from the Mac): per-system
-     integration checks through `semu launch` (G2), nixpkgs on a release branch and the M4 pin
-     refresh (G6), dlopen for the renderer (G3). Needs a design choice: a built-in fallback
-     compositor (G3; the GLSL lives outside the renderer flake).
+  3. Engineering: per-system checks through `semu launch` and renderer dlopen are done and
+     built on x86_64 Linux from the Mac (see *Linux builds from the Mac*). Left: real cores with
+     real test ROMs per system, nixpkgs on a release branch and the M4 pin refresh, PCSX2 built
+     with the loader (all need a full emulator rebuild: FRACTAL-NORTH or a bigger VM disk), and a
+     design choice for a built-in fallback compositor (G3).
   Rulings needed from the owner: the default placement per system (G4), the ES-DE symlink
   above the ES-DE home (G5), rewriting git history to drop the derived art (G7), and confirmation of the three defaults recorded at
   the top of the gap section.
