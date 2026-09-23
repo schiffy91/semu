@@ -107,6 +107,101 @@
         "set": {
           "QT_QPA_PLATFORM": "xcb"
         }
+      },
+      "azahar": {
+        "graphics_api": "1"
+      }
+    },
+    "macos": {
+      "executable": "${asset_root}/Applications/azahar.app/Contents/MacOS/azahar",
+      "args": [
+        "-f"
+      ],
+      "graphics": {
+        "method": "config_file",
+        "file": "${state_root}/config/azahar-emu/qt-config.ini",
+        "format": "ini",
+        "section": "Renderer",
+        "key": "graphics_api",
+        "values": {
+          "vulkan": "2"
+        },
+        "extra_pins": [
+          {
+            "section": "Renderer",
+            "key": "async_presentation",
+            "value": "false"
+          },
+          {
+            "section": "Renderer",
+            "key": "use_integer_scaling",
+            "value": "true"
+          }
+        ]
+      },
+      "state": {
+        "config_home": "xdg",
+        "data_home": "xdg",
+        "config_subdir": "azahar-emu",
+        "data_subdir": "azahar-emu",
+        "seeds": [
+          {
+            "purpose": "n3ds_aes_keys",
+            "target": "${state_root}/data/azahar-emu/sysdata/aes_keys.txt",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/bios/aes_keys.txt",
+              "${emulation_root}/bios/n3ds/aes_keys.txt",
+              "${bios}/n3ds/aes_keys.txt",
+              "${bios}/aes_keys.txt"
+            ]
+          },
+          {
+            "purpose": "n3ds_seed_database",
+            "target": "${state_root}/data/azahar-emu/sysdata/seeddb.bin",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/bios/seeddb.bin",
+              "${emulation_root}/bios/n3ds/seeddb.bin",
+              "${bios}/n3ds/seeddb.bin",
+              "${bios}/seeddb.bin"
+            ]
+          },
+          {
+            "purpose": "nand",
+            "target": "${state_root}/data/azahar-emu/nand",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/Azahar/data/nand"
+            ]
+          },
+          {
+            "purpose": "sdmc",
+            "target": "${state_root}/data/azahar-emu/sdmc",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/Azahar/data/sdmc"
+            ]
+          }
+        ]
+      },
+      "firmware": {
+        "dir": "${emulation_root}/bios",
+        "fallback_dirs": [
+          "${bios}/n3ds",
+          "${bios}"
+        ]
+      },
+      "azahar": {
+        "graphics_api": "2"
       }
     }
   },

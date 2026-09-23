@@ -620,7 +620,11 @@ state under `~/Library/Application Support/Semu`. Done and observed on mbp21:
   `Game.m3u`. `semu launch` now resolves the directory to that file (contract-tested).
 - 3DS through RetroArch is Linux-only: Azahar and Citra both compile their OpenGL renderer
   out on Apple, and Azahar asked for Vulkan and shut down under glcore. Dreamcast's Flycast
-  core has no darwin build either. On the Mac, 3DS belongs to standalone Azahar.
+  core has no darwin build either. On the Mac, 3DS runs on standalone Azahar: it builds for
+  darwin with nixpkgs MoltenVK (`USE_SYSTEM_MOLTENVK`, QuartzCore, target 14.0), its macOS
+  slice pins Vulkan (`graphics_api=2` from `platform.azahar.graphics_api`; Linux keeps OpenGL),
+  and its XDG state root is honoured on macOS once those directories exist. Not yet observed
+  running.
 - Darwin cores built: gambatte, mgba, mesen, snes9x, genesis_plus_gx, mednafen_psx, ppsspp,
   melonds (the Linux-only `-z noexecstack` is now gated) and desmume (deployment target 11.0).
   mupen64plus_next builds against nixpkgs zlib and libpng on darwin (its bundled copies
