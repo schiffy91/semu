@@ -385,6 +385,7 @@ class SemuRenderEnvironment {
         env.set("SEMU_RENDER_SYSTEM_ID", system.id);
         env.set("SEMU_RENDER_EMULATOR_ID", emulatorId);
         env.set("SEMU_RENDER_STATE_DIR", stateRoot);
+        if (!plan.assetRoot.isEmpty()) { env.set("SEMU_RENDERER_LIBRARY", PathTools.join(plan.assetRoot, "lib/libsemurenderer.so")); }  // the hooked emulators load it at run time
         env.set("SEMU_RENDER_COMPOSITOR_DIR", PathTools.join(plan.configRoot, "render"));  // the compositor GLSL is data: config/render/compositor.{vert,frag}
         env.set("SEMU_RENDER_SHADERS", shaderPath.isEmpty() ? "0" : "1");
         env.set("SEMU_RENDER_BEZELS", bezels ? "1" : "0");

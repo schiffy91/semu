@@ -1,0 +1,66 @@
+// The three renderer entry points an emulator links, forwarded to libsemurenderer.so loaded at
+// run time ($SEMU_RENDERER_LIBRARY, else the loader's search path). Emulators link only this, so
+// a renderer change never rebuilds them; without the library every frame passes through.
+
+#include <dlfcn.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+struct SemuRendererLoaderState {
+    int attempted;
+    void* game;
+    void* postUserInterface;
+    void* invalidate;
+};
+
+struct SemuRendererLoaderState SemuRendererLoaded;
+
+class SemuRendererLoader {
+    class void load() {  // once per process; a missing library is logged once
+        if (SemuRendererLoaded.attempted != 0) { return; }
+        SemuRendererLoaded.attempted = 1;
+        char* configured = getenv("SEMU_RENDERER_LIBRARY");
+        char* path = configured != null && configured[0] != 0 ? configured : "libsemurenderer.so";
+        int flags = (int)RTLD_NOW | (int)RTLD_LOCAL;
+        void* library = dlopen(path, flags);
+        if (library == null) {
+            fprintf(stderr, "semu-renderer-loader: %s; frames pass through\n", dlerror());
+            return;
+        }
+        SemuRendererLoaded.game = dlsym(library, "semu_render_game_gl");
+        SemuRendererLoaded.postUserInterface = dlsym(library, "semu_render_post_ui_gl");
+        SemuRendererLoaded.invalidate = dlsym(library, "semu_render_context_invalidate_gl");
+        if (SemuRendererLoaded.game == null || SemuRendererLoaded.postUserInterface == null || SemuRendererLoaded.invalidate == null) {
+            fprintf(stderr, "semu-renderer-loader: %s lacks the ABI 3 entry points; frames pass through\n", path);
+            SemuRendererLoaded.game = null;
+            SemuRendererLoaded.postUserInterface = null;
+            SemuRendererLoaded.invalidate = null;
+        }
+    }
+
+    class int frame(void* entry, void* frame) {  // 0 is SEMU_RENDER_PASSTHROUGH
+        if (entry == null) { return 0; }
+        __fn_ptr<int, void*> call;
+        memcpy(&call, &entry, sizeof(call));  // C11 forbids casting a data pointer to a function pointer
+        return call(frame);
+    }
+}
+
+int semu_render_game_gl(void* frame) {
+    SemuRendererLoader.load();
+    return SemuRendererLoader.frame(SemuRendererLoaded.game, frame);
+}
+
+int semu_render_post_ui_gl(void* frame) {
+    SemuRendererLoader.load();
+    return SemuRendererLoader.frame(SemuRendererLoaded.postUserInterface, frame);
+}
+
+void semu_render_context_invalidate_gl(unsigned long long contextGeneration) {
+    SemuRendererLoader.load();
+    if (SemuRendererLoaded.invalidate == null) { return; }
+    __fn_ptr<void, unsigned long long> call;
+    memcpy(&call, &SemuRendererLoaded.invalidate, sizeof(call));
+    call(contextGeneration);
+}

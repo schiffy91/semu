@@ -1,7 +1,7 @@
 # RetroArch built from Semu's pinned source with the render hook: gl3 calls the
 # shared renderer after the game draw and before present. `withCores` wraps it
 # with the core packages the system bindings select.
-{ lib, pkgs, retroarch-bare, makeBinaryWrapper, writeText, symlinkJoin, btrcpy, semuRenderer, bridgeSource, source, version, retroarch-assets, libretro-core-info }:
+{ lib, pkgs, retroarch-bare, makeBinaryWrapper, writeText, symlinkJoin, btrcpy, semuRendererLoader, bridgeSource, source, version, retroarch-assets, libretro-core-info }:
 
 let
   hooked = retroarch-bare.overrideAttrs (previous: {
@@ -12,7 +12,7 @@ let
     patches = (previous.patches or [ ]) ++ [ ./retroarch.patch ./retroarch_commands.patch ./retroarch_get_status_null_safety.patch ];
     patchFlags = [ "-p1" "--fuzz=0" ];  # a patch that drifted from the pinned source fails instead of landing fuzzily
     nativeBuildInputs = (previous.nativeBuildInputs or [ ]) ++ [ btrcpy ];
-    buildInputs = (previous.buildInputs or [ ]) ++ [ semuRenderer ];
+    buildInputs = (previous.buildInputs or [ ]) ++ [ semuRendererLoader ];  # the loader: renderer changes never rebuild RetroArch
     postPatch = (previous.postPatch or "") + ''
       btrcpy ${bridgeSource}/runtime_bridge.btrc -o gfx/semu_retroarch.c \
         --strict-imports --no-cache --no-stdlib --no-dce
@@ -25,11 +25,12 @@ let
       grep -Fq 'major = 4; minor = 6;' gfx/drivers/gl3.c
     '';
     env = (previous.env or { }) // {
-      NIX_CFLAGS_COMPILE = (previous.env.NIX_CFLAGS_COMPILE or "") + " -DHAVE_SEMU_RENDERER -I${semuRenderer}/include";
-      NIX_LDFLAGS = (previous.env.NIX_LDFLAGS or "") + " -L${semuRenderer}/lib -rpath ${semuRenderer}/lib -lsemurenderer";
+      NIX_CFLAGS_COMPILE = (previous.env.NIX_CFLAGS_COMPILE or "") + " -DHAVE_SEMU_RENDERER -I${semuRendererLoader}/include";
+      NIX_LDFLAGS = (previous.env.NIX_LDFLAGS or "") + " -L${semuRendererLoader}/lib --whole-archive -lsemurendererloader --no-whole-archive -ldl";
     };
     postInstall = (previous.postInstall or "") + ''
-      grep -Fq 'libsemurenderer.so' <<<"$(readelf -d "$out/bin/retroarch")"
+      ! grep -Fq 'libsemurenderer.so' <<<"$(readelf -d "$out/bin/retroarch")"  # loaded at run time, never linked
+      grep -Fq semu-renderer-loader "$out/bin/retroarch"  # the loader is linked in
     '';
     passthru = (previous.passthru or { }) // {
       withCores = cores:  # nixpkgs' wrapper with exactly these core packages

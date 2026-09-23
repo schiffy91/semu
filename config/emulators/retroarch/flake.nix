@@ -25,7 +25,7 @@
         pkgs.callPackage ./package.nix {
           inherit pkgs source version;
           btrcpy = btrc.packages.${system}.btrcpy;
-          semuRenderer = renderer.packages.${system}.default;
+          semuRendererLoader = renderer.packages.${system}.loader;
           bridgeSource = renderer.retroarchBridge;
         };
     in {

@@ -21,16 +21,16 @@
       systems = [ "x86_64-linux" ] ++ lib.optional platforms.macos "aarch64-darwin";
       build = system:
         let pkgs = nixpkgs.legacyPackages.${system}; in
-        let semuRenderer = renderer.packages.${system}.default; in
+        let semuRendererLoader = renderer.packages.${system}.loader; in  # the loader: renderer changes never rebuild PCSX2
         pkgs.pcsx2.overrideAttrs (previous: {
           version = "2.6.3";
           src = source // { tag = "v2.6.3"; };  # the recipe stamps PCSX2_GIT_TAG from it
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
           patches = (previous.patches or [ ]) ++ [ ./semu_render_hook.patch ];  # GSDeviceOGL publishes the presented frame to libsemurenderer (ABI 3)
-          buildInputs = (previous.buildInputs or [ ]) ++ [ semuRenderer ];
+          buildInputs = (previous.buildInputs or [ ]) ++ [ semuRendererLoader ];
           env = (previous.env or { }) // {
-            NIX_CFLAGS_COMPILE = (previous.env.NIX_CFLAGS_COMPILE or "") + " -DHAVE_SEMU_RENDERER -I${semuRenderer}/include";
-            NIX_LDFLAGS = (previous.env.NIX_LDFLAGS or "") + " -L${semuRenderer}/lib -rpath ${semuRenderer}/lib -lsemurenderer";
+            NIX_CFLAGS_COMPILE = (previous.env.NIX_CFLAGS_COMPILE or "") + " -DHAVE_SEMU_RENDERER -I${semuRendererLoader}/include";
+            NIX_LDFLAGS = (previous.env.NIX_LDFLAGS or "") + " -L${semuRendererLoader}/lib --whole-archive -lsemurendererloader --no-whole-archive -ldl";
           };
         });
     in {

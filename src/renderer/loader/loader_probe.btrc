@@ -1,0 +1,9 @@
+// Prints what the loader returns for a null frame: -1 is the renderer's own verdict (forwarded),
+// 0 is the loader's pass-through (no library). The renderer's install check runs both cases.
+import Library.Console;
+import ./semu_renderer_loader.btrc;
+
+int main() {
+    Console.log(f"{semu_render_game_gl(null)}");
+    return 0;
+}
