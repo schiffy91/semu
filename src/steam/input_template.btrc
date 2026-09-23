@@ -430,4 +430,40 @@ class SteamInputTemplates {  // semu steam input: write every declared Neptune t
         }
         return 0;
     }
+
+    class string place(string pattern, string steamRoot, string user, string application) {  // a declared Steam path under this Steam root
+        string steamDefault = "${home}/.local/share/Steam";
+        string placed = pattern.startsWith(steamDefault) ? steamRoot + pattern.substring(steamDefault.len(), pattern.len() - steamDefault.len()) : pattern;
+        return SemuPaths.expandHome(placed.replace("${steam_user}", user).replace("${application_id}", application));
+    }
+
+    class int install(SemuPlan plan, string steamRoot) {  // templates, icons and every user's default Semu profile, all inside one Steam root
+        JSONValue root = SemuJson.readFile(SteamInputTemplates.source(plan));
+        JSONValue platform = SemuJson.get(root, "platforms." + plan.platform);
+        if (root.isError() || platform == null || !platform.isObject()) { Console.error("semu: no Steam Input paths for " + plan.platform); return 1; }
+        string templates = SteamInputTemplates.place(SemuJson.textAt(platform, "templates_dir"), steamRoot, "", "");
+        string icons = SteamInputTemplates.place(SemuJson.textAt(platform, "binding_icons_dir"), steamRoot, "", "");
+        if (!SemuPaths.inside(steamRoot, templates) || !SemuPaths.inside(steamRoot, icons)) { Console.error("semu: Steam Input paths must lie inside " + steamRoot); return 1; }
+        int published = SteamInputTemplates.publish(plan, templates, icons);
+        if (published != 0) { return published; }
+        SteamInputDocument document = SteamInputDocument(root);
+        JSONValue chosen = null;
+        JSONValue declared = root.get("templates");
+        for (int index = 0; index < declared.size(); index++) { if (SemuJson.boolAt(declared.at(index), "default", false)) { chosen = declared.at(index); } }
+        if (chosen == null) { Console.error("semu: no default Steam Input template"); return 1; }
+        string controllerFile = SemuJson.textAt(root, "application.controller_file");
+        string pattern = SemuJson.textAt(platform, "application_config_dir");
+        for user in SemuModel.sortedEntries(PathTools.join(steamRoot, "userdata")) {
+            if (user.equals("0") || user.equals("anonymous") || !FileSystem.isDir(PathTools.join(steamRoot, "userdata/" + user))) { continue; }
+            string directory = SteamInputTemplates.place(pattern, steamRoot, user, SemuJson.textAt(root, "application.config_id"));
+            string file = PathTools.join(directory, controllerFile);
+            if (!SemuPaths.inside(steamRoot, directory) || !SemuPaths.writeOwned(steamRoot, file, SteamInputVdf.render(document, chosen))) { Console.error("semu: could not write " + file); return 1; }
+            Console.log(file);
+            for retired in SemuJson.strings(SemuJson.get(root, "application.deprecated_config_ids")) {  // only Semu's own file, never the folder
+                string stale = PathTools.join(SteamInputTemplates.place(pattern, steamRoot, user, retired), controllerFile);
+                if (FileSystem.isFile(stale) && !FileSystem.isSymlink(stale) && SemuPaths.removeFile(stale)) { Console.log(stale + " (removed)"); }
+            }
+        }
+        return 0;
+    }
 }
