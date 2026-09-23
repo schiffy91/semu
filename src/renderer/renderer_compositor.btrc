@@ -55,6 +55,21 @@ struct RendererCompositorSource {
 
 int RendererCompositorMissingReported = 0;  // survives resets, so a retried launch logs once
 
+class RendererFallbackCompositor {  // the plain picture and the menu, when config/render cannot be read or compiled at launch
+    class char* vertex() { return "#version 330 core\nvoid main(){vec2 p=vec2((gl_VertexID==1)?3.0:-1.0,(gl_VertexID==2)?3.0:-1.0);gl_Position=vec4(p,0.0,1.0);}\n"; }
+
+    class char* fragment() {
+        return "#version 330 core\nout vec4 frag;\nuniform sampler2D uGame;uniform sampler2D uGame2;uniform sampler2D uMenu;\nuniform vec4 uRect;uniform vec4 uRect2;uniform vec4 uFlags;uniform vec4 uRotation;uniform vec4 uMenuRect;uniform float uPass;uniform float uMenuOn;\nbool inside(vec2 p,vec4 r){return p.x>=r.x&&p.x<=r.x+r.z&&p.y>=r.y&&p.y<=r.y+r.w;}\nvec2 uv(vec2 p,vec4 r){return(p-r.xy)/r.zw;}\nvec2 rotatedUv(vec2 q,float r){if(r<0.5)return q;if(r<1.5)return vec2(1.0-q.y,q.x);if(r<2.5)return vec2(1.0-q.x,1.0-q.y);return vec2(q.y,1.0-q.x);}\nvoid main(){vec2 p=gl_FragCoord.xy;\n if(uPass>3.5)discard;\n if(uPass<0.5){frag=vec4(0.0,0.0,0.0,1.0);return;}\n if(uPass<1.5){if(inside(p,uRect)){frag=vec4(texture(uGame,rotatedUv(uv(p,uRect),uRotation.x)).rgb,1.0);return;}\n  if(uFlags.x>0.5&&inside(p,uRect2)){frag=vec4(texture(uGame2,rotatedUv(uv(p,uRect2),uRotation.y)).rgb,1.0);return;}discard;}\n if(uPass<2.5)discard;\n if(uMenuOn<0.5||!inside(p,uMenuRect))discard;vec2 q=uv(p,uMenuRect);q.y=1.0-q.y;frag=texture(uMenu,q);\n}\n";
+    }
+
+    class void use(struct RendererCompositorSource* source) {  // becomes the current text, so a fixed file reloads over it
+        RendererCompositorFiles.discard(source);
+        source->vertex = strdup(RendererFallbackCompositor.vertex());
+        source->fragment = strdup(RendererFallbackCompositor.fragment());
+        fprintf(stderr, "semu-renderer: config/render is missing or does not compile; drawing the plain fallback until it is fixed\n");
+    }
+}
+
 class RendererCompositorFiles {
     class char* path(char* name) {  // $SEMU_RENDER_COMPOSITOR_DIR/<name>, malloc'd, or null without the directory
         char* dir = getenv("SEMU_RENDER_COMPOSITOR_DIR");
@@ -1251,22 +1266,18 @@ class RendererResources {
             return false;
         }
         RendererCompositorFiles.load(&resources->compositor);
-        if (resources->compositor.vertex == null || resources->compositor.fragment == null) {
-            RendererResources.releaseCurrentContext(gl, resources,
-                contextGeneration);
-            return false;
+        if (resources->compositor.vertex == null || resources->compositor.fragment == null) { RendererFallbackCompositor.use(&resources->compositor); }
+        unsigned int vertex = RendererGlShader.compile(gl, (unsigned int)RGL_VERTEX_SHADER, resources->compositor.vertex);
+        unsigned int fragment = vertex == 0u ? 0u : RendererGlShader.compile(gl, (unsigned int)RGL_FRAGMENT_SHADER, resources->compositor.fragment);
+        if (vertex == 0u || fragment == 0u) {  // the files read but do not compile: the fallback still draws the game and the menu
+            if (vertex != 0u) { gl->delete_shader(vertex); }
+            RendererGlErrors.clear(gl);
+            RendererFallbackCompositor.use(&resources->compositor);
+            vertex = RendererGlShader.compile(gl, (unsigned int)RGL_VERTEX_SHADER, resources->compositor.vertex);
+            fragment = vertex == 0u ? 0u : RendererGlShader.compile(gl, (unsigned int)RGL_FRAGMENT_SHADER, resources->compositor.fragment);
         }
-        unsigned int vertex = RendererGlShader.compile(gl,
-            (unsigned int)RGL_VERTEX_SHADER, resources->compositor.vertex);
-        if (vertex == 0u) {
-            RendererResources.releaseCurrentContext(gl, resources,
-                contextGeneration);
-            return false;
-        }
-        unsigned int fragment = RendererGlShader.compile(gl,
-            (unsigned int)RGL_FRAGMENT_SHADER, resources->compositor.fragment);
-        if (fragment == 0u) {
-            gl->delete_shader(vertex);
+        if (vertex == 0u || fragment == 0u) {
+            if (vertex != 0u) { gl->delete_shader(vertex); }
             RendererResources.releaseCurrentContext(gl, resources,
                 contextGeneration);
             return false;
