@@ -282,7 +282,13 @@ class SemuProfileContext {
             for (int index = 0; index < value.size(); index++) { result.push(self.renderJson(value.at(index), bindings)); }
             return result;
         }
-        if (value.isString()) { return JSONValue.makeString(self.plan.tokens.resolve(bindings.render(value.asString()))); }
+        if (value.isString()) {
+            string template = value.asString();
+            string rendered = self.plan.tokens.resolve(bindings.render(template));
+            bool whole = template.startsWith("${") && template.indexOf("}") == template.len() - 1;  // the value is one placeholder
+            if (whole && (rendered.equals("true") || rendered.equals("false"))) { return JSONValue.makeBool(rendered.equals("true")); }
+            return JSONValue.makeString(rendered);
+        }
         return value;
     }
 }

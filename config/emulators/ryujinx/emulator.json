@@ -74,6 +74,9 @@
           "${state_root}/config/Ryujinx/bis/system/Contents/registered",
           "${emulation_root}/Ryujinx/config/bis/system/Contents/registered"
         ]
+      },
+      "ryujinx": {
+        "use_hypervisor": "true"
       }
     },
     "macos": {
@@ -113,6 +116,17 @@
               "${emulation_root}/Ryujinx/config/system/title.keys",
               "${bios}/switch/title.keys"
             ]
+          },
+          {
+            "purpose": "switch_firmware",
+            "target": "${state_root}/config/Ryujinx/bis",
+            "copy": "once_if_target_absent",
+            "source_access": "read_only",
+            "overwrite": false,
+            "sources": [
+              "${emulation_root}/Ryujinx/config/bis",
+              "${bios}/switch/bis"
+            ]
           }
         ]
       },
@@ -131,7 +145,10 @@
         "--fullscreen",
         "--graphics-backend",
         "vulkan"
-      ]
+      ],
+      "ryujinx": {
+        "use_hypervisor": "false"
+      }
     }
   },
   "doc": {
