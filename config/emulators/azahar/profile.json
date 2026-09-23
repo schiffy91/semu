@@ -8,6 +8,9 @@
       "controller_guid": {
         "source": "input.device_identities.azahar_controller_guid",
         "transform": "lower"
+      },
+      "graphics_api": {
+        "source": "platform.azahar.graphics_api"
       }
     },
     "line_groups": {
@@ -102,7 +105,7 @@
         "[Renderer]",
         "async_presentation=false",
         "async_presentation\\default=false",
-        "graphics_api=1",
+        "graphics_api=${graphics_api}",
         "graphics_api\\default=false",
         "use_integer_scaling=true",
         "use_integer_scaling\\default=false",

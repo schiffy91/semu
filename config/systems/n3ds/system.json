@@ -52,7 +52,8 @@
     {
       "emulator": "azahar",
       "platforms": [
-        "linux"
+        "linux",
+        "macos"
       ]
     }
   ],
