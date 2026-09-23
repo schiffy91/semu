@@ -592,8 +592,10 @@ proves the forwarding. After the owner freed the old cache volume: PCSX2 built w
 and nes (mesen) boot pinobatch's 240p Test Suite (GPL-2.0-or-later, `tests/integration/
 test_roms.json`) through `semu launch`, draw a non-blank frame, save and load a state and quit
 through QUIT. Not built there: `checks.platform-matrix` (it evaluates on the Mac) and the whole
-bundle. Still open: real test programs for the 3D systems (no freely licensed N64, PSX, PSP,
-DS, 3DS or Dreamcast suite is pinned yet) and nixpkgs on a release branch with the M4 pin
+bundle. n64 (mupen64plus_next, angrylion) now boots PeterLemon's public-domain `HelloWorldCPU32BPP320X240`
+the same way (2026-09-23, in the VM's Xvfb); its RDP-drawn twin gave a blank frame under
+angrylion, an open lead. Still open: test programs for PSX (Beetle PSX needs a Sony BIOS, which
+is not freely licensed), PSP, DS, 3DS and Dreamcast (no pinned binary with a clear licence yet) and nixpkgs on a release branch with the M4 pin
 refresh (a full rebuild of every emulator; FRACTAL-NORTH).
 
 ### macOS product target (2026-09-23)
