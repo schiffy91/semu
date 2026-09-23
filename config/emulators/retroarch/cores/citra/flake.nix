@@ -9,7 +9,7 @@
   outputs = { self, nixpkgs, source }:
     let
       lib = nixpkgs.lib;
-      platforms = { linux = true; macos = true; windows = "planned"; };  # windows: nothing built yet, declared so the matrix is explicit
+      platforms = { linux = true; macos = false; windows = "planned"; };  # macos: the core compiles its OpenGL renderer out on Apple, and macOS RetroArch presents through glcore for the Semu renderer; windows: nothing built yet
       systems = [ "x86_64-linux" ] ++ lib.optional platforms.macos "aarch64-darwin";
       build = system:
         let pkgs = import nixpkgs { inherit system; config.allowUnfreePredicate = package: lib.hasPrefix "libretro-" (lib.getName package); }; in

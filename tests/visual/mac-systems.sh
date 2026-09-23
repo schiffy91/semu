@@ -10,7 +10,7 @@ socat="$(nix build --no-warn-dirty --no-link --print-out-paths --inputs-from "$r
 port() { printf '%s' "$1" | "$socat" -t 1 - UDP:127.0.0.1:55355 2>/dev/null | tr -d '\n'; }
 roms="$("$root/build/semu" path roms --target macos --project "$root/config")"
 systems=("$@")
-[ ${#systems[@]} -gt 0 ] || systems=(gb gbc gba nes snes genesis n64 psx nds psp n3ds)
+[ ${#systems[@]} -gt 0 ] || systems=(gb gbc gba nes snes genesis n64 psx nds psp)
 mkdir -p "$out"
 failures=0
 for system in "${systems[@]}"; do
