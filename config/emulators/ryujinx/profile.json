@@ -17,6 +17,9 @@
       },
       "controller_identity": {
         "source": "input.device_identities.ryujinx_controller_id"
+      },
+      "use_hypervisor": {
+        "source": "platform.ryujinx.use_hypervisor"
       }
     },
     "line_groups": {}
@@ -232,7 +235,7 @@
         "multiplayer_disable_p2p": false,
         "multiplayer_ldn_passphrase": "",
         "ldn_server": "",
-        "use_hypervisor": true,
+        "use_hypervisor": "${use_hypervisor}",
         "enable_gdb_stub": false,
         "gdb_stub_port": 55555,
         "debugger_suspend_on_start": false,
