@@ -1,6 +1,7 @@
 # Public package surface. Policy lives in the packaging modules; this file only composes them.
 # Development outputs (the compiler, the CLI, the bezel tree) exist on every system; the product
-# (bundle, emulators, release) only where it runs, Linux.
+# (bundle, emulators) where it runs: Linux, and macOS for the macos target. The bubblewrap
+# release is Linux only.
 { btrc, renderer, retroarch, esde, emulatorFlakes, coreFlakes, forAllSystems, mkPkgs, ... }:
 
 forAllSystems (system:
@@ -29,20 +30,21 @@ forAllSystems (system:
     product =
       let
         semuRenderer = renderer.packages.${system}.default;
-        emulators = import ../emulators.nix { inherit lib repositoryRoot system emulatorFlakes coreFlakes; retroarchFlake = retroarch; };
+        platform = if pkgs.stdenv.hostPlatform.isDarwin then "macos" else "linux";
+        emulators = import ../emulators.nix { inherit lib repositoryRoot system platform emulatorFlakes coreFlakes; retroarchFlake = retroarch; };
         esDe = esde.packages.${system}.default;
         retroarchAutoconfig = pkgs.callPackage ../retroarch_autoconfig.nix { inherit repositoryRoot; };  # first, so the Deck profiles win the merged autoconfig dir
         semu = pkgs.callPackage ../semu_bundle.nix {
-          inherit semuCli esDe repositoryRoot;
-          emulatorPackages = lib.attrValues emulators.packages;
+          inherit semuCli esDe repositoryRoot platform;
+          emulatorPackages = lib.attrValues emulators.packages ++ emulators.corePackages;
           extraPackages = [ retroarchAutoconfig pkgs.retroarch-joypad-autoconfig pkgs.syncthing semuRenderer visualAssets.combined bezelLayers ];
         };
-        release = pkgs.callPackage ../release.nix { inherit semu repositoryRoot; };
       in {
-        inherit semu release;
+        inherit semu;
         retroarch = emulators.packages.retroarch;
         semu-renderer = semuRenderer;
         default = semu;
         es-de = esDe;
-      } // lib.mapAttrs' (id: package: lib.nameValuePair "emulator-${id}" package) emulators.packages;
-  in development // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux product)
+      } // lib.optionalAttrs (platform == "linux") { release = pkgs.callPackage ../release.nix { inherit semu repositoryRoot; }; }
+        // lib.mapAttrs' (id: package: lib.nameValuePair "emulator-${id}" package) emulators.packages;
+  in development // product)

@@ -10,15 +10,15 @@
   outputs = { self, nixpkgs, source }:
     let
       lib = nixpkgs.lib;
-      platforms = { linux = true; macos = false; windows = "planned"; };  # upstream builds on macOS; the Nix recipe is Linux only today
-      systems = [ "x86_64-linux" ];
+      platforms = { linux = true; macos = true; windows = "planned"; };  # macOS builds an ES-DE.app against Nix libraries (darwin.nix)
+      systems = [ "x86_64-linux" "aarch64-darwin" ];
       build = system:
         let
           esDePackages = import nixpkgs {
             inherit system;
             config.allowInsecurePredicate = package: lib.hasPrefix "freeimage" (lib.getName package);
           };
-        in esDePackages.callPackage ./package.nix { inherit esDePackages source; };
+        in esDePackages.callPackage (if lib.hasSuffix "darwin" system then ./darwin.nix else ./package.nix) { inherit esDePackages source; };
     in {
       semu = {
         id = "es-de";

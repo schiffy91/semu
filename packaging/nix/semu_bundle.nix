@@ -1,13 +1,15 @@
 # The composed bundle: CLI, ES-DE, emulators, launcher shims. Its root is SEMU_ASSET_ROOT.
-{ lib, symlinkJoin, makeWrapper, semuCli, esDe, emulatorPackages ? [ ], extraPackages ? [ ], repositoryRoot }:
+# `platform` picks the system bindings and the default target: linux-desktop or macos.
+{ lib, symlinkJoin, makeWrapper, semuCli, esDe, emulatorPackages ? [ ], extraPackages ? [ ], repositoryRoot, platform ? "linux" }:
 
 let
   systemsDir = repositoryRoot + "/config/systems";
   systemIds = lib.attrNames (lib.filterAttrs (_: type: type == "directory") (builtins.readDir systemsDir));
   systemContracts = map (id: lib.importJSON (systemsDir + "/${id}/system.json")) systemIds;
-  linuxEmulators = lib.unique (lib.concatMap (system:
-    map (entry: entry.emulator) (lib.filter (entry: entry ? emulator && lib.elem "linux" (entry.platforms or [ "linux" ])) (system.emulators or [ ]))
+  platformEmulators = lib.unique (lib.concatMap (system:
+    map (entry: entry.emulator) (lib.filter (entry: entry ? emulator && lib.elem platform (entry.platforms or [ platform ])) (system.emulators or [ ]))
   ) systemContracts);
+  defaultTarget = if platform == "macos" then "macos" else "linux-desktop";
   shim = emulator: ''
     cat > "$out/bin/semu-${emulator}" <<SHIM
     #!/bin/sh
@@ -27,11 +29,11 @@ symlinkJoin {
       --set SEMU_ASSET_ROOT "$out" \
       --set SEMU_SOURCE_ROOT "$out/share/semu/config" \
       --prefix PATH : "$out/bin"
-    ${lib.concatMapStrings shim linuxEmulators}
+    ${lib.concatMapStrings shim platformEmulators}
 
     cat > "$out/bin/semu-es-de" <<LAUNCHER
     #!/bin/sh
-    target="\''${SEMU_TARGET:-linux-desktop}"
+    target="\''${SEMU_TARGET:-${defaultTarget}}"
     "$out/bin/semu" prepare --target "\$target" || exit 1
     "$out/bin/semu" sync start --target "\$target" >/dev/null 2>&1 || true
     home="\$("$out/bin/semu" path esde_home --target "\$target")" || exit 1
@@ -39,6 +41,25 @@ symlinkJoin {
     LAUNCHER
     chmod +x "$out/bin/semu-es-de"
 
+  '' + lib.optionalString (platform == "macos") ''
+    mkdir -p "$out/Applications/Semu.app/Contents/MacOS"
+    cat > "$out/Applications/Semu.app/Contents/MacOS/Semu" <<APP
+    #!/bin/sh
+    exec "$out/bin/semu-es-de" "\$@"
+    APP
+    chmod +x "$out/Applications/Semu.app/Contents/MacOS/Semu"
+    cat > "$out/Applications/Semu.app/Contents/Info.plist" <<PLIST
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0"><dict>
+    <key>CFBundleExecutable</key><string>Semu</string>
+    <key>CFBundleIdentifier</key><string>org.semu.frontend</string>
+    <key>CFBundleName</key><string>Semu</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>LSMinimumSystemVersion</key><string>11.0</string>
+    </dict></plist>
+    PLIST
+  '' + lib.optionalString (platform == "linux") ''
     mkdir -p "$out/share/applications"
     cat > "$out/share/applications/semu.desktop" <<DESKTOP
     [Desktop Entry]
@@ -51,7 +72,7 @@ symlinkJoin {
     DESKTOP
   '';
 
-  passthru = { inherit linuxEmulators; };
+  passthru = { inherit platformEmulators; };
 
   meta = {
     description = "Semu with ES-DE and every selected emulator";
