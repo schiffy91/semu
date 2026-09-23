@@ -4,7 +4,7 @@
   # Every emulator, core, RetroArch, ES-DE and the renderer is its own flake with its own
   # pinned source; this flake only composes them. nixpkgs is shared through follows.
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";  # a release branch (M1)
     btrc = {
       url = "github:schiffy91/btrc";
       inputs.nixpkgs.follows = "nixpkgs";
