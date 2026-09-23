@@ -427,6 +427,23 @@ class LayerLookContract {  // recolour tints and the night plate reach the compo
     }
 }
 
+class SteamInputInstallContract {  // one Steam root holds the templates, icons and each user's default profile
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        string steam = PathTools.join(fixture.scratch, "steam");
+        FileSystem.mkdirp(PathTools.join(steam, "userdata/12345/config"));
+        string configs = PathTools.join(steam, "steamapps/common/Steam Controller Configs/12345/config");
+        FileSystem.mkdirp(PathTools.join(configs, "semu-x86_64appimage"));
+        FileSystem.writeText(PathTools.join(configs, "semu-x86_64appimage/controller_neptune.vdf"), "stale");
+        FileSystem.writeText(PathTools.join(configs, "semu-x86_64appimage/notes.txt"), "the user's");
+        contract.expect(SteamInputTemplates.install(fixture.plan, steam) == 0, "steam input installs into a Steam root");
+        contract.expect(FileSystem.isFile(PathTools.join(steam, "controller_base/templates/neptune-full.vdf")) && FileSystem.isFile(PathTools.join(steam, "tenfoot/resource/images/library/controller/binding_icons/semu-save.png")), "templates and icons land in Steam's own directories");
+        string profile = PathTools.join(configs, "semu/controller_neptune.vdf");
+        contract.expect(FileSystem.isFile(profile) && FileSystem.readText(profile).contains("controller_mappings") && FileSystem.readText(profile).contains("Semu Full Radial"), "each Steam user gets the default FULL template as the Semu profile");
+        contract.expect(!FileSystem.isFile(PathTools.join(configs, "semu-x86_64appimage/controller_neptune.vdf")) && FileSystem.isFile(PathTools.join(configs, "semu-x86_64appimage/notes.txt")), "a retired id loses only Semu's own profile");
+    }
+}
+
 class RenderResolutionContract {  // the 3D cores render at the largest whole multiple the display holds
     class string mupen(Fixture fixture, string overlay) {
         SemuDiagnostics diagnostics = SemuDiagnostics();
@@ -695,6 +712,7 @@ int main() {
     LayerLookContract.run(contract);
     OwnedPathsContract.run(contract);
     RenderResolutionContract.run(contract);
+    SteamInputInstallContract.run(contract);
     RetroArchSpecContract.run(contract);
     EmulatorRuntimeSpecContract.run(contract);
     StandaloneSpecContract.run(contract);
