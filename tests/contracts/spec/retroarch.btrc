@@ -1,0 +1,350 @@
+// RetroArch production spec: exact config keys, hotkeys, patches and hooks the rewrite must keep.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/profiles.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/emit/rendering.btrc;
+import ../../../src/steam/input_template.btrc;
+
+class RetroArchSpecText {
+    class int occurrences(string text, string needle) {
+        int total = 0;
+        string remaining = text;
+        while (!needle.isEmpty() && remaining.contains(needle)) {
+            int index = remaining.indexOf(needle);
+            total++;
+            int start = index + needle.len();
+            remaining = remaining.substring(start, remaining.len() - start);
+        }
+        return total;
+    }
+
+    class string between(string text, string startMarker, string endMarker) {  // text from one marker up to the next
+        int start = text.indexOf(startMarker);
+        int end = text.indexOf(endMarker);
+        if (start < 0 || end <= start) { return ""; }
+        return text.substring(start, end - start);
+    }
+
+    class string read(Fixture fixture, string relative) {
+        string path = PathTools.join(fixture.project, relative);
+        return FileSystem.isFile(path) ? FileSystem.readText(path) : "";
+    }
+
+    class void fixtureLines(Contract contract, Fixture fixture, string name, string rendered, string placeholder, string replacement, string label) {  // every golden line appears in the output
+        string golden = RetroArchSpecText.read(fixture, "tests/contracts/spec/fixtures/retroarch/" + name);
+        contract.expect(!golden.trim().isEmpty(), label + ": fixture " + name + " is present");
+        for line in Strings.split(golden, "\n") {
+            if (line.trim().isEmpty()) { continue; }
+            string expected = placeholder.isEmpty() ? line : line.replace(placeholder, replacement);
+            contract.contains(rendered, expected, label + " (" + name + ")");
+        }
+    }
+}
+
+class RetroArchSpecProfile {  // retroarch.cfg per target: fullscreen, shader ownership, SDL port, hotkeys
+    class void run(Contract contract, string target) {
+        Fixture fixture = Fixture(target);
+        string label = "retroarch.cfg on " + target;
+        string cfg = fixture.profile("retroarch", "retroarch.cfg");
+        contract.expect(!cfg.isEmpty(), label + " renders");
+        contract.contains(cfg, "video_fullscreen = \"true\"", label + ": fullscreen");
+        contract.contains(cfg, "video_shader_enable = \"false\"", label + ": Semu is the only shader owner");
+        contract.contains(cfg, "input_overlay_enable = \"false\"", label + ": no native overlay");
+        contract.contains(cfg, "input_overlay_enable_autopreferred = \"false\"", label + ": no auto-preferred overlay");
+        contract.contains(cfg, "input_quit_gamepad_combo = \"0\"", label + ": the supervisor owns the quit chord");
+        contract.contains(cfg, "input_autodetect_enable = \"true\"", label + ": SDL autodetection");
+        contract.contains(cfg, "input_player1_joypad_index = \"0\"", label + ": port 1 is SDL index 0");
+        contract.contains(cfg, "notification_show_autoconfig = \"false\"", label + ": autoconfig toast off");
+        contract.contains(cfg, "notification_show_autoconfig_fails = \"false\"", label + ": autoconfig failure toast off");
+        contract.lacks(cfg, "input_player1_reserved_device", label + ": no name-based device reservation");
+        contract.lacks(cfg, "input_player1_device_reservation_type", label + ": no reservation type");
+        contract.contains(cfg, "input_save_state = \"s\"", label + ": state.save is Ctrl+S");
+        contract.contains(cfg, "input_load_state = \"a\"", label + ": state.load is Ctrl+A");
+        RetroArchSpecText.fixtureLines(contract, fixture, "interaction.cfg", cfg, "\"/output", "\"" + fixture.plan.path("content_root"), label);
+        RetroArchSpecText.fixtureLines(contract, fixture, "system-directory.cfg", cfg, "\"/config/system", "\"" + fixture.plan.path("emulation_root") + "/RetroArch/config/system", label);
+        SemuEmulator emulator = fixture.model.emulator("retroarch");
+        JSONValue keymap = SemuJson.get(emulator.profile, "hotkeys.keymap");
+        bool saveRow = false;
+        bool loadRow = false;
+        for (int index = 0; keymap.isArray() && index < keymap.size(); index++) {
+            string setting = SemuJson.textAt(keymap.at(index), "setting");
+            string action = SemuJson.textAt(keymap.at(index), "action");
+            if (setting.equals("input_save_state") && action.equals("state.save")) { saveRow = true; }
+            if (setting.equals("input_load_state") && action.equals("state.load")) { loadRow = true; }
+        }
+        contract.expect(saveRow && loadRow, label + ": the profile keymap consumes state.save and state.load");
+        JSONValue linux = emulator.platform("linux");
+        string mupen = SemuLauncher.coreOptions(fixture.plan, linux, "mupen64plus_next");
+        RetroArchSpecText.fixtureLines(contract, fixture, "n64-software-core-options.cfg", mupen, "", "", "mupen64plus_next core options on " + target);
+        contract.expect(fixture.diagnostics.ok(), label + " has no diagnostics: " + fixture.diagnostics.render());
+    }
+}
+
+class RetroArchSpecPlatforms {  // emulator.json slices: Linux frame ownership, macOS confinement
+    class bool filesystem(JSONValue platform, string path, string mode) {
+        JSONValue filesystems = SemuJson.get(platform, "sandbox.filesystems");
+        for (int index = 0; filesystems.isArray() && index < filesystems.size(); index++) {
+            JSONValue entry = filesystems.at(index);
+            if (SemuJson.textAt(entry, "path").equals(path) && SemuJson.textAt(entry, "mode").equals(mode)) { return true; }
+        }
+        return false;
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        SemuEmulator emulator = fixture.model.emulator("retroarch");
+        JSONValue linux = emulator.platform("linux");
+        JSONValue frame = SemuJson.get(linux, "retroarch.frame_output");
+        JSONValue settings = SemuJson.get(linux, "retroarch.settings_overrides");
+        Vector<string> arguments = SemuJson.strings(linux.get("args"));
+        contract.expect(arguments.size() > 0 && arguments.get(0).equals("-f"), "RetroArch starts with -f");
+        contract.expect(SemuJson.boolAt(frame, "fullscreen", false) && !SemuJson.boolAt(frame, "native_shader", true) && !SemuJson.boolAt(frame, "native_bezel", true), "Linux frame output is fullscreen with no native shader or bezel");
+        contract.expect(SemuJson.textAt(frame, "origin").equals("bottom_left") && SemuJson.textAt(frame, "orientation").equals("upright"), "Linux frame is upright, bottom-left origin in GL space");
+        contract.expect(SemuJson.textAt(linux, "retroarch.video_driver").equals("glcore"), "Linux forces the glcore driver the tap lives in");
+        Vector<string> directories = SemuJson.strings(SemuJson.get(linux, "core_loader.directories"));
+        contract.expect(directories.size() == 1 && directories.get(0).equals("${asset_root}/lib/retroarch/cores"), "cores load only from the bundled core directory");
+        for key in ["notification_show_autoconfig", "notification_show_autoconfig_fails", "video_shader_enable", "input_overlay_enable", "input_overlay_enable_autopreferred"] {
+            contract.expect(SemuJson.textAt(settings, key).equals("false"), "settings override " + key + " is false");
+        }
+        contract.expect(SemuJson.textAt(settings, "input_autodetect_enable").equals("true") && SemuJson.textAt(settings, "input_player1_joypad_index").equals("0"), "settings overrides keep SDL port 1 autodetection");
+        contract.expect(!settings.has("input_player1_reserved_device") && !settings.has("input_player1_device_reservation_type"), "settings overrides reserve no device by name");
+        string emulatorText = RetroArchSpecText.read(fixture, "config/emulators/retroarch/emulator.json");
+        contract.lacks(emulatorText, "${paths.project_bios}", "emulator.json never points at a project BIOS path");
+        JSONValue macos = emulator.platform("macos");
+        for path in ["${project}", "${asset_root}", "${roms}", "${emulation_root}", "${bios}"] {
+            contract.expect(RetroArchSpecPlatforms.filesystem(macos, path, "ro"), "macOS sandbox mounts " + path + " read-only");
+        }
+        contract.expect(RetroArchSpecPlatforms.filesystem(macos, "${state_root}", "create"), "macOS state root is the only writable path");
+        contract.expect(SemuJson.textAt(macos, "env.set.HOME").equals("${state_root}/home"), "macOS HOME is redirected under the state root");
+        contract.expect(SemuJson.textAt(macos, "env.set.SEMU_RETROARCH_CONFIG").equals("${state_root}/config/RetroArch/retroarch.cfg"), "macOS active config is under the state root");
+        contract.expect(SemuJson.textAt(macos, "state.profile_config_dir").equals("${state_root}/config/RetroArch"), "macOS profile directory is under the state root");
+        contract.lacks(SemuJson.textAt(macos, "firmware.dir"), "${home}", "macOS firmware never comes from HOME");
+    }
+}
+
+class RetroArchSpecPackage {  // source-built package, essential patches, every selected core flake
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string directory = "config/emulators/retroarch/";
+        JSONValue package = SemuJson.readFile(PathTools.join(fixture.project, directory + "package.json"));
+        JSONValue cores = SemuJson.readFile(PathTools.join(fixture.project, directory + "cores.json"));
+        string packageNix = RetroArchSpecText.read(fixture, directory + "package.nix");
+        JSONValue linux = fixture.model.emulator("retroarch").platform("linux");
+        contract.expect(SemuJson.textAt(package, "build_kind").equals("source") && SemuJson.textAt(package, "source.sha256").startsWith("sha256-"), "RetroArch is a pinned source build");
+        for fallback in ["linux_host_executable", "linux_flatpak", "linux_prebuilt_binary", "macos_host_executable", "macos_prebuilt_binary"] {
+            contract.expect(!SemuJson.boolAt(package, "fallbacks." + fallback, true), "no " + fallback + " fallback");
+        }
+        contract.expect(!package.has("macos_prebuilt"), "no macOS prebuilt escape hatch");
+        contract.expect(SemuJson.textAt(linux, "executable").equals("${asset_root}/" + SemuJson.textAt(package, "outputs.linux_main_program")), "Linux launches the package's main program from the asset root");
+        contract.expect(SemuJson.textAt(package, "core_runtime.directory").equals("lib/retroarch/cores") && SemuJson.boolAt(package, "core_runtime.exact_selection", false) && !SemuJson.boolAt(package, "core_runtime.environment_search", true) && !SemuJson.boolAt(package, "core_runtime.host_search", true), "cores come from the exact bundled selection only");
+        Vector<string> patchKeys = ["network_commands", "status_null_safety"];
+        Vector<string> patchFiles = ["retroarch_commands.patch", "retroarch_get_status_null_safety.patch"];
+        Vector<string> patchHashes = ["sha256-T6Q12aEYcrYuz2tbRGU8r5kDjYmmpZYM5KhYoqTSp1g=", "sha256-VFwauov45Fd/HGiJfdFdp2XyWiE4FN4xQPerrMOZ31A="];
+        for (int index = 0; index < patchKeys.size(); index++) {
+            JSONValue patch = SemuJson.get(package, "auxiliary_patches." + patchKeys.get(index));
+            contract.expect(SemuJson.textAt(patch, "kind").equals("local_exact") && SemuJson.textAt(patch, "file").equals(patchFiles.get(index)) && SemuJson.textAt(patch, "sha256").equals(patchHashes.get(index)), "package pins " + patchFiles.get(index) + " by hash");
+            contract.contains(packageNix, "./" + patchFiles.get(index), "package.nix applies the local " + patchFiles.get(index));
+        }
+        contract.lacks(packageNix, "5ff33af", "no upstream commit patch in place of the local command patch");
+        contract.contains(packageNix, "--strict-imports --no-cache --no-stdlib --no-dce", "the runtime bridge is transpiled strictly");
+        contract.contains(packageNix, "minor = 3;", "the gl3 context is raised to OpenGL 3.3 for GLSL 330");
+        string manifest = SemuJson.textAt(package, "runtime_extras.input_autoconfig.manifest");
+        contract.expect(manifest.equals("../../input/steam-deck/retroarch_autoconfig.json") && FileSystem.isFile(PathTools.join(fixture.project, directory + manifest)), "the Deck autoconfig manifest ships with the package");
+        Vector<string> selected = [];
+        for systemId in fixture.model.systemIds() {
+            for binding in fixture.model.system(systemId).bindingsFor("linux") {
+                if (binding.emulator.equals("retroarch") && !binding.core.isEmpty() && !selected.contains(binding.core)) { selected.push(binding.core); }
+            }
+        }
+        for core in ["desmume", "gambatte", "genesis_plus_gx", "mednafen_psx", "mesen", "mgba", "mupen64plus_next", "snes9x"] {
+            contract.expect(selected.contains(core), "Linux systems still select the " + core + " core");
+        }
+        for core in selected {
+            JSONValue implementation = SemuJson.get(cores, "implementations." + core + ".linux");
+            string flake = SemuJson.textAt(implementation, "flake");
+            contract.expect(SemuJson.textAt(implementation, "kind").equals("flake") && flake.equals("cores/" + core) && FileSystem.isFile(PathTools.join(fixture.project, directory + flake + "/flake.nix")), "selected core " + core + " has a pinned Linux core flake");
+        }
+    }
+}
+
+class RetroArchSpecPatches {  // command patch, gl3 tap order, minimal tap surface
+    class void commands(Contract contract, string patch) {
+        contract.expect(RetroArchSpecText.occurrences(patch, "string_is_equal(arg, \"menu_active\")") == 1, "GET_CONFIG_PARAM answers menu_active once");
+        contract.expect(RetroArchSpecText.occurrences(patch, "string_is_equal(arg, \"cheevos_enable\")") == 1, "GET_CONFIG_PARAM answers cheevos_enable once");
+        contract.expect(RetroArchSpecText.occurrences(patch, "bool command_save_state_slot(command_t* cmd, const char* arg)") == 2, "SAVE_STATE_SLOT is declared and defined");
+        contract.expect(RetroArchSpecText.occurrences(patch, "{ \"SAVE_STATE_SLOT\",command_save_state_slot, \"<slot number>\"}") == 1, "SAVE_STATE_SLOT is registered once");
+        contract.lacks(patch, "GET_STATUS", "the command patch leaves GET_STATUS to the null-safety patch");
+    }
+
+    class void tapOrder(Contract contract, string gl3) {
+        int draw = gl3.indexOf("#endif /* HAVE_SLANG */");
+        int build = gl3.indexOf("video_driver_semu_build_frame_gl(&semu_frame");
+        int game = gl3.indexOf("semu_render_game_gl(&semu_frame);");
+        int overlay = gl3.indexOf("overlay_behind_menu");
+        int postUi = gl3.indexOf("semu_render_post_ui_gl(&semu_frame);");
+        int publish = gl3.indexOf("video_driver_semu_publish_pointer(");
+        int present = gl3.indexOf("ctx_driver->swap_buffers");
+        contract.expect(draw >= 0 && build > draw && game > build && overlay > game && postUi > overlay && publish > postUi && present > publish, f"gl3 tap order: game draw, build, game, overlay, post-UI, publish, present ({draw} {build} {game} {overlay} {postUi} {publish} {present})");
+        for needle in ["video_driver_semu_build_frame_gl(&semu_frame", "semu_render_game_gl(&semu_frame);", "semu_render_post_ui_gl(&semu_frame);", "video_driver_semu_publish_pointer("] {
+            contract.expect(RetroArchSpecText.occurrences(gl3, needle) == 1, "gl3 calls " + needle + " exactly once");
+        }
+        contract.lacks(gl3, "semu_frame.surface", "gl3 never selects surfaces itself");
+        int destroying = gl3.indexOf("video_driver_semu_context_destroying(");
+        contract.expect(destroying >= 0 && destroying < gl3.indexOf("gl->ctx_driver->destroy(gl->ctx_data)"), "the renderer lets go of the context before gl3 destroys it");
+    }
+
+    class void tapSurface(Contract contract, string patch) {
+        contract.expect(RetroArchSpecText.occurrences(patch, "video_driver_semu_context_created()") == 1, "one context-created call");
+        contract.expect(RetroArchSpecText.occurrences(patch, "video_driver_semu_context_destroying(gl->semu_context_generation);") == 1, "one context-destroying call");
+        contract.expect(RetroArchSpecText.occurrences(patch, "video_driver_semu_pointer_clear(true);") == 2, "the pointer map clears in both places");
+        for needle in ["input_driver_semu_poll_pointer(", "video_driver_semu_pointer_snapshot(", "RARCH_DEVICE_MOUSE_SCREEN", "RETRO_DEVICE_ID_MOUSE_X", "RETRO_DEVICE_ID_MOUSE_Y", "RETRO_DEVICE_ID_MOUSE_LEFT", "int semu_game_status = SEMU_RENDER_PASSTHROUGH", "(void)semu_render_post_ui_gl(&semu_frame)", "semu_game_status == SEMU_RENDER_APPLIED", "&& !menu_is_alive"] {
+            contract.contains(patch, needle, "tap patch");
+        }
+        for needle in ["RARCH_DEVICE_POINTER_SCREEN", "semu_post_ui_status", "current_context", "frame->surface_count", "getenv(", "256", "192", "DeSmuME", "gamescope", "LD_PRELOAD", "glXSwapBuffers", "eglSwapBuffers", "gfx/drivers/gl2.c", "gfx/common/gl2_common.h"] {
+            contract.lacks(patch, needle, "tap patch stays minimal and system-agnostic");
+        }
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string directory = "config/emulators/retroarch/";
+        RetroArchSpecPatches.commands(contract, RetroArchSpecText.read(fixture, directory + "retroarch_commands.patch"));
+        string patch = RetroArchSpecText.read(fixture, directory + "retroarch.patch");
+        string gl3 = RetroArchSpecText.between(patch, "--- a/gfx/drivers/gl3.c", "--- a/gfx/video_driver.h");
+        contract.expect(!gl3.isEmpty(), "retroarch.patch carries a gl3.c section");
+        RetroArchSpecPatches.tapOrder(contract, gl3);
+        RetroArchSpecPatches.tapSurface(contract, patch);
+    }
+}
+
+class RetroArchSpecHooks {  // gl3 bridge: surfaces from environment, lock-safe pointer mapping
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string surface = RetroArchSpecText.read(fixture, "src/renderer/retroarch/surface_contract.btrc");
+        string runtime = RetroArchSpecText.read(fixture, "src/renderer/retroarch/runtime_bridge.btrc");
+        string abi = RetroArchSpecText.read(fixture, "src/renderer/renderer_abi.btrc");
+        contract.contains(abi, "int SEMU_RENDER_ABI_GL = 3;", "renderer GL ABI is version 3");
+        for needle in ["getenv(\"SEMU_RENDER_SURFACE_COUNT\")", "getenv(\"SEMU_RENDER_SURFACE_LAYOUT\")", "getenv(\"SEMU_RENDER_SURFACE_NATIVE_WIDTH_POLICY\")", "getenv(\"SEMU_RENDER_SURFACE_GEOMETRY_POLICY\")", "SEMU_RENDER_TOUCH_SURFACE_INDEX", "SEMU_RETROARCH_WIDTHS_INDEPENDENT", "SEMU_RETROARCH_WIDTHS_EQUAL", "SEMU_RETROARCH_GEOMETRY_POSITIVE", "SEMU_RETROARCH_GEOMETRY_UNIFORM_INTEGER_SCALE", "SEMU_RETROARCH_GEOMETRY_EXACT_NATIVE", "frameWidth != contract->surfaces[0].native_width", "contract->count == 1", "validatesDual("] {
+            contract.contains(surface, needle, "surface hook reads the declared surfaces");
+        }
+        for needle in ["DeSmuME", "256", "192"] { contract.lacks(surface, needle, "surface hook knows no system"); }
+        contract.lacks(surface.toLower(), "nds", "surface hook never names a system");
+        for needle in ["frame->context_generation = contextGeneration", "semu_render_context_invalidate_gl(contextGeneration)", "SemuRetroArchGeneration.retire(contextGeneration)", "SemuRetroArchPointer.map_generation == mapGeneration", "SemuRetroArchGeneration.lockActive(contextGeneration)", "slock_lock(video->display_lock)", "slock_lock(video->context_lock)"] {
+            contract.contains(runtime, needle, "runtime bridge context lifecycle");
+        }
+        for needle in ["|| menuAlive", "VIDEO_DRIVER_LOCK(", "VIDEO_DRIVER_CONTEXT_LOCK("] { contract.lacks(runtime, needle, "runtime bridge context lifecycle"); }
+        string sameMap = RetroArchSpecText.between(runtime, "class bool sameMap(", "class void clear(");
+        contract.expect(!sameMap.isEmpty() && !sameMap.contains("frame_id"), "pointer-map identity does not depend on the frame sequence");
+        string sample = RetroArchSpecText.between(runtime, "class void sample(", "class bool snapshot(");
+        int unlock = sample.indexOf("semuRetroArchDisplayUnlock(");
+        int callback = sample.indexOf("mapPointer(&map, &query, &result)");
+        string afterCallback = callback < 0 ? "" : sample.substring(callback, sample.len() - callback);
+        contract.expect(unlock >= 0 && callback > unlock && afterCallback.contains("semuRetroArchDisplayLock(") && RetroArchSpecText.occurrences(sample, "mapPointer(&map, &query, &result)") == 1, "the pointer callback runs once with the display lock released");
+    }
+}
+
+class RetroArchSpecSurfaces {  // system declarations drive the surface modes the hook validates
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        SemuSystem nes = fixture.model.system("nes");
+        Vector<string> single = SemuRenderEnvironment.compile(fixture.plan, nes, "retroarch", "/state/retroarch", fixture.diagnostics);
+        contract.expect(single.contains("SEMU_RENDER_SURFACE_COUNT=1") && single.contains("SEMU_RENDER_SURFACE_LAYOUT=single"), "a one-screen system (NES) is the single mode");
+        contract.expect(single.contains("SEMU_RENDER_SURFACE_NATIVE_WIDTH_POLICY=independent") && single.contains("SEMU_RENDER_SURFACE_GEOMETRY_POLICY=positive"), "single mode: independent widths, positive live geometry");
+        SemuSystem nds = fixture.model.system("nds");
+        Vector<string> dual = SemuRenderEnvironment.compile(fixture.plan, nds, "retroarch", "/state/retroarch", fixture.diagnostics);
+        contract.expect(dual.contains("SEMU_RENDER_SURFACE_COUNT=2") && dual.contains("SEMU_RENDER_SURFACE_LAYOUT=vertical"), "the DS is the dual vertical mode");
+        contract.expect(dual.contains("SEMU_RENDER_SURFACE_NATIVE_WIDTH_POLICY=equal") && dual.contains("SEMU_RENDER_SURFACE_GEOMETRY_POLICY=uniform_integer_scale"), "dual vertical: equal widths, uniform integer scale");
+        contract.expect(dual.contains("SEMU_RENDER_SURFACE_0_ID=top") && dual.contains("SEMU_RENDER_SURFACE_1_ID=bottom"), "DS surfaces are top then bottom, distinct");
+        contract.expect(dual.contains("SEMU_RENDER_TOUCH_SURFACE_ID=bottom") && dual.contains("SEMU_RENDER_TOUCH_SURFACE_INDEX=1"), "DS touch maps to the bottom surface");
+        contract.expect(fixture.diagnostics.ok(), "surface environments have no diagnostics: " + fixture.diagnostics.render());
+    }
+}
+
+class RetroArchSpecSystems {  // N64 and DS RetroArch bindings and DS core options
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        SemuSystem n64 = fixture.model.system("n64");
+        contract.expect(n64.bindingFor("linux", "retroarch", "mupen64plus_next") != null, "N64 binds RetroArch mupen64plus_next on Linux");
+        string orientation = SemuJson.textAt(n64.definition, "doc.orientation");
+        contract.expect(orientation.contains("upright bottom-left-origin game frame in GL space") && !orientation.contains("top-left"), "N64 composes with the upright bottom-left frame contract");
+        SemuSystem nds = fixture.model.system("nds");
+        JSONValue screens = SemuJson.get(nds.definition, "display.screens");
+        contract.expect(screens.isArray() && screens.size() == 2 && SemuJson.textAt(screens.at(0), "id").equals("top") && SemuJson.textAt(screens.at(1), "id").equals("bottom"), "DS declares top then bottom screens");
+        contract.expect(nds.bindingFor("linux", "retroarch", "desmume") != null, "DS binds RetroArch desmume on Linux");
+        JSONValue desmume = SemuJson.get(fixture.model.emulator("retroarch").platform("linux"), "retroarch.core_options.desmume");
+        contract.expect(desmume.isArray() && desmume.size() == 3 && SemuJson.textAt(desmume.at(0), "source.value").equals("top/bottom") && SemuJson.textAt(desmume.at(1), "source.value").equals("0"), "desmume stacks top/bottom with no gap");
+    }
+}
+
+class RetroArchSpecDeckInput {  // Steam Virtual Gamepad autoconfig, native VDF gamepad, quit chord
+    class void autoconfig(Contract contract, Fixture fixture) {
+        JSONValue document = SemuJson.readFile(PathTools.join(fixture.project, "config/input/steam-deck/retroarch_autoconfig.json"));
+        JSONValue mapping = SemuJson.get(document, "contract.gameplay_mapping");
+        JSONValue profiles = document.get("profiles");
+        contract.expect(profiles != null && profiles.isArray() && profiles.size() == 2, "two autoconfig profiles cover both SDL names");
+        for (int index = 0; profiles != null && profiles.isArray() && index < profiles.size(); index++) {
+            JSONValue profile = profiles.at(index);
+            Vector<string> lines = SemuJson.strings(profile.get("lines"));
+            string device = SemuJson.textAt(profile, "device_name");
+            contract.expect(!device.isEmpty(), "autoconfig profile names its device");
+            contract.expect(lines.contains("input_device_display_name = \"Steam Virtual Gamepad\""), device + " displays as Steam Virtual Gamepad");
+            contract.expect(lines.contains("input_enable_hotkey_btn = \"nul\""), device + " binds no hotkey enable button");
+            for key in mapping.keys() {
+                string line = key + " = \"" + SemuJson.text(mapping.get(key)) + "\"";
+                contract.expect(lines.contains(line), device + " maps " + line);
+            }
+        }
+    }
+
+    class void gamepad(Contract contract, Fixture fixture) {
+        JSONValue root = SemuJson.readFile(SteamInputTemplates.source(fixture.plan));
+        SteamInputDocument document = SteamInputDocument(root);
+        string vdf = "";
+        JSONValue templates = root.get("templates");
+        for (int index = 0; templates != null && templates.isArray() && index < templates.size(); index++) {
+            if (SemuJson.boolAt(templates.at(index), "default", false)) { vdf = SteamInputVdf.render(document, templates.at(index)); }
+        }
+        contract.expect(!vdf.isEmpty(), "the default Deck template renders");
+        for button in ["A", "B", "X", "Y", "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT", "SHOULDER_LEFT", "SHOULDER_RIGHT", "TRIGGER_LEFT", "TRIGGER_RIGHT", "SELECT", "START"] {
+            contract.contains(vdf, "xinput_button " + button, "default preset is a native gamepad");
+        }
+        for needle in ["\"preset\" { \"id\" \"0\" \"name\" \"Default\"", "\"0\" \"button_diamond active\"", "\"1\" \"dpad active\"", "\"2\" \"joystick active\"", "\"3\" \"right_joystick active\"", "\"4\" \"left_trigger active\"", "\"5\" \"right_trigger active\"", "\"7\" \"switch active\"", "\"Long_Press\"", "controller_action CHANGE_PRESET 1", "controller_action CHANGE_PRESET 2"] {
+            contract.contains(vdf, needle, "default Deck template");
+        }
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        RetroArchSpecDeckInput.autoconfig(contract, fixture);
+        RetroArchSpecDeckInput.gamepad(contract, fixture);
+        contract.expect(fixture.plan.input != null, "the Deck has an input definition");
+        if (fixture.plan.input == null) { return; }
+        contract.expect(fixture.plan.input.chord("state.save").equals("Ctrl+S") && fixture.plan.input.chord("state.load").equals("Ctrl+A"), "Deck save and load chords are Ctrl+S and Ctrl+A");
+        Vector<string> quit = fixture.plan.input.quitChord();
+        contract.expect(quit.size() == 2 && quit.contains("select") && quit.contains("start"), "the quit pair is Select and Start");
+        contract.expect(fixture.plan.input.chordWindowMs() == 250, "the quit pair must land within 250 ms");
+    }
+}
+
+class RetroArchSpecContract {
+    class void run(Contract contract) {
+        RetroArchSpecProfile.run(contract, "linux-desktop");
+        RetroArchSpecProfile.run(contract, "steam-deck");
+        RetroArchSpecPlatforms.run(contract);
+        RetroArchSpecPackage.run(contract);
+        RetroArchSpecPatches.run(contract);
+        RetroArchSpecHooks.run(contract);
+        RetroArchSpecSurfaces.run(contract);
+        RetroArchSpecSystems.run(contract);
+        RetroArchSpecDeckInput.run(contract);
+    }
+}

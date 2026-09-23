@@ -1,4 +1,5 @@
-// The real Semu renderer, offscreen on macOS (CGL, OpenGL 4.1 core): a test card stands in for the
+// The real Semu renderer, offscreen on macOS (CGL, OpenGL 4.1 core): a test card (or a flat one,
+// RENDER_HOST_CARD=white/black with RENDER_HOST_LIT=screen) stands in for the
 // emulator's picture, SEMU_RENDER_* comes from `semu render-env`, and the frame is written as PPM.
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/gl3.h>
@@ -35,6 +36,14 @@ class RenderHostContext {  // a core-profile context with nothing on screen; CGL
 class RenderHostTestCard {  // the editor's card: blue over green (orange over yellow on the second screen), checkered corners, centre lines
     class unsigned char* pixels(int width, int height, int screen) {
         unsigned char* data = (unsigned char*)malloc((size_t)(width * height * 4));
+        char* flat = getenv("RENDER_HOST_CARD");  // white or black: a flat card for measuring where the picture lands
+        char* litText = getenv("RENDER_HOST_LIT");
+        int lit = litText == null ? -1 : atoi(litText);
+        if (flat != null && (strcmp(flat, "white") == 0 || strcmp(flat, "black") == 0)) {
+            int shade = strcmp(flat, "white") == 0 && (lit < 0 || lit == screen) ? 255 : 0;
+            for (int at = 0; at < width * height * 4; at += 4) { data[at] = (unsigned char)shade; data[at + 1] = (unsigned char)shade; data[at + 2] = (unsigned char)shade; data[at + 3] = (unsigned char)255; }
+            return data;
+        }
         int cell = width < height ? width / 40 : height / 40;
         if (cell < 2) { cell = 2; }
         int corner = cell * 4;
@@ -131,7 +140,9 @@ class RenderHost {
         return part == 0 ? width : height;
     }
 
-    class float aspect() {  // SEMU_RENDER_ASPECT=W:H, else the native shape
+    class float aspect() {  // RENDER_HOST_ASPECT, else SEMU_RENDER_ASPECT=W:H, else the native shape
+        char* forced = getenv("RENDER_HOST_ASPECT");
+        if (forced != null && atof(forced) > 0.1) { return (float)atof(forced); }  // a widescreen title, for the wide variants
         char* value = getenv("SEMU_RENDER_ASPECT");
         int width = 0;
         int height = 0;

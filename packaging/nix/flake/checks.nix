@@ -49,7 +49,7 @@ forAllSystems (system:
         root = repositoryRoot;
         fileset = ../../../tests/integration/retroarch-headless.sh;
       };
-      nativeBuildInputs = [ pkgs.xvfb-run pkgs.python3 pkgs.imagemagick pkgs.mesa pkgs.findutils pkgs.gawk ];
+      nativeBuildInputs = [ pkgs.xvfb-run pkgs.socat pkgs.imagemagick pkgs.mesa pkgs.findutils pkgs.gawk ];
       dontConfigure = true;
       dontBuild = true;
       installPhase = ''

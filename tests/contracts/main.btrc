@@ -6,6 +6,7 @@ import Library.JSON;
 import Library.Platform;
 import Library.Strings;
 import Library.Vector;
+import ./support.btrc;
 import ../../src/lib/json.btrc;
 import ../../src/lib/paths.btrc;
 import ../../src/model.btrc;
@@ -22,67 +23,14 @@ import ../../src/cli.btrc;
 import ../../src/launch/supervisor.btrc;
 import ../../src/steam/input_template.btrc;
 import ../../src/bezel/editor.btrc;
-
-class Contract {
-    public int failures;
-    public int checks;
-
-    public Contract() {
-        self.failures = 0;
-        self.checks = 0;
-    }
-
-    public void expect(bool condition, string message) {
-        self.checks++;
-        if (!condition) {
-            self.failures++;
-            Console.error("FAIL: " + message);
-        }
-    }
-
-    public void skip(string label, string reason) {  // a skip fails unless SEMU_ALLOW_SKIP=1 says the host lacks it
-        bool allowed = Environment.get("SEMU_ALLOW_SKIP", "").equals("1");
-        Console.error((allowed ? "SKIP: " : "FAIL: ") + label + ": " + reason);
-        self.checks++;
-        if (!allowed) { self.failures++; }
-    }
-
-    public void contains(string haystack, string needle, string message) {
-        self.expect(haystack.contains(needle), f"{message}: missing '{needle}'");
-    }
-
-    public void lacks(string haystack, string needle, string message) {
-        self.expect(!haystack.contains(needle), f"{message}: unexpected '{needle}'");
-    }
-}
-
-class Fixture {
-    public string project;
-    public string scratch;
-    public SemuDiagnostics diagnostics;
-    public SemuModel model;
-    public SemuPlan plan;
-
-    public Fixture(string target) {
-        self.project = Environment.get("SEMU_PROJECT", FileSystem.currentDirectory());
-        self.scratch = FileSystem.tempDir("semu-contract");
-        self.diagnostics = SemuDiagnostics();
-        self.model = SemuModel.load(PathTools.join(self.project, "config"), self.diagnostics);
-        string assets = PathTools.join(self.scratch, "assets");
-        FileSystem.mkdirp(PathTools.join(assets, "bin"));
-        string home = PathTools.join(self.scratch, "semu-home");
-        string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(self.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(self.scratch, "content") + "\"}}";
-        self.plan = SemuResolver.plan(self.model, target, home, assets, overlay, self.diagnostics);
-    }
-
-    public string profile(string emulatorId, string relative) {
-        SemuEmulator emulator = self.model.emulator(emulatorId);
-        for file in SemuProfiles.render(self.model, self.plan, emulator, self.diagnostics) {
-            if (file.path.equals(relative)) { return file.content; }
-        }
-        return "";
-    }
-}
+import ./spec/retroarch.btrc;
+import ./spec/emulator_runtime.btrc;
+import ./spec/standalone.btrc;
+import ./spec/cemu.btrc;
+import ./spec/steam_input.btrc;
+import ./spec/esde.btrc;
+import ./spec/gameboy.btrc;
+import ./spec/touch.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -292,7 +240,9 @@ class RenderingContract {
         FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/backgrounds/desk-night.png"), "png");
         SemuSystem nes = fixture.model.system("nes");
         Vector<string> nesBare = SemuRenderEnvironment.compile(fixture.plan, nes, "retroarch", "/state/retroarch", fixture.diagnostics);
-        contract.expect(nesBare.contains("SEMU_RENDER_BEZELS=1") && nesBare.contains("SEMU_RENDER_ART=" + PathTools.join(fixture.plan.configRoot, "assets/bezels/tv/soqueroeu/nes.png")), "the repository's own plate serves when the asset root lacks it");
+        bool artFromRepository = false;
+        for entry in nesBare { if (entry.startsWith("SEMU_RENDER_ART=" + fixture.plan.configRoot)) { artFromRepository = true; } }
+        contract.expect(!artFromRepository && !FileSystem.isFile(PathTools.join(fixture.plan.configRoot, "assets/bezels/tv/soqueroeu/nes.png")), "the night-lit scene is baked into the bundle, never served from the repository");
         FileSystem.mkdirp(PathTools.join(assets, "share/semu/assets/bezels/tv/soqueroeu"));
         FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/tv/soqueroeu/nes.png"), "png");
         FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/tv/tube-reflection.png"), "png");
@@ -724,6 +674,14 @@ int main() {
     BezelPlacementContract.run(contract);
     LayerLookContract.run(contract);
     OwnedPathsContract.run(contract);
+    RetroArchSpecContract.run(contract);
+    EmulatorRuntimeSpecContract.run(contract);
+    StandaloneSpecContract.run(contract);
+    CemuSpecContract.run(contract);
+    SteamInputSpecContract.run(contract);
+    EsDeSpecContract.run(contract);
+    GameBoySpecContract.run(contract);
+    TouchSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);

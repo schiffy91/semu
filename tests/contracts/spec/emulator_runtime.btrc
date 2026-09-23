@@ -1,0 +1,351 @@
+// Emulator runtime spec: exact profile keys, hotkeys, launch arguments and owned runtime state.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Process;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/lib/settings.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/profiles.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/emit/rendering.btrc;
+import ../../../src/launch/supervisor.btrc;
+
+class EmulatorRuntimeSpecTools {
+    class string environment(Vector<string> entries, string name) {  // value of NAME=value, empty when absent
+        string prefix = name + "=";
+        for entry in entries {
+            if (entry.startsWith(prefix)) { return entry.substring(prefix.len(), entry.len() - prefix.len()); }
+        }
+        return "";
+    }
+
+    class bool link(string target, string linkPath) {
+        ExecResult result = ChildProcess.run("ln", ["-s", target, linkPath]);
+        return result.ok() && FileSystem.isSymlink(linkPath);
+    }
+
+    class void touch(string path, string content) {
+        FileSystem.mkdirp(PathTools.dirname(path));
+        FileSystem.writeText(path, content);
+    }
+
+    class SemuPlan plan(Fixture fixture, string targetId, string extraSettings) {  // the fixture's scratch paths plus extra settings
+        string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(fixture.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(fixture.scratch, "content") + "\"}" + extraSettings + "}";
+        return SemuResolver.plan(fixture.model, targetId, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, fixture.diagnostics);
+    }
+
+    class JSONValue seed(string target, Vector<string> sources) {  // one complete seed declaration
+        JSONValue declaration = JSONValue.makeObject();
+        JSONValue list = JSONValue.makeArray();
+        for source in sources { list.push(JSONValue.makeString(source)); }
+        declaration.set("purpose", JSONValue.makeString("contract_fixture"));
+        declaration.set("target", JSONValue.makeString(target));
+        declaration.set("copy", JSONValue.makeString("once_if_target_absent"));
+        declaration.set("source_access", JSONValue.makeString("read_only"));
+        declaration.set("overwrite", JSONValue.makeBool(false));
+        declaration.set("sources", list);
+        return declaration;
+    }
+
+    class JSONValue seedPlatform(JSONValue declaration) {
+        JSONValue seeds = JSONValue.makeArray();
+        seeds.push(declaration);
+        JSONValue state = JSONValue.makeObject();
+        state.set("seeds", seeds);
+        JSONValue platform = JSONValue.makeObject();
+        platform.set("state", state);
+        return platform;
+    }
+
+    class bool seedOk(SemuPlan plan, JSONValue declaration) {
+        SemuLaunchPlan launch = SemuLaunchPlan();
+        return SemuLauncher.seed(plan, EmulatorRuntimeSpecTools.seedPlatform(declaration), launch) && launch.error.isEmpty();
+    }
+}
+
+class EmulatorRuntimeSpecActions {
+    class void run(Contract contract) {  // the supervisor and renderer journal ABI
+        SemuActions.resetExtensions();
+        Vector<string> fixed = ["ui.menu", "ui.menu.up", "ui.menu.down", "ui.menu.confirm", "ui.menu.back", "state.save", "state.load", "app.quit", "ui.screenshot", "ui.escape"];
+        for (int index = 0; index < fixed.size(); index++) {
+            string actionId = fixed.get(index);
+            contract.expect(SemuActions.code(actionId) == index + 1 && SemuActions.id(index + 1).equals(actionId), f"action {actionId} keeps journal code {index + 1}");
+        }
+        contract.expect(SemuActions.code("visual.bezels.toggle") == 11 && SemuActions.code("visual.shaders.toggle") == 12, "visual toggles take codes 11 and 12");
+        Vector<string> modes = ["wii.controller.wiimote", "wii.controller.nunchuk", "wii.controller.classic", "wii.controller.gamecube"];
+        for (int index = 0; index < modes.size(); index++) {
+            int code = SemuActions.extensionBase() + index;
+            contract.expect(SemuActions.code(modes.get(index)) == code && SemuActions.id(code).equals(modes.get(index)), f"controller mode {modes.get(index)} is extension {index}");
+        }
+        contract.expect(SemuActions.code("unknown") == SemuActions.none(), "an unknown action has no code");
+        contract.expect(SemuActions.id(100).isEmpty(), "an unallocated code has no action");
+        contract.expect(SemuActions.rendererOwned(SemuActions.stateSave()), "the renderer owns save state");
+        contract.expect(!SemuActions.rendererOwned(SemuActions.appQuit()), "the renderer does not own quit");
+        contract.expect(RendererActionJournal.abi() == 1, "journal ABI version is 1");
+        contract.expect(RendererActionJournal.fileName().equals("semu-render-actions.bin"), "journal file name");
+        contract.expect(RendererActionJournal.evidenceFileName().equals("semu-input-evidence.log"), "evidence log file name");
+        contract.expect(RendererActionJournal.direct() == 0 && RendererActionJournal.quickRadial() == 1, "direct and quick radial sources");
+        contract.expect(RendererActionJournal.menuRadial() == 2 && RendererActionJournal.systemRadial() == 3, "menu and system radial sources");
+        contract.expect(SemuActions.controllerModeSlot(SemuActions.extensionBase()) == 0, "first controller mode is slot 0");
+        contract.expect(SemuActions.controllerModeSlot(SemuActions.extensionBase() + 3) == 3, "fourth controller mode is slot 3");
+    }
+}
+
+class EmulatorRuntimeSpecProfiles {
+    class void run(Contract contract, string targetId) {  // every emulator's profile renders resolved with its exact hotkeys
+        Fixture fixture = Fixture(targetId);
+        Vector<string> emulators = ["retroarch", "dolphin", "ppsspp", "flycast", "azahar", "melonds", "pcsx2", "cemu", "ryujinx"];
+        Vector<string> files = ["retroarch.cfg", "dolphin-user/Config/Dolphin.ini", "config/ppsspp/PSP/SYSTEM/controls.ini", "config/flycast/mappings/SDL_Keyboard.cfg", "config/azahar-emu/qt-config.ini", "config/melonDS/melonDS.toml", "config/PCSX2/inputprofiles/Steam Deck.ini", "config/Cemu/settings.xml", "config/Ryujinx/Config.json"];
+        for (int index = 0; index < emulators.size(); index++) {
+            string content = fixture.profile(emulators.get(index), files.get(index));
+            contract.expect(!content.isEmpty() && !content.contains("${"), f"{targetId}: {files.get(index)} renders resolved");
+        }
+        contract.expect(fixture.diagnostics.ok(), f"{targetId}: profiles render without diagnostics: " + fixture.diagnostics.render());
+        string ryujinx = fixture.profile("ryujinx", "config/Ryujinx/Config.json");
+        JSONValue parsed = JSONValue.parse(ryujinx);
+        contract.expect(parsed != null && !parsed.isError() && ryujinx.equals(parsed.stringifyPretty(2) + "\n"), f"{targetId}: ryujinx Config.json is canonical JSON");
+        string retroarch = fixture.profile("retroarch", "retroarch.cfg");
+        contract.contains(retroarch, "input_toggle_fast_forward = \"add\"", f"{targetId}: retroarch fast forward key");
+        contract.contains(retroarch, "joypad_autoconfig_dir = \"" + fixture.plan.assetRoot + "/share/libretro/autoconfig\"", f"{targetId}: retroarch autoconfig from the bundle");
+        contract.contains(retroarch, "notification_show_autoconfig = \"false\"", f"{targetId}: no autoconfig toast");
+        contract.contains(retroarch, "notification_show_autoconfig_fails = \"false\"", f"{targetId}: no autoconfig failure toast");
+        contract.lacks(retroarch, "input_menu_toggle = ", f"{targetId}: no keyboard binding for RetroArch's own menu");
+        contract.contains(fixture.profile("dolphin", "dolphin-user/Config/Hotkeys.ini"), "General/Toggle Pause = @(Ctrl+P)", f"{targetId}: dolphin pause chord");
+        contract.contains(fixture.profile("ppsspp", "config/ppsspp/PSP/SYSTEM/controls.ini"), "Pause (no menu) = 1-113:1-44", f"{targetId}: ppsspp pause chord");
+        contract.contains(fixture.profile("melonds", "config/melonDS/melonDS.toml"), "HK_Pause = 67108944", f"{targetId}: melonDS pause chord");
+        contract.contains(fixture.profile("pcsx2", "config/PCSX2/inputprofiles/Steam Deck.ini"), "ToggleTurbo = Keyboard/Control & Keyboard/Plus", f"{targetId}: pcsx2 turbo chord");
+        contract.contains(fixture.profile("pcsx2", "config/PCSX2/inis/PCSX2.ini"), "Bios = " + fixture.plan.path("emulation_root") + "/PCSX2/config/bios", f"{targetId}: pcsx2 firmware is the read-only library BIOS folder");
+    }
+}
+
+class EmulatorRuntimeSpecControllerModes {
+    class void run(Contract contract, string targetId) {  // the wii controller setting picks Dolphin's initial mode
+        Fixture fixture = Fixture(targetId);
+        Vector<string> modes = ["wiimote", "nunchuk", "classic", "gamecube"];
+        Vector<string> sources = ["1", "1", "1", "0"];
+        Vector<string> extensions = ["None", "Nunchuk", "Classic", "None"];
+        SemuEmulator dolphin = fixture.model.emulator("dolphin");
+        for (int index = 0; index < modes.size(); index++) {
+            string mode = modes.get(index);
+            SemuDiagnostics diagnostics = SemuDiagnostics();
+            SemuPlan plan = EmulatorRuntimeSpecTools.plan(fixture, targetId, ",\"input\":{\"systems\":{\"wii\":{\"controller_mode\":\"" + mode + "\"}}}");
+            string main = "";
+            string wiimote = "";
+            string hotkeys = "";
+            for file in SemuProfiles.render(fixture.model, plan, dolphin, diagnostics) {
+                if (file.path.equals("dolphin-user/Config/Dolphin.ini")) { main = file.content; }
+                if (file.path.equals("dolphin-user/Config/WiimoteNew.ini")) { wiimote = file.content; }
+                if (file.path.equals("dolphin-user/Config/Hotkeys.ini")) { hotkeys = file.content; }
+            }
+            string label = f"{targetId} wii mode {mode}";
+            contract.expect(diagnostics.ok(), label + ": renders without diagnostics: " + diagnostics.render());
+            contract.contains(main, "WiimoteSource0 = " + sources.get(index), label + ": wii remote source");
+            contract.contains(wiimote, "Extension = " + extensions.get(index), label + ": wii remote extension");
+            contract.contains(wiimote, "Classic/Buttons/A =", label + ": classic bindings stay present");
+            contract.contains(wiimote, "Nunchuk/Buttons/C =", label + ": nunchuk bindings stay present");
+            contract.contains(hotkeys, "Semu Controller Mode/Wii Remote = @(Ctrl+Shift+F9)", label + ": wii remote hotkey");
+            contract.contains(hotkeys, "Semu Controller Mode/Wii Remote + Nunchuk = @(Ctrl+Shift+F10)", label + ": nunchuk hotkey");
+            contract.contains(hotkeys, "Semu Controller Mode/Classic Controller = @(Ctrl+Shift+F11)", label + ": classic hotkey");
+            contract.contains(hotkeys, "Semu Controller Mode/GameCube Controller = @(Ctrl+Shift+F12)", label + ": gamecube hotkey");
+        }
+    }
+}
+
+class EmulatorRuntimeSpecInput {
+    class void run(Contract contract, string targetId) {  // every emulator inherits the shared quit and action chords
+        Fixture fixture = Fixture(targetId);
+        contract.expect(fixture.plan.emulators.size() == 9, f"{targetId}: nine linux emulators, found {fixture.plan.emulators.size()}");
+        contract.expect(fixture.plan.input != null, f"{targetId}: input definition resolves");
+        if (fixture.plan.input == null) { return; }
+        Vector<string> quit = fixture.plan.input.quitChord().sorted();
+        int declared = 0;
+        JSONValue actions = fixture.plan.input.definition.get("actions");
+        for action in actions.keys() { if (!SemuJson.textAt(actions.get(action), "chord").isEmpty()) { declared++; } }
+        for emulatorId in fixture.plan.emulators {
+            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            SemuLaunchPlan launch = SemuLaunchPlan();
+            SemuLauncher.inputContracts(launch, fixture.plan, emulator.platform(fixture.plan.platform), PathTools.join(fixture.plan.stateRoot(), emulatorId));
+            string label = f"{targetId} {emulatorId}";
+            contract.expect(emulator.actions.contains("app.quit"), label + ": declares app.quit");
+            contract.expect(!EmulatorRuntimeSpecTools.environment(launch.environment, "SEMU_MENU_ITEMS").isEmpty(), label + ": supervisor input is configured");
+            contract.expect(fixture.plan.input.chordWindowMs() == 250, label + ": quit chord window is 250 ms");
+            contract.expect(quit.size() == 2 && quit.get(0).equals("select") && quit.get(1).equals("start"), label + ": quit chord is select and start");
+            contract.expect(launch.actionChords.size() == declared, label + ": supervisor bindings are the declared chords");
+            contract.expect(launch.actionChords.contains("state.save=Ctrl+S") && launch.actionChords.contains("state.load=Ctrl+A") && launch.actionChords.contains("app.quit=Ctrl+Q"), label + ": save, load and quit chords");
+        }
+        JSONValue directories = SemuJson.get(fixture.model.emulator("retroarch").platform("linux"), "core_loader.directories");
+        contract.expect(directories.isArray() && directories.size() == 1 && SemuJson.text(directories.at(0)).equals("${asset_root}/lib/retroarch/cores"), f"{targetId}: retroarch cores load only from the bundle");
+    }
+}
+
+class EmulatorRuntimeSpecGeneric {
+    class void run(Contract contract) {  // the profile compiler and launcher hold no emulator-specific policy
+        Fixture fixture = Fixture("linux-desktop");
+        string source = FileSystem.readText(PathTools.join(fixture.project, "src/emit/profiles.btrc")) + FileSystem.readText(PathTools.join(fixture.project, "src/launch/plan.btrc"));
+        contract.expect(source.len() > 0, "generic generator sources are readable");
+        for needle in ["chord_grammar", "SEMU_RETROARCH_CORE_DIR", "class string retroarch(", "class string dolphin(", "class string pcsx2(", "class string ppsspp("] {
+            contract.lacks(source, needle, "generic generator carries no emulator-specific policy");
+        }
+        contract.expect(fixture.plan.tokens.resolve("${bios}").equals(fixture.plan.path("bios")) && !fixture.plan.path("bios").isEmpty(), "the bios token resolves to the configured BIOS root");
+        contract.expect(fixture.plan.tokens.resolve("${semu_home}").equals(fixture.plan.semuHome), "the semu_home token resolves to the settings home");
+        string overrideBios = PathTools.join(fixture.scratch, "override-bios");
+        SemuPlan overridden = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"paths\":{\"bios\":\"" + overrideBios + "\"}}", SemuDiagnostics());
+        contract.expect(overridden.path("bios").equals(overrideBios), "a settings overlay overrides the BIOS root");
+        string outside = PathTools.join(fixture.scratch, "outside-home");
+        string linked = PathTools.join(fixture.scratch, "linked-home");
+        FileSystem.mkdirp(outside);
+        contract.expect(EmulatorRuntimeSpecTools.link(outside, linked), "settings home symlink fixture");
+        contract.expect(!SemuSettingsStore.put(linked, "ui.theme", JSONValue.makeString("x")) && !FileSystem.isFile(PathTools.join(outside, "semu.json")), "a symlinked settings home is refused");
+    }
+}
+
+class EmulatorRuntimeSpecLaunch {
+    class void run(Contract contract, string targetId) {  // a RetroArch launch prepares its owned runtime
+        Fixture fixture = Fixture(targetId);
+        string assets = fixture.plan.assetRoot;
+        EmulatorRuntimeSpecTools.touch(PathTools.join(assets, "bin/retroarch"), "#!/bin/sh\n");
+        EmulatorRuntimeSpecTools.touch(PathTools.join(assets, "lib/retroarch/cores/gambatte_libretro.so"), "");
+        EmulatorRuntimeSpecTools.touch(PathTools.join(assets, "share/libretro/shaders/semu/gb/screen.slangp"), "#reference x\n");
+        EmulatorRuntimeSpecTools.touch(PathTools.join(assets, "share/semu/assets/bezels/gb/dmg-shell.png"), "png");
+        string roms = PathTools.join(fixture.scratch, "roms");
+        string bios = PathTools.join(fixture.scratch, "read-only-bios");
+        string marker = PathTools.join(bios, "marker.bin");
+        EmulatorRuntimeSpecTools.touch(PathTools.join(roms, "gb/game.gb"), "fixture");
+        EmulatorRuntimeSpecTools.touch(marker, "read-only-fixture");
+        EmulatorRuntimeSpecTools.touch(PathTools.join(fixture.scratch, "outside.gb"), "fixture");
+        fixture.plan.tokens.put("roms", roms);
+        fixture.plan.tokens.put("bios", bios);
+        string label = targetId + " retroarch gb";
+        SemuLaunchPlan launch = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "gambatte", "game.gb", fixture.diagnostics);
+        contract.expect(fixture.diagnostics.ok() && launch.ok(), label + ": launch resolves: " + launch.error + fixture.diagnostics.render());
+        contract.expect(launch.argv.contains("-f"), label + ": fullscreen flag");
+        contract.expect(launch.argv.contains("-L"), label + ": core loader flag");
+        contract.expect(!launch.argv.isEmpty() && launch.argv.last().equals(PathTools.join(roms, "gb/game.gb")), label + ": ROM is the last argument");
+        contract.expect(launch.chordWindowMs == 250, label + ": quit chord window");
+        Vector<string> environment = launch.environment;
+        contract.expect(EmulatorRuntimeSpecTools.environment(environment, "SEMU_RENDER_SYSTEM_ID").equals("gb"), label + ": renderer system id");
+        contract.expect(EmulatorRuntimeSpecTools.environment(environment, "SEMU_RENDER_SHADER_PRESET").equals(PathTools.join(assets, "share/libretro/shaders/semu/gb/screen.slangp")), label + ": bundled shader preset");
+        contract.expect(EmulatorRuntimeSpecTools.environment(environment, "SEMU_RENDER_ART").equals(PathTools.join(assets, "share/semu/assets/bezels/gb/dmg-shell.png")), label + ": bundled bezel art");
+        contract.expect(!EmulatorRuntimeSpecTools.environment(environment, "SEMU_RENDER_SCREEN_0").isEmpty(), label + ": default bezel screen rectangle");
+        string config = PathTools.join(fixture.plan.stateRoot(), "retroarch/retroarch.cfg");
+        contract.expect(FileSystem.isFile(config), label + ": retroarch.cfg written into the state root");
+        contract.expect(FileSystem.readText(marker).equals("read-only-fixture"), label + ": BIOS root left untouched");
+        string missingBios = PathTools.join(fixture.scratch, "missing-bios");
+        fixture.plan.tokens.put("bios", missingBios);
+        SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "gambatte", "game.gb", SemuDiagnostics());
+        contract.expect(!FileSystem.exists(missingBios), label + ": a missing BIOS root is never created");
+        SemuLaunchPlan outside = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "gambatte", PathTools.join(fixture.scratch, "outside.gb"), SemuDiagnostics());
+        contract.expect(!outside.ok(), label + ": a ROM outside the system root is rejected");
+        JSONValue platform = fixture.model.emulator("retroarch").platform("linux");
+        platform.get("args").push(JSONValue.makeString("${missing}"));
+        SemuLaunchPlan unresolvedArgument = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "gambatte", "game.gb", SemuDiagnostics());
+        contract.expect(!unresolvedArgument.ok(), label + ": an unresolved launch argument fails closed");
+        platform.set("args", JSONValue.parse("[\"-f\"]"));
+        platform.set("env", JSONValue.parse("{\"set\":{\"VALID_NAME\":\"${missing}\"}}"));
+        SemuLaunchPlan unresolvedEnvironment = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "gambatte", "game.gb", SemuDiagnostics());
+        contract.expect(!unresolvedEnvironment.ok(), label + ": an unresolved environment value fails closed");
+        platform.set("env", JSONValue.parse("{\"set\":{\"INVALID=NAME\":\"value\"}}"));
+        SemuLaunchPlan invalidEnvironment = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "gambatte", "game.gb", SemuDiagnostics());
+        contract.expect(!invalidEnvironment.ok(), label + ": an invalid environment name fails closed");
+    }
+}
+
+class EmulatorRuntimeSpecOwnership {
+    class void run(Contract contract) {  // profiles never land outside the emulator's state root
+        Fixture escaped = Fixture("steam-deck");
+        string escapedRoot = PathTools.join(escaped.scratch, "escaped-profile-root");
+        escaped.model.emulator("dolphin").platform("linux").get("state").set("profile_config_dir", JSONValue.makeString(escapedRoot));
+        SemuDiagnostics escapedDiagnostics = SemuDiagnostics();
+        SemuProfiles.render(escaped.model, escaped.plan, escaped.model.emulator("dolphin"), escapedDiagnostics);
+        contract.expect(!escapedDiagnostics.ok(), "a profile directory outside the state root is refused");
+        Fixture traversal = Fixture("steam-deck");
+        traversal.model.emulator("ppsspp").profile.get("files").at(0).set("path", JSONValue.makeString("../escape.ini"));
+        SemuDiagnostics traversalDiagnostics = SemuDiagnostics();
+        SemuProfiles.render(traversal.model, traversal.plan, traversal.model.emulator("ppsspp"), traversalDiagnostics);
+        contract.expect(!traversalDiagnostics.ok(), "a traversing profile path is refused");
+        Fixture token = Fixture("steam-deck");
+        token.model.emulator("dolphin").profile.get("controller_modes").at(3).set("profile", JSONValue.makeString("../../../escaped-profile"));
+        SemuDiagnostics tokenDiagnostics = SemuDiagnostics();
+        Vector<SemuProfileFile> files = SemuProfiles.render(token.model, token.plan, token.model.emulator("dolphin"), tokenDiagnostics);
+        string stateRoot = PathTools.join(token.plan.stateRoot(), "dolphin");
+        SemuProfiles.write(stateRoot, files, SemuDiagnostics());
+        contract.expect(!tokenDiagnostics.ok(), "a profile token that escapes is refused");
+        contract.expect(!FileSystem.exists(PathTools.join(token.plan.stateRoot(), "escaped-profile.ini")) && !FileSystem.exists(PathTools.join(token.scratch, "escaped-profile.ini")), "an escaping profile token writes nothing outside");
+        string outsideProfiles = PathTools.join(token.scratch, "outside-profiles");
+        string linkedProfiles = PathTools.join(stateRoot, "config/linked");
+        FileSystem.mkdirp(outsideProfiles);
+        FileSystem.mkdirp(PathTools.dirname(linkedProfiles));
+        contract.expect(EmulatorRuntimeSpecTools.link(outsideProfiles, linkedProfiles), "profile symlink fixture");
+        Vector<SemuProfileFile> linkedFiles = [SemuProfileFile("config/linked/escape.ini", "x\n")];
+        contract.expect(!SemuProfiles.write(stateRoot, linkedFiles, SemuDiagnostics()) && !FileSystem.exists(PathTools.join(outsideProfiles, "escape.ini")), "a profile write never follows a symlinked parent");
+    }
+}
+
+class EmulatorRuntimeSpecSeeds {
+    class void run(Contract contract) {  // firmware and keys are copied once, read-only, inside owned state
+        Fixture fixture = Fixture("steam-deck");
+        string stateRoot = PathTools.join(fixture.plan.stateRoot(), "azahar");
+        FileSystem.mkdirp(stateRoot);
+        fixture.plan.tokens.put("state_root", stateRoot);
+        string seedRoot = PathTools.join(fixture.scratch, "seed-sources");
+        string source = PathTools.join(seedRoot, "firmware.bin");
+        string bytes = "verified-firmware-fixture\n";
+        EmulatorRuntimeSpecTools.touch(source, bytes);
+        string target = PathTools.join(stateRoot, "data/imported/firmware.bin");
+        contract.expect(EmulatorRuntimeSpecTools.seedOk(fixture.plan, EmulatorRuntimeSpecTools.seed(target, [source])), "a declared seed publishes");
+        contract.expect(FileSystem.isFile(target) && FileSystem.readText(target).equals(bytes), "the seed target holds the source bytes");
+        contract.expect(FileSystem.readText(source).equals(bytes), "the seed source is unchanged");
+        contract.expect(EmulatorRuntimeSpecTools.seedOk(fixture.plan, EmulatorRuntimeSpecTools.seed(target, [source])), "an existing seed is accepted again");
+        contract.expect(FileSystem.readText(target).equals(bytes), "a repeated seed keeps the bytes");
+        string partialSource = PathTools.join(seedRoot, "complete.bin");
+        string partialTarget = PathTools.join(stateRoot, "data/imported/partial.bin");
+        EmulatorRuntimeSpecTools.touch(partialSource, "complete-content");
+        EmulatorRuntimeSpecTools.touch(partialTarget, "partial");
+        EmulatorRuntimeSpecTools.seedOk(fixture.plan, EmulatorRuntimeSpecTools.seed(partialTarget, [partialSource]));
+        contract.expect(FileSystem.readText(partialTarget).equals("partial"), "an existing seed target is never overwritten");
+        contract.expect(FileSystem.readText(partialSource).equals("complete-content"), "the skipped seed source is unchanged");
+        string linkedSource = PathTools.join(seedRoot, "linked.bin");
+        string fromLink = PathTools.join(stateRoot, "data/imported/from-link.bin");
+        contract.expect(EmulatorRuntimeSpecTools.link(source, linkedSource), "seed source symlink fixture");
+        contract.expect(!EmulatorRuntimeSpecTools.seedOk(fixture.plan, EmulatorRuntimeSpecTools.seed(fromLink, [linkedSource])), "a symlinked seed source is refused");
+        contract.expect(!FileSystem.exists(fromLink) && !FileSystem.isSymlink(fromLink), "a symlinked seed source creates nothing");
+        contract.expect(FileSystem.readText(source).equals(bytes), "the linked seed source is unchanged");
+        string outsideSeed = PathTools.join(fixture.scratch, "outside-seed.bin");
+        string linkedTarget = PathTools.join(stateRoot, "data/imported/linked-target.bin");
+        EmulatorRuntimeSpecTools.touch(outsideSeed, "outside-unchanged");
+        contract.expect(EmulatorRuntimeSpecTools.link(outsideSeed, linkedTarget), "seed target symlink fixture");
+        contract.expect(!EmulatorRuntimeSpecTools.seedOk(fixture.plan, EmulatorRuntimeSpecTools.seed(linkedTarget, [source])), "a symlinked seed target is refused");
+        contract.expect(FileSystem.isSymlink(linkedTarget), "the symlinked seed target is left in place");
+        contract.expect(FileSystem.readText(outsideSeed).equals("outside-unchanged"), "the symlinked seed target's file is unchanged");
+        string escapedSeed = PathTools.join(PathTools.dirname(stateRoot), "escaped-seed.bin");
+        contract.expect(!EmulatorRuntimeSpecTools.seedOk(fixture.plan, EmulatorRuntimeSpecTools.seed("${state_root}/../escaped-seed.bin", [source])), "a seed outside the state root is refused");
+        contract.expect(!FileSystem.exists(escapedSeed), "a traversing seed writes nothing");
+        JSONValue incomplete = JSONValue.makeObject();
+        string incompleteTarget = PathTools.join(stateRoot, "data/imported/incomplete.bin");
+        incomplete.set("target", JSONValue.makeString(incompleteTarget));
+        incomplete.set("sources", JSONValue.parse("[\"" + source + "\"]"));
+        contract.expect(!EmulatorRuntimeSpecTools.seedOk(fixture.plan, incomplete), "a seed without copy, access and overwrite rules is refused");
+        contract.expect(!FileSystem.exists(incompleteTarget), "an incomplete seed declaration writes nothing");
+    }
+}
+
+class EmulatorRuntimeSpecContract {
+    class void run(Contract contract) {
+        EmulatorRuntimeSpecActions.run(contract);
+        EmulatorRuntimeSpecGeneric.run(contract);
+        EmulatorRuntimeSpecOwnership.run(contract);
+        EmulatorRuntimeSpecSeeds.run(contract);
+        for targetId in ["linux-desktop", "steam-deck"] {
+            EmulatorRuntimeSpecProfiles.run(contract, targetId);
+            EmulatorRuntimeSpecControllerModes.run(contract, targetId);
+            EmulatorRuntimeSpecInput.run(contract, targetId);
+            EmulatorRuntimeSpecLaunch.run(contract, targetId);
+        }
+    }
+}

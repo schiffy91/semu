@@ -1,31 +1,15 @@
-# semu_bezels.nix — the bezel-art asset trees for Semu, driven by the global
-# manifest config/assets/bezels.json (recipe types copy / local / flatten /
-# recolor / glass / panel / shell / photo, the generic fallback table, and the
-# "staging" section). bezels.json is the only place upstream pins, art recipes,
-# and the generic fallback table live.
+# The bezel-art asset tree for Semu, driven by config/assets/bezels.json (recipe types copy,
+# local, flatten, recolor, glass, panel, shell, photo, scene, plus the "staging" section).
 #
-# Two derivations come out of the one manifest:
+# (default / `semu-bezels`) bakes every recipe here, on the machine that builds Semu: verbatim
+#   `copy` files and Semu's own `local` files are byte-checked against their pinned hashes;
+#   plates derived from the Duimon and Soqueroeu packs are rendered with imagemagick over the
+#   pinned upstreams and checked for their declared size and PNG type only. The repository
+#   carries no derived art (the packs' licences forbid sharing adapted material, see NOTICE.md).
+# (passthru.generate) is the same render, kept as the named regenerator for inspection.
 #
-#   (default / `semu-bezels`) — the STAGER. `copy` recipes come directly from
-#     hash-pinned upstream trees and are verified byte-for-byte; local and
-#     generated recipes stage their committed final files, with declared output
-#     geometry and hashes checked when present. No imagemagick runs in this
-#     derivation. semu_app.nix consumes this output.
-#
-#   (passthru.generate / `semu-bezels-generate`) — the REGENERATOR. Fetches
-#     remaining explicitly pinned upstreams and re-renders generated recipes
-#     with imagemagick.
-#     `nix run .#bake-bezels` copies its share/semu/assets/bezels/ back over the
-#     committed tree, keeping the committed PNGs byte-identical to what the
-#     recipes produce (the copier then ships those same bytes).
-#
-# Output layout (both derivations):
-#   share/semu/<asset key>   canonical tree ($SEMU_ASSET_ROOT/share/semu is
-#                            what BezelResolver joins "assets/..." onto)
-#   <staging dest>           every staging file whose src names a bezels.json
-#                            asset (or an asset directory prefix); non-asset
-#                            srcs are skipped because runtime binaries are
-#                            packaged by their own Nix derivations.
+# Output layout: share/semu/<asset key> (what the launcher joins "assets/..." onto) plus every
+# staging destination whose src names a bezels.json asset or asset directory.
 { lib, stdenvNoCC, fetchFromGitHub, fetchurl, imagemagick }:
 
 let
@@ -67,8 +51,8 @@ let
       && lib.elem output.bit_depth [ 8 16 ]
       && output ? color_type && builtins.isInt output.color_type
       && lib.elem output.color_type [ 2 6 ]
-      && output ? sha256 && builtins.isString output.sha256
-      && builtins.match "^[0-9a-f]{64}$" output.sha256 != null;
+      && (!(output ? sha256) || (builtins.isString output.sha256
+        && builtins.match "^[0-9a-f]{64}$" output.sha256 != null));  # generated art is baked here, so only its shape is pinned
   invalidOutputMetadata = lib.attrNames
     (lib.filterAttrs (_: recipe: recipe ? output && !validOutputMetadata recipe)
       imageAssets);
@@ -187,6 +171,7 @@ let
         echo "semu-bezels: PNG metadata mismatch for ${key}: ''${actualWidth}x''${actualHeight} depth=''${actualBitDepth} color=''${actualColorType}" >&2
         exit 1
       fi
+    '' + lib.optionalString (recipe ? output && recipe.output ? sha256) ''
       actualHash="$(sha256sum ${outFile key} | cut -d ' ' -f 1)"
       if [ "$actualHash" != "${recipe.output.sha256}" ]; then
         echo "semu-bezels: output hash mismatch for ${key}: $actualHash != ${recipe.output.sha256}" >&2
@@ -295,20 +280,9 @@ let
   renderScript = lib.concatMapStrings (entry: render entry.key entry.recipe)
     (phases.right ++ phases.wrong);
 
-  # The normal stager performs fixed-output, byte-checked copies for `copy`
-  # recipes. Other recipe types retain their committed final files so the
-  # normal package does not run imagemagick.
-  copyFile = key: recipe:
-    ''
-      mkdir -p "$(dirname "$out/share/semu/${key}")"
-    '' + (if recipe.type == "copy" then
-      copyUpstreamFile key recipe
-    else ''
-      cp "${assetSource + "/config/${key}"}" ${outFile key}
-    '') + verifyOutput key recipe;
-  copyScript = lib.concatMapStrings
-    (entry: copyFile entry.key entry.recipe)
-    (lib.mapAttrsToList (key: recipe: { inherit key recipe; }) imageAssets);
+  # The stager bakes every derived plate from the pinned upstreams here, on the machine that
+  # builds Semu: the repository carries recipes, never Duimon or Soqueroeu derivatives (their
+  # licences forbid distributing adapted material). Verbatim copies stay byte-checked.
 
   assetKeys = lib.attrNames sources.assets;
   isAssetDir = src: lib.any (key: lib.hasPrefix "${src}/" key) assetKeys;
@@ -374,9 +348,11 @@ stdenvNoCC.mkDerivation {
 
   dontUnpack = true;
 
+  nativeBuildInputs = [ imagemagick ];
+
   installPhase = ''
     runHook preInstall
-    ${copyScript}
+    ${renderScript}
     ${stagingScript}
     runHook postInstall
   '';
@@ -386,7 +362,7 @@ stdenvNoCC.mkDerivation {
   };
 
   meta = {
-    description = "Semu bezel art staged from exact local outputs and pinned upstream copies";
+    description = "Semu bezel art baked from bezels.json recipes over the pinned upstreams";
     platforms = lib.platforms.all;
   };
 }

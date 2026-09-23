@@ -115,6 +115,7 @@
     "pcsx2_pad": "SDL-1",
     "cemu_api": "SDLController",
     "cemu_display_name": "Steam Virtual Gamepad",
+    "cemu_uuid": "0_03000000de280000ff11000001000000",
     "cemu_profile": "SteamInput-P1",
     "ryujinx_controller_id": "0-f7390003-28de-0000-ff11-000001000000"
   },

@@ -1,5 +1,7 @@
+import Library.Bytes;
 import Library.Console;
 import Library.FileSystem;
+import Library.IO;
 import Library.JSON;
 import Library.Strings;
 import Library.Vector;
@@ -317,8 +319,69 @@ class SteamInputVdf {  // the controller_mappings document Steam loads as a Nept
     }
 }
 
+class SteamInputRules {  // what a definition must satisfy before it becomes VDF text
+    class bool safeChord(string chord) {  // letters, digits and plus or minus only
+        if (chord.isEmpty()) { return false; }
+        for (int index = 0; index < chord.len(); index++) {
+            char character = chord.charAt(index);
+            bool allowed = (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9') || character == '+' || character == '-';
+            if (!allowed) { return false; }
+        }
+        return true;
+    }
+
+    class bool safeText(string value) {  // a comma or quote would split the VDF binding
+        return !value.trim().isEmpty() && !value.contains("\"") && !value.contains(",") && !value.contains("\\") && !value.contains("\n");
+    }
+
+    class bool modifierLabel(string label) {
+        string lower = label.trim().toLower();
+        return lower.equals("control") || !SteamInputChordNames.modifier(lower).isEmpty();
+    }
+
+    class void declared(Vector<string> problems, SteamInputDocument document, Vector<string> actions, string where) {
+        for action in actions {
+            if (document.label(action).isEmpty()) { problems.push(where + " names undeclared action " + action); }
+        }
+    }
+
+    class Vector<string> problems(SteamInputDocument document) {
+        Vector<string> problems = [];
+        if (document.showLabels()) { problems.push("radial.show_labels must be false so Steam never draws key glyphs"); }
+        int window = SemuJson.intAt(document.root, "quit_chord.window_ms", 250);
+        if (window < 50 || window > 1000) { problems.push("quit_chord.window_ms must be within 50..1000 ms"); }
+        JSONValue actions = document.root.get("actions");
+        if (actions == null || !actions.isObject() || actions.size() == 0) {
+            problems.push("actions must declare the input vocabulary");
+            return problems;
+        }
+        for id in actions.keys() {
+            if (!SteamInputRules.safeChord(document.chord(id))) { problems.push(id + ": chord is not a safe key chord"); }
+            string label = document.label(id);
+            if (!SteamInputRules.safeText(label) || SteamInputRules.modifierLabel(label)) { problems.push(id + ": needs a semantic Semu icon and label"); }
+            if (!SteamInputRules.safeText(document.icon(id)) || !document.icon(id).endsWith(".png")) { problems.push(id + ": needs a semantic Semu icon and label"); }
+        }
+        SteamInputRules.declared(problems, document, document.slots("quick_slots"), "radial.quick_slots");
+        SteamInputRules.declared(problems, document, document.slots("menu_slots"), "radial.menu_slots");
+        JSONValue layers = document.layers();
+        for (int index = 0; layers != null && layers.isArray() && index < layers.size(); index++) {
+            SteamInputRules.declared(problems, document, SemuJson.strings(layers.at(index).get("slots")), "radial.system_layers");
+        }
+        return problems;
+    }
+}
+
 class SteamInputTemplates {  // semu steam input: write every declared Neptune template plus the semantic icons
     class string source(SemuPlan plan) { return PathTools.join(plan.configRoot, "input/" + plan.target.input + "/steam_input.json"); }
+
+    class bool copyBytes(string source, string destination) {  // PNGs carry NUL bytes, so never through text
+        Bytes content = FileSystem.readBytes(source);
+        if (content.isEmpty() || FileSystem.isSymlink(destination)) { return false; }
+        File file = File(destination, "wb");
+        if (!file.ok()) { return false; }
+        bool wrote = file.writeBytes(content);
+        return file.close() && wrote;
+    }
 
     class int publish(SemuPlan plan, string outputDirectory, string iconDirectory) {
         string source = SteamInputTemplates.source(plan);
@@ -332,6 +395,9 @@ class SteamInputTemplates {  // semu steam input: write every declared Neptune t
             return 1;
         }
         SteamInputDocument document = SteamInputDocument(root);
+        Vector<string> problems = SteamInputRules.problems(document);
+        for problem in problems { Console.error("semu: " + source + ": " + problem); }
+        if (!problems.isEmpty()) { return 1; }
         JSONValue templates = root.get("templates");
         if (templates == null || !templates.isArray() || templates.size() == 0) {
             Console.error("semu: no templates declared in " + source);
@@ -349,10 +415,16 @@ class SteamInputTemplates {  // semu steam input: write every declared Neptune t
         }
         string icons = PathTools.join(PathTools.dirname(source), "icons");
         if (!iconDirectory.isEmpty() && FileSystem.isDir(icons)) {
-            SemuPaths.prepareDirectory(iconDirectory);
+            if (!SemuPaths.prepareDirectory(iconDirectory)) {
+                Console.error("semu: refusing icon directory " + iconDirectory + " (a symlink or not creatable)");
+                return 1;
+            }
             for name in SemuModel.sortedEntries(icons) {
                 if (!name.endsWith(".png")) { continue; }
-                FileSystem.writeText(PathTools.join(iconDirectory, name), FileSystem.readText(PathTools.join(icons, name)));
+                if (!SteamInputTemplates.copyBytes(PathTools.join(icons, name), PathTools.join(iconDirectory, name))) {
+                    Console.error("semu: could not copy icon " + name);
+                    return 1;
+                }
             }
             Console.log(iconDirectory + " (icons)");
         }

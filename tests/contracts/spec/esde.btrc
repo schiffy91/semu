@@ -1,0 +1,251 @@
+// ES-DE spec: filtered custom systems, a narrow es_settings merge, the settings manifest and the ES-DE patch.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/check.btrc;
+import ../../../src/emit/esde.btrc;
+import ../../../src/emit/settings_ui.btrc;
+
+class EsDeSpecXml {  // well-formedness without xmllint: one root, balanced tags, only entity ampersands
+    class bool entityAt(string document, int index) {
+        for entity in ["&amp;", "&quot;", "&lt;", "&gt;", "&apos;"] {
+            if (index + entity.len() <= document.len() && document.substring(index, entity.len()).equals(entity)) { return true; }
+        }
+        return false;
+    }
+
+    class bool wellFormed(string document) {
+        Vector<string> open = [];
+        int roots = 0;
+        int index = 0;
+        while (index < document.len()) {
+            char character = document.charAt(index);
+            if (character == '&' && !EsDeSpecXml.entityAt(document, index)) { return false; }
+            if (character != '<') { index++; continue; }
+            int close = document.substring(index, document.len() - index).indexOf(">");  // offset from this tag start
+            if (close < 0) { return false; }
+            string tag = document.substring(index + 1, close - 1);
+            index = index + close + 1;
+            if (tag.startsWith("?") || tag.startsWith("!--")) { continue; }
+            if (tag.startsWith("/")) {
+                if (open.isEmpty() || !open.pop().equals(tag.substring(1, tag.len() - 1).trim())) { return false; }
+                continue;
+            }
+            if (open.isEmpty()) { roots++; }
+            string name = Strings.split(tag.trim(), " ").get(0);
+            if (!tag.endsWith("/")) { open.push(name); }
+        }
+        return open.isEmpty() && roots == 1;
+    }
+}
+
+class EsDeSpecPatch {  // a hunk whose added-line count lies makes the ES-DE build apply garbage
+    class int addedLineCount(string header) {
+        int plus = header.indexOf("+");
+        if (plus < 0) { return -1; }
+        string rest = header.substring(plus + 1, header.len() - plus - 1);
+        int space = rest.indexOf(" ");
+        if (space < 0) { return -1; }
+        string range = rest.substring(0, space);
+        int comma = range.indexOf(",");
+        return comma < 0 ? 1 : Strings.toInt(range.substring(comma + 1, range.len() - comma - 1));
+    }
+
+    class bool addedHunksMatch(string patch) {
+        bool active = false;
+        bool found = false;
+        int expected = 0;
+        int actual = 0;
+        for line in Strings.split(patch, "\n") {
+            if (line.startsWith("@@ ")) {
+                if (active && actual != expected) { return false; }
+                expected = EsDeSpecPatch.addedLineCount(line);
+                if (expected < 1) { return false; }
+                actual = 0;
+                active = true;
+                found = true;
+                continue;
+            }
+            if (line.startsWith("diff --git ")) {
+                if (active && actual != expected) { return false; }
+                active = false;
+                continue;
+            }
+            if (active && (line.startsWith(" ") || (line.startsWith("+") && !line.startsWith("+++")))) { actual++; }
+        }
+        return found && (!active || actual == expected);
+    }
+}
+
+class EsDeSpecDocuments {  // the Deck plan narrowed to gb and gc: exact systems, semantic commands, selected rules
+    class SemuPlan deckPlan(Fixture fixture, string roms, SemuDiagnostics diagnostics) {
+        string overlay = "{\"paths\":{\"roms\":\"" + roms + "\",\"state_root\":\"" + PathTools.join(fixture.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(fixture.scratch, "content") + "\"},\"ui\":{\"theme\":\"modern-es-de\",\"display_index\":2}}";
+        return SemuResolver.plan(fixture.model, "steam-deck", PathTools.join(fixture.scratch, "esde-spec-home"), PathTools.join(fixture.scratch, "esde-spec-assets"), overlay, diagnostics);
+    }
+
+    class void run(Contract contract, Fixture fixture, SemuPlan plan, SemuDiagnostics diagnostics) {
+        contract.expect(SemuChecker.check(fixture.model, plan, diagnostics), "the Steam Deck plan validates: " + diagnostics.render());
+        plan.systems = ["gb", "gc"];
+        plan.emulators = ["dolphin", "retroarch"];
+        string systems = SemuEsDeDocuments.systems(fixture.model, plan, diagnostics);
+        string rules = SemuEsDeDocuments.findRules(plan, diagnostics);
+        contract.expect(EsDeSpecXml.wellFormed(systems) && EsDeSpecXml.wellFormed(rules), "custom-system documents are well-formed XML");
+        contract.expect(!EsDeSpecXml.wellFormed("<a><b></a></b>") && !EsDeSpecXml.wellFormed("<a>&</a>") && EsDeSpecXml.wellFormed("<?xml version=\"1.0\"?>\n<a x=\"1\"><b/>&amp;</a>"), "the XML check rejects crossed tags and bare ampersands");
+        contract.contains(systems, "<name>gb</name>", "the plan's gb system is emitted");
+        contract.contains(systems, "<name>gc</name>", "the plan's gc system is emitted");
+        for absent in ["<name>gba</name>", "<name>wii</name>", "<name>n64</name>"] { contract.lacks(systems, absent, "systems outside the plan are not emitted"); }
+        for legacy in ["%CORE_", " -f ", "--config", "semu-settings", "SEMU SETTINGS"] { contract.lacks(systems, legacy, "commands are the semantic launcher contract, the settings menu is not a system"); }
+        contract.contains(systems, "<path>%ROMPATH%/gb</path>", "the ROM directory comes from the system declaration");
+        contract.contains(rules, "<emulator name=\"DOLPHIN\">", "find rules name the selected Dolphin");
+        contract.contains(rules, "<emulator name=\"RETROARCH\">", "find rules name the selected RetroArch");
+        contract.lacks(rules, "PPSSPP", "find rules omit unselected emulators");
+        contract.lacks(rules, "corepath", "find rules carry no legacy core-path rule");
+    }
+}
+
+class EsDeSpecInstall {  // what install writes into an ES-DE home, and what it leaves alone
+    class void run(Contract contract, Fixture fixture, SemuPlan plan, string roms, SemuDiagnostics diagnostics) {
+        string home = PathTools.join(fixture.scratch, "esde-spec/es-de-home");
+        string settingsFile = PathTools.join(home, "settings/es_settings.xml");
+        FileSystem.mkdirp(PathTools.dirname(settingsFile));
+        FileSystem.writeText(settingsFile, "<?xml version=\"1.0\"?>\n<string name=\"UnrelatedPreference\" value=\"preserve-me\" />\n<string name=\"ROMDirectory\" value=\"/old-library\" />\n<bool name=\"CreatePlaceholderSystemDirectories\" value=\"true\" />\n");
+        contract.expect(SemuEsDeDocuments.install(fixture.model, plan, home, diagnostics), "install into an isolated ES-DE home succeeds: " + diagnostics.render());
+        contract.expect(FileSystem.readText(PathTools.join(home, "custom_systems/es_systems.xml")).equals(SemuEsDeDocuments.systems(fixture.model, plan, diagnostics)), "installed es_systems equals the generated document");
+        contract.expect(FileSystem.readText(PathTools.join(home, "custom_systems/es_find_rules.xml")).equals(SemuEsDeDocuments.findRules(plan, diagnostics)), "installed find rules equal the generated document");
+        string settings = FileSystem.readText(settingsFile);
+        contract.contains(settings, "name=\"UnrelatedPreference\" value=\"preserve-me\"", "unrelated ES-DE preferences survive install");
+        contract.contains(settings, "name=\"ROMDirectory\" value=\"" + roms + "\"", "install sets the plan's ROM directory");
+        contract.contains(settings, "name=\"CreatePlaceholderSystemDirectories\" value=\"false\"", "install turns placeholder directories off");
+        contract.contains(settings, "name=\"Theme\" value=\"modern-es-de\"", "install applies the configured theme");
+        contract.contains(settings, "name=\"DisplayIndex\" value=\"2\"", "install applies the configured display");
+        contract.lacks(settings, "/old-library", "the previous ROM directory is replaced");
+        for unowned in ["ApplicationUpdaterFrequency", "SaveGamelistsMode", "CustomEventScripts", "InputControllerType", "StartupView", "UserThemeDirectory"] {
+            contract.lacks(settings, unowned, "install leaves unowned ES-DE policy alone");
+        }
+        contract.expect(!FileSystem.exists(roms), "install never creates the ROM root");
+        contract.expect(!FileSystem.exists(PathTools.join(home, "settings/semu_settings.json")), "without a trusted CLI the settings manifest is absent");
+        string outside = PathTools.join(fixture.scratch, "esde-spec/outside");
+        string nested = PathTools.join(fixture.scratch, "esde-spec/nested-home");
+        FileSystem.mkdirp(outside);
+        FileSystem.mkdirp(nested);
+        FileSystem.symlink(outside, PathTools.join(nested, "custom_systems"));
+        SemuDiagnostics nestedDiagnostics = SemuDiagnostics();
+        contract.expect(!SemuEsDeDocuments.install(fixture.model, plan, nested, nestedDiagnostics) && !nestedDiagnostics.ok(), "install refuses a symlinked custom_systems");
+        contract.expect(!FileSystem.isFile(PathTools.join(outside, "es_systems.xml")), "install never writes through a symlinked output parent");
+    }
+}
+
+class EsDeSpecLauncher {  // ES-DE runs only a regular /bin/semu, never an AppImage behind a link
+    class void run(Contract contract, Fixture fixture, SemuPlan plan, SemuDiagnostics diagnostics) {
+        string assets = PathTools.join(fixture.scratch, "esde-spec/trusted-assets");
+        FileSystem.mkdirp(PathTools.join(assets, "bin"));
+        FileSystem.writeText(PathTools.join(assets, "bin/semu"), "#!/bin/sh\n");
+        plan.assetRoot = assets;
+        string launcher = SemuSettingsUi.launcher(plan);
+        contract.expect(launcher.endsWith("/bin/semu") && FileSystem.isFile(launcher), "a regular bin/semu is the trusted launcher");
+        string home = PathTools.join(fixture.scratch, "esde-spec/manifest-home");
+        contract.expect(SemuEsDeDocuments.install(fixture.model, plan, home, diagnostics), "install with a trusted CLI succeeds");
+        JSONValue manifest = SemuJson.readFile(PathTools.join(home, "settings/semu_settings.json"));
+        contract.expect(SemuJson.textAt(manifest, "entry.launcher").equals(launcher), "the settings manifest names the trusted launcher");
+        string linked = PathTools.join(fixture.scratch, "esde-spec/appimage-assets");
+        FileSystem.mkdirp(PathTools.join(linked, "bin"));
+        FileSystem.writeText(PathTools.join(linked, "Semu-x86_64.AppImage"), "#!/bin/sh\n");
+        FileSystem.symlink(PathTools.join(linked, "Semu-x86_64.AppImage"), PathTools.join(linked, "bin/semu"));
+        plan.assetRoot = linked;
+        contract.expect(SemuSettingsUi.launcher(plan).isEmpty(), "a bin/semu that resolves to an AppImage is not trusted");
+        plan.assetRoot = "";
+        contract.expect(SemuSettingsUi.launcher(plan).isEmpty(), "no asset root means no launcher");
+    }
+}
+
+class EsDeSpecSettingsProtocol {  // the semu-settings-v2 limits ES-DE's patch enforces, and the command allow-list
+    class int systemsWithChoices(Fixture fixture) {
+        int total = 0;
+        for systemId in fixture.plan.systems {
+            SemuSystem system = fixture.model.system(systemId);
+            if (SemuSettingsUi.variantIds(system.bezels).size() + SemuSettingsUi.variantIds(system.shaders).size() > 0) { total++; }
+        }
+        return total;
+    }
+
+    class void page(Contract contract, JSONValue page) {
+        int fields = page.get("fields") != null && page.get("fields").isArray() ? page.get("fields").size() : 0;
+        contract.expect(SemuJson.textAt(page, "kind").equals("page") && fields > 0 && fields <= 32, "page has 1..32 fields: " + SemuJson.textAt(page, "id"));
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        JSONValue document = SemuSettingsUi.document(fixture.model, fixture.plan);
+        JSONValue sections = document.get("sections");
+        JSONValue commands = document.get("commands");
+        contract.expect(SemuJson.intAt(document, "schema_version", 0) == 2, "settings document schema version 2");
+        contract.expect(sections.size() > 0 && sections.size() <= 32 && commands.size() > 0 && commands.size() <= 32, "sections and commands within ES-DE's 32-row limits");
+        for (int index = 0; index < sections.size(); index++) {
+            JSONValue section = sections.at(index);
+            if (SemuJson.textAt(section, "kind").equals("page")) { EsDeSpecSettingsProtocol.page(contract, section); continue; }
+            JSONValue pages = section.get("sections");
+            contract.expect(SemuJson.textAt(section, "kind").equals("menu") && pages.size() <= 32, "menu within ES-DE's section limit: " + SemuJson.textAt(section, "id"));
+            if (SemuJson.textAt(section, "id").equals("systems")) { contract.expect(pages.size() == EsDeSpecSettingsProtocol.systemsWithChoices(fixture), "one page per system that has a look to choose"); }
+            for (int nested = 0; nested < pages.size(); nested++) { EsDeSpecSettingsProtocol.page(contract, pages.at(nested)); }
+        }
+        JSONValue manifest = SemuSettingsUi.manifest("/home/deck/Applications/Semu/bin/semu");
+        JSONValue allowed = SemuJson.get(manifest, "entry.actions.commands");
+        contract.expect(SemuJson.intAt(manifest, "schema_version", 0) == 2 && SemuJson.textAt(manifest, "entry.protocol").equals("semu-settings-v2"), "manifest schema 2 speaks semu-settings-v2");
+        contract.expect(allowed.size() == commands.size(), "the manifest allows exactly the document's commands");
+        for (int index = 0; index < commands.size(); index++) {
+            string argv = commands.at(index).get("argv").stringify();
+            bool listed = false;
+            for (int entry = 0; entry < allowed.size(); entry++) { if (allowed.at(entry).stringify().equals(argv)) { listed = true; } }
+            contract.expect(listed, "document command is on the manifest allow-list: " + argv);
+        }
+    }
+}
+
+class EsDeSpecPackage {  // the patched ES-DE side of the protocol: bounds, launcher trust, v2 only
+    class void run(Contract contract, Fixture fixture) {
+        string patch = FileSystem.readText(PathTools.join(fixture.project, "packaging/esde/settings-menu.patch"));
+        string packageText = FileSystem.readText(PathTools.join(fixture.project, "packaging/esde/package.nix"));
+        contract.expect(Strings.split(patch, "addEntry(GuiSemuSettings::menuLabel()").size() == 2, "the main menu gains exactly one SEMU SETTINGS entry");
+        Vector<string> required = [
+            "const bool installed", "document.MemberCount() != 2", "entry.MemberCount() != 5", "launcher.find(\"${\")",
+            "lstat(launcher.c_str(), &fileStatus) == 0", "S_ISREG(fileStatus.st_mode)", "MAX_ROOT_ROW_COUNT {32}",
+            "MAX_SECTION_ROW_COUNT {32}", "MAX_MENU_SECTION_COUNT {32}", "class GuiSemuSettingsPage", "class GuiSemuSettingsMenu",
+            "new GuiSemuSettingsPage(section, pending, manifest)", "new GuiSemuSettingsMenu(section, pending, manifest)",
+            "document[\"sections\"].Size() > MAX_ROOT_ROW_COUNT", "readUiPage(", "readUiSection(", "manifest.allowedCommands",
+            "declaredCommand(commandRegistry, command)", "protocol.applyFlag != \"--apply\"", "index + 1 == pending->changes.size()",
+            "semu-settings-v2", "/settings/semu_settings.json"
+        ];
+        for needle in required { contract.contains(patch, needle, "the ES-DE settings patch keeps its protocol guard"); }
+        for needle in ["semu-settings-v1", "const bool appImage", "MAX_UI_ITEM_COUNT", "validField(", "APPIMAGE_EXTRACT_AND_RUN", "fusermount"] {
+            contract.lacks(patch, needle, "the ES-DE settings patch has no legacy path");
+        }
+        for systemId in fixture.model.systemIds() { contract.lacks(patch, "\"" + systemId + "\"", "the ES-DE patch names no Semu system"); }
+        contract.expect(EsDeSpecPatch.addedHunksMatch(patch), "every hunk in the ES-DE patch counts its lines correctly");
+        contract.expect(EsDeSpecPatch.addedHunksMatch("@@ -0,0 +1,2 @@\n+one\n+two\n") && !EsDeSpecPatch.addedHunksMatch("@@ -0,0 +1,1 @@\n+one\n+two\n"), "the hunk check catches a miscounted hunk");
+        contract.contains(packageText, "./settings-menu.patch", "the ES-DE package applies the settings patch");
+        contract.contains(packageText, "doInstallCheck = true;", "the ES-DE package checks its install");
+        contract.contains(packageText, "semu-settings-v2", "the install check proves the v2 protocol is compiled in");
+    }
+}
+
+class EsDeSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        string roms = PathTools.join(fixture.scratch, "external-roms-must-not-exist");
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuPlan plan = EsDeSpecDocuments.deckPlan(fixture, roms, diagnostics);
+        contract.expect(plan != null && diagnostics.ok(), "the Steam Deck plan resolves: " + diagnostics.render());
+        if (plan == null) { return; }
+        EsDeSpecDocuments.run(contract, fixture, plan, diagnostics);
+        EsDeSpecInstall.run(contract, fixture, plan, roms, diagnostics);
+        EsDeSpecLauncher.run(contract, fixture, plan, diagnostics);
+        EsDeSpecSettingsProtocol.run(contract, fixture);
+        EsDeSpecPackage.run(contract, fixture);
+    }
+}

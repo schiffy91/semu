@@ -1,0 +1,327 @@
+// Game Boy spec: display, shader and bezel inventory, pinned assets, input, and the 18-case visual matrix.
+
+import Library.Bytes;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/rendering.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+import ../../../src/renderer/renderer_file_hash.btrc;
+
+#include <stdlib.h>
+
+class GameBoySpecJson {
+    class bool exactStrings(JSONValue values, Vector<string> expected) {
+        if (values == null || !values.isArray() || values.size() != expected.size()) { return false; }
+        for (int index = 0; index < expected.size(); index++) {
+            if (!SemuJson.text(values.at(index)).equals(expected[index])) { return false; }
+        }
+        return true;
+    }
+
+    class bool containsString(JSONValue values, string expected) {
+        if (values == null || !values.isArray()) { return false; }
+        for (int index = 0; index < values.size(); index++) {
+            if (SemuJson.text(values.at(index)).equals(expected)) { return true; }
+        }
+        return false;
+    }
+
+    class double number(JSONValue root, string path) {
+        JSONValue value = SemuJson.get(root, path);
+        return value != null && value.isNumber() ? value.asFloat() : -1.0;
+    }
+
+    class bool close(double left, double right) {
+        double difference = left - right;
+        if (difference < 0.0) { difference = 0.0 - difference; }
+        return difference < 0.0000001;
+    }
+
+    class bool withinPercent(double actual, double declared) {  // relative mismatch under one percent
+        if (actual <= 0.0 || declared <= 0.0) { return false; }
+        double ratio = actual > declared ? actual / declared : declared / actual;
+        return ratio - 1.0 <= 0.01;
+    }
+
+    class JSONValue variant(JSONValue manifest, string id) {
+        JSONValue variants = manifest == null ? null : manifest.get("variants");
+        if (variants == null || !variants.isArray()) { return JSONValue.makeNull(); }
+        for (int index = 0; index < variants.size(); index++) {
+            if (SemuJson.textAt(variants.at(index), "id").equals(id)) { return variants.at(index); }
+        }
+        return JSONValue.makeNull();
+    }
+}
+
+class GameBoySpecFiles {
+    class string sha256(string path) {
+        char* digest = (char*)malloc(65);
+        if (!RendererFileHash.sha256(path, digest)) { digest[0] = 0; }
+        return __btrc_str_track(digest);
+    }
+
+    class int unsigned32(Bytes data, int offset) {
+        return ((data.get(offset) * 256 + data.get(offset + 1)) * 256 + data.get(offset + 2)) * 256 + data.get(offset + 3);
+    }
+
+    class bool matchesRecipe(string project, string logical, JSONValue recipe) {  // PNG header and digest equal the manifest record
+        JSONValue output = recipe == null ? null : recipe.get("output");
+        if (output == null || !output.isObject()) { return false; }
+        string path = PathTools.join(project, "config/" + logical);
+        if (!FileSystem.isFile(path)) { return false; }
+        Bytes data = FileSystem.readBytes(path);
+        bool signature = data.len >= 26 && data.get(0) == 137 && data.get(1) == 80 && data.get(2) == 78 && data.get(3) == 71 && data.get(4) == 13 && data.get(5) == 10 && data.get(6) == 26 && data.get(7) == 10;
+        return signature
+            && GameBoySpecFiles.unsigned32(data, 16) == SemuJson.intAt(output, "width", -1)
+            && GameBoySpecFiles.unsigned32(data, 20) == SemuJson.intAt(output, "height", -1)
+            && data.get(24) == SemuJson.intAt(output, "bit_depth", -1)
+            && data.get(25) == SemuJson.intAt(output, "color_type", -1)
+            && GameBoySpecFiles.sha256(path).equals(SemuJson.textAt(output, "sha256"));
+    }
+
+    class string wrapperText(JSONValue manifest, string logical) {  // the preset wrapper shaders.nix writes for this recipe
+        JSONValue recipe = manifest.get("assets").get(logical);
+        string relative = "semu/" + logical.substring(15, logical.len() - 15);
+        string climb = "";
+        for (int index = 0; index < relative.len(); index++) { if (relative.charAt(index) == '/') { climb = climb + "../"; } }
+        string stage = SemuJson.textAt(manifest, "trees." + SemuJson.textAt(recipe, "reference.tree") + ".stage");
+        string text = "#reference \"" + climb + stage + "/" + SemuJson.textAt(recipe, "reference.path") + "\"\n";
+        JSONValue parameters = recipe.get("params");
+        if (parameters != null && parameters.isObject()) {
+            for name in parameters.keys().sorted() { text = text + name + " = \"" + SemuRenderEnvironment.number(parameters.get(name)) + "\"\n"; }
+        }
+        return text;
+    }
+
+    class bool wrapperHashes(string scratch, JSONValue manifest, string logical) {
+        string path = PathTools.join(scratch, "wrapper.slangp");
+        if (!FileSystem.writeText(path, GameBoySpecFiles.wrapperText(manifest, logical))) { return false; }
+        return GameBoySpecFiles.sha256(path).equals(SemuJson.textAt(manifest.get("assets").get(logical), "output.sha256"));
+    }
+}
+
+class GameBoySpecDefinition {
+    class void display(Contract contract, SemuSystem system) {
+        JSONValue display = system.definition.get("display");
+        JSONValue screens = display.get("screens");
+        contract.expect(screens.isArray() && screens.size() == 1 && SemuJson.textAt(screens.at(0), "id").equals("main"), "gb has one screen named main");
+        contract.expect(SemuJson.intAt(display, "screens.0.native.w", 0) == 160 && SemuJson.intAt(display, "screens.0.native.h", 0) == 144, "gb native surface is 160x144");
+        contract.expect(SemuJson.intAt(display, "aspect.w", 0) == 10 && SemuJson.intAt(display, "aspect.h", 0) == 9, "gb display aspect is 10:9");
+        contract.expect(SemuJson.textAt(display, "scaling.mode").equals("integer_preferred"), "gb scaling prefers integer steps");
+        contract.expect(SemuJson.textAt(display, "scaling.basis").equals("native_game_surface"), "gb scaling basis is the native surface");
+        contract.expect(SemuJson.textAt(display, "scaling.fit").equals("contain"), "gb scaling fits by contain");
+        contract.expect(SemuJson.textAt(display, "scaling.fallback").equals("fractional_downscale"), "gb scaling falls back to fractional downscale");
+        contract.expect(GameBoySpecJson.close(GameBoySpecJson.number(system.definition, "render.reflect"), 0.04), "gb reflection coefficient stays 0.04");
+        contract.expect(GameBoySpecJson.exactStrings(SemuJson.get(system.definition, "verification.gameplay_controls"), ["dpad-up", "dpad-down", "dpad-left", "dpad-right", "a", "b", "start", "select"]), "gb verification lists the eight gameplay controls once");
+    }
+
+    class bool compatibility(JSONValue value) {
+        return GameBoySpecJson.exactStrings(value.get("surfaces"), ["main"])
+            && SemuJson.intAt(value, "native.w", 0) == 160 && SemuJson.intAt(value, "native.h", 0) == 144
+            && SemuJson.intAt(value, "aspect.w", 0) == 10 && SemuJson.intAt(value, "aspect.h", 0) == 9
+            && SemuJson.textAt(value, "fit").equals("contain")
+            && SemuJson.textAt(value, "scaling.mode").equals("integer_preferred")
+            && SemuJson.textAt(value, "scaling.fallback").equals("fractional_downscale");
+    }
+
+    class bool recipe(JSONValue manifest, string logical, string sourcePath, string sourceHash, string outputHash) {
+        JSONValue entry = manifest.get("assets").get(logical);
+        return SemuJson.textAt(entry, "type").equals("slang_wrapper")
+            && SemuJson.textAt(entry, "reference.tree").equals("shaders_slang")
+            && SemuJson.textAt(entry, "reference.path").equals(sourcePath)
+            && SemuJson.textAt(entry, "reference.sha256").equals(sourceHash)
+            && SemuJson.textAt(entry, "output.sha256").equals(outputHash);
+    }
+
+    class void shaders(Contract contract, Fixture fixture, SemuSystem system) {
+        JSONValue shaders = system.shaders;
+        JSONValue dmg = GameBoySpecJson.variant(shaders, "dmg");
+        JSONValue pocket = GameBoySpecJson.variant(shaders, "pocket");
+        contract.expect(SemuJson.intAt(shaders, "schema_version", 0) == 3 && SemuJson.boolAt(shaders, "enabled", false) && SemuJson.boolAt(shaders, "renderer", false), "gb shader manifest is schema 3, enabled, renderer-owned");
+        contract.expect(SemuJson.textAt(shaders, "disabled_variant").equals("none") && SemuJson.textAt(shaders, "default_variant").equals("dmg"), "gb shaders default to dmg with none as off");
+        contract.expect(SemuJson.textAt(shaders, "variants.0.id").equals("dmg") && SemuJson.textAt(shaders, "variants.1.id").equals("pocket") && shaders.get("variants").size() == 2, "gb shader variants are exactly dmg then pocket");
+        contract.expect(SemuJson.textAt(dmg, "screen").equals("assets/shaders/gb/screen.slangp") && SemuJson.textAt(pocket, "screen").equals("assets/shaders/gb/pocket.slangp"), "gb shader variants name distinct presets");
+        contract.expect(GameBoySpecDefinition.compatibility(shaders.get("compatibility")), "gb shader compatibility block matches the display");
+        JSONValue manifest = SemuJson.readFile(PathTools.join(fixture.project, "config/assets/shaders.json"));
+        contract.expect(GameBoySpecDefinition.recipe(manifest, "assets/shaders/gb/screen.slangp", "handheld/gameboy.slangp", "0aeebf5dcc15a8a3e5a3aa5c0a2a6f66cf13eb15aec890b483424d23bce9f4e7", "9808224c81dc56182101e38b05eda50bd28f2fc197a2f59d2347e2610490c48c"), "gb dmg preset recipe keeps its pinned source and output");
+        JSONValue dmgRecipe = manifest.get("assets").get("assets/shaders/gb/screen.slangp");
+        contract.expect(SemuJson.intAt(dmgRecipe, "params.palette", 0) == 4 && GameBoySpecJson.close(GameBoySpecJson.number(dmgRecipe, "params.response_time"), 0.333), "gb dmg preset uses palette 4 and 0.333 response");
+        contract.expect(GameBoySpecDefinition.recipe(manifest, "assets/shaders/gb/pocket.slangp", "handheld/gameboy-pocket.slangp", "77359eb26be0a1a7c8a77df217918144b2438d633c2009d781415d10086a56c8", "77ef8fee4364c45af1bcc1b557e1817a3cfe7f61ae6ca9df9b63200eb5bed51f"), "gb pocket preset recipe keeps its pinned source and output");
+        contract.expect(GameBoySpecFiles.wrapperHashes(fixture.scratch, manifest, "assets/shaders/gb/screen.slangp"), "gb dmg wrapper text hashes to its pinned output");
+        contract.expect(GameBoySpecFiles.wrapperHashes(fixture.scratch, manifest, "assets/shaders/gb/pocket.slangp"), "gb pocket wrapper text hashes to its pinned output");
+    }
+}
+
+class GameBoySpecBezels {
+    class JSONValue picture(JSONValue package) {  // the calibrated picture rectangle, else the opening
+        JSONValue screen = SemuBezelPackage.screen(package, "main");
+        JSONValue image = screen.isObject() ? screen.get("image") : null;
+        return image != null && image.isObject() ? image : (screen.isObject() ? screen.get("tube") : JSONValue.makeNull());
+    }
+
+    class bool insideCanvas(JSONValue package) {
+        JSONValue rect = GameBoySpecBezels.picture(package);
+        int canvasWidth = SemuJson.intAt(package, "canvas.w", 0);
+        int canvasHeight = SemuJson.intAt(package, "canvas.h", 0);
+        return rect.isObject() && SemuJson.intAt(rect, "x", -1) >= 0 && SemuJson.intAt(rect, "y", -1) >= 0
+            && SemuJson.intAt(rect, "x", 0) + SemuJson.intAt(rect, "w", 0) <= canvasWidth
+            && SemuJson.intAt(rect, "y", 0) + SemuJson.intAt(rect, "h", 0) <= canvasHeight;
+    }
+
+    class double pictureAspect(JSONValue package) {
+        JSONValue rect = GameBoySpecBezels.picture(package);
+        double height = SemuJson.intAt(rect, "h", 0);
+        return height > 0.0 ? SemuJson.intAt(rect, "w", 0) / height : 0.0;
+    }
+
+    class double nativeScale(JSONValue package, int viewportWidth, int viewportHeight) {  // integer-free scale the renderer gives the LCD
+        JSONValue rect = GameBoySpecBezels.picture(package);
+        float canvasWidth = (float)SemuJson.intAt(package, "canvas.w", 1);
+        float canvasHeight = (float)SemuJson.intAt(package, "canvas.h", 1);
+        struct RendererCanvasRect canvas;
+        RendererCompositionContract.contain(viewportWidth, viewportHeight, (int)canvasWidth, (int)canvasHeight, &canvas);
+        struct RendererPixelRect opening;
+        RendererCompositionContract.aperture(&canvas, (float)SemuJson.intAt(rect, "x", 0) / canvasWidth, (float)SemuJson.intAt(rect, "y", 0) / canvasHeight, (float)SemuJson.intAt(rect, "w", 0) / canvasWidth, (float)SemuJson.intAt(rect, "h", 0) / canvasHeight, &opening);
+        struct RendererPixelRect output;
+        RendererCompositionContract.fit(&opening, 160, 144, 0, 10.0f / 9.0f, 0, &output);
+        double horizontal = output.width / 160.0;
+        double vertical = output.height / 144.0;
+        return horizontal < vertical ? horizontal : vertical;
+    }
+
+    class void run(Contract contract, Fixture fixture, SemuSystem system) {
+        JSONValue bezels = system.bezels;
+        contract.expect(SemuJson.boolAt(bezels, "enabled", false) && SemuJson.textAt(bezels, "default_variant").equals("dmg"), "gb bezels are enabled and default to dmg");
+        contract.expect(bezels.get("variants").size() == 2 && SemuJson.textAt(bezels, "variants.0.id").equals("dmg") && SemuJson.textAt(bezels, "variants.1.id").equals("studio"), "gb bezel variants are exactly dmg then studio");
+        contract.expect(SemuJson.textAt(bezels, "variants.0.bezel").equals("gb-dmg-shell") && SemuJson.textAt(bezels, "variants.1.bezel").equals("gb-studio"), "gb bezel variants name their packages");
+        JSONValue dmg = SemuBezelPackage.load(fixture.plan, "gb-dmg-shell");
+        JSONValue studio = SemuBezelPackage.load(fixture.plan, "gb-studio");
+        contract.expect(SemuJson.textAt(dmg, "art").equals("assets/bezels/gb/dmg-shell.png") && SemuJson.textAt(studio, "art").equals("assets/bezels/gb/classic.png"), "gb packages draw the DMG shell and the studio render");
+        contract.expect(SemuJson.textAt(SemuBezelPackage.screen(dmg, "main"), "glass.asset").equals("assets/bezels/gb/dmg-glass.png"), "the DMG shell carries its lens glass");
+        JSONValue studioGlass = SemuBezelPackage.screen(studio, "main").get("glass");
+        contract.expect(studioGlass == null || !studioGlass.isObject(), "the studio render has no separate glass");
+        for package in [dmg, studio] {
+            string where = SemuJson.textAt(package, "id");
+            contract.expect(GameBoySpecBezels.insideCanvas(package), where + ": the picture lies inside the canvas");
+            contract.expect(GameBoySpecJson.withinPercent(GameBoySpecBezels.pictureAspect(package), 10.0 / 9.0), where + ": the picture is 10:9 within one percent");
+        }
+        JSONValue studioTube = SemuBezelPackage.screen(studio, "main").get("tube");
+        contract.expect(SemuJson.intAt(studio, "canvas.w", 0) == 1065 && SemuJson.intAt(studio, "canvas.h", 0) == 1477 && SemuJson.intAt(studioTube, "x", 0) == 258 && SemuJson.intAt(studioTube, "y", 0) == 260 && SemuJson.intAt(studioTube, "w", 0) == 594 && SemuJson.intAt(studioTube, "h", 0) == 535, "the studio lens geometry is unchanged");
+        contract.expect(GameBoySpecBezels.nativeScale(studio, 1280, 800) >= 2.0, "the studio lens shows the LCD at 2x or more on 1280x800");
+        JSONValue manifest = SemuJson.readFile(PathTools.join(fixture.project, "config/assets/bezels.json"));
+        JSONValue assets = manifest.get("assets");
+        JSONValue classic = assets.get("assets/bezels/gb/classic.png");
+        contract.expect(SemuJson.textAt(classic, "type").equals("local") && SemuJson.textAt(classic, "path").equals("config/assets/bezels/gb/classic.png"), "the studio render is a Semu-owned local asset");
+        contract.expect(GameBoySpecFiles.matchesRecipe(fixture.project, "assets/bezels/gb/classic.png", assets.get("assets/bezels/gb/classic.png")), "assets/bezels/gb/classic.png: committed PNG matches its recorded size, format and digest");
+        for logical in ["assets/bezels/gb/dmg-shell.png", "assets/bezels/gb/dmg-glass.png"] {  // Duimon derivatives are baked at build time, never committed
+            contract.expect(!FileSystem.isFile(PathTools.join(fixture.project, "config/" + logical)) && SemuJson.intAt(assets.get(logical), "output.width", 0) > 0 && !SemuJson.textAt(assets.get(logical), "from").isEmpty(), logical + ": baked from its recipe over the pinned upstream, not committed");
+        }
+    }
+}
+
+class GameBoySpecInput {
+    class void run(Contract contract, Fixture fixture) {
+        string input = PathTools.join(fixture.project, "config/input/steam-deck");
+        JSONValue definition = SemuJson.readFile(PathTools.join(input, "systems/gb.json"));
+        JSONValue global = SemuJson.readFile(PathTools.join(input, "steam_input.json"));
+        JSONValue autoconfig = SemuJson.readFile(PathTools.join(input, "retroarch_autoconfig.json"));
+        JSONValue emulatorActions = SemuJson.get(fixture.model.emulator("retroarch").definition, "input.actions");
+        Vector<string> actions = ["ui.pause", "ui.screenshot", "ui.fullscreen", "ui.menu", "ui.escape", "app.quit", "state.prev", "state.next", "state.load", "state.save", "speed.rewind", "speed.fast"];
+        Vector<string> bindings = ["input_up_btn", "input_down_btn", "input_left_btn", "input_right_btn", "input_b_btn", "input_a_btn", "input_start_btn", "input_select_btn"];
+        Vector<string> radial = ["state.save", "state.load", "app.quit", "ui.menu", "ui.screenshot"];
+        contract.expect(SemuJson.intAt(definition, "schema_version", 0) == 1 && SemuJson.textAt(definition, "system").equals("gb") && SemuJson.textAt(definition, "device").equals("steam-deck") && SemuJson.textAt(definition, "actions.source").equals("emulator"), "gb Deck input inherits the emulator's actions");
+        contract.expect(GameBoySpecJson.exactStrings(SemuJson.get(definition, "actions.exclude"), ["screen.swap"]), "gb excludes only screen.swap");
+        contract.expect(GameBoySpecJson.exactStrings(SemuJson.get(definition, "gameplay.required_bindings"), bindings), "gb requires the eight gameplay bindings");
+        contract.expect(GameBoySpecJson.exactStrings(SemuJson.get(definition, "radial.required_actions"), radial), "gb radial requires save, load, quit, menu, screenshot");
+        contract.expect(SemuJson.get(definition, "radial.system_actions").size() == 0, "gb radial has no system-specific actions");
+        contract.expect(GameBoySpecJson.exactStrings(emulatorActions, actions), "RetroArch declares exactly the twelve gb actions");
+        contract.expect(!GameBoySpecJson.containsString(emulatorActions, "screen.swap"), "RetroArch offers no dead screen.swap");
+        bool vocabulary = true;
+        for action in actions { if (!global.get("actions").has(action)) { vocabulary = false; } }
+        contract.expect(vocabulary && global.get("actions").has("screen.swap"), "every gb action and screen.swap exist in the Steam Input vocabulary");
+        bool reachable = true;
+        for action in radial { if (!GameBoySpecJson.containsString(emulatorActions, action)) { reachable = false; } }
+        contract.expect(reachable, "every radial action is one RetroArch consumes");
+        bool mapped = true;
+        for binding in bindings {
+            string value = SemuJson.textAt(autoconfig, "contract.gameplay_mapping." + binding);
+            if (value.isEmpty() || value.equals("nul")) { mapped = false; }
+        }
+        contract.expect(mapped, "the Deck autoconfig maps every gb gameplay binding");
+    }
+}
+
+class GameBoySpecMatrix {
+    class string overlay(string shader, string bezel, bool integer) {
+        return "{\"visual\":{\"integer_scaling\":" + (integer ? "true" : "false") + ",\"systems\":{\"gb\":{\"shader_variant\":\"" + shader + "\",\"bezel_variant\":\"" + bezel + "\"}}}}";
+    }
+
+    class string entry(Vector<string> environment, string name) {
+        for line in environment { if (line.startsWith(name + "=")) { return line.substring(name.len() + 1, line.len() - name.len() - 1); } }
+        return "";
+    }
+
+    class void run(Contract contract, Fixture fixture, SemuSystem system) {
+        string assets = fixture.plan.assetRoot;
+        string shaderRoot = PathTools.join(assets, "share/libretro/shaders/semu/gb");
+        FileSystem.mkdirp(shaderRoot);
+        FileSystem.writeText(PathTools.join(shaderRoot, "screen.slangp"), "#reference x\n");
+        FileSystem.writeText(PathTools.join(shaderRoot, "pocket.slangp"), "#reference y\n");
+        FileSystem.mkdirp(PathTools.join(assets, "share/semu/assets/bezels/gb"));  // the baked plates, as the bundle carries them
+        for plate in ["dmg-shell.png", "dmg-glass.png", "classic.png"] { FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/gb/" + plate), "png"); }
+        Vector<string> shaders = ["none", "dmg", "pocket"];
+        Vector<string> bezels = ["none", "dmg", "studio"];
+        Vector<string> seen = [];
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        for shader in shaders {
+            for bezel in bezels {
+                for integer in [true, false] {
+                    string cell = f"{shader}/{bezel}/{integer ? "integer" : "fractional"}";
+                    SemuPlan plan = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, GameBoySpecMatrix.overlay(shader, bezel, integer), diagnostics);
+                    Vector<string> environment = SemuRenderEnvironment.compile(plan, system, "retroarch", "/state/retroarch", diagnostics);
+                    string preset = shader.equals("dmg") ? PathTools.join(shaderRoot, "screen.slangp") : (shader.equals("pocket") ? PathTools.join(shaderRoot, "pocket.slangp") : "");
+                    string package = bezel.equals("dmg") ? "gb-dmg-shell" : (bezel.equals("studio") ? "gb-studio" : "");
+                    contract.expect(GameBoySpecMatrix.entry(environment, "SEMU_RENDER_SHADERS").equals(preset.isEmpty() ? "0" : "1") && GameBoySpecMatrix.entry(environment, "SEMU_RENDER_SHADER_PRESET").equals(preset), cell + ": the shader follows the variant setting");
+                    contract.expect(GameBoySpecMatrix.entry(environment, "SEMU_RENDER_BEZELS").equals(package.isEmpty() ? "0" : "1") && GameBoySpecMatrix.entry(environment, "SEMU_RENDER_BEZEL_ID").equals(package), cell + ": the bezel follows the variant setting");
+                    string glass = GameBoySpecMatrix.entry(environment, "SEMU_RENDER_SCREEN_0_GLASS");
+                    bool glassMatches = glass.len() == 0;
+                    if (bezel.equals("dmg")) { glassMatches = glass.endsWith("/assets/bezels/gb/dmg-glass.png"); }
+                    contract.expect(glassMatches, cell + ": only the DMG shell draws lens glass");
+                    contract.expect(GameBoySpecMatrix.entry(environment, "SEMU_RENDER_INTEGER_SCALE").equals(integer ? "1" : "0"), cell + ": integer scaling follows the setting");
+                    contract.expect(environment.contains("SEMU_RENDER_SURFACE_0_NATIVE=160x144") && environment.contains("SEMU_RENDER_ASPECT=10:9"), cell + ": the surface stays 160x144 at 10:9");
+                    seen.push(environment.join("\n"));
+                }
+            }
+        }
+        int distinct = 0;
+        for (int index = 0; index < seen.size(); index++) {
+            bool repeated = false;
+            for (int earlier = 0; earlier < index; earlier++) { if (seen[earlier].equals(seen[index])) { repeated = true; } }
+            if (!repeated) { distinct++; }
+        }
+        contract.expect(seen.size() == 18 && distinct == 18, f"the gb matrix has 18 distinct cells: {distinct} of {seen.size()}");
+        SemuPlan switchedOff = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false,\"systems\":{\"gb\":{\"shader_variant\":\"pocket\",\"bezel_variant\":\"studio\"}}}}", diagnostics);
+        Vector<string> offEnvironment = SemuRenderEnvironment.compile(switchedOff, system, "retroarch", "/state/retroarch", diagnostics);
+        contract.expect(offEnvironment.contains("SEMU_RENDER_SHADERS=0") && offEnvironment.contains("SEMU_RENDER_BEZELS=0"), "the global switches override the gb variant choices");
+        contract.expect(diagnostics.ok(), "the gb matrix compiles without diagnostics: " + diagnostics.render());
+    }
+}
+
+class GameBoySpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        SemuSystem system = fixture.model.system("gb");
+        GameBoySpecDefinition.display(contract, system);
+        GameBoySpecDefinition.shaders(contract, fixture, system);
+        GameBoySpecBezels.run(contract, fixture, system);
+        GameBoySpecInput.run(contract, fixture);
+        GameBoySpecMatrix.run(contract, fixture, system);
+    }
+}

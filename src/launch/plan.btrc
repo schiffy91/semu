@@ -121,12 +121,23 @@ class SemuLauncher {
     class bool seed(SemuPlan plan, JSONValue platform, SemuLaunchPlan launch) {  // copy keys and firmware into state once, never overwrite
         JSONValue seeds = SemuJson.get(platform, "state.seeds");
         if (seeds == null || !seeds.isArray()) { return true; }
+        string stateRoot = plan.path("state_root");
         for (int index = 0; index < seeds.size(); index++) {
             JSONValue seed = seeds.at(index);
             string target = plan.tokens.resolve(SemuJson.textAt(seed, "target"));
-            if (target.isEmpty() || FileSystem.exists(target)) { continue; }
+            bool declared = SemuJson.textAt(seed, "copy").equals("once_if_target_absent") && SemuJson.textAt(seed, "source_access").equals("read_only") && !SemuJson.boolAt(seed, "overwrite", true);
+            bool contained = !stateRoot.isEmpty() && SemuPaths.inside(stateRoot, target) && !FileSystem.isSymlink(target) && SemuPaths.ancestorsAreRealDirectories(stateRoot, target);
+            if (!declared || !contained) {
+                launch.error = f"seed {index} must copy once from read-only sources into a real path under {stateRoot}: {target}";
+                return false;
+            }
+            if (FileSystem.exists(target)) { continue; }
             for source in SemuJson.strings(seed.get("sources")) {
                 string candidate = plan.tokens.resolve(source);
+                if (FileSystem.isSymlink(candidate)) {  // a copied link would write through into the library
+                    launch.error = "seed source is a symlink: " + candidate;
+                    return false;
+                }
                 if (!FileSystem.exists(candidate)) { continue; }
                 SemuPaths.prepareDirectory(PathTools.dirname(target));
                 ExecResult copy = ChildProcess.run("cp", ["-rn", candidate, target]);
@@ -152,7 +163,10 @@ class SemuLauncher {
         }
         JSONValue set = SemuJson.get(platform, "env.set");
         if (set.isObject()) {
-            for key in set.keys().sorted() { launch.environment.push(key + "=" + plan.tokens.resolve(SemuJson.text(set.get(key)))); }
+            for key in set.keys().sorted() {
+                if (key.isEmpty() || key.contains("=")) { launch.error = "invalid environment name: " + key; }
+                launch.environment.push(key + "=" + plan.tokens.resolve(SemuJson.text(set.get(key))));
+            }
         }
         launch.environment.push("SEMU_STATE_ROOT=" + stateRoot);
         launch.environment.push("SEMU_TARGET=" + plan.target.id);
@@ -291,6 +305,9 @@ class SemuLauncher {
         SemuLauncher.inputContracts(launch, plan, platform, stateRoot);
         for argument in launch.argv {
             if (argument.contains("${")) { launch.error = "unresolved token in launch arguments: " + argument; }
+        }
+        for entry in launch.environment {
+            if (entry.contains("${")) { launch.error = "unresolved token in launch environment: " + entry; }
         }
         return launch;
     }

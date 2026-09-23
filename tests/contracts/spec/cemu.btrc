@@ -1,0 +1,246 @@
+// Cemu 2.6 spec: pinned source, -f/-m/-g launch, owned storage, controller0.xml, actions.
+
+import Library.Console;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/profiles.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/launch/process.btrc;
+
+class CemuSpecText {
+    class int occurrences(string text, string needle) {
+        int count = 0;
+        string remaining = text;
+        while (!needle.isEmpty() && remaining.contains(needle)) {
+            int start = remaining.indexOf(needle) + needle.len();
+            remaining = remaining.substring(start, remaining.len() - start);
+            count++;
+        }
+        return count;
+    }
+
+    class bool ordered(string text, Vector<string> needles) {  // every needle appears after the previous one
+        string remaining = text;
+        for needle in needles {
+            int position = remaining.indexOf(needle);
+            if (position < 0) { return false; }
+            int start = position + needle.len();
+            remaining = remaining.substring(start, remaining.len() - start);
+        }
+        return true;
+    }
+
+    class string afterLast(string text, string separator) {
+        string remaining = text;
+        while (remaining.contains(separator)) {
+            int start = remaining.indexOf(separator) + separator.len();
+            remaining = remaining.substring(start, remaining.len() - start);
+        }
+        return remaining;
+    }
+
+    class bool lowerHex(string value) {
+        if (value.len() != 32) { return false; }
+        string digits = "0123456789abcdef";
+        for (int position = 0; position < value.len(); position++) {
+            if (!digits.contains(value.substring(position, 1))) { return false; }
+        }
+        return true;
+    }
+}
+
+class CemuSpecContract {
+    class Vector<string> expectedMappings() {  // VPAD button id : control : SDL source : Cemu button id
+        return [
+            "1:vpad.a:SDL_CONTROLLER_BUTTON_B:1",
+            "2:vpad.b:SDL_CONTROLLER_BUTTON_A:0",
+            "3:vpad.x:SDL_CONTROLLER_BUTTON_Y:3",
+            "4:vpad.y:SDL_CONTROLLER_BUTTON_X:2",
+            "5:vpad.l:SDL_CONTROLLER_BUTTON_LEFTSHOULDER:9",
+            "6:vpad.r:SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:10",
+            "7:vpad.zl:kTriggerXP:42",
+            "8:vpad.zr:kTriggerYP:43",
+            "9:vpad.plus:SDL_CONTROLLER_BUTTON_START:6",
+            "10:vpad.minus:SDL_CONTROLLER_BUTTON_BACK:4",
+            "11:vpad.up:SDL_CONTROLLER_BUTTON_DPAD_UP:11",
+            "12:vpad.down:SDL_CONTROLLER_BUTTON_DPAD_DOWN:12",
+            "13:vpad.left:SDL_CONTROLLER_BUTTON_DPAD_LEFT:13",
+            "14:vpad.right:SDL_CONTROLLER_BUTTON_DPAD_RIGHT:14",
+            "15:vpad.stick_l:SDL_CONTROLLER_BUTTON_LEFTSTICK:7",
+            "16:vpad.stick_r:SDL_CONTROLLER_BUTTON_RIGHTSTICK:8",
+            "17:vpad.stick_l_up:kAxisYN:45",
+            "18:vpad.stick_l_down:kAxisYP:39",
+            "19:vpad.stick_l_left:kAxisXN:44",
+            "20:vpad.stick_l_right:kAxisXP:38",
+            "21:vpad.stick_r_up:kRotationYN:47",
+            "22:vpad.stick_r_down:kRotationYP:41",
+            "23:vpad.stick_r_left:kRotationXN:46",
+            "24:vpad.stick_r_right:kRotationXP:40",
+            "27:vpad.home:SDL_CONTROLLER_BUTTON_GUIDE:5"
+        ];
+    }
+
+    class bool hasAction(JSONValue profile, string group, string action, string chord) {
+        JSONValue rows = SemuJson.get(profile, "actions." + group);
+        if (!rows.isArray()) { return false; }
+        for (int index = 0; index < rows.size(); index++) {
+            JSONValue row = rows.at(index);
+            bool reason = !group.equals("unsupported") || !SemuJson.textAt(row, "reason").isEmpty();
+            if (SemuJson.textAt(row, "action").equals(action) && SemuJson.textAt(row, "chord").equals(chord) && reason) { return true; }
+        }
+        return false;
+    }
+
+    class void sourceContract(Contract contract, string project) {  // the exact Cemu 2.6 release commit
+        string directory = PathTools.join(project, "config/emulators/cemu");
+        JSONValue lock = SemuJson.readFile(PathTools.join(directory, "flake.lock"));
+        string flake = FileSystem.readText(PathTools.join(directory, "flake.nix"));
+        contract.expect(SemuJson.textAt(lock, "nodes.source.locked.rev").equals("a6fb0a48eb437a8a41c13b782ac8ae0433bf8f98"), "cemu pins the v2.6 release commit");
+        contract.expect(SemuJson.textAt(lock, "nodes.source.locked.narHash").equals("sha256-YO3rMhlBZ5fGu0ceAFB0R3owFuSobx39faWL9EUFwAM="), "cemu pins the v2.6 source hash");
+        contract.contains(flake, "version = \"2.6\";", "cemu flake builds version 2.6");
+        contract.contains(flake, "platforms = { linux = true; macos = false;", "cemu is built for linux only");
+        contract.contains(flake, "allowSubstitutes = false", "cemu is compiled, never substituted");
+    }
+
+    class void declarativeContract(Contract contract, Fixture fixture) {
+        SemuEmulator cemu = fixture.model.emulator("cemu");
+        JSONValue linux = cemu.platform("linux");
+        contract.expect(SemuJson.textAt(linux, "executable").equals("${asset_root}/bin/Cemu"), "cemu runs the bundled executable");
+        contract.expect(SemuJson.strings(linux.get("args")).join(" ").equals("-f -m ${state_root}/data/Cemu/mlc01 -g"), "cemu args are -f, -m <owned mlc01>, -g");
+        contract.expect(!cemu.supports("macos"), "cemu declares no macOS slice");
+        contract.expect(SemuJson.textAt(linux, "state.config_home").equals("xdg") && SemuJson.textAt(linux, "state.data_home").equals("xdg"), "cemu config and data follow XDG");
+        contract.expect(SemuJson.textAt(linux, "state.config_subdir").equals("Cemu") && SemuJson.textAt(linux, "state.data_subdir").equals("Cemu"), "cemu XDG subdirectories are Cemu");
+        SemuSystem wiiu = fixture.model.system("wiiu");
+        contract.expect(SemuJson.strings(SemuJson.get(wiiu.definition, "rom.extensions")).join(" ").equals(".rpx .wua .wud .wux"), "wiiu ROM extensions are exact");
+        contract.expect(wiiu.bindingFor("linux", "cemu", "") != null && wiiu.bindingFor("macos", "cemu", "") == null, "wiiu binds cemu on linux only");
+        JSONValue seeds = SemuJson.get(linux, "state.seeds");
+        JSONValue keys = JSONValue.makeObject();
+        for (int index = 0; index < seeds.size(); index++) {
+            if (SemuJson.textAt(seeds.at(index), "purpose").equals("wiiu_disc_and_title_keys")) { keys = seeds.at(index); }
+        }
+        contract.expect(SemuJson.textAt(keys, "target").equals("${state_root}/data/Cemu/keys.txt"), "cemu keys land in its data directory");
+        contract.expect(SemuJson.strings(keys.get("sources")).join(" ").equals("${semu_home}/firmware/cemu/keys.txt ${emulation_root}/Cemu/data/keys.txt ${bios}/wiiu/keys.txt ${bios}/keys.txt"), "cemu key sources prefer the Semu-owned import");
+        string definition = FileSystem.readText(PathTools.join(fixture.project, "config/emulators/cemu/emulator.json"));
+        contract.lacks(definition, "${paths.project_bios}", "cemu uses no legacy BIOS token");
+    }
+
+    class void actionContract(Contract contract, Fixture fixture) {
+        SemuEmulator cemu = fixture.model.emulator("cemu");
+        contract.expect(cemu.actions.join(" ").equals("app.quit screen.swap"), "cemu declares exactly quit and swap");
+        contract.expect(CemuSpecContract.hasAction(cemu.profile, "native", "app.quit", "Ctrl+Q"), "cemu quits natively on Ctrl+Q");
+        contract.expect(CemuSpecContract.hasAction(cemu.profile, "native", "screen.swap", "Ctrl+Tab"), "cemu swaps TV and GamePad on Ctrl+Tab");
+        contract.expect(CemuSpecContract.hasAction(cemu.profile, "unsupported", "state.save", ""), "cemu declares save state unsupported");
+        contract.expect(CemuSpecContract.hasAction(cemu.profile, "unsupported", "state.load", ""), "cemu declares load state unsupported");
+        contract.expect(fixture.plan.input.chord("app.quit").equals("Ctrl+Q") && fixture.plan.input.chord("screen.swap").equals("Ctrl+Tab"), "the target sends the chords cemu consumes");
+        JSONValue mappings = SemuJson.get(cemu.profile, "controller.mappings");
+        Vector<string> rows = [];
+        bool unbound = true;
+        for (int index = 0; index < mappings.size(); index++) {
+            JSONValue row = mappings.at(index);
+            rows.push(Strings.fromInt(SemuJson.intAt(row, "mapping", -1)) + ":" + SemuJson.textAt(row, "control") + ":" + SemuJson.textAt(row, "source") + ":" + Strings.fromInt(SemuJson.intAt(row, "button", -1)));
+            if (row.has("action")) { unbound = false; }
+        }
+        contract.expect(rows.join(" ").equals(CemuSpecContract.expectedMappings().join(" ")), "the VPAD-to-SDL mapping table is exact: " + rows.join(" "));
+        contract.expect(unbound, "controller mappings carry no Semu action");
+        contract.expect(SemuJson.intAt(cemu.profile, "controller.guid_index", -1) == 0, "cemu controller uses duplicate-GUID index zero");
+    }
+
+    class void steamDeckPolicy(Contract contract, string project) {  // Start+Select and the radial reach cemu's quit
+        JSONValue steam = SemuJson.readFile(PathTools.join(project, "config/input/steam-deck/steam_input.json"));
+        JSONValue actions = steam.get("actions");
+        contract.expect(SemuJson.strings(SemuJson.get(steam, "quit_chord.buttons")).join(" ").equals("select start"), "Deck quit chord is Select+Start");
+        contract.expect(SemuJson.intAt(steam, "quit_chord.window_ms", 0) == 250, "Deck quit chord window is 250 ms");
+        contract.expect(actions.isObject() && SemuJson.textAt(actions.get("app.quit"), "chord").equals("Ctrl+Q"), "Deck radial quit sends Ctrl+Q");
+        contract.expect(SemuJson.strings(SemuJson.get(steam, "radial.quick_slots")).contains("app.quit"), "Deck quick radial offers quit");
+    }
+
+    class void renderedProfile(Contract contract, string target) {
+        Fixture fixture = Fixture(target);
+        string controller = fixture.profile("cemu", "config/Cemu/controllerProfiles/controller0.xml");
+        string settings = fixture.profile("cemu", "config/Cemu/settings.xml");
+        JSONValue identities = SemuJson.get(fixture.plan.input.definition, "device_identities");
+        string guid = SemuJson.textAt(identities, "azahar_controller_guid");
+        string uuid = SemuJson.textAt(identities, "cemu_uuid");
+        contract.expect(CemuSpecText.lowerHex(guid) && uuid.equals("0_" + guid), target + " cemu UUID is 0_<target pad SDL GUID>: " + uuid);
+        contract.contains(controller, "<type>Wii U GamePad</type>", target + " cemu emulates the GamePad");
+        contract.contains(controller, "<api>SDLController</api>", target + " cemu reads SDL");
+        contract.contains(controller, "<uuid>" + uuid + "</uuid>", target + " cemu binds the target pad");
+        contract.contains(controller, "<display_name>" + SemuJson.textAt(identities, "cemu_display_name") + "</display_name>", target + " cemu pad display name");
+        Vector<string> entries = [];
+        for mapping in CemuSpecContract.expectedMappings() {
+            int first = mapping.indexOf(":");
+            entries.push("<entry><mapping>" + mapping.substring(0, first) + "</mapping><button>" + CemuSpecText.afterLast(mapping, ":") + "</button></entry>");
+        }
+        contract.expect(CemuSpecText.occurrences(controller, "<entry>") == entries.size() && CemuSpecText.ordered(controller, entries), target + " controller0.xml carries every mapping in order");
+        contract.lacks(controller, "${", target + " controller0.xml is fully resolved");
+        contract.contains(settings, "\t\t<api>0</api>", target + " cemu forces OpenGL");
+        contract.contains(settings, "\t<fullscreen>true</fullscreen>", target + " cemu fullscreen");
+        contract.contains(settings, "\t<open_pad>false</open_pad>", target + " cemu keeps one game window");
+        contract.contains(settings, "\t\t\t<ControllerProfiles>false</ControllerProfiles>", target + " cemu hides controller notifications");
+        contract.contains(settings, "\t\t\t<ControllerBattery>false</ControllerBattery>", target + " cemu hides battery notifications");
+        contract.contains(settings, "\t<check_update>false</check_update>", target + " cemu never checks for updates");
+        contract.expect(fixture.diagnostics.ok(), target + " cemu profile renders cleanly: " + fixture.diagnostics.render());
+    }
+
+    class void launchContract(Contract contract) {  // argv, owned storage, key seeding
+        Fixture fixture = Fixture("linux-desktop");
+        string scratch = fixture.scratch;
+        string roms = PathTools.join(scratch, "roms");
+        string bios = PathTools.join(scratch, "bios");
+        fixture.plan.tokens.put("roms", roms);  // never read the real Emulation tree
+        fixture.plan.tokens.put("emulation_root", PathTools.join(scratch, "emulation"));
+        fixture.plan.tokens.put("bios", bios);
+        string executable = PathTools.join(fixture.plan.assetRoot, "bin/Cemu");
+        FileSystem.writeText(executable, "#!/bin/sh\n");
+        FileSystem.mkdirp(PathTools.join(roms, "wiiu"));
+        FileSystem.writeText(PathTools.join(roms, "wiiu/Kart.wua"), "");
+        string owned = PathTools.join(fixture.plan.semuHome, "firmware/cemu/keys.txt");
+        FileSystem.mkdirp(PathTools.dirname(owned));
+        FileSystem.writeText(owned, "owned");
+        FileSystem.mkdirp(PathTools.join(bios, "wiiu"));
+        FileSystem.writeText(PathTools.join(bios, "wiiu/keys.txt"), "bios");
+        SemuLaunchPlan launch = SemuLauncher.plan(fixture.model, fixture.plan, "cemu", "wiiu", "", "Kart.wua", SemuDiagnostics());
+        string stateRoot = PathTools.join(fixture.plan.stateRoot(), "cemu");
+        contract.expect(launch.ok(), "cemu launch plan resolves: " + launch.error);
+        Vector<string> expected = [executable, "-f", "-m", PathTools.join(stateRoot, "data/Cemu/mlc01"), "-g", PathTools.join(roms, "wiiu/Kart.wua")];
+        contract.expect(launch.argv.join(" | ").equals(expected.join(" | ")), "cemu argv puts the title right after -g: " + launch.argv.join(" | "));
+        contract.expect(launch.environment.contains("XDG_CONFIG_HOME=" + PathTools.join(stateRoot, "config")) && launch.environment.contains("XDG_DATA_HOME=" + PathTools.join(stateRoot, "data")), "cemu config and data live in the state root");
+        contract.expect(launch.environment.contains("GDK_BACKEND=x11"), "cemu runs its wx window on XWayland");
+        contract.expect(FileSystem.isFile(PathTools.join(stateRoot, "config/Cemu/controllerProfiles/controller0.xml")), "controller0.xml is written where Cemu auto-loads it");
+        string keys = PathTools.join(stateRoot, "data/Cemu/keys.txt");
+        contract.expect(FileSystem.isFile(keys) && FileSystem.readText(keys).equals("owned"), "cemu keys come from the Semu-owned import first");
+        FileSystem.writeText(owned, "newer");
+        SemuLauncher.plan(fixture.model, fixture.plan, "cemu", "wiiu", "", "Kart.wua", SemuDiagnostics());
+        contract.expect(FileSystem.readText(keys).equals("owned"), "seeded cemu keys are never overwritten");
+        contract.expect(launch.chordWindowMs == 250, "the quit chord window reaches the supervisor");
+    }
+
+    class void processGroupContract(Contract contract) {  // quit kills the whole emulator process group
+        Vector<string> environment = [];
+        int child = SemuProcessGroup.start(["/bin/sh", "-c", "sleep 30 & sleep 30"], environment);
+        contract.expect(child > 0, "a child process group starts");
+        if (child <= 0) { return; }
+        contract.expect(SemuProcessGroup.groupAlive(child), "the child group is alive before terminate");
+        SemuProcessGroup.terminate(child);
+        contract.expect(!SemuProcessGroup.groupAlive(child), "terminate leaves no process in the group");
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        CemuSpecContract.sourceContract(contract, fixture.project);
+        CemuSpecContract.declarativeContract(contract, fixture);
+        CemuSpecContract.actionContract(contract, fixture);
+        CemuSpecContract.steamDeckPolicy(contract, fixture.project);
+        CemuSpecContract.renderedProfile(contract, "linux-desktop");
+        CemuSpecContract.renderedProfile(contract, "steam-deck");
+        CemuSpecContract.launchContract(contract);
+        CemuSpecContract.processGroupContract(contract);
+    }
+}

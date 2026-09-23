@@ -1,0 +1,107 @@
+// A truthfully named virtual gamepad for headless input tests, over /dev/uinput (Linux).
+// usage: virtual_pad SECONDS_BEFORE_FIRST token... ; tokens press:NAME hold:NAME release:NAME sleep:SECONDS
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include "semu_evdev.h"
+
+import Library.Console;
+import Library.Vector;
+
+class VirtualPadButtons {  // the names the menu tests use, as evdev codes
+    class int code(char* name) {
+        if (strcmp(name, "south") == 0) { return BTN_SOUTH; }
+        if (strcmp(name, "east") == 0) { return BTN_EAST; }
+        if (strcmp(name, "north") == 0) { return BTN_NORTH; }
+        if (strcmp(name, "west") == 0) { return BTN_WEST; }
+        if (strcmp(name, "tl") == 0) { return BTN_TL; }
+        if (strcmp(name, "tr") == 0) { return BTN_TR; }
+        if (strcmp(name, "select") == 0) { return BTN_SELECT; }
+        if (strcmp(name, "start") == 0) { return BTN_START; }
+        if (strcmp(name, "dpad_up") == 0) { return BTN_DPAD_UP; }
+        if (strcmp(name, "dpad_down") == 0) { return BTN_DPAD_DOWN; }
+        if (strcmp(name, "dpad_left") == 0) { return BTN_DPAD_LEFT; }
+        if (strcmp(name, "dpad_right") == 0) { return BTN_DPAD_RIGHT; }
+        return -1;
+    }
+
+    class Vector<int> all() {
+        return [BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST, BTN_TL, BTN_TR, BTN_SELECT, BTN_START, BTN_DPAD_UP, BTN_DPAD_DOWN, BTN_DPAD_LEFT, BTN_DPAD_RIGHT];
+    }
+}
+
+class VirtualPad {
+    public int device;
+
+    public VirtualPad() { self.device = -1; }
+
+    public bool create() {  // "Semu Test Gamepad": the supervisor sees south and start, so it is a pad
+        int flags = (int)O_WRONLY | (int)O_NONBLOCK;
+        self.device = open("/dev/uinput", flags);
+        if (self.device < 0) { return false; }
+        unsigned long setEvent = (unsigned long)UI_SET_EVBIT;
+        unsigned long setKey = (unsigned long)UI_SET_KEYBIT;
+        int keyType = EV_KEY;
+        int synType = EV_SYN;
+        ioctl(self.device, setEvent, keyType);
+        ioctl(self.device, setEvent, synType);
+        for code in VirtualPadButtons.all() { ioctl(self.device, setKey, code); }
+        struct uinput_setup setup;
+        memset(&setup, 0, sizeof(setup));
+        setup.id.bustype = BUS_VIRTUAL;
+        setup.id.vendor = 0x5345;
+        setup.id.product = 0x4d55;
+        int nameCapacity = UINPUT_MAX_NAME_SIZE;
+        snprintf(setup.name, (size_t)nameCapacity, "%s", "Semu Test Gamepad");
+        unsigned long deviceSetup = (unsigned long)UI_DEV_SETUP;
+        unsigned long deviceCreate = (unsigned long)UI_DEV_CREATE;
+        return ioctl(self.device, deviceSetup, &setup) >= 0 && ioctl(self.device, deviceCreate) >= 0;
+    }
+
+    public void send(int code, int value) {
+        struct input_event event;
+        memset(&event, 0, sizeof(event));
+        event.type = (unsigned short)EV_KEY;
+        event.code = (unsigned short)code;
+        event.value = value;
+        ssize_t wrote = write(self.device, &event, sizeof(event));
+        memset(&event, 0, sizeof(event));
+        event.type = (unsigned short)EV_SYN;
+        event.code = (unsigned short)SYN_REPORT;
+        wrote = write(self.device, &event, sizeof(event));
+        (void)wrote;
+    }
+
+    public void remove() {
+        if (self.device < 0) { return; }
+        unsigned long deviceDestroy = (unsigned long)UI_DEV_DESTROY;
+        ioctl(self.device, deviceDestroy);
+        close(self.device);
+        self.device = -1;
+    }
+}
+
+int main(int argc, char** argv) {
+    if (argc < 2) { Console.error("usage: virtual_pad SECONDS_BEFORE_FIRST press:NAME|hold:NAME|release:NAME|sleep:SECONDS ..."); return 64; }
+    VirtualPad pad = VirtualPad();
+    if (!pad.create()) { Console.error("virtual_pad: cannot create a device on /dev/uinput"); return 1; }
+    usleep((unsigned int)(atof(argv[1]) * 1000000.0));
+    for (int index = 2; index < argc; index++) {
+        char* token = argv[index];
+        char* colon = strchr(token, (int)':');
+        if (colon == null) { continue; }
+        *colon = 0;
+        char* name = colon + 1;
+        if (strcmp(token, "sleep") == 0) { usleep((unsigned int)(atof(name) * 1000000.0)); continue; }
+        int code = VirtualPadButtons.code(name);
+        if (code < 0) { Console.error(f"virtual_pad: unknown button {name}"); pad.remove(); return 64; }
+        if (strcmp(token, "press") == 0 || strcmp(token, "hold") == 0) { pad.send(code, 1); usleep(60000); }
+        if (strcmp(token, "press") == 0 || strcmp(token, "release") == 0) { pad.send(code, 0); usleep(120000); }
+    }
+    usleep(300000);
+    pad.remove();
+    return 0;
+}
