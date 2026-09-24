@@ -26,6 +26,11 @@ stdenv.mkDerivation {
     printf '%s\n' _semu_render_context_invalidate_gl _semu_render_game_gl _semu_render_post_ui_gl > exports.txt
     $CC -dynamiclib -Wl,-exported_symbols_list,exports.txt -install_name "$out/lib/libsemurenderer.dylib" \
       semu_renderer.o -L${librashader}/lib -Wl,-rpath,${librashader}/lib -lrashader -lm -o libsemurenderer.dylib
+    # DYLD_INSERT_LIBRARIES shim for standalone emulators: fullscreen on the frontend's Space.
+    btrcpy preload/semu_window.btrc -o semu_window.c --strict-imports --no-cache --no-stdlib --no-dce
+    $CC -c semu_window.c -o semu_window.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function -Wno-incompatible-function-pointer-types
+    $CC -dynamiclib -Wl,-init,_semu_window_load -Wl,-exported_symbols_list,/dev/null -install_name "$out/lib/libsemuwindow.dylib" \
+      semu_window.o -framework AppKit -framework CoreFoundation -lobjc -o libsemuwindow.dylib
   '' else ''
     cat > exports.map <<'MAP'
     { global: semu_render_context_invalidate_gl; semu_render_game_gl; semu_render_post_ui_gl; local: *; };
@@ -48,6 +53,7 @@ stdenv.mkDerivation {
     cp ${rendererHeader} "$out/include/semu_renderer.h"
   '' + (if stdenv.hostPlatform.isDarwin then ''
     cp libsemurenderer.dylib "$out/lib/libsemurenderer.dylib"
+    cp libsemuwindow.dylib "$out/lib/libsemuwindow.dylib"
     ln -s libsemurenderer.dylib "$out/lib/libsemurenderer.so"  # one SEMU_RENDERER_LIBRARY path on every platform
   '' else ''
     cp libsemurenderer.so "$out/lib/libsemurenderer.so"

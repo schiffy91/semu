@@ -202,7 +202,8 @@
       },
       "azahar": {
         "graphics_api": "2"
-      }
+      },
+      "window_shim": true
     }
   },
   "doc": {

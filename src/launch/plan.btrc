@@ -387,6 +387,10 @@ class SemuLauncher {
                 return launch;
             }
         }
+        if (SemuJson.boolAt(platform, "window_shim", false)) {  // macOS: fullscreen on the frontend's Space, shown once fullscreen (libsemuwindow)
+            string windowShim = PathTools.join(plan.assetRoot, "lib/libsemuwindow.dylib");
+            if (FileSystem.isFile(windowShim)) { launch.environment.push("DYLD_INSERT_LIBRARIES=" + windowShim); }
+        }
         launch.chordWindowMs = plan.input == null ? 250 : plan.input.chordWindowMs();
         if (plan.input != null) { launch.quitButtons = plan.input.quitChord(); }
         SemuLauncher.inputContracts(launch, plan, platform, stateRoot);

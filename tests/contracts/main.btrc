@@ -504,6 +504,18 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
                 contract.expect(flake.contains("macos = true"), systemId + ": the " + SemuJson.textAt(binding, "core") + " core builds for macOS");
             }
         }
+        for systemId in mac.model.systemIds() {  // a game window appears on ES-DE's Space, never a small window sliding to a black fullscreen Space
+            JSONValue bindings = mac.model.system(systemId).definition.get("emulators");
+            for (int index = 0; bindings != null && index < bindings.size(); index++) {
+                string emulatorId = SemuJson.textAt(bindings.at(index), "emulator");
+                Vector<string> platforms = SemuJson.strings(bindings.at(index).get("platforms"));
+                if (emulatorId.equals("retroarch") || !mac.model.emulator(emulatorId).supports("macos") || (!platforms.isEmpty() && !platforms.contains("macos"))) { continue; }
+                contract.expect(SemuJson.boolAt(mac.model.emulator(emulatorId).platform("macos"), "window_shim", false), systemId + ": macOS " + emulatorId + " launches through libsemuwindow");
+            }
+        }
+        contract.expect(!SemuJson.boolAt(mac.model.emulator("retroarch").platform("macos"), "window_shim", false)
+            && FileSystem.readText(PathTools.join(mac.project, "config/emulators/retroarch/darwin.nix")).contains("retroarch_darwin_fullscreen.patch"),
+            "macOS RetroArch goes fullscreen on ES-DE's Space through its own patch, not the shim");
     }
 }
 

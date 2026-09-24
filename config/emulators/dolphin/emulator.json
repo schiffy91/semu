@@ -83,7 +83,8 @@
         "Dolphin.Display.Fullscreen=True",
         "-b",
         "-e"
-      ]
+      ],
+      "window_shim": true
     }
   },
   "doc": {

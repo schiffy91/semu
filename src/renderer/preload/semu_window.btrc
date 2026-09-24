@@ -1,0 +1,227 @@
+// DYLD_INSERT_LIBRARIES shim for macOS standalone emulators: a game window
+// appears the way ES-DE's own window does. Native fullscreen moves a window
+// into a new Space, so a launch showed a small window, a slide to a black
+// Space, and the window growing. Here fullscreen is a borderless window
+// covering the screen on the current Space, the Dock and menu bar hidden, and
+// every titled window stays transparent until it is fullscreen, then fades in
+// over the frontend beneath it. A window that never asks for fullscreen (a
+// dialog) is revealed after a moment. AppKit is reached through the
+// Objective-C runtime's C interface; nothing else in the app changes.
+#include <dlfcn.h>
+#include <objc/runtime.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <CoreFoundation/CoreFoundation.h>
+
+struct SemuWindowRect {  // CGRect: four doubles, returned and passed in floating-point registers on arm64
+    double x;
+    double y;
+    double width;
+    double height;
+};
+
+struct SemuWindowEntry {
+    void* window;
+    bool fullscreen;
+    bool revealed;
+    unsigned long windowedStyle;
+    struct SemuWindowRect windowedFrame;
+};
+
+struct SemuWindowState {
+    bool installed;
+    bool debug;
+    int count;
+    struct SemuWindowEntry entries[32];
+    __fn_ptr<void*, void*, void*> sendObject;
+    __fn_ptr<void*, void*, void*, unsigned long> sendObjectIndex;
+    __fn_ptr<unsigned long, void*, void*> sendUnsigned;
+    __fn_ptr<double, void*, void*> sendDouble;
+    __fn_ptr<struct SemuWindowRect, void*, void*> sendRect;
+    __fn_ptr<void, void*, void*, unsigned long> setUnsigned;
+    __fn_ptr<void, void*, void*, double> setDouble;
+    __fn_ptr<void, void*, void*, void*> setObject;
+    __fn_ptr<void, void*, void*, signed char> setBoolean;
+    __fn_ptr<void, void*, void*, struct SemuWindowRect, signed char> setFrame;
+    __fn_ptr<signed char, void*, void*, void*> isKind;
+    __fn_ptr<void, void*, void*, void*> toggle;
+    __fn_ptr<void, void*, void*, long, long> order;
+    __fn_ptr<void, void*, void*, unsigned long> style;
+};
+
+struct SemuWindowState SemuWindow;
+
+class SemuWindowShim {
+    class void bind(void* slot, void* symbol) {  // C11 forbids casting void* to a function pointer
+        memcpy(slot, &symbol, sizeof(symbol));
+    }
+
+    class void* selector(const char* name) {
+        return (void*)sel_registerName(name);
+    }
+
+    class void* send(void* receiver, const char* name) {
+        return SemuWindow.sendObject(receiver, SemuWindowShim.selector(name));
+    }
+
+    class void* application() {
+        return SemuWindow.sendObject((void*)objc_lookUpClass("NSApplication"), SemuWindowShim.selector("sharedApplication"));
+    }
+
+    class struct SemuWindowEntry* entry(void* window, bool create) {
+        for (int index = 0; index < SemuWindow.count; index++) {
+            if (SemuWindow.entries[index].window == window) { return &SemuWindow.entries[index]; }
+        }
+        if (!create || SemuWindow.count >= 32) { return null; }
+        struct SemuWindowEntry* added = &SemuWindow.entries[SemuWindow.count];
+        SemuWindow.count = SemuWindow.count + 1;
+        memset(added, 0, sizeof(struct SemuWindowEntry));
+        added->window = window;
+        return added;
+    }
+
+    class bool isGameWindow(void* window) {  // a titled document window, not a panel, menu, or tooltip
+        unsigned long style = SemuWindow.sendUnsigned(window, SemuWindowShim.selector("styleMask"));
+        void* panel = (void*)objc_lookUpClass("NSPanel");
+        if ((style & 1ul) == 0ul) { return false; }  // NSWindowStyleMaskTitled
+        if (panel != null && SemuWindow.isKind(window, SemuWindowShim.selector("isKindOfClass:"), panel) != 0) { return false; }
+        return true;
+    }
+
+    class bool isLive(void* window) {  // still one of the application's windows
+        void* windows = SemuWindowShim.send(SemuWindowShim.application(), "windows");
+        unsigned long count = SemuWindow.sendUnsigned(windows, SemuWindowShim.selector("count"));
+        for (unsigned long index = 0ul; index < count; index++) {
+            if (SemuWindow.sendObjectIndex(windows, SemuWindowShim.selector("objectAtIndex:"), index) == window) { return true; }
+        }
+        return false;
+    }
+
+    class void schedule(double delay, double interval, __fn_ptr<void, void*, void*> callback) {
+        void* timer = (void*)CFRunLoopTimerCreate(null, (double)CFAbsoluteTimeGetCurrent() + delay, interval, 0, 0, callback, null);
+        void** commonModes = (void**)dlsym(RTLD_DEFAULT, "kCFRunLoopCommonModes");  // a CFStringRef constant
+        CFRunLoopAddTimer((void*)CFRunLoopGetMain(), timer, *commonModes);
+        CFRelease(timer);
+    }
+
+    class void fade(void* timer, void* info) {  // fullscreen windows step to opaque over about 160 ms
+        bool fading = false;
+        for (int index = 0; index < SemuWindow.count; index++) {
+            struct SemuWindowEntry* entry = &SemuWindow.entries[index];
+            if (!entry->fullscreen || entry->revealed || !SemuWindowShim.isLive(entry->window)) { continue; }
+            double alpha = SemuWindow.sendDouble(entry->window, SemuWindowShim.selector("alphaValue")) + 0.1;
+            if (alpha >= 1.0) {
+                alpha = 1.0;
+                entry->revealed = true;
+            } else {
+                fading = true;
+            }
+            SemuWindow.setDouble(entry->window, SemuWindowShim.selector("setAlphaValue:"), alpha);
+        }
+        if (!fading) { CFRunLoopTimerInvalidate(timer); }
+    }
+
+    class void revealRemaining(void* timer, void* info) {  // a window that never went fullscreen is shown as it is
+        for (int index = 0; index < SemuWindow.count; index++) {
+            struct SemuWindowEntry* entry = &SemuWindow.entries[index];
+            if (entry->fullscreen || entry->revealed || !SemuWindowShim.isLive(entry->window)) { continue; }
+            entry->revealed = true;
+            SemuWindow.setDouble(entry->window, SemuWindowShim.selector("setAlphaValue:"), 1.0);
+        }
+    }
+
+    class void enterFullscreen(void* window, struct SemuWindowEntry* entry) {
+        void* screen = SemuWindowShim.send(window, "screen");
+        if (screen == null) { screen = SemuWindowShim.send((void*)objc_lookUpClass("NSScreen"), "mainScreen"); }
+        if (screen == null) { return; }
+        entry->windowedStyle = SemuWindow.sendUnsigned(window, SemuWindowShim.selector("styleMask"));
+        entry->windowedFrame = SemuWindow.sendRect(window, SemuWindowShim.selector("frame"));
+        entry->fullscreen = true;
+        void* application = SemuWindowShim.application();
+        SemuWindow.setBoolean(application, SemuWindowShim.selector("activateIgnoringOtherApps:"), (signed char)1);
+        SemuWindow.setUnsigned(application, SemuWindowShim.selector("setPresentationOptions:"), (1ul << 1) | (1ul << 3));  // hide Dock and menu bar
+        SemuWindow.style(window, SemuWindowShim.selector("setStyleMask:"), 0ul);  // borderless
+        SemuWindow.setFrame(window, SemuWindowShim.selector("setFrame:display:"), SemuWindow.sendRect(screen, SemuWindowShim.selector("frame")), (signed char)1);
+        SemuWindow.setObject(window, SemuWindowShim.selector("makeKeyAndOrderFront:"), null);
+        if (!entry->revealed) { SemuWindowShim.schedule(0.12, 0.016, SemuWindowShim.fade); }  // the app redraws at the new size first
+        if (SemuWindow.debug) { fprintf(stderr, "semu-window: fullscreen %p\n", window); }
+    }
+
+    class void leaveFullscreen(void* window, struct SemuWindowEntry* entry) {
+        entry->fullscreen = false;
+        SemuWindow.setUnsigned(SemuWindowShim.application(), SemuWindowShim.selector("setPresentationOptions:"), 0ul);
+        SemuWindow.style(window, SemuWindowShim.selector("setStyleMask:"), entry->windowedStyle);
+        SemuWindow.setFrame(window, SemuWindowShim.selector("setFrame:display:"), entry->windowedFrame, (signed char)1);
+        entry->revealed = true;
+        SemuWindow.setDouble(window, SemuWindowShim.selector("setAlphaValue:"), 1.0);
+    }
+
+    class void toggle(void* window, void* command, void* sender) {
+        unsigned long style = SemuWindow.sendUnsigned(window, SemuWindowShim.selector("styleMask"));
+        struct SemuWindowEntry* entry = SemuWindowShim.entry(window, true);
+        if ((style & (1ul << 14)) != 0ul || entry == null) {  // already in a native fullscreen Space: let AppKit leave it
+            SemuWindow.toggle(window, command, sender);
+            return;
+        }
+        if (entry->fullscreen) {
+            SemuWindowShim.leaveFullscreen(window, entry);
+        } else {
+            SemuWindowShim.enterFullscreen(window, entry);
+        }
+    }
+
+    class void restyle(void* window, void* command, unsigned long style) {  // a fullscreen window keeps no title bar; the app's style returns when it leaves
+        struct SemuWindowEntry* entry = SemuWindowShim.entry(window, false);
+        if (entry != null && entry->fullscreen) {
+            entry->windowedStyle = style;
+            return;
+        }
+        SemuWindow.style(window, command, style);
+    }
+
+    class void order(void* window, void* command, long place, long relative) {
+        if (place != 0l && SemuWindowShim.entry(window, false) == null && SemuWindowShim.isGameWindow(window)) {
+            SemuWindowShim.entry(window, true);
+            SemuWindow.setDouble(window, SemuWindowShim.selector("setAlphaValue:"), 0.0);  // hidden until fullscreen
+            SemuWindowShim.schedule(1.5, 0.0, SemuWindowShim.revealRemaining);
+        }
+        SemuWindow.order(window, command, place, relative);
+    }
+
+    class void install() {
+        void* windowClass = (void*)objc_lookUpClass("NSWindow");
+        if (SemuWindow.installed || windowClass == null) { return; }
+        SemuWindow.installed = true;
+        SemuWindow.debug = getenv("SEMU_WINDOW_DEBUG") != null;
+        void* send = dlsym(RTLD_DEFAULT, "objc_msgSend");
+        SemuWindowShim.bind(&SemuWindow.sendObject, send);
+        SemuWindowShim.bind(&SemuWindow.sendObjectIndex, send);
+        SemuWindowShim.bind(&SemuWindow.sendUnsigned, send);
+        SemuWindowShim.bind(&SemuWindow.sendDouble, send);
+        SemuWindowShim.bind(&SemuWindow.sendRect, send);
+        SemuWindowShim.bind(&SemuWindow.setUnsigned, send);
+        SemuWindowShim.bind(&SemuWindow.setDouble, send);
+        SemuWindowShim.bind(&SemuWindow.setObject, send);
+        SemuWindowShim.bind(&SemuWindow.setBoolean, send);
+        SemuWindowShim.bind(&SemuWindow.setFrame, send);
+        SemuWindowShim.bind(&SemuWindow.isKind, send);
+        void* toggleMethod = (void*)class_getInstanceMethod(windowClass, sel_registerName("toggleFullScreen:"));
+        void* orderMethod = (void*)class_getInstanceMethod(windowClass, sel_registerName("orderWindow:relativeTo:"));
+        void* styleMethod = (void*)class_getInstanceMethod(windowClass, sel_registerName("setStyleMask:"));
+        if (toggleMethod != null) {
+            SemuWindowShim.bind(&SemuWindow.toggle, (void*)method_setImplementation(toggleMethod, SemuWindowShim.toggle));
+        }
+        if (orderMethod != null) {
+            SemuWindowShim.bind(&SemuWindow.order, (void*)method_setImplementation(orderMethod, SemuWindowShim.order));
+        }
+        if (styleMethod != null) {
+            SemuWindowShim.bind(&SemuWindow.style, (void*)method_setImplementation(styleMethod, SemuWindowShim.restyle));
+        }
+        if (SemuWindow.debug) { fprintf(stderr, "semu-window: installed (toggle %d, order %d)\n", toggleMethod != null, orderMethod != null); }
+    }
+}
+
+void semu_window_load() {  // the dylib initializer (-init); the shim links AppKit, so its classes are loaded here even in apps that open it later
+    SemuWindowShim.install();
+}
