@@ -570,8 +570,8 @@ function testCard(w, h, hue) {  // an offscreen test card, cached, for the refle
 function rgba(hex, alpha) { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`; }
 const reflectCanvas = document.createElement("canvas"), reflectBlurCanvas = document.createElement("canvas");
 const innerCanvas = document.createElement("canvas");
-function innerContents(screen) {  // what lies inside the bezel's inner edge, small: black edge or edge colour with the test card inside, the thing the bezel reflects
-  const t = screen.ring.inner, picture = pictureRect(screen), w = 256, h = Math.max(8, Math.round(256 * t.h / t.w)), k = w / t.w;
+function innerContents(screen) {  // the picture, small: the thing the glass and the lip reflect
+  const t = pictureRect(screen), picture = pictureRect(screen), w = 256, h = Math.max(8, Math.round(256 * t.h / t.w)), k = w / t.w;
   innerCanvas.width = w; innerCanvas.height = h;
   const saved = ctx; ctx = innerCanvas.getContext("2d");
   ctx.fillStyle = screen.ring.color === "none" ? (screen.surround || "#000") : "#000"; ctx.fillRect(0, 0, w, h);
@@ -579,8 +579,8 @@ function innerContents(screen) {  // what lies inside the bezel's inner edge, sm
   ctx = saved;
   return innerCanvas;
 }
-function drawReflection(screen, baseAlpha) {  // the inside of the bezel mirrored across its inner edge onto the band: sharp at the edge, blurrier and fainter further out
-  const look = screen.reflection, image = screen.ring.inner, band = screen.ring.outer;
+function drawReflection(screen, baseAlpha) {  // the picture mirrored across its own edge onto the glass and the lip: sharp at the edge, blurrier and fainter further out (reflectAt in config/render/compositor.frag)
+  const look = screen.reflection, image = pictureRect(screen), band = screen.ring.outer;
   const [ix, iy] = toScreen(image.x, image.y), iw = image.w * state.zoom, ih = image.h * state.zoom;
   const [bx, by] = toScreen(band.x, band.y), bw = Math.ceil(band.w * state.zoom), bh = Math.ceil(band.h * state.zoom);
   if (bw < 2 || bh < 2 || bw * bh > 16000000) return;
@@ -622,17 +622,6 @@ function pictureRect(screen) {  // the picture rectangle, or the aspect-fitted p
   const w = Math.min(t.w, Math.round(t.h * aspect)), h = Math.min(t.h, Math.round(t.w / aspect));
   return { x: t.x + Math.round((t.w - w) / 2), y: t.y + Math.round((t.h - h) / 2), w, h };
 }
-function drawGlassReflection(screen, baseAlpha) {  // the curved glass between the picture and the lip mirrors the picture across its edge: dim and diffuse (glassReflection in config/render/compositor.frag)
-  const picture = pictureRect(screen), reach = 0.02 * Math.min(picture.w, picture.h) * state.zoom;
-  const [x, y] = toScreen(picture.x, picture.y), w = picture.w * state.zoom, h = picture.h * state.zoom;
-  ctx.save(); rectPath(screen, "inner"); ctx.clip();
-  ctx.globalAlpha = baseAlpha * Math.min(1, screen.reflection.strength * 0.35);
-  ctx.globalCompositeOperation = "screen"; ctx.filter = `blur(${(reach * 0.5).toFixed(1)}px)`;
-  for (const [fx, fy, tx, ty] of [[-1, 1, 0, 0], [-1, 1, 2, 0], [1, -1, 0, 0], [1, -1, 0, 2], [-1, -1, 0, 0], [-1, -1, 2, 0], [-1, -1, 0, 2], [-1, -1, 2, 2]]) {  // left, right, top, bottom, four corners
-    ctx.save(); ctx.translate(x + tx * w, y + ty * h); ctx.scale(fx, fy); drawTestCard(0, 0, w, h, screen.id === "bottom"); ctx.restore();
-  }
-  ctx.restore();
-}
 function drawCutouts(layer) {  // like Mega Bezel: the ring, the black edge inside it, the picture clipped to the opening; the plate shows through everywhere else
   ctx.save();
   ctx.globalAlpha = (layer.opacity === undefined ? 1 : layer.opacity) * state.cutoutAlpha;  // view-only transparency, never saved
@@ -642,9 +631,8 @@ function drawCutouts(layer) {  // like Mega Bezel: the ring, the black edge insi
     if (ring && ring.outer && ring.inner) {
       if (filled) { ctx.fillStyle = ring.color || "#202020"; rectPath(screen, "outer"); ctx.fill(); }
       else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
-      if (reflecting) drawReflection(screen, ctx.globalAlpha);
       if (filled) { ctx.fillStyle = "#000"; rectPath(screen, "inner"); ctx.fill(); }
-      if (reflecting) drawGlassReflection(screen, ctx.globalAlpha);
+      if (reflecting) drawReflection(screen, ctx.globalAlpha);
     } else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
     if (screen.tube && state.showGame) {
       const picture = pictureRect(screen);
