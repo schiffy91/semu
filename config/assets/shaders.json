@@ -254,10 +254,14 @@
         "shaders_slang"
       ],
       "output": {
-        "sha256": "e7ec3abf2ec66820546ac3188603dba9c9dfa59a9c8df9db6a2b04ebe3b342d3"
+        "sha256": "0d7d93e1afb5bfa1730e0bc0a8cf57b02e61a97dd984a4b1d20352c6026140fe"
       },
       "doc": {
-        "why": "crt-hyllian's soft bright glow approximates the N64 VI filter and is a genuinely different chain from psx's crt-royale. Royale's beam parameters are compile-time constants, so preset overrides are ignored and produce byte-identical output."
+        "why": "crt-hyllian's soft bright glow approximates the N64 VI filter and is a genuinely different chain from psx's crt-royale. Royale's beam parameters are compile-time constants, so preset overrides are ignored and produce byte-identical output.",
+        "mask": "No phosphor mask: at display resolution it is one output pixel wide, and the compositor curvature resamples it into moire; the scanlines stay"
+      },
+      "params": {
+        "PHOSPHOR_LAYOUT": 0
       }
     },
     "assets/shaders/psx/screen.slangp": {
@@ -654,33 +658,6 @@
         "sha256": "89136a8350725a81271ee4e457e938f2ca41bb865066dcd1ccb9a22fabd27766"
       }
     },
-    "assets/shaders/n3ds/bottom.slangp": {
-      "type": "slang_pipeline",
-      "passes": [
-        {
-          "tree": "shaders_slang",
-          "path": "misc/shaders/image-adjustment.slang",
-          "sha256": "e608b1dd71d660d2ce8a77ee3e3a62ad5047d50a75adc8db7b4a1b7c1be83e2d",
-          "filter_linear": true,
-          "scale_type": "viewport",
-          "scale": 1
-        }
-      ],
-      "requires": [
-        "shaders_slang"
-      ],
-      "params": {
-        "ia_luminance": 0.92,
-        "ia_saturation": 0.95,
-        "ia_black_level": 0.02
-      },
-      "doc": {
-        "why": "3DS bottom screen: the resistive touch layer reads matte and a touch dimmer; no pixel grid, since the second screen scales fractionally in the computed layouts and a grid would alias"
-      },
-      "output": {
-        "sha256": "42880bb4532833d2b9c8b6374e3e15e740290bec541854c165e62d24e3fb1d7f"
-      }
-    },
     "assets/shaders/nds/top.slangp": {
       "type": "slang_wrapper",
       "reference": {
@@ -696,33 +673,6 @@
       },
       "output": {
         "sha256": "41a305a4d8b792b7f0d5c196198842ab0aaf38afa37a0f1722f8ae5e14f8ca99"
-      }
-    },
-    "assets/shaders/nds/bottom.slangp": {
-      "type": "slang_pipeline",
-      "passes": [
-        {
-          "tree": "shaders_slang",
-          "path": "misc/shaders/image-adjustment.slang",
-          "sha256": "e608b1dd71d660d2ce8a77ee3e3a62ad5047d50a75adc8db7b4a1b7c1be83e2d",
-          "filter_linear": true,
-          "scale_type": "viewport",
-          "scale": 1
-        }
-      ],
-      "requires": [
-        "shaders_slang"
-      ],
-      "params": {
-        "ia_luminance": 0.92,
-        "ia_saturation": 0.95,
-        "ia_black_level": 0.02
-      },
-      "doc": {
-        "why": "DS touch screen: matte, no grid, since it scales fractionally beside the main screen"
-      },
-      "output": {
-        "sha256": "42880bb4532833d2b9c8b6374e3e15e740290bec541854c165e62d24e3fb1d7f"
       }
     }
   }
