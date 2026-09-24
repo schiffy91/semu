@@ -33,19 +33,16 @@ uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uR
   vec2 h=outer.zw*0.5;vec2 d=abs(p-(outer.xy+h))/h;float edge=max(d.x,d.y);
   float shade=0.7+0.4*smoothstep(0.82,1.0,edge);float bevel=smoothstep(0.985,1.0,edge)*0.22;
   return vec4(uFrameColor.rgb*shade+bevel,ring);}
- vec3 ringReflection(sampler2D t,vec2 p,vec4 inner,vec4 rect,vec4 outer,vec3 edge,float rot,vec4 look){vec2 q=uv(p,inner);vec2 o=max(max(-q,q-1.0),vec2(0.0));
-  vec2 m=q;if(q.x<0.0)m.x=-q.x;else if(q.x>1.0)m.x=2.0-q.x;if(q.y<0.0)m.y=-q.y;else if(q.y>1.0)m.y=2.0-q.y;m=clamp(m,0.0,1.0);
-  vec2 thick=max((outer.zw-inner.zw)*0.5,vec2(1.0));float d=clamp(length(o*inner.zw/thick),0.0,1.0);float fade=1.0-look.z*smoothstep(0.0,1.0,d);
-  float spread=0.0006+mix(0.0,0.03,look.y)*d*d;vec3 c=vec3(0.0);
-  for(int y=-2;y<=2;y++)for(int x=-2;x<=2;x++){vec2 mp=inner.xy+clamp(m+vec2(float(x),float(y))*spread*0.5,0.0,1.0)*inner.zw;vec2 g=uv(mp,rect);
-   c+=(g.x>=0.0&&g.x<=1.0&&g.y>=0.0&&g.y<=1.0)?texture(t,rotatedUv(g,rot)).rgb:edge;}
+ vec3 reflectAt(sampler2D t,vec2 p,vec4 tube,vec4 rect,vec4 outer,vec4 fx,float rot,vec4 look){if(look.x<=0.0)return vec3(0.0);  // the displayed, bent picture mirrored across its edge: sharp there, blurrier and fainter outward
+  vec2 g=uv(p,rect);vec2 e=clamp(g,0.0,1.0);vec2 src;vec2 off;
+  if(g==e){vec2 q=curved(uv(p,tube),fx.x);vec2 gc=uv(tube.xy+q*tube.zw,rect);vec2 ec=clamp(gc,0.0,1.0);if(gc==ec)return vec3(0.0);  // a corner the bend left empty
+   src=2.0*ec-gc;off=(gc-ec)*rect.zw;}
+  else{vec2 pm=rect.xy+(2.0*e-g)*rect.zw;vec2 q=curved(uv(pm,tube),fx.x);src=uv(tube.xy+q*tube.zw,rect);off=(g-e)*rect.zw;}  // mirror on screen, then through the same bend as the picture
+  vec2 span=max((outer.zw-rect.zw)*0.5,vec2(1.0));float d=clamp(length(off/span),0.0,1.0);  // each side fades over its own lip width
+  float fade=1.0-look.z*smoothstep(0.0,1.0,d);float spread=0.0006+mix(0.0,0.03,look.y)*d*d;vec3 c=vec3(0.0);
+  for(int y=-2;y<=2;y++)for(int x=-2;x<=2;x++)c+=texture(t,rotatedUv(clamp(src+vec2(float(x),float(y))*spread*0.5,0.0,1.0),rot)).rgb;
   return c/25.0*look.x*fade;}
- vec3 glassReflection(sampler2D t,vec2 p,vec4 rect,float rot,float strength){if(strength<=0.0)return vec3(0.0);  // the curved glass between the picture and the lip mirrors the picture across its edge: dim, and more diffuse further out
-  vec2 g=uv(p,rect);vec2 e=clamp(g,0.0,1.0);if(g==e)return vec3(0.0);  // the raw picture rectangle, where layered bezels clip the curved picture
-  vec2 m=g;if(g.x<0.0)m.x=-g.x;else if(g.x>1.0)m.x=2.0-g.x;if(g.y<0.0)m.y=-g.y;else if(g.y>1.0)m.y=2.0-g.y;m=clamp(m,0.0,1.0);
-  float d=length((g-e)*rect.zw);float reach=0.02*min(rect.z,rect.w);float spread=0.002+0.02*clamp(d/reach,0.0,1.0);vec3 s=vec3(0.0);
-  for(int y=-2;y<=2;y++)for(int x=-2;x<=2;x++)s+=texture(t,rotatedUv(clamp(m+vec2(float(x),float(y))*spread,0.0,1.0),rot)).rgb;
-  return s/25.0*exp(-d/reach)*strength*0.35;}
+ bool bentOff(vec2 p,vec4 tube,vec4 rect,vec4 fx,out vec2 g){vec2 q1=curved(uv(p,tube),fx.x);g=inside(p,rect)?uv(tube.xy+q1*tube.zw,rect):uv(p,rect);return g!=clamp(g,0.0,1.0);}  // the space the bent picture leaves inside the screen, and beyond its rectangle
  vec4 bezelRing(vec2 p,vec4 inner,vec4 outer,vec4 look,vec4 color,vec2 b){if(look.z<0.5)return vec4(0.0);
   float ring=shapeMaskB(p,outer,vec4(1.0,look.y,2.0,0.0),b)*(1.0-shapeMaskB(p,inner,vec4(1.0,look.x,2.0,0.0),b));if(ring<=0.0)return vec4(0.0);
   vec2 h=outer.zw*0.5;vec2 d=abs(p-(outer.xy+h))/h;float edge=max(d.x,d.y);
@@ -60,12 +57,12 @@ void main(){
   vec3 c;float a;
   if(m0>=m1){c=screenColor(uGame,uGlass,p,uTube,uRect,uFx,uSurround,uRotation.x,uReflect.x,uReflect.z);a=m0;
    if(uFrame.z>1.5){vec4 f=frameRing(p,uRect,vec4(1.0,uFrame.y,2.0,0.0));c=mix(c,f.rgb,f.a);}
-   if(layered>0.5&&uRingLook.z>0.5){if(!inside(p,uRect))c=vec3(0.0);a=min(a,shapeMaskB(p,uRingOut,vec4(1.0,uRingLook.y,2.0,0.0),uBulge.xy));c=1.0-(1.0-c)*(1.0-glassReflection(uGame,p,uRect,uRotation.x,uRingReflect.x));}
-   vec4 r=bezelRing(p,uRingIn,uRingOut,uRingLook,uRingColor,uBulge.xy);c=mix(c,r.rgb,r.a*uRingColor.a);if(r.a>0.0&&uRingReflect.x>0.0){vec3 f=ringReflection(uGame,p,uRingIn,uRect,uRingOut,uRingColor.a>0.5?vec3(0.0):uSurround.rgb,uRotation.x,uRingReflect);c=mix(c,1.0-(1.0-c)*(1.0-f),r.a);}}
+   if(layered>0.5&&uRingLook.z>0.5){if(!inside(p,uRect))c=vec3(0.0);a=min(a,shapeMaskB(p,uRingOut,vec4(1.0,uRingLook.y,2.0,0.0),uBulge.xy));vec2 bg;if(bentOff(p,uTube,uRect,uFx,bg))c=reflectAt(uGame,p,uTube,uRect,uRingOut,uFx,uRotation.x,uRingReflect);}
+   vec4 r=bezelRing(p,uRingIn,uRingOut,uRingLook,uRingColor,uBulge.xy);c=mix(c,r.rgb,r.a*uRingColor.a);if(r.a>0.0&&uRingReflect.x>0.0){vec3 f=reflectAt(uGame,p,uTube,uRect,uRingOut,uFx,uRotation.x,uRingReflect);c=mix(c,1.0-(1.0-c)*(1.0-f),r.a);}}
   else{c=screenColor(uGame2,uGlass2,p,uTube2,uRect2,uFx2,uSurround2,uRotation.y,uReflect.y,uReflect.w);a=m1;
    if(uFrame.z>1.5){vec4 f=frameRing(p,uRect2,vec4(1.0,uFrame.y,2.0,0.0));c=mix(c,f.rgb,f.a);}
-   if(layered>0.5&&uRingLook2.z>0.5){if(!inside(p,uRect2))c=vec3(0.0);a=min(a,shapeMaskB(p,uRingOut2,vec4(1.0,uRingLook2.y,2.0,0.0),uBulge.zw));c=1.0-(1.0-c)*(1.0-glassReflection(uGame2,p,uRect2,uRotation.y,uRingReflect2.x));}
-   vec4 r=bezelRing(p,uRingIn2,uRingOut2,uRingLook2,uRingColor2,uBulge.zw);c=mix(c,r.rgb,r.a*uRingColor2.a);if(r.a>0.0&&uRingReflect2.x>0.0){vec3 f=ringReflection(uGame2,p,uRingIn2,uRect2,uRingOut2,uRingColor2.a>0.5?vec3(0.0):uSurround2.rgb,uRotation.y,uRingReflect2);c=mix(c,1.0-(1.0-c)*(1.0-f),r.a);}}
+   if(layered>0.5&&uRingLook2.z>0.5){if(!inside(p,uRect2))c=vec3(0.0);a=min(a,shapeMaskB(p,uRingOut2,vec4(1.0,uRingLook2.y,2.0,0.0),uBulge.zw));vec2 bg;if(bentOff(p,uTube2,uRect2,uFx2,bg))c=reflectAt(uGame2,p,uTube2,uRect2,uRingOut2,uFx2,uRotation.y,uRingReflect2);}
+   vec4 r=bezelRing(p,uRingIn2,uRingOut2,uRingLook2,uRingColor2,uBulge.zw);c=mix(c,r.rgb,r.a*uRingColor2.a);if(r.a>0.0&&uRingReflect2.x>0.0){vec3 f=reflectAt(uGame2,p,uTube2,uRect2,uRingOut2,uFx2,uRotation.y,uRingReflect2);c=mix(c,1.0-(1.0-c)*(1.0-f),r.a);}}
   frag=vec4(c,a);return;}
  if(uPass<2.5){vec4 c=vec4(0.0);
   if(hasArt>0.5&&inside(p,uBezelRect))c=plate(uBezel,p,uBezelRect);
@@ -75,9 +72,9 @@ void main(){
   if(dual>0.5){vec2 q2;float k2=halo(p,uTube2,q2);g=max(g,blurred(uGame2,rotatedUv(q2,uRotation.y))*k2*uFx2.w);}
   c.rgb=1.0-(1.0-c.rgb)*(1.0-g);
   if(uRingLook.z>0.5){vec4 r=bezelRing(p,uRingIn,uRingOut,uRingLook,uRingColor,uBulge.xy);float band=r.a*(1.0-shapeMaskB(p,uTube,uShape,uBulge.xy));
-   if(band>0.0){c.rgb=mix(c.rgb,r.rgb,band*uRingColor.a);if(uRingReflect.x>0.0){vec3 f=ringReflection(uGame,p,uRingIn,uRect,uRingOut,uRingColor.a>0.5?vec3(0.0):uSurround.rgb,uRotation.x,uRingReflect);c.rgb=mix(c.rgb,1.0-(1.0-c.rgb)*(1.0-f),band);}}}
+   if(band>0.0){c.rgb=mix(c.rgb,r.rgb,band*uRingColor.a);if(uRingReflect.x>0.0){vec3 f=reflectAt(uGame,p,uTube,uRect,uRingOut,uFx,uRotation.x,uRingReflect);c.rgb=mix(c.rgb,1.0-(1.0-c.rgb)*(1.0-f),band);}}}
   if(dual>0.5&&uRingLook2.z>0.5){vec4 r=bezelRing(p,uRingIn2,uRingOut2,uRingLook2,uRingColor2,uBulge.zw);float band=r.a*(1.0-shapeMaskB(p,uTube2,uShape2,uBulge.zw));
-   if(band>0.0){c.rgb=mix(c.rgb,r.rgb,band*uRingColor2.a);if(uRingReflect2.x>0.0){vec3 f=ringReflection(uGame2,p,uRingIn2,uRect2,uRingOut2,uRingColor2.a>0.5?vec3(0.0):uSurround2.rgb,uRotation.y,uRingReflect2);c.rgb=mix(c.rgb,1.0-(1.0-c.rgb)*(1.0-f),band);}}}
+   if(band>0.0){c.rgb=mix(c.rgb,r.rgb,band*uRingColor2.a);if(uRingReflect2.x>0.0){vec3 f=reflectAt(uGame2,p,uTube2,uRect2,uRingOut2,uFx2,uRotation.y,uRingReflect2);c.rgb=mix(c.rgb,1.0-(1.0-c.rgb)*(1.0-f),band);}}}
   float mi=shapeMask(p,uTube,uShape);if(dual>0.5)mi=max(mi,shapeMask(p,uTube2,uShape2));c.a*=1.0-mi;
   frag=c;return;}
  if(uMenuOn<0.5||!inside(p,uMenuRect))discard;vec2 q=uv(p,uMenuRect);q.y=1.0-q.y;frag=texture(uMenu,q);
