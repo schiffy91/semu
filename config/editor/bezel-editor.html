@@ -631,8 +631,7 @@ function drawCutouts(layer) {  // like Mega Bezel: the ring, the black edge insi
     if (ring && ring.outer && ring.inner) {
       if (filled) { ctx.fillStyle = ring.color || "#202020"; rectPath(screen, "outer"); ctx.fill(); }
       else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
-      if (filled) { ctx.fillStyle = "#000"; rectPath(screen, "inner"); ctx.fill(); }
-      if (reflecting) drawReflection(screen, ctx.globalAlpha);
+      if (reflecting) drawReflection(screen, ctx.globalAlpha);  // the lip runs to the picture edge: no black inner rectangle, no second outline
     } else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
     if (screen.tube && state.showGame) {
       const picture = pictureRect(screen);
