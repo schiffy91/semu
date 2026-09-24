@@ -204,7 +204,8 @@ class GameBoySpecBezels {
         JSONValue dmg = SemuBezelPackage.load(fixture.plan, "gb-dmg-shell");
         JSONValue studio = SemuBezelPackage.load(fixture.plan, "gb-studio");
         contract.expect(SemuJson.textAt(dmg, "art").equals("assets/bezels/gb/dmg-shell.png") && SemuJson.textAt(studio, "art").equals("assets/bezels/gb/classic.png"), "gb packages draw the DMG shell and the studio render");
-        contract.expect(SemuJson.textAt(SemuBezelPackage.screen(dmg, "main"), "glass.asset").equals("assets/bezels/gb/dmg-glass.png"), "the DMG shell carries its lens glass");
+        JSONValue dmgGlass = SemuBezelPackage.screen(dmg, "main").get("glass");
+        contract.expect(dmgGlass == null || !dmgGlass.isObject(), "the DMG lens is drawn as its glass layer, not as the picture's glass texture");
         JSONValue studioGlass = SemuBezelPackage.screen(studio, "main").get("glass");
         contract.expect(studioGlass == null || !studioGlass.isObject(), "the studio render has no separate glass");
         for package in [dmg, studio] {
@@ -287,8 +288,7 @@ class GameBoySpecMatrix {
                     contract.expect(GameBoySpecMatrix.entry(environment, "SEMU_RENDER_BEZELS").equals(package.isEmpty() ? "0" : "1") && GameBoySpecMatrix.entry(environment, "SEMU_RENDER_BEZEL_ID").equals(package), cell + ": the bezel follows the variant setting");
                     string glass = GameBoySpecMatrix.entry(environment, "SEMU_RENDER_SCREEN_0_GLASS");
                     bool glassMatches = glass.len() == 0;
-                    if (bezel.equals("dmg")) { glassMatches = glass.endsWith("/assets/bezels/gb/dmg-glass.png"); }
-                    contract.expect(glassMatches, cell + ": only the DMG shell draws lens glass");
+                    contract.expect(glassMatches, cell + ": no package draws its lens over the picture");
                     contract.expect(GameBoySpecMatrix.entry(environment, "SEMU_RENDER_INTEGER_SCALE").equals(integer ? "1" : "0"), cell + ": integer scaling follows the setting");
                     contract.expect(environment.contains("SEMU_RENDER_SURFACE_0_NATIVE=160x144") && environment.contains("SEMU_RENDER_ASPECT=10:9"), cell + ": the surface stays 160x144 at 10:9");
                     seen.push(environment.join("\n"));
