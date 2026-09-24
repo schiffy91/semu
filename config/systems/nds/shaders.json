@@ -5,7 +5,7 @@
   "screen": "assets/shaders/nds/screen.slangp",
   "doc": {
     "intent": "Nintendo DS LCD pixel structure and panel color response; each screen receives an independent shader instance",
-    "screens": "the default names a preset per screen: grid on the integer-scaled main screen, matte on the fractional touch screen"
+    "screens": "both screens use the LCD grid: the layout scales them by the same whole multiple"
   },
   "variants": [
     {
@@ -14,7 +14,7 @@
       "screen": "assets/shaders/nds/screen.slangp",
       "screens": {
         "top": "assets/shaders/nds/top.slangp",
-        "bottom": "assets/shaders/nds/bottom.slangp"
+        "bottom": "assets/shaders/nds/top.slangp"
       }
     },
     {

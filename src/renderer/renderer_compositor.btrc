@@ -264,6 +264,8 @@ struct RendererGlResources {
     char failure_reason[64];
     int uniform_game;
     int uniform_game2;
+    int uniform_raw;   // the unshaded frames, which reflections mirror
+    int uniform_raw2;
     int uniform_bezel;
     int uniform_glass;
     int uniform_glass2;
@@ -1142,11 +1144,15 @@ class RendererResources {
         if (resources->uniform_game2 >= 0) { gl->uniform_1i(resources->uniform_game2, 4); }
         if (resources->uniform_glass2 >= 0) { gl->uniform_1i(resources->uniform_glass2, 5); }
         if (resources->uniform_background >= 0) { gl->uniform_1i(resources->uniform_background, 6); }
+        if (resources->uniform_raw >= 0) { gl->uniform_1i(resources->uniform_raw, 7); }
+        if (resources->uniform_raw2 >= 0) { gl->uniform_1i(resources->uniform_raw2, 8); }
     }
 
     class void lookupUniforms(struct RendererGlApi* gl, struct RendererGlResources* resources) {
         resources->uniform_game = RendererResources.uniform(gl, resources, "uGame");
         resources->uniform_game2 = RendererResources.uniform(gl, resources, "uGame2");
+        resources->uniform_raw = RendererResources.uniform(gl, resources, "uRaw");
+        resources->uniform_raw2 = RendererResources.uniform(gl, resources, "uRaw2");
         resources->uniform_bezel = RendererResources.uniform(gl, resources, "uBezel");
         resources->uniform_glass = RendererResources.uniform(gl, resources, "uGlass");
         resources->uniform_glass2 = RendererResources.uniform(gl, resources, "uGlass2");
@@ -1757,6 +1763,12 @@ class RendererCompositor {
         gl->bind_sampler(6, 0);
         gl->bind_texture((unsigned int)RGL_TEXTURE_2D,
             resources->background_textures[variantIndex]);
+        gl->active_texture((unsigned int)(RGL_TEXTURE0 + 7));  // reflections mirror the picture's light, not the CRT mask and scanlines
+        gl->bind_sampler(7, 0);
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->raw_textures[0]);
+        gl->active_texture((unsigned int)(RGL_TEXTURE0 + 8));
+        gl->bind_sampler(8, 0);
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->raw_textures[second]);
 
         gl->disable((unsigned int)RGL_DEPTH_TEST);
         gl->disable((unsigned int)RGL_SCISSOR_TEST);

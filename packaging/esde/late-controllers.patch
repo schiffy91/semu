@@ -1,0 +1,40 @@
+--- a/es-app/src/main.cpp
++++ b/es-app/src/main.cpp
+@@ -1221,6 +1221,7 @@
+ 
+         // Generate controller events since we're done loading.
+         SDL_GameControllerEventState(SDL_ENABLE);
++        InputManager::getInstance().addMissingControllers(window);
+ 
+         lastTime = SDL_GetTicks();
+ 
+--- a/es-core/src/InputManager.cpp	2026-09-24 00:37:05
++++ b/es-core/src/InputManager.cpp	2026-09-24 00:37:05
+@@ -653,6 +653,16 @@
+ #endif
+ }
+ 
++void InputManager::addMissingControllers(Window* window)
++{
++    // On macOS a controller can connect while controller events are disabled during loading,
++    // and its added event is then dropped, so add any connected controller not yet known.
++    for (int i {0}; i < SDL_NumJoysticks(); ++i) {
++        if (SDL_IsGameController(i) && mJoysticks.find(SDL_JoystickGetDeviceInstanceID(i)) == mJoysticks.end())
++            addControllerByDeviceIndex(window, i);
++    }
++}
++
+ void InputManager::addControllerByDeviceIndex(Window* window, int deviceIndex)
+ {
+     // Open joystick and add it to our list.
+--- a/es-core/src/InputManager.h	2026-09-24 00:37:05
++++ b/es-core/src/InputManager.h	2026-09-24 00:37:05
+@@ -46,6 +46,8 @@
+     bool parseEvent(const SDL_Event& event);
+ 
+     int getNumJoysticks() { return static_cast<int>(mJoysticks.size()); }
++    // Adds controllers that connected while controller events were disabled.
++    void addMissingControllers(Window* window);
+ 
+ private:
+     InputManager() noexcept;
