@@ -14,7 +14,7 @@ stdenv.mkDerivation {
 
   src = source;  # the flake input pins the GitLab revision
 
-  patches = [ ./settings-menu.patch ];  # SEMU SETTINGS entry in the main menu
+  patches = [ ./settings-menu.patch ./late-controllers.patch ];  # SEMU SETTINGS entry in the main menu; pads that connect during loading
   allowSubstitutes = false;  # never a cache binary
 
   # Route the macOS dependency branches to the generic Unix find_package ones.
