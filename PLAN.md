@@ -655,13 +655,31 @@ state under `~/Library/Application Support/Semu`. Done and observed on mbp21:
   ARB_buffer_storage, performance may be poor" notice). A Vulkan (MoltenVK) trial exited
   before capture while the screen was locking, so it is not adopted.
 
+- Standalone emulators on the Mac, observed on screen 2026-09-23 through `semu launch` with
+  scratch state: Dolphin runs GameCube (an intro video) and Wii (Animal Crossing loading) on
+  OpenGL; Ryujinx boots Animal Crossing fullscreen to its controller applet (no pad
+  connected) after two fixes, firmware seeded on macOS and `use_hypervisor` off (the unsigned
+  Nix build stalls after loading the game with Apple's hypervisor); Azahar runs Ace Combat on
+  Vulkan with both screens, after a source patch skips its "run it through `open`" dialog.
+- RetroArch cores wrote into the read-only library's system folder (melonDS
+  `firmware.bin.bak`, Mupen64Plus `mupen64plus.ini`). RetroArch's `system_directory` is now a
+  state-root copy of the library's, seeded by a new `missing_files` mode: copy the whole tree
+  once, then add only files the copy lacks, never replace (contract-tested; first copy of
+  545 MB, 3346 files, is about a second once Drive has the files locally). Re-run: N64 and
+  DS write into the copy and the library is untouched.
+- Semu.app is the responsible process for everything it starts, so macOS TCC killed ES-DE for
+  Bluetooth without a usage string; Semu.app now declares Bluetooth, microphone and camera,
+  and `semu-es-de` stops macOS holding ES-DE at a reopen-windows prompt after a crash.
+  `tests/visual/mac-locked.sh` checks every RetroArch system while the screen is locked.
+
 Still open on the Mac:
-- Dolphin on Vulkan (MoltenVK ships in the build): try it on an unlocked screen.
-- On-screen observation: Semu.app launching ES-DE over the real library, a game from ES-DE,
-  Wii through Dolphin, Azahar and Ryujinx (MoltenVK is on `LD_LIBRARY_PATH` in the nixpkgs wrapper, which macOS's
-  loader may ignore). The first `semu-es-de` run installs ES-DE documents into `~/ES-DE`, the
-  owner's live ES-DE home, so run it against a scratch home first. The screen was locked
-  after the owner left; GL apps die on a locked screen.
+- ES-DE through Semu.app, seen only through its log and stacks (the owner declined computer-use
+  control): SDL3's CoreAudio open waits about six minutes on the default device, a Neural DSP
+  Quad Cortex, where RetroArch's CoreAudio plays at once; listing the Drive-hosted ROM folders
+  then blocks, most likely on macOS's one-time "access files in Google Drive" consent for
+  Semu.app, which only the owner can grant. A game launched from ES-DE is not yet observed.
+- Dolphin on Vulkan (MoltenVK ships in the build) exits at once in batch mode; OpenGL stays.
+- Signing Ryujinx with the hypervisor entitlement would bring the hypervisor back.
 
 ### G9. Observation still missing (needs hardware)
 
