@@ -622,10 +622,11 @@ function pictureRect(screen) {  // the picture rectangle, or the aspect-fitted p
   const w = Math.min(t.w, Math.round(t.h * aspect)), h = Math.min(t.h, Math.round(t.w / aspect));
   return { x: t.x + Math.round((t.w - w) / 2), y: t.y + Math.round((t.h - h) / 2), w, h };
 }
-function drawGapGlow(screen, baseAlpha) {  // light from the picture scattered in the glass around it: dim, diffuse, strongest at the picture edge (gapGlow in config/render/compositor.frag)
-  const picture = pictureRect(screen), reach = 0.03 * Math.min(picture.w, picture.h) * state.zoom;
-  ctx.save(); rectPath(screen, "inner"); ctx.clip();
-  ctx.globalAlpha = baseAlpha * Math.min(1, screen.reflection.strength * 0.6);
+function drawGapGlow(screen, baseAlpha) {  // light from the picture scattered across the glass and the dark band out to the plastic: diffuse, strongest at the picture edge (gapGlow in config/render/compositor.frag)
+  const picture = pictureRect(screen), outer = screen.ring.outer;
+  const reach = 0.5 * Math.min(Math.max((outer.w - picture.w) / 2, 1), Math.max((outer.h - picture.h) / 2, 1)) * state.zoom;
+  ctx.save(); rectPath(screen, "outer"); ctx.clip();
+  ctx.globalAlpha = baseAlpha * Math.min(1, screen.reflection.strength);
   ctx.globalCompositeOperation = "screen"; ctx.filter = `blur(${reach.toFixed(1)}px)`;
   const [x, y] = toScreen(picture.x, picture.y); drawTestCard(x, y, picture.w * state.zoom, picture.h * state.zoom, screen.id === "bottom");
   ctx.restore();
