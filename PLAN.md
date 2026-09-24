@@ -677,7 +677,7 @@ Still open on the Mac:
   control): SDL3's CoreAudio open waits about six minutes on the default device, a Neural DSP
   Quad Cortex, where RetroArch's CoreAudio plays at once; listing the Drive-hosted ROM folders
   then blocks, most likely on macOS's one-time "access files in Google Drive" consent for
-  Semu.app, which only the owner can grant. A game launched from ES-DE is not yet observed.
+  Semu.app, which only the owner can grant. ES-DE's own launch command for a gb game (the `semu-retroarch` shim with an absolute `%ROM%`) plays, saves and quits via QUIT, after the bundle started defaulting and exporting `SEMU_TARGET` (the shims had run as linux-desktop and refused every macOS ROM, 3609a69). Linux checks pass in the VM with the system-folder copy (contracts 2764, launch-systems, real-cores).
 - Dolphin on Vulkan (MoltenVK ships in the build) exits at once in batch mode; OpenGL stays.
 - Signing Ryujinx with the hypervisor entitlement would bring the hypervisor back.
 
