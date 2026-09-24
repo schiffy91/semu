@@ -38,6 +38,7 @@ symlinkJoin {
     "$out/bin/semu" prepare --target "\$target" || exit 1
     "$out/bin/semu" sync start --target "\$target" >/dev/null 2>&1 || true
     home="\$("$out/bin/semu" path esde_home --target "\$target")" || exit 1
+    ${lib.optionalString (platform == "macos") ''/usr/bin/defaults write org.es-de.frontend ApplePersistenceIgnoreState -bool YES  # after a crash macOS would hold ES-DE at a modal "reopen windows?" prompt''}
     exec "$out/bin/es-de" --home "\$home" "\$@"
     LAUNCHER
     chmod +x "$out/bin/semu-es-de"
@@ -58,6 +59,10 @@ symlinkJoin {
     <key>CFBundleName</key><string>Semu</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>LSMinimumSystemVersion</key><string>11.0</string>
+    <key>LSApplicationCategoryType</key><string>public.app-category.games</string>
+    <key>NSBluetoothAlwaysUsageDescription</key><string>ES-DE shows the Bluetooth status and emulators read Bluetooth controllers.</string>
+    <key>NSMicrophoneUsageDescription</key><string>Emulators pass the microphone to games that use one.</string>
+    <key>NSCameraUsageDescription</key><string>Emulators pass the camera to games that use one.</string>
     </dict></plist>
     PLIST
   '' + lib.optionalString (platform == "linux") ''

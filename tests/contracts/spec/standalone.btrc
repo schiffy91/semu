@@ -172,7 +172,7 @@ class StandaloneSpecContract {
                 Vector<string> sources = SemuJson.strings(seed.get("sources"));
                 contract.expect(StandaloneSpecContract.filled(seed, "purpose"), label + " has a purpose");
                 contract.expect(target.startsWith("${state_root}/") && resolved.startsWith(stateRoot + "/"), label + " targets the state root");
-                contract.expect(SemuJson.textAt(seed, "copy").equals("once_if_target_absent") && !SemuJson.boolAt(seed, "overwrite", true), label + " copies once, never overwrites");
+                contract.expect((SemuJson.textAt(seed, "copy").equals("once_if_target_absent") || SemuJson.textAt(seed, "copy").equals("missing_files")) && !SemuJson.boolAt(seed, "overwrite", true), label + " copies without overwriting");
                 contract.expect(SemuJson.textAt(seed, "source_access").equals("read_only"), label + " reads its sources only");
                 contract.expect(!sources.isEmpty(), label + " lists sources");
                 for source in sources { contract.expect(fixture.plan.tokens.resolved(fixture.plan.tokens.resolve(source)), label + " source resolves: " + source); }

@@ -114,7 +114,7 @@ class RetroArchProfileContract {
         contract.contains(cfg, "global_core_options = \"true\"", "core options come from the generated global file");
         contract.contains(cfg, "quit_press_twice = \"false\"", "a single QUIT command exits");
         contract.contains(cfg, "video_driver = \"glcore\"", "core-profile GL so hardware-rendered cores initialise");
-        contract.contains(cfg, "system_directory = \"" + fixture.plan.path("emulation_root") + "/RetroArch/config/system\"", "BIOS and core assets come from the existing RetroArch system directory");
+        contract.contains(cfg, "system_directory = \"" + PathTools.join(fixture.plan.stateRoot(), "retroarch/system") + "\"", "BIOS and core assets come from a state-root copy of the library's system directory, which cores may write");
         contract.contains(cfg, "input_save_state = \"s\"", "save state hotkey");
         contract.contains(cfg, "input_enable_hotkey_btn = \"nul\"", "RetroArch gamepad hotkeys are unbound: the supervisor owns Select chords");
         contract.contains(cfg, "input_save_state_btn = \"nul\"", "save state is not a RetroArch pad hotkey");

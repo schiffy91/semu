@@ -246,6 +246,27 @@ class LaunchSpecGameControllers {  // macOS pads keep a slot per controller; one
     }
 }
 
+class LaunchSpecSystemFiles {  // RetroArch's system folder is a copy in the state root: cores never write the library
+    class void run(Contract contract, Fixture fixture) {
+        string library = PathTools.join(fixture.scratch, "launch-spec/emulation");
+        string bios = PathTools.join(library, "RetroArch/config/system");
+        FileSystem.mkdirp(PathTools.join(bios, "Mupen64plus"));
+        FileSystem.writeText(PathTools.join(bios, "firmware.bin"), "library firmware");
+        FileSystem.writeText(PathTools.join(bios, "Mupen64plus/mupen64plus.ini"), "library ini");
+        fixture.plan.tokens.put("emulation_root", library);
+        SemuLaunchPlan first = LaunchSpecTools.retroarchPlan(fixture);
+        string system = PathTools.join(fixture.plan.stateRoot(), "retroarch/system");
+        contract.expect(first.ok() && FileSystem.readText(PathTools.join(system, "Mupen64plus/mupen64plus.ini")).equals("library ini"), "the library's system files are copied into the state root: " + first.error);
+        contract.contains(FileSystem.readText(PathTools.join(fixture.plan.stateRoot(), "retroarch/retroarch.cfg")), "system_directory = \"" + system + "\"", "RetroArch's system_directory is that copy, never the library");
+        FileSystem.writeText(PathTools.join(system, "Mupen64plus/mupen64plus.ini"), "rewritten by the core");
+        FileSystem.writeText(PathTools.join(bios, "scph5501.bin"), "added later");
+        SemuLaunchPlan second = LaunchSpecTools.retroarchPlan(fixture);
+        contract.expect(second.ok() && FileSystem.readText(PathTools.join(system, "scph5501.bin")).equals("added later"), "a BIOS file added to the library later reaches the copy");
+        contract.expect(FileSystem.readText(PathTools.join(system, "Mupen64plus/mupen64plus.ini")).equals("rewritten by the core"), "a file a core rewrote is never replaced");
+        contract.expect(FileSystem.readText(PathTools.join(bios, "Mupen64plus/mupen64plus.ini")).equals("library ini"), "the library copy is untouched");
+    }
+}
+
 class LaunchSpecLayout {  // the supervisor is split and styled
     class void run(Contract contract, Fixture fixture) {
         for name in ["supervisor", "actions", "input_state", "process", "plan", "gamepad"] {
@@ -264,6 +285,7 @@ class LaunchSpecContract {
         LaunchSpecOrphans.run(contract);
         LaunchSpecJournal.run(contract);
         LaunchSpecGameControllers.run(contract, fixture);
+        LaunchSpecSystemFiles.run(contract, fixture);
         LaunchSpecSettings.run(contract, fixture);
         LaunchSpecSync.run(contract, fixture);
         LaunchSpecSettingsUi.run(contract, fixture);
