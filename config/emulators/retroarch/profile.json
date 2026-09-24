@@ -136,6 +136,7 @@
         "config_save_on_exit = \"false\"",
         "global_core_options = \"true\"",
         "quit_press_twice = \"false\"",
+        "pause_nonactive = \"false\"",
         {
           "if": "audio_driver",
           "line": "audio_driver = \"${audio_driver}\""
