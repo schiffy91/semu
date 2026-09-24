@@ -285,7 +285,9 @@ class RenderingContract {
         contract.expect(full.contains("SEMU_RENDER_SHADER_PRESET=" + assets + "/share/libretro/shaders/semu/gb/screen.slangp"), "shader preset path");
         contract.expect(full.contains("SEMU_RENDER_ART=" + assets + "/share/semu/assets/bezels/gb/dmg-shell.png"), "bezel art path");
         contract.expect(full.contains("SEMU_RENDER_BACKGROUND=" + assets + "/share/semu/assets/bezels/backgrounds/desk-night.png"), "the package background plate");
-        contract.expect(full.contains("SEMU_RENDER_SCREEN_0_GLASS=" + assets + "/share/semu/assets/bezels/gb/dmg-glass.png"), "the lens glass plate is per screen");
+        bool screenGlass = false;
+        for entry in full { if (entry.startsWith("SEMU_RENDER_SCREEN_0_GLASS=")) { screenGlass = true; } }
+        contract.expect(!screenGlass, "the DMG lens is a layer, never the picture's glass texture, which would shrink the whole lens into the game");
         bool hole = false;
         bool surround = false;
         for entry in full {

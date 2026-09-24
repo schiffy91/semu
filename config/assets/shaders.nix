@@ -182,6 +182,12 @@ stdenvNoCC.mkDerivation {
   installPhase = ''
     runHook preInstall
     ${lib.concatStrings (lib.mapAttrsToList stageTree sources.trees)}
+    # Constant two-dimensional tables need GLSL 4.3 (arrays of arrays); macOS OpenGL stops at 4.1,
+    # where the CRT mask code would not compile. Flattened, the shaders draw the same picture.
+    chmod -R u+w "$out/${root}"
+    grep -RlE --include='*.slang' --include='*.inc' --include='*.h' \
+      'const[[:space:]]+[A-Za-z0-9_]+[[:space:]]+[A-Za-z0-9_]+\[[0-9]+\]\[[0-9]+\]' "$out/${root}" \
+      | while IFS= read -r shader; do gawk -f ${./flatten-shader-tables.awk} "$shader" > "$shader.flat" && mv "$shader.flat" "$shader"; done
     ${lib.concatStrings (lib.mapAttrsToList emitWrapper slangAssets)}
     ${lib.concatStrings (lib.mapAttrsToList emitPipeline pipelineAssets)}
     runHook postInstall
