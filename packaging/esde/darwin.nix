@@ -3,7 +3,7 @@
 { lib, stdenv, esDePackages, source }:
 
 let
-  version = "3.4.0";
+  version = "3.4.1";
   inherit (esDePackages) cmake gettext pkg-config curl ffmpeg freeimage freetype harfbuzz icu libgit2 poppler pugixml SDL2;
   app = "Applications/ES-DE.app/Contents";
 in
