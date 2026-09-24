@@ -53,6 +53,8 @@ stdenv.mkDerivation {
     for theme in linear-es-de modern-es-de slate-es-de; do cp -R "$root/themes/$theme" "$out/${app}/Resources/themes/$theme"; done
     cp "$root/es-app/assets/ES-DE.icns" "$out/${app}/Resources/ES-DE.icns"
     sed -e 's/@ES_VERSION@/${version}/g' "$root/es-app/assets/ES-DE_Info.plist" > "$out/${app}/Info.plist"
+    substituteInPlace "$out/${app}/Info.plist" \
+      --replace-fail $'<key>CFBundleIdentifier</key>\n    <string>${version}</string>' $'<key>CFBundleIdentifier</key>\n    <string>org.es-de.frontend</string>'  # upstream's template carries the version as the identifier
     printf '#!/bin/sh\nexec "%s" "$@"\n' "$out/${app}/MacOS/ES-DE" > "$out/bin/es-de"  # not a symlink: ES-DE finds Resources beside its real path
     chmod 755 "$out/bin/es-de"
     ln -s "../../${app}/Resources/themes" "$out/share/es-de/themes"
