@@ -802,7 +802,7 @@ Update this block whenever a milestone criterion changes state.
   `tests/visual/capture.sh` (Xvfb, real GPU): NES with NTSC composite, SNES,
   N64, PSX, Game Boy DMG, DS dual-screen and Dreamcast through the preload
   all inspected.
-  ES-DE settings menu: ES-DE 3.4.0 carries the settings-menu patch; the
+  ES-DE settings menu: ES-DE 3.4.1 (upgraded from 3.4.0 on 2026-09-23) carries the settings-menu patch; the
   SEMU SETTINGS entry renders the document `semu settings ui` returns and
   saves through `semu settings put`. Observed: virtual-keyboard drive of the
   real ES-DE through MAIN MENU > SEMU SETTINGS > VISUALS, toggling BEZELS and

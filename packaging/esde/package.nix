@@ -2,7 +2,7 @@
 { lib, stdenv, esDePackages, source }:
 
 let
-  version = "3.4.0";
+  version = "3.4.1";
 in
 assert lib.assertMsg (stdenv.hostPlatform.system == "x86_64-linux") "ES-DE: only x86_64-linux is packaged";
 esDePackages.emulationstation-de.overrideAttrs (previous: {
@@ -11,8 +11,8 @@ esDePackages.emulationstation-de.overrideAttrs (previous: {
 
   src = source;  # the flake input pins the GitLab revision
 
-  patches = (previous.patches or [ ]) ++ [ ./settings-menu.patch ];
-  allowSubstitutes = false;  # never a cache binary  # SEMU SETTINGS entry in the main menu
+  patches = [ ./settings-menu.patch ];  # SEMU SETTINGS entry; nixpkgs' core find-rules patch is dropped, Semu writes its own find rules
+  allowSubstitutes = false;  # never a cache binary
 
   cmakeFlags = (previous.cmakeFlags or [ ]) ++ [ (esDePackages.lib.cmakeBool "APPLICATION_UPDATER" false) ];
 
