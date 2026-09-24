@@ -28,7 +28,7 @@ frontend beneath it.
  #define CONVERT_POINT() [apple_platform.renderView convertPoint:[event locationInWindow] fromView:nil]
  #else
  #define CONVERT_POINT() [[CocoaView get] convertPoint:[event locationInWindow] fromView:nil]
-@@ -749,26 +762,54 @@
+@@ -749,26 +762,61 @@
  - (apple_view_type_t)viewType { return _vt; }
  - (id)renderView { return _renderView; }
  - (bool)hasFocus { return [NSApp isActive]; }
@@ -39,7 +39,7 @@ frontend beneath it.
 +static bool     semu_borderless;
 +static NSRect   semu_windowed_frame;
 +static NSUInteger semu_windowed_style;
- 
++
 +- (void)setBorderlessFullscreen:(bool)on
 +{
 +   if (on == semu_borderless)
@@ -51,6 +51,13 @@ frontend beneath it.
 +         screen           = self.window.screen ? self.window.screen : [NSScreen mainScreen];
 +      semu_windowed_frame = self.window.frame;
 +      semu_windowed_style = self.window.styleMask;
++      /* A native fullscreen Space made RetroArch the active app; a window
++       * on the frontend's Space does not, and the Dock and menu bar only
++       * hide for the active app. */
++      if ([NSApp respondsToSelector:@selector(activate)])
++         [NSApp performSelector:@selector(activate)];
++      else
++         [NSApp activateIgnoringOtherApps:YES];
 +      [NSApp setPresentationOptions:NSApplicationPresentationHideDock
 +         | NSApplicationPresentationHideMenuBar];
 +      self.window.styleMask = NSWindowStyleMaskBorderless;
@@ -65,7 +72,7 @@ frontend beneath it.
 +   }
 +   semu_borderless = on;
 +}
-+
+ 
  - (void)setVideoMode:(gfx_ctx_mode_t)mode
  {
     BOOL is_fullscreen = (self.window.styleMask

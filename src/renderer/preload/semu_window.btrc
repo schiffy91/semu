@@ -44,7 +44,7 @@ struct SemuWindowState {
     __fn_ptr<void, void*, void*, void*> setObject;
     __fn_ptr<void, void*, void*, signed char> setBoolean;
     __fn_ptr<void, void*, void*, struct SemuWindowRect, signed char> setFrame;
-    __fn_ptr<signed char, void*, void*, void*> isKind;
+    __fn_ptr<signed char, void*, void*, void*> predicate;  // isKindOfClass:, respondsToSelector:
     __fn_ptr<void, void*, void*, void*> toggle;
     __fn_ptr<void, void*, void*, long, long> order;
     __fn_ptr<void, void*, void*, unsigned long> style;
@@ -85,7 +85,7 @@ class SemuWindowShim {
         unsigned long style = SemuWindow.sendUnsigned(window, SemuWindowShim.selector("styleMask"));
         void* panel = (void*)objc_lookUpClass("NSPanel");
         if ((style & 1ul) == 0ul) { return false; }  // NSWindowStyleMaskTitled
-        if (panel != null && SemuWindow.isKind(window, SemuWindowShim.selector("isKindOfClass:"), panel) != 0) { return false; }
+        if (panel != null && SemuWindow.predicate(window, SemuWindowShim.selector("isKindOfClass:"), panel) != 0) { return false; }
         return true;
     }
 
@@ -139,7 +139,11 @@ class SemuWindowShim {
         entry->windowedFrame = SemuWindow.sendRect(window, SemuWindowShim.selector("frame"));
         entry->fullscreen = true;
         void* application = SemuWindowShim.application();
-        SemuWindow.setBoolean(application, SemuWindowShim.selector("activateIgnoringOtherApps:"), (signed char)1);
+        if (SemuWindow.predicate(application, SemuWindowShim.selector("respondsToSelector:"), SemuWindowShim.selector("activate")) != 0) {  // macOS 14 and later
+            SemuWindow.sendObject(application, SemuWindowShim.selector("activate"));
+        } else {
+            SemuWindow.setBoolean(application, SemuWindowShim.selector("activateIgnoringOtherApps:"), (signed char)1);
+        }
         SemuWindow.setUnsigned(application, SemuWindowShim.selector("setPresentationOptions:"), (1ul << 1) | (1ul << 3));  // hide Dock and menu bar
         SemuWindow.style(window, SemuWindowShim.selector("setStyleMask:"), 0ul);  // borderless
         SemuWindow.setFrame(window, SemuWindowShim.selector("setFrame:display:"), SemuWindow.sendRect(screen, SemuWindowShim.selector("frame")), (signed char)1);
@@ -205,7 +209,7 @@ class SemuWindowShim {
         SemuWindowShim.bind(&SemuWindow.setObject, send);
         SemuWindowShim.bind(&SemuWindow.setBoolean, send);
         SemuWindowShim.bind(&SemuWindow.setFrame, send);
-        SemuWindowShim.bind(&SemuWindow.isKind, send);
+        SemuWindowShim.bind(&SemuWindow.predicate, send);
         void* toggleMethod = (void*)class_getInstanceMethod(windowClass, sel_registerName("toggleFullScreen:"));
         void* orderMethod = (void*)class_getInstanceMethod(windowClass, sel_registerName("orderWindow:relativeTo:"));
         void* styleMethod = (void*)class_getInstanceMethod(windowClass, sel_registerName("setStyleMask:"));

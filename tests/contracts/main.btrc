@@ -485,6 +485,7 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
         contract.contains(desktop.profile("azahar", "config/azahar-emu/qt-config.ini"), "graphics_api=1\n", "Linux Azahar keeps OpenGL");
         contract.contains(macProfile, "video_gpu_screenshot = \"false\"", "screenshots are the core frame: a GPU capture at 6K made the PNG encoder stall the task queue, so SAVE_STATE and QUIT waited");
         contract.contains(macProfile, "history_list_enable = \"false\"", "RetroArch keeps no history in ~/Documents on macOS");
+        contract.contains(macProfile, "pause_nonactive = \"false\"", "RetroArch keeps running without focus: on ES-DE's Space macOS may not make it the active app, and it paused on a black first frame");
         contract.contains(mac.profile("ryujinx", "config/Ryujinx/Config.json"), "\"use_hypervisor\": false", "macOS Ryujinx runs without Apple's hypervisor: the Nix build lacks its entitlement and stalls after loading the game");
         contract.contains(desktop.profile("ryujinx", "config/Ryujinx/Config.json"), "\"use_hypervisor\": true", "Linux keeps Ryujinx's setting, a JSON boolean");
         contract.contains(mac.model.emulator("ryujinx").platform("macos").stringify(), "switch_firmware", "macOS Ryujinx seeds the Switch firmware from the library");

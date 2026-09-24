@@ -2,9 +2,10 @@
 # Every RetroArch system of the macos target, run while the Mac's screen is locked, so nothing ever
 # reaches the owner's display. The lock hides the windows; the checks read what RetroArch itself
 # reports: two core frames that are not blank and differ (the game runs), a state saved and loaded,
-# and an exit within two seconds of QUIT. Each launch is semu's own plan (`--print-plan`) with one
-# test-only line appended, `pause_nonactive = "false"`, because a locked session never focuses a
-# window. The library is read-only; everything written goes to OUT_DIR.
+# and an exit within two seconds of QUIT. Each launch is semu's own plan (`--print-plan`); its profile
+# already keeps RetroArch running without focus, which a locked session never gives. The display
+# must be lit behind the lock: RetroArch's draw loop stalls while it sleeps. The library is
+# read-only; everything written goes to OUT_DIR.
 # usage: mac-locked.sh BUNDLE OUT_DIR [system...]   (refuses to run while the screen is unlocked)
 set -uo pipefail
 bundle="$(cd "$1" && pwd -P)"; out="$2"; shift 2
@@ -28,8 +29,7 @@ for system in "${systems[@]}"; do
   "$bundle/bin/semu" launch retroarch --system "$system" --rom "$rom" --target macos --asset-root "$bundle" --semu-home "$work/home" \
     --settings-json "{\"paths\":{\"state_root\":\"$work/state\",\"content_root\":\"$work/content\"}}" --print-plan > "$work/plan.json" \
     || { echo "$system: no launch plan"; failures=$((failures + 1)); continue; }
-  printf 'pause_nonactive = "false"\n' > "$work/test-only.cfg"
-  mapfile -t command < <(jq -r --arg extra "$work/test-only.cfg" '.argv[0:2] + ["--appendconfig", $extra] + .argv[2:] | .[]' "$work/plan.json")
+  mapfile -t command < <(jq -r '.argv[]' "$work/plan.json")
   mapfile -t variables < <(jq -r '.environment[]' "$work/plan.json")
   env "${variables[@]}" "${command[@]}" > "$work/retroarch.log" 2>&1 &
   retroarch=$!
