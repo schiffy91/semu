@@ -11,7 +11,7 @@ esDePackages.emulationstation-de.overrideAttrs (previous: {
 
   src = source;  # the flake input pins the GitLab revision
 
-  patches = [ ./settings-menu.patch ];  # SEMU SETTINGS entry; nixpkgs' core find-rules patch is dropped, Semu writes its own find rules
+  patches = [ ./settings-menu.patch ./late-controllers.patch ];  # SEMU SETTINGS entry and pads that connect during loading; nixpkgs' core find-rules patch is dropped, Semu writes its own find rules
   allowSubstitutes = false;  # never a cache binary
 
   cmakeFlags = (previous.cmakeFlags or [ ]) ++ [ (esDePackages.lib.cmakeBool "APPLICATION_UPDATER" false) ];
