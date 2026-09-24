@@ -28,6 +28,7 @@ symlinkJoin {
     makeWrapper "$out/lib/semu/semu-btrc" "$out/bin/semu" \
       --set SEMU_ASSET_ROOT "$out" \
       --set SEMU_SOURCE_ROOT "$out/share/semu/config" \
+      --set-default SEMU_TARGET "${defaultTarget}" \
       --prefix PATH : "$out/bin"
     ${lib.concatMapStrings shim platformEmulators}
 
@@ -35,6 +36,7 @@ symlinkJoin {
     #!/bin/sh
     export PATH="$out/bin:\$PATH"  # ES-DE finds the semu-* shims on PATH; an app opened from Finder has only /usr/bin:/bin
     target="\''${SEMU_TARGET:-${defaultTarget}}"
+    export SEMU_TARGET="\$target"  # games ES-DE starts run through the semu-* shims, which must use the same target
     "$out/bin/semu" prepare --target "\$target" || exit 1
     "$out/bin/semu" sync start --target "\$target" >/dev/null 2>&1 || true
     home="\$("$out/bin/semu" path esde_home --target "\$target")" || exit 1
