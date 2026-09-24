@@ -1,0 +1,116 @@
+Semu's macOS launch transition. RetroArch entered fullscreen with a native
+fullscreen Space: its 480x360 nib window appeared first, then macOS slid to
+a black Space while the window grew. The frontend (ES-DE) is a borderless
+window on the desktop Space, so fullscreen here is the same: a borderless
+window covering the chosen screen, Dock and menu bar hidden. The window stays
+transparent until its first frame is presented, then fades in over the
+frontend beneath it.
+
+--- a/ui/drivers/ui_cocoa.m
++++ b/ui/drivers/ui_cocoa.m
+@@ -395,6 +395,19 @@
+ #endif
+ 
+ #ifdef HAVE_COCOA_METAL
++/* Semu: the nib window stays transparent until the first frame is presented,
++ * so a launch never shows an empty small window. A borderless fullscreen
++ * window must still take keyboard focus. */
++- (void)awakeFromNib
++{
++   [super awakeFromNib];
++   self.alphaValue = 0;
++}
++- (BOOL)canBecomeKeyWindow { return YES; }
++- (BOOL)canBecomeMainWindow { return YES; }
++#endif
++
++#ifdef HAVE_COCOA_METAL
+ #define CONVERT_POINT() [apple_platform.renderView convertPoint:[event locationInWindow] fromView:nil]
+ #else
+ #define CONVERT_POINT() [[CocoaView get] convertPoint:[event locationInWindow] fromView:nil]
+@@ -749,26 +762,54 @@
+ - (apple_view_type_t)viewType { return _vt; }
+ - (id)renderView { return _renderView; }
+ - (bool)hasFocus { return [NSApp isActive]; }
++
++/* Semu: fullscreen is a borderless window covering the chosen screen on the
++ * current Space, like the frontend's own window, instead of a native
++ * fullscreen Space: no slide to a black Space, no small window growing. */
++static bool     semu_borderless;
++static NSRect   semu_windowed_frame;
++static NSUInteger semu_windowed_style;
+ 
++- (void)setBorderlessFullscreen:(bool)on
++{
++   if (on == semu_borderless)
++      return;
++   if (on)
++   {
++      NSScreen *screen    = (BRIDGE NSScreen*)cocoa_screen_get_chosen();
++      if (!screen)
++         screen           = self.window.screen ? self.window.screen : [NSScreen mainScreen];
++      semu_windowed_frame = self.window.frame;
++      semu_windowed_style = self.window.styleMask;
++      [NSApp setPresentationOptions:NSApplicationPresentationHideDock
++         | NSApplicationPresentationHideMenuBar];
++      self.window.styleMask = NSWindowStyleMaskBorderless;
++      [self.window setFrame:screen.frame display:YES];
++      [self.window makeKeyAndOrderFront:nil];
++   }
++   else
++   {
++      [NSApp setPresentationOptions:NSApplicationPresentationDefault];
++      self.window.styleMask = semu_windowed_style;
++      [self.window setFrame:semu_windowed_frame display:YES];
++   }
++   semu_borderless = on;
++}
++
+ - (void)setVideoMode:(gfx_ctx_mode_t)mode
+ {
+    BOOL is_fullscreen = (self.window.styleMask
+          & NSWindowStyleMaskFullScreen) == NSWindowStyleMaskFullScreen;
++   if (is_fullscreen)
++      [self.window toggleFullScreen:self];
++   [self setBorderlessFullscreen:mode.fullscreen];
+    if (mode.fullscreen)
+    {
+-      if (!is_fullscreen)
+-      {
+-         [self.window toggleFullScreen:self];
+-         self.window.alphaValue = 1;
+-         return;
+-      }
++      [self.window displayIfNeeded];
++      return;
+    }
+    else
+-   {
+-      if (is_fullscreen)
+-         [self.window toggleFullScreen:self];
+       [self updateWindowedSize:mode];
+-   }
+ 
+    /* HACK(sgc): ensure MTKView posts a drawable resize event */
+    if (mode.width > 0)
+--- a/gfx/drivers_context/cocoa_gl_ctx.m	2026-09-24 00:55:11
++++ b/gfx/drivers_context/cocoa_gl_ctx.m	2026-09-24 00:59:24
+@@ -321,6 +321,18 @@
+ #ifdef OSX
+    [g_ctx flushBuffer];
+    [g_hw_ctx  flushBuffer];
++#ifdef HAVE_COCOA_METAL
++   {
++      /* Semu: the window appears with its first frame, fading in over the
++       * frontend beneath it across the first frames (see RAWindow
++       * awakeFromNib). Frame-driven: an animation would never advance
++       * while no display is lit, and a transparent window is throttled. */
++      static unsigned presented = 0;
++      if (presented < 10)
++         ((NSView*)apple_platform.renderView).window.alphaValue =
++            (CGFloat)++presented / 10.0;
++   }
++#endif
+ #else
+    cocoa_ctx_data_t *cocoa_ctx = (cocoa_ctx_data_t*)data;
+    if (!(--cocoa_ctx->fast_forward_skips < 0))

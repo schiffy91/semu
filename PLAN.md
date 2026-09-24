@@ -671,6 +671,23 @@ state under `~/Library/Application Support/Semu`. Done and observed on mbp21:
   Bluetooth without a usage string; Semu.app now declares Bluetooth, microphone and camera,
   and `semu-es-de` stops macOS holding ES-DE at a reopen-windows prompt after a crash.
   `tests/visual/mac-locked.sh` checks every RetroArch system while the screen is locked.
+- Launch transition (2026-09-24). Every emulator entered macOS's native fullscreen, a new
+  Space: ES-DE gave way to a small titled window, a slide to a black Space, then the window
+  grew. ES-DE itself is a borderless window on the desktop Space, so game windows now are
+  too. RetroArch has a source patch (`retroarch_darwin_fullscreen.patch`): its nib window stays
+  transparent, fullscreen is a borderless screen-sized window with the Dock and menu bar
+  hidden, and it fades in over its first ten presented frames. Dolphin, Azahar and Ryujinx
+  (Qt and Avalonia, whose fullscreen state machines assume native Spaces) run with
+  `libsemuwindow.dylib` (`src/renderer/preload/semu_window.btrc`, `window_shim` in each macOS
+  platform entry): it takes `toggleFullScreen:` into the same borderless form, keeps titled
+  windows transparent until then, fades them in, and reveals a window that never goes
+  fullscreen (Ryujinx's controller applet) after 1.5 s. `tests/visual/mac-launch-trace.sh`
+  records every emulator window at 15 ms steps with the screen locked: all four open at
+  3008x1692 from their first visible frame and reach full opacity in about 200 ms; no small
+  window is ever visible. Not yet seen by eye on the unlocked display.
+- `mac-locked.sh` stalls after about 4 s when the display is asleep behind the lock (RetroArch's
+  draw loop runs only on AppKit events), for the pre-patch build too; it passed on 09-23 with
+  the display lit.
 
 Still open on the Mac:
 - ES-DE through Semu.app, seen only through its log and stacks (the owner declined computer-use

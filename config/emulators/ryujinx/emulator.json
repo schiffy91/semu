@@ -148,7 +148,8 @@
       ],
       "ryujinx": {
         "use_hypervisor": "false"
-      }
+      },
+      "window_shim": true
     }
   },
   "doc": {
