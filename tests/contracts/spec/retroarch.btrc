@@ -70,7 +70,7 @@ class RetroArchSpecProfile {  // retroarch.cfg per target: fullscreen, shader ow
         contract.contains(cfg, "input_save_state = \"s\"", label + ": state.save is Ctrl+S");
         contract.contains(cfg, "input_load_state = \"a\"", label + ": state.load is Ctrl+A");
         RetroArchSpecText.fixtureLines(contract, fixture, "interaction.cfg", cfg, "\"/output", "\"" + fixture.plan.path("content_root"), label);
-        RetroArchSpecText.fixtureLines(contract, fixture, "system-directory.cfg", cfg, "\"/config/system", "\"" + fixture.plan.path("emulation_root") + "/RetroArch/config/system", label);
+        RetroArchSpecText.fixtureLines(contract, fixture, "system-directory.cfg", cfg, "\"/system", "\"" + PathTools.join(fixture.plan.stateRoot(), "retroarch/system"), label);
         SemuEmulator emulator = fixture.model.emulator("retroarch");
         JSONValue keymap = SemuJson.get(emulator.profile, "hotkeys.keymap");
         bool saveRow = false;
