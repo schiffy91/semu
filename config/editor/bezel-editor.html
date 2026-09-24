@@ -622,6 +622,14 @@ function pictureRect(screen) {  // the picture rectangle, or the aspect-fitted p
   const w = Math.min(t.w, Math.round(t.h * aspect)), h = Math.min(t.h, Math.round(t.w / aspect));
   return { x: t.x + Math.round((t.w - w) / 2), y: t.y + Math.round((t.h - h) / 2), w, h };
 }
+function drawGapGlow(screen, baseAlpha) {  // light from the picture scattered in the glass around it: dim, diffuse, strongest at the picture edge (gapGlow in config/render/compositor.frag)
+  const picture = pictureRect(screen), reach = 0.03 * Math.min(picture.w, picture.h) * state.zoom;
+  ctx.save(); rectPath(screen, "inner"); ctx.clip();
+  ctx.globalAlpha = baseAlpha * Math.min(1, screen.reflection.strength * 0.6);
+  ctx.globalCompositeOperation = "screen"; ctx.filter = `blur(${reach.toFixed(1)}px)`;
+  const [x, y] = toScreen(picture.x, picture.y); drawTestCard(x, y, picture.w * state.zoom, picture.h * state.zoom, screen.id === "bottom");
+  ctx.restore();
+}
 function drawCutouts(layer) {  // like Mega Bezel: the ring, the black edge inside it, the picture clipped to the opening; the plate shows through everywhere else
   ctx.save();
   ctx.globalAlpha = (layer.opacity === undefined ? 1 : layer.opacity) * state.cutoutAlpha;  // view-only transparency, never saved
@@ -633,6 +641,7 @@ function drawCutouts(layer) {  // like Mega Bezel: the ring, the black edge insi
       else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
       if (reflecting) drawReflection(screen, ctx.globalAlpha);
       if (filled) { ctx.fillStyle = "#000"; rectPath(screen, "inner"); ctx.fill(); }
+      if (reflecting) drawGapGlow(screen, ctx.globalAlpha);
     } else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
     if (screen.tube && state.showGame) {
       const picture = pictureRect(screen);
