@@ -148,7 +148,7 @@
         "vulkan"
       ],
       "ryujinx": {
-        "use_hypervisor": "false"
+        "use_hypervisor": "true"
       },
       "window_shim": true,
       "render_vulkan": true,
