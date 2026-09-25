@@ -349,12 +349,14 @@ class StandaloneSpecContract {
         contract.expect(azahar.environment.contains("VK_ADD_LAYER_PATH=" + layers) && azahar.environment.contains("VK_INSTANCE_LAYERS=VK_LAYER_SEMU_compositor")
             && azahar.environment.contains("SEMU_RENDER_SYSTEM_ID=n3ds"), "render_vulkan loads VK_LAYER_SEMU_compositor with the SEMU_RENDER_* environment");
         bed.write(PathTools.join(bed.fixture.plan.semuHome, "firmware/ryujinx/prod.keys"), "owned");
+        bed.write(PathTools.join(bed.stateRoot("ryujinx"), "config/Ryujinx/system/prod.keys.semu-partial"), "interrupted");  // a copy cut short last time
         bed.write(PathTools.join(bed.bios, "switch/prod.keys"), "bios");
         SemuLaunchPlan ryujinx = bed.launch("ryujinx", "switch", "Odyssey.nsp");
         string configRoot = PathTools.join(bed.stateRoot("ryujinx"), "config/Ryujinx");
         StandaloneSpecContract.expectArgv(contract, bed, ryujinx, ["--root-data-dir", configRoot, "--fullscreen", "--graphics-backend", "vulkan"], bed.romPath("switch", "Odyssey.nsp"));
         string keys = PathTools.join(configRoot, "system/prod.keys");
         contract.expect(FileSystem.isFile(keys) && FileSystem.readText(keys).equals("owned"), "ryujinx prefers Semu-owned keys over the BIOS folder");
+        contract.expect(!FileSystem.exists(keys + ".semu-partial"), "a seed interrupted mid-copy is replaced by a whole copy, never left half-written");
         bed.write(PathTools.join(bed.fixture.plan.semuHome, "firmware/ryujinx/prod.keys"), "newer");
         bed.launch("ryujinx", "switch", "Odyssey.nsp");
         contract.expect(FileSystem.readText(keys).equals("owned"), "an existing seeded key file is never overwritten");

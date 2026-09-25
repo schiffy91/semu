@@ -626,9 +626,9 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   the RetroArch port are data; the supervisor is split under 500 lines.
 - `semu steam input [--steam-root]` (66cec43) derives every destination from one Steam root,
   writes each user's default FULL profile and removes only Semu's file from retired ids.
-- Remaining: the supervisor ignores the gamepad
-  identities in `steam_input.json`; seed copies are not atomic; ES-DE install follows a symlink
-  above the ES-DE home (the owner's `~/ES-DE` → Drive layout depends on it: **ruling needed**).
+- Remaining: the supervisor ignores the gamepad identities in `steam_input.json`. Since done:
+  seed copies are atomic (copied beside the target, then renamed; an interrupted copy is
+  replaced, contract-tested), and the owner ruled that ES-DE may sit under a link (2026-09-23).
 
 ### G6. Packaging and directive compliance — mostly done
 
