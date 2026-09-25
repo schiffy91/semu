@@ -537,8 +537,12 @@ Progress (2026-09-25):
   object alike), and a `libMoltenVK.dylib` on the library path shadowed
   Ryujinx's own, stalling its start (`vulkan_stand_in: beside` now keeps
   Ryujinx off `DYLD_LIBRARY_PATH`).
-- Open: Ryujinx frames (the game waits at its controller applet until a pad
-  is connected, and none reaches a locked session), Cemu and Ryujinx frames
+- Ryujinx on the Mac: Animal Crossing composed through the stand-in at
+  4112x2658 (captured, screen locked, a keyboard mapped as player one so the
+  controller applet passes). .NET found each assembly's folder from its real
+  path, so `ryujinx_semu.nix` now copies the Ryujinx folder instead of
+  linking it; linked, Ryujinx loaded its original MoltenVK.
+- Open: Cemu and Ryujinx frames
   through the layer on Linux (the VM has no small Switch or Wii U title),
   and the Deck (gamescope's WSI layer alongside ours).
 
