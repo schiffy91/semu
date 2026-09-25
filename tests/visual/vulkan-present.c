@@ -1,16 +1,23 @@
 // vulkan-present: presents a known picture through a Vulkan library with no window, so Semu's
 // Vulkan composition (the Linux layer, the macOS stand-in for MoltenVK) can be checked offscreen.
-// A headless swapchain (VK_EXT_headless_surface) receives a test card every frame: a color-bar
+// A headless swapchain (VK_EXT_headless_surface; on a MoltenVK without it, a CAMetalLayer that
+// belongs to no window) receives a test card every frame: a color-bar
 // field with a white frame one pixel inside the picture and a black diagonal from its top left.
 // Composition, when Semu's library is in the path, runs at each present; SEMU_RENDER_CAPTURE_FRAME
 // makes the renderer save the composed frame.
-// build: cc -O2 vulkan-present.c -I<vulkan-headers>/include -ldl -o vulkan-present
+// build: cc -O2 vulkan-present.c -I<vulkan-headers>/include -ldl -o vulkan-present   (macOS: -lobjc -framework QuartzCore -framework CoreGraphics)
 // usage: vulkan-present LIBRARY WIDTH HEIGHT FRAMES   (LIBRARY: libvulkan.so.1, or Semu's stand-in)
 #include <dlfcn.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __APPLE__
+#define VK_USE_PLATFORM_METAL_EXT
+#include <CoreGraphics/CGGeometry.h>
+#include <objc/message.h>
+#include <objc/runtime.h>
+#endif
 #include <vulkan/vulkan.h>
 
 #define CHECK(call) do { VkResult result_ = (call); if (result_ < 0) { fprintf(stderr, "vulkan-present: %s failed: %d\n", #call, result_); return 1; } } while (0)
@@ -42,11 +49,24 @@ int main(int argc, char **argv) {
     VkApplicationInfo application = { VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "vulkan-present", 1, NULL, 0, VK_API_VERSION_1_1 };
     VkInstanceCreateInfo instanceInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, NULL, 0, &application, 0, NULL, 2, instanceExtensions };
     VkInstance instance;
-    CHECK(((PFN_vkCreateInstance)instanceProc(NULL, "vkCreateInstance"))(&instanceInfo, NULL, &instance));
-
-    VkHeadlessSurfaceCreateInfoEXT surfaceInfo = { VK_STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO_EXT, NULL, 0 };
+    PFN_vkCreateInstance createInstance = (PFN_vkCreateInstance)instanceProc(NULL, "vkCreateInstance");
     VkSurfaceKHR surface;
-    CHECK(((PFN_vkCreateHeadlessSurfaceEXT)instanceProc(instance, "vkCreateHeadlessSurfaceEXT"))(instance, &surfaceInfo, NULL, &surface));
+    if (createInstance(&instanceInfo, NULL, &instance) == VK_SUCCESS) {
+        VkHeadlessSurfaceCreateInfoEXT surfaceInfo = { VK_STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO_EXT, NULL, 0 };
+        CHECK(((PFN_vkCreateHeadlessSurfaceEXT)instanceProc(instance, "vkCreateHeadlessSurfaceEXT"))(instance, &surfaceInfo, NULL, &surface));
+    } else {
+#ifdef __APPLE__
+        instanceExtensions[1] = "VK_EXT_metal_surface";  // a Metal layer that no window shows
+        CHECK(createInstance(&instanceInfo, NULL, &instance));
+        id layer = ((id (*)(id, SEL))objc_msgSend)((id)objc_getClass("CAMetalLayer"), sel_registerName("new"));
+        ((void (*)(id, SEL, CGSize))objc_msgSend)(layer, sel_registerName("setDrawableSize:"), CGSizeMake(width, height));
+        VkMetalSurfaceCreateInfoEXT surfaceInfo = { VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT, NULL, 0, (const CAMetalLayer *)layer };
+        CHECK(((PFN_vkCreateMetalSurfaceEXT)instanceProc(instance, "vkCreateMetalSurfaceEXT"))(instance, &surfaceInfo, NULL, &surface));
+#else
+        fprintf(stderr, "vulkan-present: no VK_EXT_headless_surface\n");
+        return 1;
+#endif
+    }
     uint32_t count = 1;
     VkPhysicalDevice physical;
     CHECK(((PFN_vkEnumeratePhysicalDevices)instanceProc(instance, "vkEnumeratePhysicalDevices"))(instance, &count, &physical));

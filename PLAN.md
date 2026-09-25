@@ -514,14 +514,18 @@ Progress (2026-09-25):
 - Touch: Azahar's `semu-touch.patch` maps a click on the composed picture
   back through `semu_touch_unmap` (the renderer's pointer map) to where its
   own layout drew the bottom screen; unchanged when Semu is absent.
+- Ryujinx on macOS loads the MoltenVK it bundles (.NET resolves it in its own
+  folder first): `packaging/nix/ryujinx_semu.nix` puts a second link of the
+  stand-in there as `libMoltenVK.dylib`, re-exporting the original renamed
+  beside it. Observed offscreen with Ryujinx's MoltenVK 1.2.0 (no headless
+  surfaces there, so the harness presents to a CAMetalLayer no window shows).
 - Observed offscreen: vkcube on lavapipe under Xvfb in the Linux VM, and
   `tests/visual/vulkan-present.c` (a headless swapchain with a test card) on
   the Mac through the stand-in, both inside the GameCube TV bezel with the
   CRT shader, upright and in the right colors.
 - Open: real emulator frames through the layer (Azahar in the VM), the
-  macOS emulators seen live (Azahar, Dolphin), Ryujinx on macOS (it loads its
-  own bundled MoltenVK through .NET; the stand-in would put two MoltenVKs in
-  one process), and the Deck (gamescope's WSI layer alongside ours).
+  macOS emulators seen live (Azahar, Dolphin, Ryujinx), and the Deck
+  (gamescope's WSI layer alongside ours).
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 

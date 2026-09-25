@@ -43,6 +43,14 @@ stdenv.mkDerivation {
     done
     $CC -dynamiclib semu_vulkan_metal.o -L. -lsemurenderer $aliases -Wl,-reexport_library,${moltenvk}/lib/libMoltenVK.dylib \
       -install_name "$out/lib/semu-vulkan/libvulkan.dylib" -o libsemuvulkan.dylib
+    # The same stand-in for an app that bundles its own MoltenVK (Ryujinx): placed as its libMoltenVK.dylib,
+    # it re-exports the original renamed beside it. Linked against a renamed copy, so nothing is modified
+    # after the linker signs it.
+    cp ${moltenvk}/lib/libMoltenVK.dylib libMoltenVK.real.dylib
+    chmod u+w libMoltenVK.real.dylib
+    install_name_tool -id @loader_path/libMoltenVK.real.dylib libMoltenVK.real.dylib
+    $CC -dynamiclib semu_vulkan_metal.o -L. -lsemurenderer $aliases -Wl,-reexport_library,libMoltenVK.real.dylib \
+      -install_name @loader_path/libMoltenVK.dylib -o libsemuvulkan-beside.dylib
   '' else ''
     cat > exports.map <<'MAP'
     { global: semu_render_context_invalidate_gl; semu_render_game_gl; semu_render_post_ui_gl; local: *; };
@@ -76,7 +84,9 @@ stdenv.mkDerivation {
     cp libsemuwindow.dylib "$out/lib/libsemuwindow.dylib"
     mkdir -p "$out/lib/semu-vulkan"
     cp libsemuvulkan.dylib "$out/lib/semu-vulkan/libvulkan.dylib"
-    ln -s libvulkan.dylib "$out/lib/semu-vulkan/libMoltenVK.dylib"  # the name Ryujinx and Dolphin ask for
+    ln -s libvulkan.dylib "$out/lib/semu-vulkan/libMoltenVK.dylib"  # the name an app asks for when it wants MoltenVK itself
+    mkdir -p "$out/lib/semu-vulkan/beside"
+    cp libsemuvulkan-beside.dylib "$out/lib/semu-vulkan/beside/libMoltenVK.dylib"
     ln -s libsemurenderer.dylib "$out/lib/libsemurenderer.so"  # one SEMU_RENDERER_LIBRARY path on every platform
   '' else ''
     cp libsemurenderer.so "$out/lib/libsemurenderer.so"
