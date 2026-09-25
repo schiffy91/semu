@@ -149,12 +149,27 @@ class SemuLauncher {
         return lines.join("\n") + "\n";
     }
 
+    // A seed appears whole or not at all: copied beside the target first, then renamed into place.
+    // An interrupted copy leaves only the .semu-partial sibling, which the next launch replaces;
+    // a partial target would otherwise count as seeded forever.
+    class bool copyWhole(string source, string target, string flags, SemuLaunchPlan launch) {
+        string partial = target + ".semu-partial";
+        SemuPaths.prepareDirectory(PathTools.dirname(target));
+        if (FileSystem.exists(partial) || FileSystem.isSymlink(partial)) { ChildProcess.run("rm", ["-rf", partial]); }
+        ExecResult copy = ChildProcess.run("cp", [flags, source, partial]);
+        ExecResult move = copy.ok() && !FileSystem.exists(target) ? ChildProcess.run("mv", [partial, target]) : copy;
+        if (!copy.ok() || !move.ok()) {
+            ChildProcess.run("rm", ["-rf", partial]);
+            launch.error = f"could not seed {target} from {source}: {copy.ok() ? move.stderr() : copy.stderr()}";
+            return false;
+        }
+        if (FileSystem.exists(partial)) { ChildProcess.run("rm", ["-rf", partial]); }  // the target appeared meanwhile: it wins
+        return true;
+    }
+
     class bool copyMissing(string source, string target, SemuLaunchPlan launch) {  // adds what the target lacks, never replaces; links are copied as their contents
         if (!FileSystem.exists(target) && !FileSystem.isSymlink(target)) {  // nothing there yet: one copy of the whole tree cannot replace anything
-            SemuPaths.prepareDirectory(PathTools.dirname(target));
-            ExecResult tree = ChildProcess.run("cp", ["-RpL", source, target]);
-            if (!tree.ok()) { launch.error = f"could not seed {target} from {source}: {tree.stderr()}"; }
-            return tree.ok();
+            return SemuLauncher.copyWhole(source, target, "-RpL", launch);
         }
         for name in FileSystem.listDir(source) {
             string from = PathTools.join(source, name);
@@ -164,12 +179,8 @@ class SemuLauncher {
                 if (!SemuLauncher.copyMissing(from, to, launch)) { return false; }
                 continue;
             }
-            if (FileSystem.exists(to) || FileSystem.isSymlink(to) || !FileSystem.isFile(from)) { continue; }
-            ExecResult copy = ChildProcess.run("cp", ["-pL", from, to]);
-            if (!copy.ok()) {
-                launch.error = f"could not seed {to} from {from}: {copy.stderr()}";
-                return false;
-            }
+            if (FileSystem.exists(to) || FileSystem.isSymlink(to) || !FileSystem.isFile(from) || name.endsWith(".semu-partial")) { continue; }
+            if (!SemuLauncher.copyWhole(from, to, "-pL", launch)) { return false; }
         }
         return true;
     }
@@ -206,12 +217,7 @@ class SemuLauncher {
                     return false;
                 }
                 if (!FileSystem.exists(candidate)) { continue; }
-                SemuPaths.prepareDirectory(PathTools.dirname(target));
-                ExecResult copy = ChildProcess.run("cp", ["-rn", candidate, target]);
-                if (!copy.ok()) {
-                    launch.error = f"could not seed {target} from {candidate}: {copy.stderr()}";
-                    return false;
-                }
+                if (!SemuLauncher.copyWhole(candidate, target, "-R", launch)) { return false; }
                 break;
             }
         }
