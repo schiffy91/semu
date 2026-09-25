@@ -206,10 +206,11 @@ class SemuCompose {
         memset(&result, 0, sizeof(struct SemuRenderPointerResult));
         result.abi = SEMU_RENDER_ABI_GL;
         result.struct_size = sizeof(struct SemuRenderPointerResult);
-        if (SemuComposition.map_pointer(&SemuComposition.pointer_map, &query, &result) != SEMU_RENDER_POINTER_MAPPED) { return 0; }  // normalized from the top left
+        if (SemuComposition.map_pointer(&SemuComposition.pointer_map, &query, &result) != SEMU_RENDER_POINTER_MAPPED) { return 0; }
         struct SemuComposeRect drawn = SemuComposition.drawn[surface];
         *emulatorX = (float)drawn.x + result.normalized_x * (float)drawn.width;
-        *emulatorY = (float)drawn.y + result.normalized_y * (float)drawn.height;
+        float fromTop = (int)result.origin == (int)SEMU_RENDER_ORIGIN_BOTTOM_LEFT ? 1.0f - result.normalized_y : result.normalized_y;  // normalized in the surface's row order
+        *emulatorY = (float)drawn.y + fromTop * (float)drawn.height;
         return 1;
     }
 }

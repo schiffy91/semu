@@ -523,9 +523,15 @@ Progress (2026-09-25):
   `tests/visual/vulkan-present.c` (a headless swapchain with a test card) on
   the Mac through the stand-in, both inside the GameCube TV bezel with the
   CRT shader, upright and in the right colors.
-- Open: real emulator frames through the layer (Azahar in the VM), the
-  macOS emulators seen live (Azahar, Dolphin, Ryujinx), and the Deck
-  (gamescope's WSI layer alongside ours).
+- Observed with a real game (2026-09-25, `tests/visual/vm-azahar-layer.sh`):
+  Pushmo in Azahar on lavapipe in the Linux VM, composed by the layer into
+  the 3DS shell with the LCD grid on both screens; a click held on the OK
+  button of the composed bottom screen (1093,560, where Azahar never drew
+  it) mapped to 638,653 in Azahar's own layout and dismissed the dialog.
+  The Linux half of the touch criterion is met.
+- Open: the macOS emulators seen live (Azahar, Dolphin, Ryujinx), Cemu and
+  Ryujinx frames through the layer on Linux, and the Deck (gamescope's WSI
+  layer alongside ours).
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
