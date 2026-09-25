@@ -23,7 +23,7 @@
         "format": "xml",
         "key": "api",
         "values": {
-          "opengl": "0"
+          "vulkan": "1"
         }
       },
       "state": {
@@ -68,14 +68,15 @@
         "set": {
           "GDK_BACKEND": "x11"
         }
-      }
+      },
+      "render_vulkan": true
     }
   },
   "doc": {
     "runtime": "Linux launches the exact source-built package from the asset root. -f starts fullscreen, -m selects Semu's isolated MLC, and -g consumes exactly one following Wii U title. The Steam Deck system definition selects file inputs; upstream Cemu additionally understands an extracted title root containing code, content, and meta. No host executable, Flatpak, libretro core, or prebuilt binary participates.",
     "state": "Cemu reads settings from $XDG_CONFIG_HOME/Cemu and data from $XDG_DATA_HOME/Cemu. -m pins the writable MLC, including normal title saves under mlc01/usr/save, below ${state_root}/data/Cemu/mlc01. keys.txt is copied only when its isolated target is absent, preferring the bounded user-owned ${semu_home}/firmware/cemu import; an adjacent NUS title.tik remains in the read-only ROM tree. External keys, tickets, ROMs, BIOS material, and existing saves are never modified.",
     "input": "controllerProfiles/controller0.xml is Cemu's automatically loaded player-one profile. It pins the Steam Virtual Gamepad through SDL and maps the complete Wii U GamePad surface. Ctrl+Q quits and Ctrl+Tab swaps the selected TV/GamePad view. Upstream Cemu 2.6 has no savestate implementation, so state.save and state.load are declared unsupported in profile.json rather than mapped to inert chords.",
-    "rendering": "OpenGL is forced through settings.xml. The flake applies no Semu render hook, so no Semu bezel or shader reaches this emulator yet.",
+    "rendering": "Vulkan is forced through settings.xml (api 1). VK_LAYER_SEMU_compositor (render_vulkan) composes Semu's bezel and shader into the swapchain image at present.",
     "display": "Cemu's wx/GTK window is blank under GDK's Wayland backend; GDK_BACKEND=x11 runs it on XWayland, where it renders."
   }
 }

@@ -283,7 +283,7 @@ class StandaloneSpecContract {
         string guid = StandaloneSpecContract.identity(fixture, "azahar_controller_guid");
         contract.expect(StandaloneSpecText.lowerHex(guid, 32), target + " azahar pad GUID is 32 lowercase hex digits");
         contract.contains(main, "profiles\\1\\button_a=engine:sdl,guid:" + guid + ",port:0,button:1", target + " azahar binds the target pad");
-        contract.contains(main, "graphics_api=1", target + " azahar forces OpenGL");
+        contract.contains(main, "graphics_api=2", target + " azahar runs Vulkan for VK_LAYER_SEMU_compositor");
         contract.contains(main, "fullscreen=true", target + " azahar fullscreen");
         contract.contains(main, "Main%20Window\\Quick%20Save\\KeySeq=Ctrl+S", target + " azahar save chord");
         contract.contains(main, "Main%20Window\\Quick%20Load\\KeySeq=Ctrl+A", target + " azahar load chord");
@@ -297,7 +297,7 @@ class StandaloneSpecContract {
         JSONValue player = players.isArray() && players.size() > 0 ? players.at(0) : JSONValue.makeObject();
         contract.expect(SemuJson.textAt(player, "id").equals(StandaloneSpecContract.identity(fixture, "ryujinx_controller_id")), target + " ryujinx player one is the target pad");
         contract.expect(SemuJson.textAt(player, "backend").equals("GamepadSDL2") && SemuJson.textAt(player, "player_index").equals("Player1"), target + " ryujinx player one reads SDL2");
-        contract.expect(SemuJson.textAt(config, "graphics_backend").equals("OpenGl"), target + " ryujinx forces OpenGL");
+        contract.expect(SemuJson.textAt(config, "graphics_backend").equals("Vulkan"), target + " ryujinx runs Vulkan for VK_LAYER_SEMU_compositor");
         contract.expect(SemuJson.boolAt(config, "start_fullscreen", false) && !SemuJson.boolAt(config, "show_confirm_exit", true), target + " ryujinx fullscreen without an exit prompt");
         contract.expect(!SemuJson.boolAt(config, "check_updates_on_start", true), target + " ryujinx never checks for updates");
     }
@@ -341,14 +341,18 @@ class StandaloneSpecContract {
         StandaloneSpecContract.expectArgv(contract, bed, melonds, ["--fullscreen"], bed.romPath("nds", "Kirby.nds"));
         contract.expect(melonds.environment.contains("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1"), "melonDS keeps reading the pad unfocused");
         contract.expect(FileSystem.isDir(PathTools.join(bed.stateRoot("melonds"), "data/melonDS/saves")), "melonDS save directory exists before launch");
+        string layers = PathTools.join(bed.fixture.plan.assetRoot, "share/vulkan/explicit_layer.d");
+        bed.write(PathTools.join(layers, "semu_compositor.json"), "{}");
         SemuLaunchPlan azahar = bed.launch("azahar", "n3ds", "Zelda.3ds");
         StandaloneSpecContract.expectArgv(contract, bed, azahar, ["-f"], bed.romPath("n3ds", "Zelda.3ds"));
         contract.expect(azahar.environment.contains("QT_QPA_PLATFORM=xcb"), "azahar runs on XWayland");
+        contract.expect(azahar.environment.contains("VK_ADD_LAYER_PATH=" + layers) && azahar.environment.contains("VK_INSTANCE_LAYERS=VK_LAYER_SEMU_compositor")
+            && azahar.environment.contains("SEMU_RENDER_SYSTEM_ID=n3ds"), "render_vulkan loads VK_LAYER_SEMU_compositor with the SEMU_RENDER_* environment");
         bed.write(PathTools.join(bed.fixture.plan.semuHome, "firmware/ryujinx/prod.keys"), "owned");
         bed.write(PathTools.join(bed.bios, "switch/prod.keys"), "bios");
         SemuLaunchPlan ryujinx = bed.launch("ryujinx", "switch", "Odyssey.nsp");
         string configRoot = PathTools.join(bed.stateRoot("ryujinx"), "config/Ryujinx");
-        StandaloneSpecContract.expectArgv(contract, bed, ryujinx, ["--root-data-dir", configRoot, "--fullscreen", "--graphics-backend", "opengl"], bed.romPath("switch", "Odyssey.nsp"));
+        StandaloneSpecContract.expectArgv(contract, bed, ryujinx, ["--root-data-dir", configRoot, "--fullscreen", "--graphics-backend", "vulkan"], bed.romPath("switch", "Odyssey.nsp"));
         string keys = PathTools.join(configRoot, "system/prod.keys");
         contract.expect(FileSystem.isFile(keys) && FileSystem.readText(keys).equals("owned"), "ryujinx prefers Semu-owned keys over the BIOS folder");
         bed.write(PathTools.join(bed.fixture.plan.semuHome, "firmware/ryujinx/prod.keys"), "newer");

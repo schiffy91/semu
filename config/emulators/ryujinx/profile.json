@@ -228,7 +228,7 @@
           }
         ],
         "rainbow_speed": 1.0,
-        "graphics_backend": "OpenGl",
+        "graphics_backend": "Vulkan",
         "preferred_gpu": "",
         "multiplayer_mode": 0,
         "multiplayer_lan_interface_id": "0",

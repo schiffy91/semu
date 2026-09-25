@@ -5,7 +5,7 @@
     "x86_64-linux"
   ],
   "graphics_apis": [
-    "opengl"
+    "vulkan"
   ],
   "outputs": {
     "main_program": "bin/Cemu",

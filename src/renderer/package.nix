@@ -1,5 +1,5 @@
 # The shared renderer every hooked emulator links: shaders through librashader, bezels, the Semu overlay.
-{ lib, stdenv, btrcpy, librashader, writeText, rendererRoot }:
+{ lib, stdenv, btrcpy, librashader, writeText, rendererRoot, vulkan-headers, libglvnd }:
 
 let
   rendererSource = lib.fileset.toSource {
@@ -16,7 +16,7 @@ stdenv.mkDerivation {
   allowSubstitutes = false;  # compiled by Semu, never a cache binary
   strictDeps = true;
   nativeBuildInputs = [ btrcpy ];
-  buildInputs = [ librashader ];
+  buildInputs = [ librashader ] ++ lib.optionals stdenv.hostPlatform.isLinux [ vulkan-headers libglvnd ];
 
   buildPhase = ''
     btrcpy libsemurenderer.btrc -o semu_renderer.c --strict-imports --no-cache --no-stdlib --no-dce
@@ -46,6 +46,14 @@ stdenv.mkDerivation {
     MAP
     $CC -shared -Wl,-soname,libsemupreload.so -Wl,--version-script=preload.map \
       semu_preload.o -L. -Wl,-rpath,$out/lib -lsemurenderer -ldl -o libsemupreload.so
+    # Vulkan layer for Vulkan emulators: composes into the swapchain image at present.
+    btrcpy vulkan/semu_vulkan_layer.btrc -o semu_vulkan_layer.c --strict-imports --no-cache --no-stdlib --no-dce
+    $CC -c semu_vulkan_layer.c -o semu_vulkan_layer.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function -Wno-incompatible-pointer-types -D_GNU_SOURCE -I. -Ipreload
+    cat > vulkan.map <<'MAP'
+    { global: semu_vkGetInstanceProcAddr; semu_vkGetDeviceProcAddr; local: *; };
+    MAP
+    $CC -shared -Wl,-soname,libsemuvulkan.so -Wl,--version-script=vulkan.map \
+      semu_vulkan_layer.o -L. -Wl,-rpath,$out/lib -lsemurenderer -lEGL -ldl -o libsemuvulkan.so
   '');
 
   installPhase = ''
@@ -58,6 +66,22 @@ stdenv.mkDerivation {
   '' else ''
     cp libsemurenderer.so "$out/lib/libsemurenderer.so"
     cp libsemupreload.so "$out/lib/libsemupreload.so"
+    cp libsemuvulkan.so "$out/lib/libsemuvulkan.so"
+    mkdir -p "$out/share/vulkan/explicit_layer.d"
+    cat > "$out/share/vulkan/explicit_layer.d/semu_compositor.json" <<JSON
+    {
+      "file_format_version": "1.0.0",
+      "layer": {
+        "name": "VK_LAYER_SEMU_compositor",
+        "type": "GLOBAL",
+        "library_path": "$out/lib/libsemuvulkan.so",
+        "api_version": "1.3.0",
+        "implementation_version": "1",
+        "description": "Semu bezels and shaders, drawn into the swapchain image at present",
+        "functions": { "vkGetInstanceProcAddr": "semu_vkGetInstanceProcAddr", "vkGetDeviceProcAddr": "semu_vkGetDeviceProcAddr" }
+      }
+    }
+    JSON
   '');
 
   doInstallCheck = true;
