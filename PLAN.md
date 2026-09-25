@@ -791,9 +791,12 @@ state under `~/Library/Application Support/Semu`. Done and observed on mbp21:
   records every emulator window at 15 ms steps with the screen locked: all four open at
   3008x1692 from their first visible frame and reach full opacity in about 200 ms; no small
   window is ever visible. Not yet seen by eye on the unlocked display.
-- `mac-locked.sh` stalls after about 4 s when the display is asleep behind the lock (RetroArch's
-  draw loop runs only on AppKit events), for the pre-patch build too; it passed on 09-23 with
-  the display lit.
+- RetroArch's macOS draw loop only iterated on AppKit events, so with the display asleep
+  (locked, dimmed) the game stopped after a few seconds. `retroarch_darwin_runloop.patch` keeps
+  the loop awake. With the display asleep behind the lock (2026-09-25) `mac-locked.sh` passes
+  all ten RetroArch systems with real library games (frames moving, state saved and loaded,
+  QUIT in about 1 s); one PPSSPP save aborted inside the core in the full run, and two PSP
+  reruns passed.
 
 Still open on the Mac:
 - ES-DE through Semu.app, seen only through its log and stacks (the owner declined computer-use

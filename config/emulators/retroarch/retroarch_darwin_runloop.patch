@@ -1,0 +1,28 @@
+Semu: RetroArch's macOS draw loop iterates from a run-loop observer and woke
+the loop itself only while fast-forwarding; otherwise it waited for an AppKit
+event. With the display asleep (a locked screen, a dimmed panel) no events
+arrive and the game stopped after a few seconds. On macOS the observer now
+always wakes the loop; runloop_iterate paces itself.
+
+--- a/ui/drivers/cocoa/cocoa_common.m
++++ b/ui/drivers/cocoa/cocoa_common.m
+@@ -120,10 +120,19 @@
+ #endif
+ 
+    runloop_flags = runloop_get_flags();
++#if defined(OSX)
++   /* Semu: keep iterating without waiting for an AppKit event. Only events
++    * woke the loop otherwise, and with the display asleep (a locked screen,
++    * a dimmed panel) none arrive, so the game stopped. runloop_iterate
++    * paces itself (vsync, audio, the menu's idle sleep). */
++   (void)runloop_flags;
++   CFRunLoopWakeUp(CFRunLoopGetMain());
++#else
+ #if !TARGET_OS_TV
+    if (runloop_flags & RUNLOOP_FLAG_FASTMOTION)
+ #endif
+       CFRunLoopWakeUp(CFRunLoopGetMain());
++#endif
+ #if TARGET_OS_IOS
+    else
+       rarch_stop_draw_observer();
