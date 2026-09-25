@@ -13,7 +13,7 @@
       "args": [
         "--fullscreen",
         "--graphics-backend",
-        "opengl"
+        "vulkan"
       ],
       "graphics": {
         "method": "cli"
@@ -77,7 +77,8 @@
       },
       "ryujinx": {
         "use_hypervisor": "true"
-      }
+      },
+      "render_vulkan": true
     },
     "macos": {
       "executable": "${asset_root}/bin/Ryujinx",
@@ -154,10 +155,10 @@
   },
   "doc": {
     "package": "Linux executes only the bundled source-built ${asset_root}/bin/Ryujinx. There is no Flatpak, host binary, or prebuilt Linux fallback.",
-    "fullscreen": "The pinned desktop parser consumes --fullscreen before the final ROM argument. Linux also passes --graphics-backend opengl.",
+    "fullscreen": "The pinned desktop parser consumes --fullscreen before the final ROM argument. Both platforms pass --graphics-backend vulkan.",
     "input": "The managed Config.json contains the active Player1 GamepadSDL2 binding for the target Steam virtual controller. Ryujinx has no native save-state contract; app.quit remains process-group owned.",
     "keys": "prod.keys and title.keys are copied into the isolated root-data system directory from read-only external/project sources without modifying those sources.",
     "saves": "Native Switch game saves are emulator-owned at ${state_root}/config/Ryujinx/bis/user/save. Profile convergence owns only Config.json, so save data and installed firmware remain untouched.",
-    "rendering": "Linux is forced to OpenGL; macOS uses Vulkan. The flake applies no Semu render hook, so no Semu bezel or shader reaches this emulator yet."
+    "rendering": "Vulkan on both platforms. On Linux VK_LAYER_SEMU_compositor (render_vulkan) composes Semu's bezel and shader into the swapchain image at present; macOS has no Semu composition yet."
   }
 }

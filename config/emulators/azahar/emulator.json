@@ -27,7 +27,7 @@
         "section": "Renderer",
         "key": "graphics_api",
         "values": {
-          "opengl": "1"
+          "vulkan": "2"
         },
         "extra_pins": [
           {
@@ -109,8 +109,9 @@
         }
       },
       "azahar": {
-        "graphics_api": "1"
-      }
+        "graphics_api": "2"
+      },
+      "render_vulkan": true
     },
     "macos": {
       "executable": "${asset_root}/Applications/azahar.app/Contents/MacOS/azahar",
@@ -209,7 +210,7 @@
   "doc": {
     "launch": "The source-built Azahar binary consumes --fullscreen followed by one positional ROM path.",
     "state": "Azahar reads configuration from $XDG_CONFIG_HOME/azahar-emu and keeps NAND, SDMC saves, save states, cache, and logs below the isolated $XDG_DATA_HOME/$XDG_CACHE_HOME state roots. Named key files are first-run copies; external sources are never modified.",
-    "rendering": "OpenGL is pinned in the managed profile. The flake applies no Semu render hook, so no Semu bezel or shader reaches this emulator yet.",
+    "rendering": "Vulkan on both platforms (Apple builds have no OpenGL renderer). On Linux VK_LAYER_SEMU_compositor (render_vulkan) composes Semu's bezel and shader into the swapchain image at present.",
     "display": "Azahar's Qt window refuses shared OpenGL contexts on the Wayland platform plugin; QT_QPA_PLATFORM=xcb runs it on XWayland."
   }
 }

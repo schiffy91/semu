@@ -24,7 +24,7 @@
         "source": "platform.graphics.key"
       },
       "renderer_value": {
-        "source": "platform.graphics.values.opengl"
+        "source": "platform.graphics.values.vulkan"
       }
     },
     "line_groups": {

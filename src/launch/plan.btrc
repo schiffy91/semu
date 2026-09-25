@@ -378,10 +378,16 @@ class SemuLauncher {
         launch.argv.push(selectedRom);
         SemuLauncher.stateEnvironment(launch, plan, emulator, platform);
         bool preload = SemuJson.boolAt(platform, "render_preload", false);  // GL emulator hooked at its SDL swap by libsemupreload
-        if (SemuJson.boolAt(platform, "render_hook", false) || preload) {  // the emulator links libsemurenderer and reads SEMU_RENDER_*
+        bool vulkan = SemuJson.boolAt(platform, "render_vulkan", false);  // Vulkan emulator composed at present by VK_LAYER_SEMU_compositor
+        if (SemuJson.boolAt(platform, "render_hook", false) || preload || vulkan) {  // the emulator links libsemurenderer and reads SEMU_RENDER_*
             for entry in SemuRenderEnvironment.compile(plan, system, emulatorId, stateRoot, diagnostics) { launch.environment.push(entry); }
             string shim = PathTools.join(plan.assetRoot, "lib/libsemupreload.so");
             if (preload && FileSystem.isFile(shim)) { launch.environment.push("LD_PRELOAD=" + shim); }
+            string layers = PathTools.join(plan.assetRoot, "share/vulkan/explicit_layer.d");
+            if (vulkan && FileSystem.isFile(PathTools.join(layers, "semu_compositor.json"))) {
+                launch.environment.push("VK_ADD_LAYER_PATH=" + layers);
+                launch.environment.push("VK_INSTANCE_LAYERS=VK_LAYER_SEMU_compositor");
+            }
             if (!diagnostics.ok()) {
                 launch.error = "rendering configuration failed: " + diagnostics.render();
                 return launch;

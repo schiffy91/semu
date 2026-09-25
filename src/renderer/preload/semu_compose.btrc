@@ -1,0 +1,102 @@
+// Composition of a standalone emulator's finished frame through libsemurenderer, shared by every
+// hook that reaches one: the LD_PRELOAD shim at a GL swap and the Vulkan layer at present. The
+// emulator letterboxes itself, so the game sits centered at the system aspect inside the frame;
+// the renderer reads it from there and writes the composed frame back into the same framebuffer.
+// Configuration comes from the SEMU_RENDER_* environment the launcher emits.
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "semu_renderer.h"
+
+struct SemuComposeState {
+    bool initialized;
+    bool enabled;
+    bool reported;
+    unsigned long long frame_id;
+    float aspect;
+    int native_width;
+    int native_height;
+};
+
+struct SemuComposeState SemuComposition;
+
+class SemuCompose {
+    class void initialize() {
+        if (SemuComposition.initialized) { return; }
+        SemuComposition.initialized = true;
+        int aspectWidth = 0;
+        int aspectHeight = 0;
+        char* aspect = getenv("SEMU_RENDER_ASPECT");
+        if (aspect != null && sscanf(aspect, "%d:%d", &aspectWidth, &aspectHeight) == 2 && aspectWidth > 0 && aspectHeight > 0) {
+            SemuComposition.aspect = (float)aspectWidth / (float)aspectHeight;
+        }
+        int nativeWidth = 0;
+        int nativeHeight = 0;
+        char* native = getenv("SEMU_RENDER_SURFACE_0_NATIVE");
+        if (native != null && sscanf(native, "%dx%d", &nativeWidth, &nativeHeight) == 2 && nativeWidth > 0 && nativeHeight > 0) {
+            SemuComposition.native_width = nativeWidth;
+            SemuComposition.native_height = nativeHeight;
+        }
+        SemuComposition.enabled = getenv("SEMU_RENDER_SYSTEM_ID") != null;
+    }
+
+    class bool enabled() {
+        SemuCompose.initialize();
+        return SemuComposition.enabled;
+    }
+
+    class bool debug() {
+        return getenv("SEMU_RENDER_DEBUG") != null;
+    }
+
+    // framebuffer 0 with GL_BACK is a window's back buffer; a hook with its own target passes that
+    // framebuffer and GL_COLOR_ATTACHMENT0.
+    class void compose(int width, int height, __fn_ptr<void*, const char*> getProc, unsigned int framebuffer, unsigned int colorBuffer) {
+        if (!SemuCompose.enabled() || width < 1 || height < 1 || getProc == null) { return; }
+        int surfaceWidth = width;
+        int surfaceHeight = height;
+        int surfaceX = 0;
+        int surfaceY = 0;
+        if (SemuComposition.aspect > 0.01f) {
+            float have = (float)width / (float)height;
+            if (have > SemuComposition.aspect) {
+                surfaceWidth = (int)((float)height * SemuComposition.aspect + 0.5f);
+                surfaceX = (width - surfaceWidth) / 2;
+            } else {
+                surfaceHeight = (int)((float)width / SemuComposition.aspect + 0.5f);
+                surfaceY = (height - surfaceHeight) / 2;
+            }
+        }
+        if (surfaceWidth < 1 || surfaceHeight < 1) { return; }
+        struct SemuRenderFrameGl frame;
+        memset(&frame, 0, sizeof(struct SemuRenderFrameGl));
+        frame.abi = SEMU_RENDER_ABI_GL;
+        frame.struct_size = sizeof(struct SemuRenderFrameGl);
+        SemuComposition.frame_id = SemuComposition.frame_id + 1ULL;
+        frame.frame_id = SemuComposition.frame_id;
+        frame.framebuffer = framebuffer;
+        frame.color_buffer = colorBuffer;
+        frame.framebuffer_width = width;
+        frame.framebuffer_height = height;
+        frame.presentation_aspect = (float)surfaceWidth / (float)surfaceHeight;
+        frame.layout_variant = SEMU_RENDER_LAYOUT_AUTO;
+        frame.surface_count = 1;
+        frame.surfaces[0].x = surfaceX;
+        frame.surfaces[0].y = surfaceY;
+        frame.surfaces[0].width = surfaceWidth;
+        frame.surfaces[0].height = surfaceHeight;
+        frame.surfaces[0].native_width = SemuComposition.native_width > 0 ? SemuComposition.native_width : surfaceWidth;
+        frame.surfaces[0].native_height = SemuComposition.native_height > 0 ? SemuComposition.native_height : surfaceHeight;
+        frame.surfaces[0].rotation = 0;
+        frame.surfaces[0].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
+        frame.get_proc = getProc;
+        frame.context_generation = 1ULL;
+        int status = semu_render_game_gl(&frame);
+        int post = status == SEMU_RENDER_INVALID_FRAME ? status : semu_render_post_ui_gl(&frame);
+        if (!SemuComposition.reported && SemuCompose.debug()) {
+            SemuComposition.reported = true;
+            fprintf(stderr, "semu-compose: first frame %dx%d surface %d,%d %dx%d game=%d post=%d\n",
+                width, height, surfaceX, surfaceY, surfaceWidth, surfaceHeight, status, post);
+        }
+    }
+}

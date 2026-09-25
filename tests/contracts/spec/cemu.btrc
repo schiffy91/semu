@@ -180,7 +180,7 @@ class CemuSpecContract {
         }
         contract.expect(CemuSpecText.occurrences(controller, "<entry>") == entries.size() && CemuSpecText.ordered(controller, entries), target + " controller0.xml carries every mapping in order");
         contract.lacks(controller, "${", target + " controller0.xml is fully resolved");
-        contract.contains(settings, "\t\t<api>0</api>", target + " cemu forces OpenGL");
+        contract.contains(settings, "\t\t<api>1</api>", target + " cemu runs Vulkan for VK_LAYER_SEMU_compositor");
         contract.contains(settings, "\t<fullscreen>true</fullscreen>", target + " cemu fullscreen");
         contract.contains(settings, "\t<open_pad>false</open_pad>", target + " cemu keeps one game window");
         contract.contains(settings, "\t\t\t<ControllerProfiles>false</ControllerProfiles>", target + " cemu hides controller notifications");

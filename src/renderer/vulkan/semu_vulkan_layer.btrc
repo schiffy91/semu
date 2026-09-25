@@ -1,0 +1,722 @@
+// VK_LAYER_SEMU_compositor: Semu's bezels and shaders for Vulkan emulators, drawn into the
+// emulator's own swapchain image at present. No window of Semu's is involved, so focus, keyboard,
+// pads and mouse stay the emulator's. The picture is never moved: the renderer reads the game where
+// the emulator drew it and draws the bezel around it, so pointer and touch input keep lining up.
+//
+// At vkQueuePresentKHR the layer waits for the app's rendering, blits each presented image into a
+// shared image (upside down, since OpenGL's rows start at the bottom), composes it through
+// libsemurenderer in a surfaceless OpenGL context that imports the same memory
+// (GL_EXT_memory_object_fd), and blits the result back. Fences on the CPU order the two APIs:
+// llvmpipe has no GL_EXT_semaphore_fd, and a frame's three short waits cost little next to the
+// composition itself. A device without external memory, or a missing GL import, presents unchanged.
+import ../preload/semu_compose.btrc;
+#include <dlfcn.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <vulkan/vulkan.h>
+#include <vulkan/vk_layer.h>
+#include <EGL/egl.h>
+
+struct SemuLayerCreateInfo {  // VkLayerInstanceCreateInfo and VkLayerDeviceCreateInfo: untagged in vk_layer.h, one pointer-sized union
+    int sType;
+    const void* pNext;
+    int role;  // VkLayerFunction
+    void* data;  // the link (VK_LAYER_LINK_INFO) or the loader-data callback (VK_LOADER_DATA_CALLBACK)
+};
+
+struct SemuVulkanInstance {
+    void* key;
+    void* handle;
+    __fn_ptr<void*, void*, const char*> nextInstanceProcAddress;
+    __fn_ptr<void, void*, void*> destroy;
+    __fn_ptr<int, void*, const char*, uint32_t*, void*> enumerateDeviceExtensions;
+    __fn_ptr<void, void*, void*> memoryProperties;
+};
+
+struct SemuVulkanSwapchain {
+    void* handle;
+    int width;
+    int height;
+    int format;
+    uint32_t imageCount;
+    void* images[16];
+    void* sharedImage;
+    void* sharedMemory;
+    unsigned int glMemory;
+    unsigned int glTexture;
+    unsigned int glFramebuffer;
+    bool ready;
+    bool failed;
+};
+
+struct SemuVulkanDevice {
+    void* key;
+    void* handle;
+    void* physical;
+    bool interop;
+    __fn_ptr<void*, void*, const char*> nextDeviceProcAddress;
+    __fn_ptr<int, void*, void*> setLoaderData;
+    struct VkPhysicalDeviceMemoryProperties memory;
+    void* commandPool;
+    uint32_t commandFamily;
+    void* command;
+    void* fence;
+    int swapchainCount;
+    struct SemuVulkanSwapchain swapchains[8];
+    int queueCount;
+    void* queues[16];
+    uint32_t queueFamilies[16];
+    __fn_ptr<void, void*, void*> destroyDevice;
+    __fn_ptr<int, void*, const void*, const void*, void*> createSwapchain;
+    __fn_ptr<void, void*, void*, const void*> destroySwapchain;
+    __fn_ptr<int, void*, void*, uint32_t*, void*> swapchainImages;
+    __fn_ptr<int, void*, const void*> present;
+    __fn_ptr<void, void*, uint32_t, uint32_t, void*> deviceQueue;
+    __fn_ptr<void, void*, const void*, void*> deviceQueue2;
+    __fn_ptr<int, void*, void*, void*, void*> createCommandPool;
+    __fn_ptr<void, void*, void*, void*> destroyCommandPool;
+    __fn_ptr<int, void*, void*, void*> allocateCommandBuffers;
+    __fn_ptr<int, void*, void*> beginCommandBuffer;
+    __fn_ptr<int, void*> endCommandBuffer;
+    __fn_ptr<int, void*, uint32_t> resetCommandBuffer;
+    __fn_ptr<void, void*, uint32_t, uint32_t, uint32_t, uint32_t, void*, uint32_t, void*, uint32_t, void*> pipelineBarrier;
+    __fn_ptr<void, void*, void*, int, void*, int, uint32_t, void*, int> blitImage;
+    __fn_ptr<int, void*, uint32_t, void*, void*> queueSubmit;
+    __fn_ptr<int, void*, void*, void*, void*> createFence;
+    __fn_ptr<void, void*, void*, void*> destroyFence;
+    __fn_ptr<int, void*, uint32_t, void*, uint32_t, uint64_t> waitForFences;
+    __fn_ptr<int, void*, uint32_t, void*> resetFences;
+    __fn_ptr<int, void*, void*, void*, void*> createImage;
+    __fn_ptr<void, void*, void*, void*> destroyImage;
+    __fn_ptr<void, void*, void*, void*> imageMemoryRequirements;
+    __fn_ptr<int, void*, void*, void*, void*> allocateMemory;
+    __fn_ptr<void, void*, void*, void*> freeMemory;
+    __fn_ptr<int, void*, void*, void*, uint64_t> bindImageMemory;
+    __fn_ptr<int, void*, void*, int*> memoryFd;
+};
+
+struct SemuVulkanGl {  // one surfaceless OpenGL context for every composition in the process
+    bool attempted;
+    bool ready;
+    void* display;
+    void* context;
+    __fn_ptr<void*, const char*> getProc;
+    __fn_ptr<void, int, unsigned int*> createMemoryObjects;
+    __fn_ptr<void, int, unsigned int*> deleteMemoryObjects;
+    __fn_ptr<void, unsigned int, int, const int*> memoryObjectParameter;
+    __fn_ptr<void, unsigned int, uint64_t, unsigned int, int> importMemoryFd;
+    __fn_ptr<void, unsigned int, int, unsigned int, int, int, unsigned int, uint64_t> textureStorageMemory;
+    __fn_ptr<void, int, unsigned int*> generateTextures;
+    __fn_ptr<void, int, const unsigned int*> deleteTextures;
+    __fn_ptr<void, unsigned int, unsigned int> bindTexture;
+    __fn_ptr<void, unsigned int, unsigned int, int> textureParameter;
+    __fn_ptr<void, int, unsigned int*> generateFramebuffers;
+    __fn_ptr<void, int, const unsigned int*> deleteFramebuffers;
+    __fn_ptr<void, unsigned int, unsigned int> bindFramebuffer;
+    __fn_ptr<void, unsigned int, unsigned int, unsigned int, unsigned int, int> framebufferTexture;
+    __fn_ptr<unsigned int, unsigned int> framebufferStatus;
+    __fn_ptr<void> finish;
+    __fn_ptr<void, unsigned int> disable;
+};
+
+struct SemuVulkanState {
+    int instanceCount;
+    struct SemuVulkanInstance instances[8];
+    int deviceCount;
+    struct SemuVulkanDevice devices[8];
+    struct SemuVulkanGl gl;
+    bool debug;
+};
+
+struct SemuVulkanState SemuVulkan;
+
+class SemuVulkanLayer {
+    class void* key(void* dispatchable) {  // the loader's dispatch table pointer: shared by a device and its queues
+        return *((void**)dispatchable);
+    }
+
+    class void bind(void* slot, void* symbol) {  // C11 forbids casting void* to a function pointer
+        memcpy(slot, &symbol, sizeof(symbol));
+    }
+
+    class __fn_ptr<void> callable(void* address) {  // a looked-up address as PFN_vkVoidFunction
+        __fn_ptr<void> result;
+        memcpy(&result, &address, sizeof(address));
+        return result;
+    }
+
+    class struct SemuVulkanInstance* instance(void* dispatchable) {
+        void* wanted = SemuVulkanLayer.key(dispatchable);
+        for (int index = 0; index < SemuVulkan.instanceCount; index++) {
+            if (SemuVulkan.instances[index].key == wanted) { return &SemuVulkan.instances[index]; }
+        }
+        return null;
+    }
+
+    class struct SemuVulkanDevice* device(void* dispatchable) {
+        void* wanted = SemuVulkanLayer.key(dispatchable);
+        for (int index = 0; index < SemuVulkan.deviceCount; index++) {
+            if (SemuVulkan.devices[index].key == wanted) { return &SemuVulkan.devices[index]; }
+        }
+        return null;
+    }
+
+    class void* deviceFunction(struct SemuVulkanDevice* device, const char* name) {
+        return device->nextDeviceProcAddress(device->handle, name);
+    }
+
+    class void bindDevice(struct SemuVulkanDevice* device) {
+        SemuVulkanLayer.bind(&device->destroyDevice, SemuVulkanLayer.deviceFunction(device, "vkDestroyDevice"));
+        SemuVulkanLayer.bind(&device->createSwapchain, SemuVulkanLayer.deviceFunction(device, "vkCreateSwapchainKHR"));
+        SemuVulkanLayer.bind(&device->destroySwapchain, SemuVulkanLayer.deviceFunction(device, "vkDestroySwapchainKHR"));
+        SemuVulkanLayer.bind(&device->swapchainImages, SemuVulkanLayer.deviceFunction(device, "vkGetSwapchainImagesKHR"));
+        SemuVulkanLayer.bind(&device->present, SemuVulkanLayer.deviceFunction(device, "vkQueuePresentKHR"));
+        SemuVulkanLayer.bind(&device->deviceQueue, SemuVulkanLayer.deviceFunction(device, "vkGetDeviceQueue"));
+        SemuVulkanLayer.bind(&device->deviceQueue2, SemuVulkanLayer.deviceFunction(device, "vkGetDeviceQueue2"));
+        SemuVulkanLayer.bind(&device->createCommandPool, SemuVulkanLayer.deviceFunction(device, "vkCreateCommandPool"));
+        SemuVulkanLayer.bind(&device->destroyCommandPool, SemuVulkanLayer.deviceFunction(device, "vkDestroyCommandPool"));
+        SemuVulkanLayer.bind(&device->allocateCommandBuffers, SemuVulkanLayer.deviceFunction(device, "vkAllocateCommandBuffers"));
+        SemuVulkanLayer.bind(&device->beginCommandBuffer, SemuVulkanLayer.deviceFunction(device, "vkBeginCommandBuffer"));
+        SemuVulkanLayer.bind(&device->endCommandBuffer, SemuVulkanLayer.deviceFunction(device, "vkEndCommandBuffer"));
+        SemuVulkanLayer.bind(&device->resetCommandBuffer, SemuVulkanLayer.deviceFunction(device, "vkResetCommandBuffer"));
+        SemuVulkanLayer.bind(&device->pipelineBarrier, SemuVulkanLayer.deviceFunction(device, "vkCmdPipelineBarrier"));
+        SemuVulkanLayer.bind(&device->blitImage, SemuVulkanLayer.deviceFunction(device, "vkCmdBlitImage"));
+        SemuVulkanLayer.bind(&device->queueSubmit, SemuVulkanLayer.deviceFunction(device, "vkQueueSubmit"));
+        SemuVulkanLayer.bind(&device->createFence, SemuVulkanLayer.deviceFunction(device, "vkCreateFence"));
+        SemuVulkanLayer.bind(&device->destroyFence, SemuVulkanLayer.deviceFunction(device, "vkDestroyFence"));
+        SemuVulkanLayer.bind(&device->waitForFences, SemuVulkanLayer.deviceFunction(device, "vkWaitForFences"));
+        SemuVulkanLayer.bind(&device->resetFences, SemuVulkanLayer.deviceFunction(device, "vkResetFences"));
+        SemuVulkanLayer.bind(&device->createImage, SemuVulkanLayer.deviceFunction(device, "vkCreateImage"));
+        SemuVulkanLayer.bind(&device->destroyImage, SemuVulkanLayer.deviceFunction(device, "vkDestroyImage"));
+        SemuVulkanLayer.bind(&device->imageMemoryRequirements, SemuVulkanLayer.deviceFunction(device, "vkGetImageMemoryRequirements"));
+        SemuVulkanLayer.bind(&device->allocateMemory, SemuVulkanLayer.deviceFunction(device, "vkAllocateMemory"));
+        SemuVulkanLayer.bind(&device->freeMemory, SemuVulkanLayer.deviceFunction(device, "vkFreeMemory"));
+        SemuVulkanLayer.bind(&device->bindImageMemory, SemuVulkanLayer.deviceFunction(device, "vkBindImageMemory"));
+        SemuVulkanLayer.bind(&device->memoryFd, SemuVulkanLayer.deviceFunction(device, "vkGetMemoryFdKHR"));
+    }
+
+    // ---- OpenGL side ----
+
+    class void* glFunction(const char* name) {
+        return SemuVulkan.gl.getProc(name);
+    }
+
+    class bool startGl() {
+        if (SemuVulkan.gl.attempted) { return SemuVulkan.gl.ready; }
+        SemuVulkan.gl.attempted = true;
+        SemuVulkanLayer.bind(&SemuVulkan.gl.getProc, dlsym(RTLD_DEFAULT, "eglGetProcAddress"));
+        __fn_ptr<void*, unsigned int, void*, const int*> platformDisplay;
+        SemuVulkanLayer.bind(&platformDisplay, SemuVulkan.gl.getProc("eglGetPlatformDisplayEXT"));
+        void* display = null;
+        if (platformDisplay != null) { display = platformDisplay(0x31DDu, null, null); }  // EGL_PLATFORM_SURFACELESS_MESA
+        if (display == null || eglInitialize(display, null, null) == 0u) {
+            display = (void*)eglGetDisplay(null);  // EGL_DEFAULT_DISPLAY
+            if (display == null || eglInitialize(display, null, null) == 0u) { return false; }
+        }
+        eglBindAPI(0x30A2u);  // EGL_OPENGL_API
+        int attributes[8];
+        attributes[0] = 0x3098; attributes[1] = 4;  // EGL_CONTEXT_MAJOR_VERSION
+        attributes[2] = 0x30FB; attributes[3] = 1;  // EGL_CONTEXT_MINOR_VERSION
+        attributes[4] = 0x30FD; attributes[5] = 1;  // EGL_CONTEXT_OPENGL_PROFILE_MASK: core
+        attributes[6] = 0x3038; attributes[7] = 0;  // EGL_NONE
+        void* context = (void*)eglCreateContext(display, null, null, attributes);
+        if (context == null) { return false; }
+        SemuVulkan.gl.display = display;
+        SemuVulkan.gl.context = context;
+        SemuVulkanLayer.bind(&SemuVulkan.gl.createMemoryObjects, SemuVulkanLayer.glFunction("glCreateMemoryObjectsEXT"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.deleteMemoryObjects, SemuVulkanLayer.glFunction("glDeleteMemoryObjectsEXT"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.memoryObjectParameter, SemuVulkanLayer.glFunction("glMemoryObjectParameterivEXT"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.importMemoryFd, SemuVulkanLayer.glFunction("glImportMemoryFdEXT"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.textureStorageMemory, SemuVulkanLayer.glFunction("glTexStorageMem2DEXT"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.generateTextures, SemuVulkanLayer.glFunction("glGenTextures"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.deleteTextures, SemuVulkanLayer.glFunction("glDeleteTextures"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.bindTexture, SemuVulkanLayer.glFunction("glBindTexture"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.textureParameter, SemuVulkanLayer.glFunction("glTexParameteri"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.generateFramebuffers, SemuVulkanLayer.glFunction("glGenFramebuffers"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.deleteFramebuffers, SemuVulkanLayer.glFunction("glDeleteFramebuffers"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.bindFramebuffer, SemuVulkanLayer.glFunction("glBindFramebuffer"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.framebufferTexture, SemuVulkanLayer.glFunction("glFramebufferTexture2D"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.framebufferStatus, SemuVulkanLayer.glFunction("glCheckFramebufferStatus"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.finish, SemuVulkanLayer.glFunction("glFinish"));
+        SemuVulkanLayer.bind(&SemuVulkan.gl.disable, SemuVulkanLayer.glFunction("glDisable"));
+        SemuVulkan.gl.ready = SemuVulkan.gl.createMemoryObjects != null && SemuVulkan.gl.importMemoryFd != null
+            && SemuVulkan.gl.textureStorageMemory != null;
+        if (SemuVulkan.debug) { fprintf(stderr, "semu-vulkan: OpenGL %s\n", SemuVulkan.gl.ready ? "ready" : "lacks GL_EXT_memory_object_fd"); }
+        return SemuVulkan.gl.ready;
+    }
+
+    // ---- shared image ----
+
+    class int sharedFormat(int swapchainFormat) {  // same encoding as the swapchain, RGBA order for OpenGL
+        if (swapchainFormat == 50 || swapchainFormat == 43) { return 43; }  // B8G8R8A8_SRGB, R8G8B8A8_SRGB
+        return 37;  // R8G8B8A8_UNORM
+    }
+
+    class int memoryType(struct SemuVulkanDevice* device, uint32_t allowed) {
+        for (uint32_t index = 0u; index < device->memory.memoryTypeCount; index++) {
+            if ((allowed & (1u << index)) != 0u && (device->memory.memoryTypes[index].propertyFlags & 1u) != 0u) { return (int)index; }  // DEVICE_LOCAL
+        }
+        for (uint32_t index = 0u; index < device->memory.memoryTypeCount; index++) {
+            if ((allowed & (1u << index)) != 0u) { return (int)index; }
+        }
+        return -1;
+    }
+
+    class bool prepare(struct SemuVulkanDevice* device, struct SemuVulkanSwapchain* swapchain) {
+        if (swapchain->ready) { return true; }
+        if (swapchain->failed || !SemuVulkanLayer.startGl()) { return false; }
+        swapchain->failed = true;  // until everything below succeeds
+        swapchain->imageCount = 16u;
+        if (device->swapchainImages(device->handle, swapchain->handle, &swapchain->imageCount, swapchain->images) < 0) { return false; }
+        struct VkExternalMemoryImageCreateInfo external;
+        memset(&external, 0, sizeof(struct VkExternalMemoryImageCreateInfo));
+        external.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+        external.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+        struct VkImageCreateInfo image;
+        memset(&image, 0, sizeof(struct VkImageCreateInfo));
+        image.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        image.pNext = &external;
+        image.imageType = VK_IMAGE_TYPE_2D;
+        image.format = SemuVulkanLayer.sharedFormat(swapchain->format);
+        image.extent.width = (uint32_t)swapchain->width;
+        image.extent.height = (uint32_t)swapchain->height;
+        image.extent.depth = 1u;
+        image.mipLevels = 1u;
+        image.arrayLayers = 1u;
+        image.samples = VK_SAMPLE_COUNT_1_BIT;
+        image.tiling = VK_IMAGE_TILING_OPTIMAL;
+        image.usage = 0x17u;  // TRANSFER_SRC | TRANSFER_DST | SAMPLED | COLOR_ATTACHMENT
+        image.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        image.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        if (device->createImage(device->handle, &image, null, &swapchain->sharedImage) < 0) { return false; }
+        struct VkMemoryRequirements requirements;
+        device->imageMemoryRequirements(device->handle, swapchain->sharedImage, &requirements);
+        int type = SemuVulkanLayer.memoryType(device, requirements.memoryTypeBits);
+        if (type < 0) { return false; }
+        struct VkMemoryDedicatedAllocateInfo dedicated;
+        memset(&dedicated, 0, sizeof(struct VkMemoryDedicatedAllocateInfo));
+        dedicated.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
+        dedicated.image = swapchain->sharedImage;
+        struct VkExportMemoryAllocateInfo export;
+        memset(&export, 0, sizeof(struct VkExportMemoryAllocateInfo));
+        export.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+        export.pNext = &dedicated;
+        export.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+        struct VkMemoryAllocateInfo allocation;
+        memset(&allocation, 0, sizeof(struct VkMemoryAllocateInfo));
+        allocation.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocation.pNext = &export;
+        allocation.allocationSize = requirements.size;
+        allocation.memoryTypeIndex = (uint32_t)type;
+        if (device->allocateMemory(device->handle, &allocation, null, &swapchain->sharedMemory) < 0) { return false; }
+        if (device->bindImageMemory(device->handle, swapchain->sharedImage, swapchain->sharedMemory, 0ULL) < 0) { return false; }
+        struct VkMemoryGetFdInfoKHR fdInfo;
+        memset(&fdInfo, 0, sizeof(struct VkMemoryGetFdInfoKHR));
+        fdInfo.sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR;
+        fdInfo.memory = swapchain->sharedMemory;
+        fdInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+        int descriptor = -1;
+        if (device->memoryFd(device->handle, &fdInfo, &descriptor) < 0 || descriptor < 0) { return false; }
+        SemuVulkanLayer.current();
+        int dedicatedFlag = 1;
+        SemuVulkan.gl.createMemoryObjects(1, &swapchain->glMemory);
+        if (SemuVulkan.gl.memoryObjectParameter != null) { SemuVulkan.gl.memoryObjectParameter(swapchain->glMemory, 0x9581, &dedicatedFlag); }  // GL_DEDICATED_MEMORY_OBJECT_EXT
+        SemuVulkan.gl.importMemoryFd(swapchain->glMemory, (uint64_t)requirements.size, 0x9586u, descriptor);  // GL_HANDLE_TYPE_OPAQUE_FD_EXT; GL owns the fd now
+        SemuVulkan.gl.generateTextures(1, &swapchain->glTexture);
+        SemuVulkan.gl.bindTexture(0x0DE1u, swapchain->glTexture);  // GL_TEXTURE_2D
+        SemuVulkan.gl.textureParameter(0x0DE1u, 0x9580u, 0x9584);  // GL_TEXTURE_TILING_EXT: GL_OPTIMAL_TILING_EXT
+        bool srgb = SemuVulkanLayer.sharedFormat(swapchain->format) == 43;
+        SemuVulkan.gl.textureStorageMemory(0x0DE1u, 1, srgb ? 0x8C43u : 0x8058u, swapchain->width, swapchain->height, swapchain->glMemory, 0ULL);  // GL_SRGB8_ALPHA8 : GL_RGBA8
+        if (srgb) { SemuVulkan.gl.textureParameter(0x0DE1u, 0x8A48u, 0x8A4A); }  // GL_TEXTURE_SRGB_DECODE_EXT: GL_SKIP_DECODE_EXT
+        SemuVulkan.gl.generateFramebuffers(1, &swapchain->glFramebuffer);
+        SemuVulkan.gl.bindFramebuffer(0x8D40u, swapchain->glFramebuffer);  // GL_FRAMEBUFFER
+        SemuVulkan.gl.framebufferTexture(0x8D40u, 0x8CE0u, 0x0DE1u, swapchain->glTexture, 0);  // GL_COLOR_ATTACHMENT0
+        bool complete = SemuVulkan.gl.framebufferStatus(0x8D40u) == 0x8CD5u;  // GL_FRAMEBUFFER_COMPLETE
+        SemuVulkan.gl.bindFramebuffer(0x8D40u, 0u);
+        if (SemuVulkan.debug) { fprintf(stderr, "semu-vulkan: swapchain %dx%d format %d, %u images, shared framebuffer %s\n", swapchain->width, swapchain->height, swapchain->format, swapchain->imageCount, complete ? "complete" : "incomplete"); }
+        if (!complete) { return false; }
+        swapchain->failed = false;
+        swapchain->ready = true;
+        return true;
+    }
+
+    class void releaseSwapchain(struct SemuVulkanDevice* device, struct SemuVulkanSwapchain* swapchain) {
+        if (swapchain->glFramebuffer != 0u || swapchain->glTexture != 0u || swapchain->glMemory != 0u) {
+            SemuVulkanLayer.current();
+            if (swapchain->glFramebuffer != 0u) { SemuVulkan.gl.deleteFramebuffers(1, &swapchain->glFramebuffer); }
+            if (swapchain->glTexture != 0u) { SemuVulkan.gl.deleteTextures(1, &swapchain->glTexture); }
+            if (swapchain->glMemory != 0u && SemuVulkan.gl.deleteMemoryObjects != null) { SemuVulkan.gl.deleteMemoryObjects(1, &swapchain->glMemory); }
+        }
+        if (swapchain->sharedImage != null) { device->destroyImage(device->handle, swapchain->sharedImage, null); }
+        if (swapchain->sharedMemory != null) { device->freeMemory(device->handle, swapchain->sharedMemory, null); }
+        memset(swapchain, 0, sizeof(struct SemuVulkanSwapchain));
+    }
+
+    class void current() {
+        eglMakeCurrent(SemuVulkan.gl.display, null, null, SemuVulkan.gl.context);  // EGL_NO_SURFACE: surfaceless
+    }
+
+    // ---- commands ----
+
+    class bool commands(struct SemuVulkanDevice* device, void* queue) {  // one command buffer and fence on the present queue's family
+        uint32_t family = 0u;
+        for (int index = 0; index < device->queueCount; index++) {
+            if (device->queues[index] == queue) { family = device->queueFamilies[index]; }
+        }
+        if (device->command != null && device->commandFamily == family) { return true; }
+        if (device->commandPool != null) { device->destroyCommandPool(device->handle, device->commandPool, null); }
+        device->command = null;
+        struct VkCommandPoolCreateInfo pool;
+        memset(&pool, 0, sizeof(struct VkCommandPoolCreateInfo));
+        pool.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        pool.flags = (uint32_t)VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        pool.queueFamilyIndex = family;
+        if (device->createCommandPool(device->handle, &pool, null, &device->commandPool) < 0) { return false; }
+        struct VkCommandBufferAllocateInfo allocate;
+        memset(&allocate, 0, sizeof(struct VkCommandBufferAllocateInfo));
+        allocate.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocate.commandPool = device->commandPool;
+        allocate.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocate.commandBufferCount = 1u;
+        if (device->allocateCommandBuffers(device->handle, &allocate, &device->command) < 0) { return false; }
+        if (device->setLoaderData != null) { device->setLoaderData(device->handle, device->command); }  // a layer-made dispatchable object needs the loader's table
+        if (device->fence == null) {
+            struct VkFenceCreateInfo fence;
+            memset(&fence, 0, sizeof(struct VkFenceCreateInfo));
+            fence.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            if (device->createFence(device->handle, &fence, null, &device->fence) < 0) { return false; }
+        }
+        device->commandFamily = family;
+        return true;
+    }
+
+    class void barrier(struct SemuVulkanDevice* device, void* image, int oldLayout, int newLayout, uint32_t sourceAccess, uint32_t targetAccess) {
+        struct VkImageMemoryBarrier barrier;
+        memset(&barrier, 0, sizeof(struct VkImageMemoryBarrier));
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.srcAccessMask = sourceAccess;
+        barrier.dstAccessMask = targetAccess;
+        barrier.oldLayout = oldLayout;
+        barrier.newLayout = newLayout;
+        barrier.srcQueueFamilyIndex = 0xFFFFFFFFu;  // VK_QUEUE_FAMILY_IGNORED
+        barrier.dstQueueFamilyIndex = 0xFFFFFFFFu;
+        barrier.image = image;
+        barrier.subresourceRange.aspectMask = (uint32_t)VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.levelCount = 1u;
+        barrier.subresourceRange.layerCount = 1u;
+        device->pipelineBarrier(device->command, 0x10000u, 0x10000u, 0u, 0u, null, 0u, null, 1u, &barrier);  // ALL_COMMANDS both ways
+    }
+
+    class void blit(struct SemuVulkanDevice* device, void* source, int sourceLayout, void* target, int targetLayout, int width, int height) {  // flips rows
+        struct VkImageBlit region;
+        memset(&region, 0, sizeof(struct VkImageBlit));
+        region.srcSubresource.aspectMask = (uint32_t)VK_IMAGE_ASPECT_COLOR_BIT;
+        region.srcSubresource.layerCount = 1u;
+        region.srcOffsets[1].x = width;
+        region.srcOffsets[1].y = height;
+        region.srcOffsets[1].z = 1;
+        region.dstSubresource.aspectMask = (uint32_t)VK_IMAGE_ASPECT_COLOR_BIT;
+        region.dstSubresource.layerCount = 1u;
+        region.dstOffsets[0].y = height;
+        region.dstOffsets[1].x = width;
+        region.dstOffsets[1].z = 1;
+        device->blitImage(device->command, source, sourceLayout, target, targetLayout, 1u, &region, 0);  // VK_FILTER_NEAREST
+    }
+
+    class bool submit(struct SemuVulkanDevice* device, void* queue, bool withCommands, uint32_t waitCount, const void* waits) {
+        uint32_t stages[16];
+        for (int index = 0; index < 16; index++) { stages[index] = 0x10000u; }  // ALL_COMMANDS
+        struct VkSubmitInfo info;
+        memset(&info, 0, sizeof(struct VkSubmitInfo));
+        info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        info.waitSemaphoreCount = waitCount > 16u ? 16u : waitCount;
+        info.pWaitSemaphores = waits;
+        info.pWaitDstStageMask = stages;
+        if (withCommands) {
+            info.commandBufferCount = 1u;
+            info.pCommandBuffers = &device->command;
+        }
+        if (device->queueSubmit(queue, 1u, &info, device->fence) < 0) { return false; }
+        void* fences[1];
+        fences[0] = device->fence;
+        device->waitForFences(device->handle, 1u, fences, 1u, 0xFFFFFFFFFFFFFFFFULL);
+        device->resetFences(device->handle, 1u, fences);
+        return true;
+    }
+
+    class bool begin(struct SemuVulkanDevice* device) {
+        device->resetCommandBuffer(device->command, 0u);
+        struct VkCommandBufferBeginInfo info;
+        memset(&info, 0, sizeof(struct VkCommandBufferBeginInfo));
+        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        info.flags = (uint32_t)VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        return device->beginCommandBuffer(device->command, &info) >= 0;
+    }
+
+    class void compose(struct SemuVulkanDevice* device, void* queue, struct SemuVulkanSwapchain* swapchain, uint32_t index) {
+        if (index >= swapchain->imageCount) { return; }
+        void* image = swapchain->images[index];
+        int present = 1000001002;  // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+        if (!SemuVulkanLayer.begin(device)) { return; }
+        SemuVulkanLayer.barrier(device, image, present, 6, 0x10000u, 0x800u);  // TRANSFER_SRC_OPTIMAL
+        SemuVulkanLayer.barrier(device, swapchain->sharedImage, 0, 7, 0u, 0x1000u);  // UNDEFINED -> TRANSFER_DST_OPTIMAL
+        SemuVulkanLayer.blit(device, image, 6, swapchain->sharedImage, 7, swapchain->width, swapchain->height);
+        SemuVulkanLayer.barrier(device, swapchain->sharedImage, 7, 1, 0x1000u, 0x18000u);  // GENERAL for OpenGL
+        device->endCommandBuffer(device->command);
+        if (!SemuVulkanLayer.submit(device, queue, true, 0u, null)) { return; }
+        SemuVulkanLayer.current();
+        SemuVulkan.gl.disable(0x8DB9u);  // GL_FRAMEBUFFER_SRGB: raw values, as on RetroArch's framebuffer
+        SemuCompose.compose(swapchain->width, swapchain->height, SemuVulkan.gl.getProc, swapchain->glFramebuffer, 0x8CE0u);
+        SemuVulkan.gl.finish();
+        if (!SemuVulkanLayer.begin(device)) { return; }
+        SemuVulkanLayer.barrier(device, swapchain->sharedImage, 1, 6, 0x18000u, 0x800u);
+        SemuVulkanLayer.barrier(device, image, 6, 7, 0x800u, 0x1000u);
+        SemuVulkanLayer.blit(device, swapchain->sharedImage, 6, image, 7, swapchain->width, swapchain->height);
+        SemuVulkanLayer.barrier(device, image, 7, present, 0x1000u, 0x8000u);
+        device->endCommandBuffer(device->command);
+        SemuVulkanLayer.submit(device, queue, true, 0u, null);
+    }
+
+    class struct SemuVulkanSwapchain* swapchain(struct SemuVulkanDevice* device, void* handle) {
+        for (int index = 0; index < device->swapchainCount; index++) {
+            if (device->swapchains[index].handle == handle) { return &device->swapchains[index]; }
+        }
+        return null;
+    }
+
+    class bool supports(struct SemuVulkanInstance* instance, void* physical, const char* extension) {
+        uint32_t count = 0u;
+        instance->enumerateDeviceExtensions(physical, null, &count, null);
+        if (count == 0u) { return false; }
+        struct VkExtensionProperties* properties = (struct VkExtensionProperties*)calloc((size_t)count, sizeof(struct VkExtensionProperties));
+        instance->enumerateDeviceExtensions(physical, null, &count, properties);
+        bool found = false;
+        for (uint32_t index = 0u; index < count; index++) {
+            if (strcmp(properties[index].extensionName, extension) == 0) { found = true; }
+        }
+        free(properties);
+        return found;
+    }
+}
+
+// ---- entry points (named in the layer manifest) ----
+
+int semu_vkCreateInstance(const struct VkInstanceCreateInfo* create, const void* allocator, void** result);
+void semu_vkDestroyInstance(void* instance, const void* allocator);
+int semu_vkCreateDevice(void* physical, const struct VkDeviceCreateInfo* create, const void* allocator, void** result);
+void semu_vkDestroyDevice(void* device, const void* allocator);
+int semu_vkCreateSwapchainKHR(void* device, const struct VkSwapchainCreateInfoKHR* create, const void* allocator, void** result);
+void semu_vkDestroySwapchainKHR(void* device, void* swapchain, const void* allocator);
+int semu_vkQueuePresentKHR(void* queue, const struct VkPresentInfoKHR* info);
+void semu_vkGetDeviceQueue(void* device, uint32_t family, uint32_t index, void** queue);
+void semu_vkGetDeviceQueue2(void* device, const struct VkDeviceQueueInfo2* info, void** queue);
+__fn_ptr<void> semu_vkGetDeviceProcAddr(void* device, const char* name);
+
+__fn_ptr<void> semu_vkGetInstanceProcAddr(void* instance, const char* name) {
+    if (strcmp(name, "vkGetInstanceProcAddr") == 0) { return (__fn_ptr<void>)semu_vkGetInstanceProcAddr; }
+    if (strcmp(name, "vkCreateInstance") == 0) { return (__fn_ptr<void>)semu_vkCreateInstance; }
+    if (strcmp(name, "vkDestroyInstance") == 0) { return (__fn_ptr<void>)semu_vkDestroyInstance; }
+    if (strcmp(name, "vkCreateDevice") == 0) { return (__fn_ptr<void>)semu_vkCreateDevice; }
+    if (strcmp(name, "vkGetDeviceProcAddr") == 0 || strncmp(name, "vkQueuePresent", 14) == 0 || strcmp(name, "vkCreateSwapchainKHR") == 0
+        || strcmp(name, "vkDestroySwapchainKHR") == 0 || strcmp(name, "vkDestroyDevice") == 0 || strncmp(name, "vkGetDeviceQueue", 16) == 0) {
+        return semu_vkGetDeviceProcAddr(null, name);
+    }
+    if (instance == null) { return SemuVulkanLayer.callable(null); }
+    struct SemuVulkanInstance* record = SemuVulkanLayer.instance(instance);
+    return SemuVulkanLayer.callable(record != null ? record->nextInstanceProcAddress(instance, name) : null);
+}
+
+__fn_ptr<void> semu_vkGetDeviceProcAddr(void* device, const char* name) {
+    if (strcmp(name, "vkGetDeviceProcAddr") == 0) { return (__fn_ptr<void>)semu_vkGetDeviceProcAddr; }
+    if (strcmp(name, "vkDestroyDevice") == 0) { return (__fn_ptr<void>)semu_vkDestroyDevice; }
+    if (strcmp(name, "vkCreateSwapchainKHR") == 0) { return (__fn_ptr<void>)semu_vkCreateSwapchainKHR; }
+    if (strcmp(name, "vkDestroySwapchainKHR") == 0) { return (__fn_ptr<void>)semu_vkDestroySwapchainKHR; }
+    if (strcmp(name, "vkQueuePresentKHR") == 0) { return (__fn_ptr<void>)semu_vkQueuePresentKHR; }
+    if (strcmp(name, "vkGetDeviceQueue") == 0) { return (__fn_ptr<void>)semu_vkGetDeviceQueue; }
+    if (strcmp(name, "vkGetDeviceQueue2") == 0) { return (__fn_ptr<void>)semu_vkGetDeviceQueue2; }
+    if (device == null) { return SemuVulkanLayer.callable(null); }
+    struct SemuVulkanDevice* record = SemuVulkanLayer.device(device);
+    return SemuVulkanLayer.callable(record != null ? SemuVulkanLayer.deviceFunction(record, name) : null);
+}
+
+int semu_vkCreateInstance(const struct VkInstanceCreateInfo* create, const void* allocator, void** result) {
+    struct SemuLayerCreateInfo* link = (struct SemuLayerCreateInfo*)create->pNext;
+    while (link != null && (link->sType != 47 || link->role != 0)) {  // LOADER_INSTANCE_CREATE_INFO, VK_LAYER_LINK_INFO
+        link = (struct SemuLayerCreateInfo*)link->pNext;
+    }
+    if (link == null || SemuVulkan.instanceCount >= 8) { return -3; }  // VK_ERROR_INITIALIZATION_FAILED
+    __fn_ptr<void*, void*, const char*> next;
+    struct VkLayerInstanceLink_* instanceLink = (struct VkLayerInstanceLink_*)link->data;
+    memcpy(&next, &instanceLink->pfnNextGetInstanceProcAddr, sizeof(next));
+    link->data = (void*)instanceLink->pNext;  // the next layer sees its own link
+    __fn_ptr<int, const void*, const void*, void**> nextCreate;
+    SemuVulkanLayer.bind(&nextCreate, next(null, "vkCreateInstance"));
+    int status = nextCreate(create, allocator, result);
+    if (status < 0) { return status; }
+    SemuVulkan.debug = getenv("SEMU_RENDER_DEBUG") != null;
+    struct SemuVulkanInstance* record = &SemuVulkan.instances[SemuVulkan.instanceCount];
+    SemuVulkan.instanceCount = SemuVulkan.instanceCount + 1;
+    memset(record, 0, sizeof(struct SemuVulkanInstance));
+    record->handle = *result;
+    record->key = SemuVulkanLayer.key(*result);
+    record->nextInstanceProcAddress = next;
+    SemuVulkanLayer.bind(&record->destroy, next(*result, "vkDestroyInstance"));
+    SemuVulkanLayer.bind(&record->enumerateDeviceExtensions, next(*result, "vkEnumerateDeviceExtensionProperties"));
+    SemuVulkanLayer.bind(&record->memoryProperties, next(*result, "vkGetPhysicalDeviceMemoryProperties"));
+    return status;
+}
+
+void semu_vkDestroyInstance(void* instance, const void* allocator) {
+    struct SemuVulkanInstance* record = SemuVulkanLayer.instance(instance);
+    if (record == null) { return; }
+    __fn_ptr<void, void*, const void*> destroy;
+    memcpy(&destroy, &record->destroy, sizeof(destroy));
+    record->key = null;
+    destroy(instance, allocator);
+}
+
+int semu_vkCreateDevice(void* physical, const struct VkDeviceCreateInfo* create, const void* allocator, void** result) {
+    struct SemuLayerCreateInfo* link = (struct SemuLayerCreateInfo*)create->pNext;
+    while (link != null && (link->sType != 48 || link->role != 0)) {  // LOADER_DEVICE_CREATE_INFO, VK_LAYER_LINK_INFO
+        link = (struct SemuLayerCreateInfo*)link->pNext;
+    }
+    struct SemuLayerCreateInfo* loaderData = (struct SemuLayerCreateInfo*)create->pNext;
+    while (loaderData != null && (loaderData->sType != 48 || loaderData->role != 1)) {  // VK_LOADER_DATA_CALLBACK
+        loaderData = (struct SemuLayerCreateInfo*)loaderData->pNext;
+    }
+    struct SemuVulkanInstance* instance = SemuVulkanLayer.instance(physical);
+    if (link == null || instance == null || SemuVulkan.deviceCount >= 8) { return -3; }
+    __fn_ptr<void*, void*, const char*> nextInstance;
+    __fn_ptr<void*, void*, const char*> nextDevice;
+    struct VkLayerDeviceLink_* deviceLink = (struct VkLayerDeviceLink_*)link->data;
+    memcpy(&nextInstance, &deviceLink->pfnNextGetInstanceProcAddr, sizeof(nextInstance));
+    memcpy(&nextDevice, &deviceLink->pfnNextGetDeviceProcAddr, sizeof(nextDevice));
+    link->data = (void*)deviceLink->pNext;
+    __fn_ptr<int, void*, const void*, const void*, void**> nextCreate;
+    SemuVulkanLayer.bind(&nextCreate, nextInstance(instance->handle, "vkCreateDevice"));
+    bool interop = SemuCompose.enabled() && SemuVulkanLayer.supports(instance, physical, "VK_KHR_external_memory_fd");
+    struct VkDeviceCreateInfo copy;
+    memcpy(&copy, create, sizeof(struct VkDeviceCreateInfo));
+    char* extensions[64];
+    uint32_t count = 0u;
+    bool present = false;
+    for (uint32_t index = 0u; index < create->enabledExtensionCount && count < 63u; index++) {
+        extensions[count] = (char*)create->ppEnabledExtensionNames[index];
+        if (strcmp(extensions[count], "VK_KHR_external_memory_fd") == 0) { present = true; }
+        count = count + 1u;
+    }
+    if (interop && !present) {  // exporting the shared image's memory
+        extensions[count] = (char*)"VK_KHR_external_memory_fd";
+        count = count + 1u;
+    }
+    copy.enabledExtensionCount = count;
+    copy.ppEnabledExtensionNames = extensions;
+    int status = nextCreate(physical, &copy, allocator, result);
+    if (status < 0) { return status; }
+    struct SemuVulkanDevice* record = &SemuVulkan.devices[SemuVulkan.deviceCount];
+    SemuVulkan.deviceCount = SemuVulkan.deviceCount + 1;
+    memset(record, 0, sizeof(struct SemuVulkanDevice));
+    record->handle = *result;
+    record->key = SemuVulkanLayer.key(*result);
+    record->physical = physical;
+    record->interop = interop;
+    record->nextDeviceProcAddress = nextDevice;
+    if (loaderData != null) { SemuVulkanLayer.bind(&record->setLoaderData, loaderData->data); }
+    instance->memoryProperties(physical, &record->memory);
+    SemuVulkanLayer.bindDevice(record);
+    if (SemuVulkan.debug) { fprintf(stderr, "semu-vulkan: device %s\n", interop ? "composes at present" : "presents unchanged (no external memory or no SEMU_RENDER_SYSTEM_ID)"); }
+    return status;
+}
+
+void semu_vkDestroyDevice(void* device, const void* allocator) {
+    struct SemuVulkanDevice* record = SemuVulkanLayer.device(device);
+    if (record == null) { return; }
+    for (int index = 0; index < record->swapchainCount; index++) { SemuVulkanLayer.releaseSwapchain(record, &record->swapchains[index]); }
+    if (record->fence != null) { record->destroyFence(record->handle, record->fence, null); }
+    if (record->commandPool != null) { record->destroyCommandPool(record->handle, record->commandPool, null); }
+    __fn_ptr<void, void*, const void*> destroy;
+    memcpy(&destroy, &record->destroyDevice, sizeof(destroy));
+    record->key = null;
+    destroy(device, allocator);
+}
+
+void semu_vkGetDeviceQueue(void* device, uint32_t family, uint32_t index, void** queue) {
+    struct SemuVulkanDevice* record = SemuVulkanLayer.device(device);
+    if (record == null) { return; }
+    record->deviceQueue(device, family, index, queue);
+    if (record->queueCount < 16) {
+        record->queues[record->queueCount] = *queue;
+        record->queueFamilies[record->queueCount] = family;
+        record->queueCount = record->queueCount + 1;
+    }
+}
+
+void semu_vkGetDeviceQueue2(void* device, const struct VkDeviceQueueInfo2* info, void** queue) {
+    struct SemuVulkanDevice* record = SemuVulkanLayer.device(device);
+    if (record == null) { return; }
+    record->deviceQueue2(device, info, queue);
+    if (record->queueCount < 16) {
+        record->queues[record->queueCount] = *queue;
+        record->queueFamilies[record->queueCount] = info->queueFamilyIndex;
+        record->queueCount = record->queueCount + 1;
+    }
+}
+
+int semu_vkCreateSwapchainKHR(void* device, const struct VkSwapchainCreateInfoKHR* create, const void* allocator, void** result) {
+    struct SemuVulkanDevice* record = SemuVulkanLayer.device(device);
+    if (record == null) { return -3; }
+    struct VkSwapchainCreateInfoKHR copy;
+    memcpy(&copy, create, sizeof(struct VkSwapchainCreateInfoKHR));
+    if (record->interop) { copy.imageUsage = (uint32_t)copy.imageUsage | 0x3u; }  // TRANSFER_SRC | TRANSFER_DST
+    int status = record->createSwapchain(device, &copy, allocator, result);
+    if (status < 0 || !record->interop) { return status; }
+    struct SemuVulkanSwapchain* swapchain = null;
+    for (int index = 0; index < record->swapchainCount; index++) {
+        if (record->swapchains[index].handle == null) { swapchain = &record->swapchains[index]; }
+    }
+    if (swapchain == null && record->swapchainCount < 8) {
+        swapchain = &record->swapchains[record->swapchainCount];
+        record->swapchainCount = record->swapchainCount + 1;
+    }
+    if (swapchain != null) {
+        memset(swapchain, 0, sizeof(struct SemuVulkanSwapchain));
+        swapchain->handle = *result;
+        swapchain->width = (int)create->imageExtent.width;
+        swapchain->height = (int)create->imageExtent.height;
+        swapchain->format = (int)create->imageFormat;
+    }
+    return status;
+}
+
+void semu_vkDestroySwapchainKHR(void* device, void* swapchain, const void* allocator) {
+    struct SemuVulkanDevice* record = SemuVulkanLayer.device(device);
+    if (record == null) { return; }
+    struct SemuVulkanSwapchain* tracked = SemuVulkanLayer.swapchain(record, swapchain);
+    if (tracked != null) { SemuVulkanLayer.releaseSwapchain(record, tracked); }
+    record->destroySwapchain(device, swapchain, allocator);
+}
+
+int semu_vkQueuePresentKHR(void* queue, const struct VkPresentInfoKHR* info) {
+    struct SemuVulkanDevice* record = SemuVulkanLayer.device(queue);
+    if (record == null) { return -3; }
+    if (!record->interop || !SemuVulkanLayer.commands(record, queue)) { return record->present(queue, info); }
+    bool composed = false;
+    for (uint32_t index = 0u; index < info->swapchainCount; index++) {
+        struct SemuVulkanSwapchain* swapchain = SemuVulkanLayer.swapchain(record, (void*)info->pSwapchains[index]);
+        if (swapchain == null || !SemuVulkanLayer.prepare(record, swapchain)) { continue; }
+        if (!composed) {  // the app's rendering must be finished before the image is read
+            if (!SemuVulkanLayer.submit(record, queue, false, info->waitSemaphoreCount, (const void*)info->pWaitSemaphores)) { return record->present(queue, info); }
+            composed = true;
+        }
+        SemuVulkanLayer.compose(record, queue, swapchain, info->pImageIndices[index]);
+    }
+    if (!composed) { return record->present(queue, info); }
+    struct VkPresentInfoKHR copy;
+    memcpy(&copy, info, sizeof(struct VkPresentInfoKHR));
+    copy.waitSemaphoreCount = 0u;  // already waited, and the composed image is complete
+    copy.pWaitSemaphores = null;
+    return record->present(queue, &copy);
+}
