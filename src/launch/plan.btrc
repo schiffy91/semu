@@ -392,7 +392,10 @@ class SemuLauncher {
             if (preload && plan.platform.equals("macos") && SemuJson.boolAt(platform, "window_shim", false)) { launch.environment.push("SEMU_WINDOW_COMPOSE=1"); }  // macOS: the window shim composes at the GL flush
             string layers = PathTools.join(plan.assetRoot, "share/vulkan/explicit_layer.d");
             string standIn = PathTools.join(plan.assetRoot, "lib/semu-vulkan");  // macOS: emulators load MoltenVK directly, so Semu's stand-in is found by name
-            if (vulkan && plan.platform.equals("macos") && FileSystem.isFile(PathTools.join(standIn, "libvulkan.dylib"))) {
+            bool beside = SemuJson.textAt(platform, "vulkan_stand_in").equals("beside");  // the package placed it as the app's own libMoltenVK.dylib
+            if (vulkan && plan.platform.equals("macos") && beside) {
+                // nothing on DYLD_LIBRARY_PATH: a library-path MoltenVK would shadow the app's own
+            } else if (vulkan && plan.platform.equals("macos") && FileSystem.isFile(PathTools.join(standIn, "libvulkan.dylib"))) {
                 launch.environment.push("DYLD_LIBRARY_PATH=" + standIn);
                 launch.environment.push("SEMU_TOUCH_LIBRARY=" + PathTools.join(standIn, "libvulkan.dylib"));
             } else if (vulkan && FileSystem.isFile(PathTools.join(layers, "semu_compositor.json"))) {

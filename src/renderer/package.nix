@@ -84,7 +84,6 @@ stdenv.mkDerivation {
     cp libsemuwindow.dylib "$out/lib/libsemuwindow.dylib"
     mkdir -p "$out/lib/semu-vulkan"
     cp libsemuvulkan.dylib "$out/lib/semu-vulkan/libvulkan.dylib"
-    ln -s libvulkan.dylib "$out/lib/semu-vulkan/libMoltenVK.dylib"  # the name an app asks for when it wants MoltenVK itself
     mkdir -p "$out/lib/semu-vulkan/beside"
     cp libsemuvulkan-beside.dylib "$out/lib/semu-vulkan/beside/libMoltenVK.dylib"
     ln -s libsemurenderer.dylib "$out/lib/libsemurenderer.so"  # one SEMU_RENDERER_LIBRARY path on every platform

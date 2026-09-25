@@ -151,7 +151,8 @@
         "use_hypervisor": "false"
       },
       "window_shim": true,
-      "render_vulkan": true
+      "render_vulkan": true,
+      "vulkan_stand_in": "beside"
     }
   },
   "doc": {

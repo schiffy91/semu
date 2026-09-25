@@ -529,9 +529,18 @@ Progress (2026-09-25):
   button of the composed bottom screen (1093,560, where Azahar never drew
   it) mapped to 638,653 in Azahar's own layout and dismissed the dialog.
   The Linux half of the touch criterion is met.
-- Open: the macOS emulators seen live (Azahar, Dolphin, Ryujinx), Cemu and
-  Ryujinx frames through the layer on Linux, and the Deck (gamescope's WSI
-  layer alongside ours).
+- Observed on the Mac with real games (2026-09-25, screen locked, frames
+  captured by the renderer): Ace Combat in Azahar on both screens of the 3DS
+  shell at 4112x2582, and Aggressive Inline in Dolphin in the GameCube TV
+  with the CRT shader. Two fixes came out of it: the stand-in resolved
+  `vkCreateDevice` against Azahar's throwaway instance (MoltenVK marks every
+  object alike), and a `libMoltenVK.dylib` on the library path shadowed
+  Ryujinx's own, stalling its start (`vulkan_stand_in: beside` now keeps
+  Ryujinx off `DYLD_LIBRARY_PATH`).
+- Open: Ryujinx frames (the game waits at its controller applet until a pad
+  is connected, and none reaches a locked session), Cemu and Ryujinx frames
+  through the layer on Linux (the VM has no small Switch or Wii U title),
+  and the Deck (gamescope's WSI layer alongside ours).
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
