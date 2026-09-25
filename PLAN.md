@@ -632,7 +632,10 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   the RetroArch port are data; the supervisor is split under 500 lines.
 - `semu steam input [--steam-root]` (66cec43) derives every destination from one Steam root,
   writes each user's default FULL profile and removes only Semu's file from retired ids.
-- Remaining: the supervisor ignores the gamepad identities in `steam_input.json`. Since done:
+- Decided (2026-09-25): the supervisor listens to every pad for the quit chord and the menu;
+  the `device_identities` in `config/input/<target>/input.json` are for the emulators' own
+  pad profiles, and narrowing the chord to them would leave a different pad (the owner's Xbox
+  controller on a profile written for another) unable to quit. Since done:
   seed copies are atomic (copied beside the target, then renamed; an interrupted copy is
   replaced, contract-tested), and the owner ruled that ES-DE may sit under a link (2026-09-23).
 
