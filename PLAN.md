@@ -715,7 +715,10 @@ test_roms.json`) through `semu launch`, draw a non-blank frame, save and load a 
 through QUIT. Not built there: `checks.platform-matrix` (it evaluates on the Mac) and the whole
 bundle. n64 (mupen64plus_next, angrylion) now boots PeterLemon's public-domain `HelloWorldCPU32BPP320X240`
 the same way (2026-09-23, in the VM's Xvfb); its RDP-drawn twin gave a blank frame under
-angrylion, an open lead. Still open: test programs for PSX (Beetle PSX needs a Sony BIOS, which
+angrylion. Closed 2026-09-25: the twin sends its command lists to the RDP straight from the CPU
+(DPC registers), which mupen64plus-next's angrylion leaves undrawn even after 15 s; GLideN64 draws
+it (spread 0.12, state saved, clean QUIT). Games submit through the RSP, which angrylion draws, so
+the plugin stays and the CPU-drawn program remains the check. Still open: test programs for PSX (Beetle PSX needs a Sony BIOS, which
 is not freely licensed), PSP, DS, 3DS and Dreamcast (no pinned binary with a clear licence yet) and nixpkgs on a release branch with the M4 pin
 refresh (a full rebuild of every emulator; FRACTAL-NORTH).
 
