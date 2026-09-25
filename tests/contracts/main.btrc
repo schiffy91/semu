@@ -475,6 +475,23 @@ class LibrarySettingsContract {  // the ROM folder is chosen from ES-DE, and a l
     }
 }
 
+class InheritedDefinitionContract {  // "extends": a definition refines another; targets and input files share their common parts
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string base = PathTools.join(fixture.scratch, "inherited/base.json");
+        string refined = PathTools.join(fixture.scratch, "inherited/refined.json");
+        FileSystem.mkdirp(PathTools.dirname(base));
+        FileSystem.writeText(base, "{\"a\": {\"x\": 1, \"y\": 2}, \"b\": 1, \"c\": 3, \"list\": [1, 2]}");
+        FileSystem.writeText(refined, "{\"extends\": \"base.json\", \"a\": {\"y\": 5}, \"c\": null, \"d\": 4, \"list\": [9]}");
+        JSONValue value = SemuModel.readObject(refined, SemuDiagnostics());
+        contract.expect(SemuJson.intAt(value, "a.x", 0) == 1 && SemuJson.intAt(value, "a.y", 0) == 5, "extends merges objects key by key");
+        contract.expect(SemuJson.intAt(value, "b", 0) == 1 && SemuJson.intAt(value, "d", 0) == 4 && !value.has("c") && !value.has("extends"), "extends keeps the base, adds new keys, and a null removes an inherited one");
+        contract.expect(value.get("list").size() == 1, "extends replaces arrays whole");
+        contract.expect(fixture.model.input("macos").definition.stringify().equals(fixture.model.input("linux-desktop").definition.stringify()), "macOS input is the desktop's, inherited");
+        contract.expect(SemuJson.textAt(fixture.model.input("steam-deck").definition, "device").equals("steam-deck") && SemuJson.textAt(fixture.model.input("steam-deck").definition, "device_identities.retroarch_input_driver").equals("sdl2"), "the Deck input refines the desktop's device and pad identities and keeps the rest");
+    }
+}
+
 class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID pads and Core Audio; Linux keeps SDL2 and Pulse
     class void run(Contract contract) {
         Fixture mac = Fixture("macos");
@@ -816,6 +833,7 @@ class SteamInputContract {  // the Deck template Steam loads: radials carry the 
 
 int main() {
     Contract contract = Contract();
+    InheritedDefinitionContract.run(contract);
     SettingsWriteContract.run(contract);
     SettingsUiContract.run(contract);
     SyncContract.run(contract);
