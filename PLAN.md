@@ -542,9 +542,15 @@ Progress (2026-09-25):
   controller applet passes). .NET found each assembly's folder from its real
   path, so `ryujinx_semu.nix` now copies the Ryujinx folder instead of
   linking it; linked, Ryujinx loaded its original MoltenVK.
-- Open: Cemu and Ryujinx frames
-  through the layer on Linux (the VM has no small Switch or Wii U title),
-  and the Deck (gamescope's WSI layer alongside ours).
+- Linux through the layer, in the Rosetta-backed VM on lavapipe (2026-09-25):
+  Ryujinx (Animal Crossing, keys and firmware from the library) composed 960+
+  frames with no layer error, but the game had not left its black boot frames
+  before it exited at about 2:40 at emulated speed; Cemu (Kirby and the
+  Rainbow Curse) composed its first frame, then segfaulted inside its own PPC
+  interpreter. Both need a native Linux machine for an inspected picture.
+- Open: those two inspected pictures on real Linux hardware, the Mac half of
+  the touch check (a click cannot reach a locked session), and the Deck
+  (gamescope's WSI layer alongside ours).
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
@@ -1132,6 +1138,11 @@ Update this block whenever a milestone criterion changes state.
   a launch from the repository checkout reaches them; the installed bundle
   falls back to the flat plate), the DS/3DS/PSP captures, the fast/real
   galleries, and the glass-asset crop. (2026-09-23: bundling and both galleries done, see G4.)
+- M12 standalone bezels (2026-09-25): built. Linux Vulkan layer and macOS MoltenVK stand-in share
+  images with the OpenGL compositor. Observed with real games: Azahar (Pushmo, Linux VM, touch
+  lands on the composed bottom screen), Azahar (Ace Combat, Mac), Dolphin (Aggressive Inline,
+  Mac), Ryujinx (Animal Crossing, Mac). Ryujinx and Cemu load the layer on Linux but need native
+  hardware for a picture; the Mac touch check and the Deck remain.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,
