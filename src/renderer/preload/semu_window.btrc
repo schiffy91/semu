@@ -7,6 +7,10 @@
 // over the frontend beneath it. A window that never asks for fullscreen (a
 // dialog) is revealed after a moment. AppKit is reached through the
 // Objective-C runtime's C interface; nothing else in the app changes.
+// An OpenGL emulator (Dolphin) is also composed here when the launcher asks for it
+// (SEMU_RENDER_SYSTEM_ID): at -[NSOpenGLContext flushBuffer] the back buffer goes through
+// libsemurenderer before it is shown, as the Linux preload does at the GL swap.
+import ./semu_compose.btrc;
 #include <dlfcn.h>
 #include <objc/runtime.h>
 #include <stdio.h>
@@ -48,6 +52,8 @@ struct SemuWindowState {
     __fn_ptr<void, void*, void*, void*> toggle;
     __fn_ptr<void, void*, void*, long, long> order;
     __fn_ptr<void, void*, void*, unsigned long> style;
+    __fn_ptr<void, void*, void*> flush;
+    __fn_ptr<struct SemuWindowRect, void*, void*, struct SemuWindowRect> convertRect;
 };
 
 struct SemuWindowState SemuWindow;
@@ -193,6 +199,21 @@ class SemuWindowShim {
         SemuWindow.order(window, command, place, relative);
     }
 
+    class void* glProc(const char* name) {
+        void* everywhere = RTLD_DEFAULT;
+        return dlsym(everywhere, name);
+    }
+
+    class void flushBuffer(void* context, void* command) {  // the back buffer, composed, then shown
+        void* view = SemuWindowShim.send(context, "view");
+        if (view != null) {
+            struct SemuWindowRect bounds = SemuWindow.sendRect(view, SemuWindowShim.selector("bounds"));
+            struct SemuWindowRect pixels = SemuWindow.convertRect(view, SemuWindowShim.selector("convertRectToBacking:"), bounds);
+            SemuCompose.compose((int)pixels.width, (int)pixels.height, SemuWindowShim.glProc, 0u, 0x0405u);  // GL_BACK
+        }
+        SemuWindow.flush(context, command);
+    }
+
     class void install() {
         void* windowClass = (void*)objc_lookUpClass("NSWindow");
         if (SemuWindow.installed || windowClass == null) { return; }
@@ -210,6 +231,7 @@ class SemuWindowShim {
         SemuWindowShim.bind(&SemuWindow.setBoolean, send);
         SemuWindowShim.bind(&SemuWindow.setFrame, send);
         SemuWindowShim.bind(&SemuWindow.predicate, send);
+        SemuWindowShim.bind(&SemuWindow.convertRect, send);
         void* toggleMethod = (void*)class_getInstanceMethod(windowClass, sel_registerName("toggleFullScreen:"));
         void* orderMethod = (void*)class_getInstanceMethod(windowClass, sel_registerName("orderWindow:relativeTo:"));
         void* styleMethod = (void*)class_getInstanceMethod(windowClass, sel_registerName("setStyleMask:"));
@@ -221,6 +243,11 @@ class SemuWindowShim {
         }
         if (styleMethod != null) {
             SemuWindowShim.bind(&SemuWindow.style, (void*)method_setImplementation(styleMethod, SemuWindowShim.restyle));
+        }
+        void* openGlContext = (void*)objc_lookUpClass("NSOpenGLContext");
+        void* flushMethod = openGlContext != null ? (void*)class_getInstanceMethod(openGlContext, sel_registerName("flushBuffer")) : null;
+        if (flushMethod != null && SemuCompose.enabled()) {
+            SemuWindowShim.bind(&SemuWindow.flush, (void*)method_setImplementation(flushMethod, SemuWindowShim.flushBuffer));
         }
         if (SemuWindow.debug) { fprintf(stderr, "semu-window: installed (toggle %d, order %d)\n", toggleMethod != null, orderMethod != null); }
     }

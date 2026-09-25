@@ -384,7 +384,11 @@ class SemuLauncher {
             string shim = PathTools.join(plan.assetRoot, "lib/libsemupreload.so");
             if (preload && FileSystem.isFile(shim)) { launch.environment.push("LD_PRELOAD=" + shim); }
             string layers = PathTools.join(plan.assetRoot, "share/vulkan/explicit_layer.d");
-            if (vulkan && FileSystem.isFile(PathTools.join(layers, "semu_compositor.json"))) {
+            string standIn = PathTools.join(plan.assetRoot, "lib/semu-vulkan");  // macOS: emulators load MoltenVK directly, so Semu's stand-in is found by name
+            if (vulkan && plan.platform.equals("macos") && FileSystem.isFile(PathTools.join(standIn, "libvulkan.dylib"))) {
+                launch.environment.push("DYLD_LIBRARY_PATH=" + standIn);
+                launch.environment.push("SEMU_TOUCH_LIBRARY=" + PathTools.join(standIn, "libvulkan.dylib"));
+            } else if (vulkan && FileSystem.isFile(PathTools.join(layers, "semu_compositor.json"))) {
                 launch.environment.push("VK_ADD_LAYER_PATH=" + layers);
                 launch.environment.push("VK_INSTANCE_LAYERS=VK_LAYER_SEMU_compositor");
             }

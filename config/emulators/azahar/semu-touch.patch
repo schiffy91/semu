@@ -1,0 +1,95 @@
+Semu composes Azahar's picture itself (VK_LAYER_SEMU_compositor): the 3DS bezel places the
+bottom screen where Azahar's own layout does not. A touch on the composed picture is mapped back
+through the layer's semu_touch_unmap to the point Azahar's layout drew there, so a click lands
+where the screen is shown. Without Semu the coordinates pass through unchanged.
+
+--- a/src/core/frontend/emu_window.h
++++ b/src/core/frontend/emu_window.h
+@@ -326,7 +326,13 @@
+      * @param framebuffer_x Framebuffer x-coordinate to check
+      * @param framebuffer_y Framebuffer y-coordinate to check
+      * @return True if the coordinates are within the touchpad, otherwise false
++     */
++    /**
++     * Presses the touchscreen at a point in this window's own layout (TouchPressed after Semu's
++     * mapping).
+      */
++    bool TouchPressedAt(unsigned framebuffer_x, unsigned framebuffer_y);
++
+     bool IsWithinTouchscreen(const Layout::FramebufferLayout& layout, unsigned framebuffer_x,
+                              unsigned framebuffer_y);
+ 
+--- a/src/core/frontend/emu_window.cpp
++++ b/src/core/frontend/emu_window.cpp
+@@ -4,12 +4,45 @@
+ 
+ #include <cmath>
+ #include <mutex>
++#include <cstdlib>
++#include <dlfcn.h>
+ #include "common/settings.h"
+ #include "core/3ds.h"
+ #include "core/frontend/emu_window.h"
+ #include "core/frontend/input.h"
+ 
+ namespace Frontend {
++
++// Semu draws the picture itself (VK_LAYER_SEMU_compositor): its bezel places the screens where this
++// layout does not, so a touch on the composed picture is first mapped back to the point this layout
++// drew there. Without Semu the coordinates pass through unchanged.
++enum class SemuTouch { Unavailable, Mapped, Outside };
++
++static SemuTouch SemuTouchUnmap(unsigned& framebuffer_x, unsigned& framebuffer_y, bool clamp) {
++    using Unmap = int (*)(float, float, int, float*, float*);
++    static const Unmap unmap = []() -> Unmap {
++        if (void* global = dlsym(RTLD_DEFAULT, "semu_touch_unmap"))  // macOS: the stand-in for MoltenVK
++            return reinterpret_cast<Unmap>(global);
++        void* handle = nullptr;
++        if (const char* library = std::getenv("SEMU_TOUCH_LIBRARY"))
++            handle = dlopen(library, RTLD_NOW | RTLD_NOLOAD);
++        if (!handle)
++            handle = dlopen("libsemuvulkan.so", RTLD_NOW | RTLD_NOLOAD);
++        return handle ? reinterpret_cast<Unmap>(dlsym(handle, "semu_touch_unmap")) : nullptr;
++    }();
++    float x = 0.f;
++    float y = 0.f;
++    const int result =
++        unmap ? unmap(static_cast<float>(framebuffer_x), static_cast<float>(framebuffer_y), clamp ? 1 : 0, &x, &y) : -1;
++    if (result < 0)
++        return SemuTouch::Unavailable;
++    if (result == 0)
++        return SemuTouch::Outside;
++    framebuffer_x = static_cast<unsigned>(std::max(x, 0.f));
++    framebuffer_y = static_cast<unsigned>(std::max(y, 0.f));
++    return SemuTouch::Mapped;
++}
++
+ /// We need a global touch state that is shared across the different window instances
+ static std::weak_ptr<EmuWindow::TouchState> global_touch_state;
+ 
+@@ -122,6 +153,12 @@
+ }
+ 
+ bool EmuWindow::TouchPressed(unsigned framebuffer_x, unsigned framebuffer_y) {
++    if (SemuTouchUnmap(framebuffer_x, framebuffer_y, false) == SemuTouch::Outside)
++        return false;
++    return TouchPressedAt(framebuffer_x, framebuffer_y);
++}
++
++bool EmuWindow::TouchPressedAt(unsigned framebuffer_x, unsigned framebuffer_y) {
+     if (!IsWithinTouchscreen(framebuffer_layout, framebuffer_x, framebuffer_y))
+         return false;
+ 
+@@ -167,10 +204,11 @@
+     if (!touch_state->touch_pressed)
+         return;
+ 
++    SemuTouchUnmap(framebuffer_x, framebuffer_y, true);  // a drag off the screen holds at its edge
+     if (!IsWithinTouchscreen(framebuffer_layout, framebuffer_x, framebuffer_y))
+         std::tie(framebuffer_x, framebuffer_y) = ClipToTouchScreen(framebuffer_x, framebuffer_y);
+ 
+-    TouchPressed(framebuffer_x, framebuffer_y);
++    TouchPressedAt(framebuffer_x, framebuffer_y);
+ }
+ 
+ void EmuWindow::UpdateCurrentFramebufferLayout(unsigned width, unsigned height,

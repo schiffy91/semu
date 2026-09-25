@@ -1,0 +1,260 @@
+// Semu's Vulkan composition on macOS: a stand-in for MoltenVK. macOS emulators load MoltenVK
+// directly, never through a Vulkan loader, so no layer reaches them; this library is found under
+// the name they ask for (libvulkan.dylib, libMoltenVK.dylib), forwards every call to the real
+// MoltenVK (SEMU_VULKAN_DRIVER, else the one it re-exports) and hooks the calls the
+// composition needs (semu_vulkan_core.btrc). The shared image is backed by an IOSurface that
+// MoltenVK exports (VK_EXT_metal_objects) and an offscreen CGL context binds as a texture.
+import ./semu_vulkan_core.btrc;
+
+struct SemuVulkanCglState {
+    bool attempted;
+    bool ready;
+    void* driver;
+    __fn_ptr<void*, void*, const char*> driverProcAddress;  // MoltenVK's vkGetInstanceProcAddr
+    void* context;
+    void* previous;
+    __fn_ptr<int, const int*, void**, int*> choosePixelFormat;
+    __fn_ptr<int, void*, void*, void**> createContext;
+    __fn_ptr<int, void*> destroyPixelFormat;
+    __fn_ptr<int, void*> setCurrent;
+    __fn_ptr<void*> getCurrent;
+    __fn_ptr<int, void*, unsigned int, unsigned int, int, int, unsigned int, unsigned int, void*, unsigned int> textureFromSurface;
+    __fn_ptr<void, int, unsigned int*> generateTextures;
+    __fn_ptr<void, int, const unsigned int*> deleteTextures;
+    __fn_ptr<void, unsigned int, unsigned int> bindTexture;
+    __fn_ptr<void, int, unsigned int*> generateFramebuffers;
+    __fn_ptr<void, int, const unsigned int*> deleteFramebuffers;
+    __fn_ptr<void, unsigned int, unsigned int> bindFramebuffer;
+    __fn_ptr<void, unsigned int, unsigned int, unsigned int, unsigned int, int> framebufferTexture;
+    __fn_ptr<unsigned int, unsigned int> framebufferStatus;
+    __fn_ptr<void> finish;
+    __fn_ptr<void, const void*> releaseObject;  // CFRelease
+    __fn_ptr<const void*, const void*> retainObject;  // CFRetain
+};
+
+struct SemuVulkanCglState SemuVulkanCgl;
+
+class SemuVulkanMac {
+    class void* glProc(const char* name) {
+        void* everywhere = RTLD_DEFAULT;
+        return dlsym(everywhere, name);
+    }
+
+    // The MoltenVK this library re-exports: its own vkGetMoltenVKConfigurationMVK, which the stand-in
+    // does not define, resolves there, and dladdr names the file. A copy re-pointed at an app's own
+    // bundled MoltenVK (install_name_tool) follows it without configuration.
+    class const char* reexported() {
+        struct dl_info library;
+        if (dladdr(&SemuVulkanCgl, &library) == 0 || library.dli_fname == null) { return null; }
+        void* handle = dlopen(library.dli_fname, 0x10 | 2);  // RTLD_NOLOAD | RTLD_NOW: this very library
+        void* marker = handle != null ? dlsym(handle, "vkGetMoltenVKConfigurationMVK") : null;
+        struct dl_info driver;
+        if (marker == null || dladdr(marker, &driver) == 0) { return null; }
+        return driver.dli_fname;
+    }
+
+    class bool loadDriver() {  // the real MoltenVK
+        if (SemuVulkanCgl.driverProcAddress != null) { return true; }
+        const char* path = getenv("SEMU_VULKAN_DRIVER");
+        if (path == null) { path = SemuVulkanMac.reexported(); }
+        if (path == null) {
+            fprintf(stderr, "semu-vulkan: no MoltenVK re-exported and no SEMU_VULKAN_DRIVER\n");
+            return false;
+        }
+        SemuVulkanCgl.driver = dlopen(path, 2);  // RTLD_NOW
+        if (SemuVulkanCgl.driver == null) {
+            fprintf(stderr, "semu-vulkan: no MoltenVK at %s\n", path);
+            return false;
+        }
+        SemuVulkanCore.bind(&SemuVulkanCgl.driverProcAddress, dlsym(SemuVulkanCgl.driver, "vkGetInstanceProcAddr"));
+        return SemuVulkanCgl.driverProcAddress != null;
+    }
+
+    class bool start() {
+        if (SemuVulkanCgl.attempted) { return SemuVulkanCgl.ready; }
+        SemuVulkanCgl.attempted = true;
+        SemuVulkanCore.bind(&SemuVulkanCgl.choosePixelFormat, SemuVulkanMac.glProc("CGLChoosePixelFormat"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.createContext, SemuVulkanMac.glProc("CGLCreateContext"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.destroyPixelFormat, SemuVulkanMac.glProc("CGLDestroyPixelFormat"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.setCurrent, SemuVulkanMac.glProc("CGLSetCurrentContext"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.getCurrent, SemuVulkanMac.glProc("CGLGetCurrentContext"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.textureFromSurface, SemuVulkanMac.glProc("CGLTexImageIOSurface2D"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.generateTextures, SemuVulkanMac.glProc("glGenTextures"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.deleteTextures, SemuVulkanMac.glProc("glDeleteTextures"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.bindTexture, SemuVulkanMac.glProc("glBindTexture"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.generateFramebuffers, SemuVulkanMac.glProc("glGenFramebuffers"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.deleteFramebuffers, SemuVulkanMac.glProc("glDeleteFramebuffers"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.bindFramebuffer, SemuVulkanMac.glProc("glBindFramebuffer"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.framebufferTexture, SemuVulkanMac.glProc("glFramebufferTexture2D"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.framebufferStatus, SemuVulkanMac.glProc("glCheckFramebufferStatus"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.finish, SemuVulkanMac.glProc("glFinish"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.releaseObject, SemuVulkanMac.glProc("CFRelease"));
+        SemuVulkanCore.bind(&SemuVulkanCgl.retainObject, SemuVulkanMac.glProc("CFRetain"));
+        if (SemuVulkanCgl.choosePixelFormat == null || SemuVulkanCgl.textureFromSurface == null) { return false; }
+        int attributes[8];
+        attributes[0] = 99; attributes[1] = 0x4100;  // kCGLPFAOpenGLProfile: kCGLOGLPVersion_GL4_Core
+        attributes[2] = 73;  // kCGLPFAAccelerated
+        attributes[3] = 96;  // kCGLPFAAllowOfflineRenderers
+        attributes[4] = 0;
+        void* pixelFormat = null;
+        int count = 0;
+        if (SemuVulkanCgl.choosePixelFormat(attributes, &pixelFormat, &count) != 0 || pixelFormat == null) { return false; }
+        int status = SemuVulkanCgl.createContext(pixelFormat, null, &SemuVulkanCgl.context);
+        SemuVulkanCgl.destroyPixelFormat(pixelFormat);
+        SemuVulkanCgl.ready = status == 0 && SemuVulkanCgl.context != null;
+        if (SemuVulkan.debug) { fprintf(stderr, "semu-vulkan: OpenGL %s\n", SemuVulkanCgl.ready ? "ready" : "unavailable"); }
+        return SemuVulkanCgl.ready;
+    }
+
+    class void current() {  // the emulator's own context, if any, comes back in finish
+        SemuVulkanCgl.previous = SemuVulkanCgl.getCurrent();
+        SemuVulkanCgl.setCurrent(SemuVulkanCgl.context);
+    }
+
+    class void finish() {
+        SemuVulkanCgl.finish();  // the IOSurface holds the composed frame before Metal reads it
+        SemuVulkanCgl.setCurrent(SemuVulkanCgl.previous);
+    }
+
+    class bool share(struct SemuVulkanDevice* device, struct SemuVulkanSwapchain* swapchain) {
+        if (swapchain->format != 44 && swapchain->format != 50) { return false; }  // B8G8R8A8_UNORM or _SRGB: an IOSurface 'BGRA'
+        struct VkExportMetalObjectCreateInfoEXT export;
+        memset(&export, 0, sizeof(struct VkExportMetalObjectCreateInfoEXT));
+        export.sType = VK_STRUCTURE_TYPE_EXPORT_METAL_OBJECT_CREATE_INFO_EXT;
+        export.exportObjectType = VK_EXPORT_METAL_OBJECT_TYPE_METAL_IOSURFACE_BIT_EXT;
+        if (!SemuVulkanCore.createShared(device, swapchain, swapchain->format, &export, null)) { return false; }  // same encoding: the blits copy bytes
+        struct VkExportMetalIOSurfaceInfoEXT surface;
+        memset(&surface, 0, sizeof(struct VkExportMetalIOSurfaceInfoEXT));
+        surface.sType = VK_STRUCTURE_TYPE_EXPORT_METAL_IO_SURFACE_INFO_EXT;
+        surface.image = swapchain->sharedImage;
+        struct VkExportMetalObjectsInfoEXT objects;
+        memset(&objects, 0, sizeof(struct VkExportMetalObjectsInfoEXT));
+        objects.sType = VK_STRUCTURE_TYPE_EXPORT_METAL_OBJECTS_INFO_EXT;
+        objects.pNext = &surface;
+        __fn_ptr<void, void*, void*> exportObjects;
+        SemuVulkanCore.bind(&exportObjects, SemuVulkanCore.deviceFunction(device, "vkExportMetalObjectsEXT"));
+        if (exportObjects == null) { return false; }
+        exportObjects(device->handle, &objects);
+        if (surface.ioSurface == null) { return false; }
+        swapchain->surface = (void*)surface.ioSurface;
+        SemuVulkanCgl.retainObject(swapchain->surface);
+        SemuVulkanMac.current();
+        SemuVulkanCgl.generateTextures(1, &swapchain->glTexture);
+        SemuVulkanCgl.bindTexture(0x84F5u, swapchain->glTexture);  // GL_TEXTURE_RECTANGLE
+        int bound = SemuVulkanCgl.textureFromSurface(SemuVulkanCgl.context, 0x84F5u, 0x1908u, swapchain->width, swapchain->height,
+            0x80E1u, 0x8367u, swapchain->surface, 0u);  // GL_RGBA from GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV: raw bytes
+        SemuVulkanCgl.generateFramebuffers(1, &swapchain->glFramebuffer);
+        SemuVulkanCgl.bindFramebuffer(0x8D40u, swapchain->glFramebuffer);  // GL_FRAMEBUFFER
+        SemuVulkanCgl.framebufferTexture(0x8D40u, 0x8CE0u, 0x84F5u, swapchain->glTexture, 0);  // GL_COLOR_ATTACHMENT0
+        bool complete = bound == 0 && SemuVulkanCgl.framebufferStatus(0x8D40u) == 0x8CD5u;  // GL_FRAMEBUFFER_COMPLETE
+        SemuVulkanCgl.bindFramebuffer(0x8D40u, 0u);
+        SemuVulkanMac.finish();
+        if (SemuVulkan.debug) { fprintf(stderr, "semu-vulkan: swapchain %dx%d format %d, %u images, IOSurface framebuffer %s\n", swapchain->width, swapchain->height, swapchain->format, swapchain->imageCount, complete ? "complete" : "incomplete"); }
+        return complete;
+    }
+
+    class void unshare(struct SemuVulkanDevice* device, struct SemuVulkanSwapchain* swapchain) {
+        SemuVulkanMac.current();
+        if (swapchain->glFramebuffer != 0u) { SemuVulkanCgl.deleteFramebuffers(1, &swapchain->glFramebuffer); }
+        if (swapchain->glTexture != 0u) { SemuVulkanCgl.deleteTextures(1, &swapchain->glTexture); }
+        SemuVulkanMac.finish();
+        if (swapchain->surface != null) { SemuVulkanCgl.releaseObject(swapchain->surface); }
+    }
+
+    class void install() {
+        if (SemuVulkan.interop.start != null) { return; }
+        SemuVulkan.interop.deviceExtension = "VK_EXT_metal_objects";
+        SemuVulkan.interop.start = SemuVulkanMac.start;
+        SemuVulkan.interop.current = SemuVulkanMac.current;
+        SemuVulkan.interop.share = SemuVulkanMac.share;
+        SemuVulkan.interop.unshare = SemuVulkanMac.unshare;
+        SemuVulkan.interop.glProc = SemuVulkanMac.glProc;
+        SemuVulkan.interop.finish = SemuVulkanMac.finish;
+    }
+}
+
+// ---- entry points: exported under the Vulkan names by the linker (-alias) ----
+
+int semu_vkCreateInstance(const struct VkInstanceCreateInfo* create, const void* allocator, void** result);
+int semu_vkCreateDevice(void* physical, const struct VkDeviceCreateInfo* create, const void* allocator, void** result);
+void semu_vkDestroyDevice(void* device, const void* allocator);
+int semu_vkCreateSwapchainKHR(void* device, const struct VkSwapchainCreateInfoKHR* create, const void* allocator, void** result);
+void semu_vkDestroySwapchainKHR(void* device, void* swapchain, const void* allocator);
+int semu_vkQueuePresentKHR(void* queue, const struct VkPresentInfoKHR* info);
+void semu_vkGetDeviceQueue(void* device, uint32_t family, uint32_t index, void** queue);
+void semu_vkGetDeviceQueue2(void* device, const struct VkDeviceQueueInfo2* info, void** queue);
+__fn_ptr<void> semu_vkGetDeviceProcAddr(void* device, const char* name);
+
+__fn_ptr<void> semu_vkGetInstanceProcAddr(void* instance, const char* name) {
+    if (!SemuVulkanMac.loadDriver()) { return SemuVulkanCore.callable(null); }
+    if (strcmp(name, "vkGetInstanceProcAddr") == 0) { return (__fn_ptr<void>)semu_vkGetInstanceProcAddr; }
+    if (strcmp(name, "vkCreateInstance") == 0) { return (__fn_ptr<void>)semu_vkCreateInstance; }
+    if (strcmp(name, "vkCreateDevice") == 0) { return (__fn_ptr<void>)semu_vkCreateDevice; }
+    if (strcmp(name, "vkGetDeviceProcAddr") == 0 || strncmp(name, "vkQueuePresent", 14) == 0 || strcmp(name, "vkCreateSwapchainKHR") == 0
+        || strcmp(name, "vkDestroySwapchainKHR") == 0 || strcmp(name, "vkDestroyDevice") == 0 || strncmp(name, "vkGetDeviceQueue", 16) == 0) {
+        return semu_vkGetDeviceProcAddr(null, name);
+    }
+    return SemuVulkanCore.callable(SemuVulkanCgl.driverProcAddress(instance, name));
+}
+
+__fn_ptr<void> semu_vkGetDeviceProcAddr(void* device, const char* name) {
+    if (strcmp(name, "vkGetDeviceProcAddr") == 0) { return (__fn_ptr<void>)semu_vkGetDeviceProcAddr; }
+    if (strcmp(name, "vkDestroyDevice") == 0) { return (__fn_ptr<void>)semu_vkDestroyDevice; }
+    if (strcmp(name, "vkCreateSwapchainKHR") == 0) { return (__fn_ptr<void>)semu_vkCreateSwapchainKHR; }
+    if (strcmp(name, "vkDestroySwapchainKHR") == 0) { return (__fn_ptr<void>)semu_vkDestroySwapchainKHR; }
+    if (strcmp(name, "vkQueuePresentKHR") == 0) { return (__fn_ptr<void>)semu_vkQueuePresentKHR; }
+    if (strcmp(name, "vkGetDeviceQueue") == 0) { return (__fn_ptr<void>)semu_vkGetDeviceQueue; }
+    if (strcmp(name, "vkGetDeviceQueue2") == 0) { return (__fn_ptr<void>)semu_vkGetDeviceQueue2; }
+    if (device == null) { return SemuVulkanCore.callable(null); }
+    struct SemuVulkanDevice* record = SemuVulkanCore.device(device);
+    return SemuVulkanCore.callable(record != null ? SemuVulkanCore.deviceFunction(record, name) : null);
+}
+
+int semu_vkCreateInstance(const struct VkInstanceCreateInfo* create, const void* allocator, void** result) {
+    SemuVulkanMac.install();
+    if (!SemuVulkanMac.loadDriver()) { return -3; }  // VK_ERROR_INITIALIZATION_FAILED
+    __fn_ptr<int, const void*, const void*, void**> nextCreate;
+    SemuVulkanCore.bind(&nextCreate, SemuVulkanCgl.driverProcAddress(null, "vkCreateInstance"));
+    int status = nextCreate(create, allocator, result);
+    if (status >= 0) { SemuVulkanCore.addInstance(*result, SemuVulkanCgl.driverProcAddress); }
+    return status;
+}
+
+int semu_vkCreateDevice(void* physical, const struct VkDeviceCreateInfo* create, const void* allocator, void** result) {
+    struct SemuVulkanInstance* instance = SemuVulkanCore.instance(physical);  // MoltenVK marks every object alike: the one instance
+    if (instance == null) { return -3; }
+    __fn_ptr<int, void*, const void*, const void*, void**> nextCreate;
+    __fn_ptr<void*, void*, const char*> nextDevice;
+    SemuVulkanCore.bind(&nextCreate, SemuVulkanCgl.driverProcAddress(instance->handle, "vkCreateDevice"));
+    SemuVulkanCore.bind(&nextDevice, SemuVulkanCgl.driverProcAddress(instance->handle, "vkGetDeviceProcAddr"));
+    return SemuVulkanCore.createDevice(instance, physical, create, allocator, result, nextCreate, nextDevice, null);
+}
+
+void semu_vkDestroyDevice(void* device, const void* allocator) {
+    SemuVulkanCore.destroyDevice(device, allocator);
+}
+
+void semu_vkGetDeviceQueue(void* device, uint32_t family, uint32_t index, void** queue) {
+    SemuVulkanCore.deviceQueue(device, family, index, queue);
+}
+
+void semu_vkGetDeviceQueue2(void* device, const struct VkDeviceQueueInfo2* info, void** queue) {
+    SemuVulkanCore.deviceQueue2(device, info, queue);
+}
+
+int semu_vkCreateSwapchainKHR(void* device, const struct VkSwapchainCreateInfoKHR* create, const void* allocator, void** result) {
+    return SemuVulkanCore.createSwapchain(device, create, allocator, result);
+}
+
+void semu_vkDestroySwapchainKHR(void* device, void* swapchain, const void* allocator) {
+    SemuVulkanCore.destroySwapchain(device, swapchain, allocator);
+}
+
+int semu_vkQueuePresentKHR(void* queue, const struct VkPresentInfoKHR* info) {
+    return SemuVulkanCore.present(queue, info);
+}
+
+// For an emulator's touch input: Azahar's semu-touch patch finds it through SEMU_TOUCH_LIBRARY.
+int semu_touch_unmap(float x, float y, int clamp, float* emulatorX, float* emulatorY) {
+    return SemuVulkanCore.unmapTouch(x, y, clamp, emulatorX, emulatorY);
+}

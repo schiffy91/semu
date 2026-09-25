@@ -100,8 +100,8 @@ frontend beneath it.
  
     /* HACK(sgc): ensure MTKView posts a drawable resize event */
     if (mode.width > 0)
---- a/gfx/drivers_context/cocoa_gl_ctx.m	2026-09-24 00:55:11
-+++ b/gfx/drivers_context/cocoa_gl_ctx.m	2026-09-24 00:59:24
+--- a/gfx/drivers_context/cocoa_gl_ctx.m
++++ b/gfx/drivers_context/cocoa_gl_ctx.m
 @@ -321,6 +321,18 @@
  #ifdef OSX
     [g_ctx flushBuffer];

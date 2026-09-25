@@ -84,12 +84,13 @@
         "-b",
         "-e"
       ],
-      "window_shim": true
+      "window_shim": true,
+      "render_preload": true
     }
   },
   "doc": {
     "runtime": "Linux executes the pinned source-built Dolphin package from the bundle asset root; macOS runs the Dolphin.app from the same pin.",
-    "rendering": "OpenGL is forced in the managed profile. libsemupreload (render_preload) composes Semu's bezel and shader at the SDL/EGL swap: it reads the emulator's back buffer and writes the composed frame back before the real swap.",
+    "rendering": "OpenGL is forced in the managed profile. render_preload composes Semu's bezel and shader at the swap, reading the emulator's back buffer and writing the composed frame back: on Linux libsemupreload at the SDL/EGL swap, on macOS the window shim at -[NSOpenGLContext flushBuffer].",
     "user_directory": "The explicit -u path keeps Dolphin's live Config tree under Semu's per-emulator state root on every platform."
   }
 }

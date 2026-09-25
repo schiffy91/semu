@@ -1,5 +1,5 @@
 # The shared renderer every hooked emulator links: shaders through librashader, bezels, the Semu overlay.
-{ lib, stdenv, btrcpy, librashader, writeText, rendererRoot, vulkan-headers, libglvnd }:
+{ lib, stdenv, btrcpy, librashader, writeText, rendererRoot, vulkan-headers, libglvnd, moltenvk }:
 
 let
   rendererSource = lib.fileset.toSource {
@@ -16,7 +16,7 @@ stdenv.mkDerivation {
   allowSubstitutes = false;  # compiled by Semu, never a cache binary
   strictDeps = true;
   nativeBuildInputs = [ btrcpy ];
-  buildInputs = [ librashader ] ++ lib.optionals stdenv.hostPlatform.isLinux [ vulkan-headers libglvnd ];
+  buildInputs = [ librashader vulkan-headers ] ++ lib.optionals stdenv.hostPlatform.isLinux [ libglvnd ] ++ lib.optionals stdenv.hostPlatform.isDarwin [ moltenvk ];
 
   buildPhase = ''
     btrcpy libsemurenderer.btrc -o semu_renderer.c --strict-imports --no-cache --no-stdlib --no-dce
@@ -26,11 +26,23 @@ stdenv.mkDerivation {
     printf '%s\n' _semu_render_context_invalidate_gl _semu_render_game_gl _semu_render_post_ui_gl > exports.txt
     $CC -dynamiclib -Wl,-exported_symbols_list,exports.txt -install_name "$out/lib/libsemurenderer.dylib" \
       semu_renderer.o -L${librashader}/lib -Wl,-rpath,${librashader}/lib -lrashader -lm -o libsemurenderer.dylib
-    # DYLD_INSERT_LIBRARIES shim for standalone emulators: fullscreen on the frontend's Space.
+    # DYLD_INSERT_LIBRARIES shim for standalone emulators: fullscreen on the frontend's Space, and an
+    # OpenGL emulator (Dolphin) composed at -[NSOpenGLContext flushBuffer].
+    cp ${rendererHeader} semu_renderer.h
     btrcpy preload/semu_window.btrc -o semu_window.c --strict-imports --no-cache --no-stdlib --no-dce
-    $CC -c semu_window.c -o semu_window.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function -Wno-incompatible-function-pointer-types
+    $CC -c semu_window.c -o semu_window.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function -Wno-incompatible-function-pointer-types -I.
     $CC -dynamiclib -Wl,-init,_semu_window_load -Wl,-exported_symbols_list,/dev/null -install_name "$out/lib/libsemuwindow.dylib" \
-      semu_window.o -framework AppKit -framework CoreFoundation -lobjc -o libsemuwindow.dylib
+      semu_window.o -L. -lsemurenderer -framework AppKit -framework CoreFoundation -lobjc -o libsemuwindow.dylib
+    # Stand-in for MoltenVK: Vulkan emulators compose at present (they load MoltenVK directly, never a layer).
+    btrcpy vulkan/semu_vulkan_metal.btrc -o semu_vulkan_metal.c --strict-imports --no-cache --no-stdlib --no-dce
+    $CC -c semu_vulkan_metal.c -o semu_vulkan_metal.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function -Wno-incompatible-pointer-types \
+      -Wno-incompatible-function-pointer-types -DVK_USE_PLATFORM_METAL_EXT -I.
+    aliases=""
+    for entry in GetInstanceProcAddr GetDeviceProcAddr CreateInstance CreateDevice DestroyDevice CreateSwapchainKHR DestroySwapchainKHR QueuePresentKHR GetDeviceQueue GetDeviceQueue2; do
+      aliases="$aliases -Wl,-alias,_semu_vk$entry,_vk$entry"
+    done
+    $CC -dynamiclib semu_vulkan_metal.o -L. -lsemurenderer $aliases -Wl,-reexport_library,${moltenvk}/lib/libMoltenVK.dylib \
+      -install_name "$out/lib/semu-vulkan/libvulkan.dylib" -o libsemuvulkan.dylib
   '' else ''
     cat > exports.map <<'MAP'
     { global: semu_render_context_invalidate_gl; semu_render_game_gl; semu_render_post_ui_gl; local: *; };
@@ -50,7 +62,7 @@ stdenv.mkDerivation {
     btrcpy vulkan/semu_vulkan_layer.btrc -o semu_vulkan_layer.c --strict-imports --no-cache --no-stdlib --no-dce
     $CC -c semu_vulkan_layer.c -o semu_vulkan_layer.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function -Wno-incompatible-pointer-types -D_GNU_SOURCE -I. -Ipreload
     cat > vulkan.map <<'MAP'
-    { global: semu_vkGetInstanceProcAddr; semu_vkGetDeviceProcAddr; local: *; };
+    { global: semu_vkGetInstanceProcAddr; semu_vkGetDeviceProcAddr; semu_touch_unmap; local: *; };
     MAP
     $CC -shared -Wl,-soname,libsemuvulkan.so -Wl,--version-script=vulkan.map \
       semu_vulkan_layer.o -L. -Wl,-rpath,$out/lib -lsemurenderer -lEGL -ldl -o libsemuvulkan.so
@@ -62,6 +74,9 @@ stdenv.mkDerivation {
   '' + (if stdenv.hostPlatform.isDarwin then ''
     cp libsemurenderer.dylib "$out/lib/libsemurenderer.dylib"
     cp libsemuwindow.dylib "$out/lib/libsemuwindow.dylib"
+    mkdir -p "$out/lib/semu-vulkan"
+    cp libsemuvulkan.dylib "$out/lib/semu-vulkan/libvulkan.dylib"
+    ln -s libvulkan.dylib "$out/lib/semu-vulkan/libMoltenVK.dylib"  # the name Ryujinx and Dolphin ask for
     ln -s libsemurenderer.dylib "$out/lib/libsemurenderer.so"  # one SEMU_RENDERER_LIBRARY path on every platform
   '' else ''
     cp libsemurenderer.so "$out/lib/libsemurenderer.so"
