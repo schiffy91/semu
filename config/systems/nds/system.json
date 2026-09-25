@@ -88,7 +88,8 @@
       "mode": "by_screen_id",
       "history": "independent",
       "touch_screen": "bottom"
-    }
+    },
+    "refresh_hz": 59.8261
   },
   "render": {
     "style": "handheld",

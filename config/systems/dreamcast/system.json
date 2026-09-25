@@ -87,7 +87,8 @@
       "detect": "emulator_reported_content_aspect",
       "fallback": "default_aspect",
       "switch_at": "frame_boundary"
-    }
+    },
+    "refresh_hz": 59.94
   },
   "render": {
     "style": "console",

@@ -582,11 +582,12 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   `SEMU_RENDER_FPS`/`FRAME_DELTA_MS` are emitted and `RenderEnvSpecContract` checks every read
   name is emitted; the dual gap is a setting, the widescreen switch is the 4:3/16:9 midpoint, the
   menu scales by whole multiples with nearest filtering.
-- Remaining: a compositor file broken at launch has no built-in fallback program; no
-  `system.json` declares `display.refresh_hz`; the renderer is still linked into RetroArch and
-  PCSX2 (dlopen against the ABI header would end the rebuilds); the preload shim still assumes a
-  centred picture at `SEMU_RENDER_ASPECT`; standalone melonDS, Azahar, Cemu and Ryujinx get no
-  bezel (their `doc` strings no longer claim one).
+- Follow-ups since: a compositor file broken at launch falls back to the built-in plain
+  program (a58626a); every `system.json` declares `display.refresh_hz` (the console's rate,
+  contract-tested; `SEMU_RENDER_FPS` follows it); RetroArch and PCSX2 link the renderer
+  loader, not the renderer; standalone Azahar, Cemu and Ryujinx are composed through M12's
+  Vulkan path, standalone melonDS stays uncomposed by design. Still true: a single-screen
+  standalone is assumed to letterbox itself at `SEMU_RENDER_ASPECT` (`semu_compose.btrc`).
 
 ### G4. Bezel look and variants — done
 
