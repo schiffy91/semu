@@ -491,6 +491,38 @@ Done when: Dolphin, Azahar and Ryujinx draw inside their bezels with the
 system shader on Linux and macOS, observed in inspected screenshots, and a
 mouse click on the 3DS bottom screen lands where it is drawn.
 
+Progress (2026-09-25):
+- Design change, recorded here: no Vulkan port of the compositor. The Vulkan
+  entry points share one image with the existing OpenGL compositor through
+  external memory (Linux: `GL_EXT_memory_object_fd` in a surfaceless EGL
+  context; macOS: an IOSurface exported by MoltenVK through
+  `VK_EXT_metal_objects`, bound by an offscreen CGL context). The whole
+  compositor and librashader's OpenGL path carry over unchanged; CPU fences
+  order the two APIs (llvmpipe has no `GL_EXT_semaphore_fd`).
+- `src/renderer/vulkan/`: `semu_vulkan_core.btrc` (tracking, blits, the
+  present round trip), `semu_vulkan_layer.btrc` (Linux layer
+  `VK_LAYER_SEMU_compositor`), `semu_vulkan_metal.btrc` (the macOS stand-in,
+  `lib/semu-vulkan/libvulkan.dylib`, re-exporting MoltenVK). The shared
+  composition (single screen letterboxed, or Azahar's stacked two screens)
+  and the pointer map live in `preload/semu_compose.btrc`, used by the Linux
+  preload, the layer, the stand-in and the macOS window shim.
+- `render_vulkan` in an emulator's platform entry emits the render
+  environment and loads the layer (Linux) or puts the stand-in first on
+  `DYLD_LIBRARY_PATH` (macOS). Azahar, Cemu and Ryujinx on Linux and Azahar
+  on macOS now run Vulkan with it. Dolphin on macOS (OpenGL) is composed by
+  the window shim at `-[NSOpenGLContext flushBuffer]` (`render_preload`).
+- Touch: Azahar's `semu-touch.patch` maps a click on the composed picture
+  back through `semu_touch_unmap` (the renderer's pointer map) to where its
+  own layout drew the bottom screen; unchanged when Semu is absent.
+- Observed offscreen: vkcube on lavapipe under Xvfb in the Linux VM, and
+  `tests/visual/vulkan-present.c` (a headless swapchain with a test card) on
+  the Mac through the stand-in, both inside the GameCube TV bezel with the
+  CRT shader, upright and in the right colors.
+- Open: real emulator frames through the layer (Azahar in the VM), the
+  macOS emulators seen live (Azahar, Dolphin), Ryujinx on macOS (it loads its
+  own bundled MoltenVK through .NET; the stand-in would put two MoltenVKs in
+  one process), and the Deck (gamescope's WSI layer alongside ours).
+
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
 The review ran on the Mac (mbp21, aarch64-darwin, macOS 27). FRACTAL-NORTH did not resolve

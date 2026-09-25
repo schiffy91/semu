@@ -17,6 +17,7 @@
           version = "2126.0";
           src = source;
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
+          patches = (previous.patches or [ ]) ++ [ ./semu-touch.patch ];  # touch on the composed picture lands where the bottom screen is shown
           postUnpack = (previous.postUnpack or "") + ''
             echo "2126.0" > "$sourceRoot/GIT-TAG"
             echo "${source.rev}" > "$sourceRoot/GIT-COMMIT"

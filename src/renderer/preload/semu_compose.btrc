@@ -1,26 +1,52 @@
 // Composition of a standalone emulator's finished frame through libsemurenderer, shared by every
 // hook that reaches one: the LD_PRELOAD shim at a GL swap and the Vulkan layer at present. The
-// emulator letterboxes itself, so the game sits centered at the system aspect inside the frame;
-// the renderer reads it from there and writes the composed frame back into the same framebuffer.
-// Configuration comes from the SEMU_RENDER_* environment the launcher emits.
+// renderer reads each game screen where the emulator drew it and writes the composed frame back
+// into the same framebuffer. Configuration comes from the SEMU_RENDER_* environment the launcher
+// emits. Where the emulator draws its screens:
+//   one screen: letterboxed, centered at the system aspect (every single-screen emulator);
+//   two screens (SEMU_RENDER_SURFACE_COUNT=2, vertical): Azahar's default layout, each screen the
+//   largest rectangle of its aspect in its half of the window, centered, meeting at the middle.
+// The last composition's pointer map is kept, so a touch hook can turn a click on the composed
+// picture back into the point the emulator drew there.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "semu_renderer.h"
 
+struct SemuComposeRect {  // top-left origin, in framebuffer pixels
+    int x;
+    int y;
+    int width;
+    int height;
+};
+
 struct SemuComposeState {
     bool initialized;
     bool enabled;
     bool reported;
+    bool stacked;
     unsigned long long frame_id;
     float aspect;
     int native_width;
     int native_height;
+    int second_native_width;
+    int second_native_height;
+    int framebuffer_width;
+    int framebuffer_height;
+    struct SemuComposeRect drawn[2];
+    bool mapped;
+    struct SemuRenderPointerMap pointer_map;
+    __fn_ptr<int, struct SemuRenderPointerMap*, struct SemuRenderPointerQuery*, struct SemuRenderPointerResult*> map_pointer;
 };
 
 struct SemuComposeState SemuComposition;
 
 class SemuCompose {
+    class bool size(const char* name, int* width, int* height) {
+        char* value = getenv(name);
+        return value != null && sscanf(value, "%dx%d", width, height) == 2 && *width > 0 && *height > 0;
+    }
+
     class void initialize() {
         if (SemuComposition.initialized) { return; }
         SemuComposition.initialized = true;
@@ -30,13 +56,12 @@ class SemuCompose {
         if (aspect != null && sscanf(aspect, "%d:%d", &aspectWidth, &aspectHeight) == 2 && aspectWidth > 0 && aspectHeight > 0) {
             SemuComposition.aspect = (float)aspectWidth / (float)aspectHeight;
         }
-        int nativeWidth = 0;
-        int nativeHeight = 0;
-        char* native = getenv("SEMU_RENDER_SURFACE_0_NATIVE");
-        if (native != null && sscanf(native, "%dx%d", &nativeWidth, &nativeHeight) == 2 && nativeWidth > 0 && nativeHeight > 0) {
-            SemuComposition.native_width = nativeWidth;
-            SemuComposition.native_height = nativeHeight;
-        }
+        SemuCompose.size("SEMU_RENDER_SURFACE_0_NATIVE", &SemuComposition.native_width, &SemuComposition.native_height);
+        char* count = getenv("SEMU_RENDER_SURFACE_COUNT");
+        char* layout = getenv("SEMU_RENDER_SURFACE_LAYOUT");
+        SemuComposition.stacked = count != null && strcmp(count, "2") == 0 && layout != null && strcmp(layout, "vertical") == 0
+            && SemuComposition.native_width > 0
+            && SemuCompose.size("SEMU_RENDER_SURFACE_1_NATIVE", &SemuComposition.second_native_width, &SemuComposition.second_native_height);
         SemuComposition.enabled = getenv("SEMU_RENDER_SYSTEM_ID") != null;
     }
 
@@ -49,25 +74,56 @@ class SemuCompose {
         return getenv("SEMU_RENDER_DEBUG") != null;
     }
 
+    class int round(float value) {
+        return (int)(value + 0.5f);
+    }
+
+    // The largest rectangle of the screen's aspect (height over width) inside the area, at its origin.
+    class struct SemuComposeRect largest(int areaWidth, int areaHeight, float aspect) {
+        float scale = (float)areaWidth;
+        if ((float)areaHeight / aspect < scale) { scale = (float)areaHeight / aspect; }
+        struct SemuComposeRect rect;
+        rect.x = 0;
+        rect.y = 0;
+        rect.width = SemuCompose.round(scale);
+        rect.height = SemuCompose.round(scale * aspect);
+        return rect;
+    }
+
+    // Azahar's DefaultFrameLayout, neither upright nor swapped.
+    class void stackedLayout(int width, int height, struct SemuComposeRect* top, struct SemuComposeRect* bottom) {
+        float topAspect = (float)SemuComposition.native_height / (float)SemuComposition.native_width;
+        float bottomAspect = (float)SemuComposition.second_native_height / (float)SemuComposition.second_native_width;
+        int half = height / 2;
+        *top = SemuCompose.largest(width, half, topAspect);
+        *bottom = SemuCompose.largest(width, half, bottomAspect);
+        if ((float)height / (float)width < topAspect * 2.0f) {  // wider than the content: borders left and right
+            top->x = (width - top->width) / 2;
+            bottom->x = (width - bottom->width) / 2;
+        } else {  // narrower: borders above and below, the screens meet in the middle
+            *bottom = SemuCompose.largest(width, top->height, bottomAspect);
+            bottom->x = (top->width - bottom->width) / 2;
+            top->y = half - top->height;
+        }
+        bottom->y = bottom->y + half;
+    }
+
+    class void surface(struct SemuRenderFrameGl* frame, int index, struct SemuComposeRect rect, int nativeWidth, int nativeHeight) {
+        frame->surfaces[index].x = rect.x;
+        frame->surfaces[index].y = frame->framebuffer_height - rect.y - rect.height;  // OpenGL rows start at the bottom
+        frame->surfaces[index].width = rect.width;
+        frame->surfaces[index].height = rect.height;
+        frame->surfaces[index].native_width = nativeWidth > 0 ? nativeWidth : rect.width;
+        frame->surfaces[index].native_height = nativeHeight > 0 ? nativeHeight : rect.height;
+        frame->surfaces[index].rotation = 0;
+        frame->surfaces[index].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
+        SemuComposition.drawn[index] = rect;
+    }
+
     // framebuffer 0 with GL_BACK is a window's back buffer; a hook with its own target passes that
     // framebuffer and GL_COLOR_ATTACHMENT0.
     class void compose(int width, int height, __fn_ptr<void*, const char*> getProc, unsigned int framebuffer, unsigned int colorBuffer) {
         if (!SemuCompose.enabled() || width < 1 || height < 1 || getProc == null) { return; }
-        int surfaceWidth = width;
-        int surfaceHeight = height;
-        int surfaceX = 0;
-        int surfaceY = 0;
-        if (SemuComposition.aspect > 0.01f) {
-            float have = (float)width / (float)height;
-            if (have > SemuComposition.aspect) {
-                surfaceWidth = (int)((float)height * SemuComposition.aspect + 0.5f);
-                surfaceX = (width - surfaceWidth) / 2;
-            } else {
-                surfaceHeight = (int)((float)width / SemuComposition.aspect + 0.5f);
-                surfaceY = (height - surfaceHeight) / 2;
-            }
-        }
-        if (surfaceWidth < 1 || surfaceHeight < 1) { return; }
         struct SemuRenderFrameGl frame;
         memset(&frame, 0, sizeof(struct SemuRenderFrameGl));
         frame.abi = SEMU_RENDER_ABI_GL;
@@ -78,25 +134,82 @@ class SemuCompose {
         frame.color_buffer = colorBuffer;
         frame.framebuffer_width = width;
         frame.framebuffer_height = height;
-        frame.presentation_aspect = (float)surfaceWidth / (float)surfaceHeight;
         frame.layout_variant = SEMU_RENDER_LAYOUT_AUTO;
-        frame.surface_count = 1;
-        frame.surfaces[0].x = surfaceX;
-        frame.surfaces[0].y = surfaceY;
-        frame.surfaces[0].width = surfaceWidth;
-        frame.surfaces[0].height = surfaceHeight;
-        frame.surfaces[0].native_width = SemuComposition.native_width > 0 ? SemuComposition.native_width : surfaceWidth;
-        frame.surfaces[0].native_height = SemuComposition.native_height > 0 ? SemuComposition.native_height : surfaceHeight;
-        frame.surfaces[0].rotation = 0;
-        frame.surfaces[0].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
         frame.get_proc = getProc;
         frame.context_generation = 1ULL;
+        if (SemuComposition.stacked) {
+            struct SemuComposeRect top;
+            struct SemuComposeRect bottom;
+            SemuCompose.stackedLayout(width, height, &top, &bottom);
+            if (top.width < 1 || bottom.width < 1) { return; }
+            frame.surface_count = 2;
+            frame.presentation_aspect = (float)top.width / (float)(top.height + bottom.height);
+            SemuCompose.surface(&frame, 0, top, SemuComposition.native_width, SemuComposition.native_height);
+            SemuCompose.surface(&frame, 1, bottom, SemuComposition.second_native_width, SemuComposition.second_native_height);
+        } else {
+            struct SemuComposeRect picture;
+            picture.x = 0;
+            picture.y = 0;
+            picture.width = width;
+            picture.height = height;
+            if (SemuComposition.aspect > 0.01f) {
+                if ((float)width / (float)height > SemuComposition.aspect) {
+                    picture.width = SemuCompose.round((float)height * SemuComposition.aspect);
+                    picture.x = (width - picture.width) / 2;
+                } else {
+                    picture.height = SemuCompose.round((float)width / SemuComposition.aspect);
+                    picture.y = (height - picture.height) / 2;
+                }
+            }
+            if (picture.width < 1 || picture.height < 1) { return; }
+            frame.surface_count = 1;
+            frame.presentation_aspect = (float)picture.width / (float)picture.height;
+            SemuCompose.surface(&frame, 0, picture, SemuComposition.native_width, SemuComposition.native_height);
+        }
         int status = semu_render_game_gl(&frame);
         int post = status == SEMU_RENDER_INVALID_FRAME ? status : semu_render_post_ui_gl(&frame);
+        SemuComposition.framebuffer_width = width;
+        SemuComposition.framebuffer_height = height;
+        SemuComposition.mapped = status != SEMU_RENDER_INVALID_FRAME && frame.map_pointer != null;
+        if (SemuComposition.mapped) {
+            memcpy(&SemuComposition.pointer_map, &frame.pointer_map, sizeof(struct SemuRenderPointerMap));
+            SemuComposition.map_pointer = frame.map_pointer;
+        }
         if (!SemuComposition.reported && SemuCompose.debug()) {
             SemuComposition.reported = true;
-            fprintf(stderr, "semu-compose: first frame %dx%d surface %d,%d %dx%d game=%d post=%d\n",
-                width, height, surfaceX, surfaceY, surfaceWidth, surfaceHeight, status, post);
+            fprintf(stderr, "semu-compose: first frame %dx%d, %d screen(s), first at %d,%d %dx%d, game=%d post=%d\n",
+                width, height, frame.surface_count, SemuComposition.drawn[0].x, SemuComposition.drawn[0].y,
+                SemuComposition.drawn[0].width, SemuComposition.drawn[0].height, status, post);
         }
+    }
+
+    // A point on the composed picture (top-left origin, framebuffer pixels) back to where the emulator
+    // drew that point of its touch screen: 1 mapped, 0 not on that screen, -1 nothing composed yet.
+    // Clamped, a point off the screen maps to its nearest edge (a drag that leaves it).
+    class int unmap(float x, float y, bool clamp, float* emulatorX, float* emulatorY) {
+        char* touch = getenv("SEMU_RENDER_TOUCH_SURFACE_INDEX");
+        int surface = touch != null ? atoi(touch) : SemuComposition.pointer_map.surface_count - 1;
+        if (!SemuComposition.mapped || surface < 0 || surface >= SemuComposition.pointer_map.surface_count) { return -1; }
+        struct SemuRenderPointerQuery query;
+        memset(&query, 0, sizeof(struct SemuRenderPointerQuery));
+        query.abi = SEMU_RENDER_ABI_GL;
+        query.struct_size = sizeof(struct SemuRenderPointerQuery);
+        query.frame_id = SemuComposition.pointer_map.frame_id;
+        query.x = x;
+        query.y = y;
+        query.viewport_width = SemuComposition.framebuffer_width;
+        query.viewport_height = SemuComposition.framebuffer_height;
+        query.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+        query.surface_index = surface;
+        query.clamp = clamp ? 1 : 0;
+        struct SemuRenderPointerResult result;
+        memset(&result, 0, sizeof(struct SemuRenderPointerResult));
+        result.abi = SEMU_RENDER_ABI_GL;
+        result.struct_size = sizeof(struct SemuRenderPointerResult);
+        if (SemuComposition.map_pointer(&SemuComposition.pointer_map, &query, &result) != SEMU_RENDER_POINTER_MAPPED) { return 0; }  // normalized from the top left
+        struct SemuComposeRect drawn = SemuComposition.drawn[surface];
+        *emulatorX = (float)drawn.x + result.normalized_x * (float)drawn.width;
+        *emulatorY = (float)drawn.y + result.normalized_y * (float)drawn.height;
+        return 1;
     }
 }
