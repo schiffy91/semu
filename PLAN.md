@@ -448,6 +448,49 @@ Order and expected cost: M11.1 and M11.2 are the work (a few hundred lines of
 Python against Mega Bezel's source, half a day); M11.3 to M11.5 are an hour;
 M11.6 runs in minutes on this machine. No emulator is launched before M11.6.
 
+### M12. Bezels and shaders for standalone emulators (proposed 2026-09-25)
+
+No standalone emulator has a bezel on macOS, and on Linux Azahar, Ryujinx,
+Cemu and standalone melonDS have none. Prior art (researched 2026-09-25):
+EmuDeck has unimplemented stubs for every standalone bezel on Linux and
+Windows; ES-DE and Pegasus have none; Batocera draws a separate overlay
+process that swallowed Azahar's touch input until it got an empty input
+region; RetroBat injects ReShade (rescales the picture, so pointer and touch
+drift; no Vulkan) or stacks a topmost click-through window (exclusive
+fullscreen, cursor and focus bugs); vkBasalt is Linux-only, unmaintained,
+submits on the wrong queue and is reported not to work under gamescope's
+Wayland backend. So Semu composes in-process at present time, with no
+windows of its own:
+
+- One compositor: an API-free core (layout, largest-integer placement, bezel
+  art, parameters, the Semu menu) with an OpenGL backend (today's) and a
+  Vulkan backend (`compositor.frag` compiled to SPIR-V; librashader's Vulkan
+  runtime for the CRT and LCD presets).
+- Entry points: RetroArch keeps its in-process tap. Standalones on Linux,
+  the Deck and later Windows go through Semu's own Vulkan layer (vkBasalt's
+  zlib boilerplate as a start; submit on the present queue; handle several
+  swapchains and present ids; work either side of gamescope's WSI layer; be
+  visible to Flatpak builds). On macOS the emulators load MoltenVK directly
+  and never see a layer, so the same code ships as a MoltenVK proxy library
+  (`LIBVULKAN_PATH` for Dolphin and PCSX2, bundle placement or a source
+  patch for the others).
+- Decorate, never move: the emulator's picture stays where it drew it, so
+  mouse and touch keep working. Semu pins each emulator's scaling and screen
+  layout so the picture sits in the bezel's hole; dual-screen emulators
+  report their screen rectangles through a small source patch (the tap
+  contract). Curvature stays on non-pointer systems.
+- Vulkan is pinned in every managed profile (Dolphin, PCSX2 and Cemu have
+  Metal backends on macOS; Windows builds default to Direct3D). melonDS has
+  no Vulkan; DS stays on the RetroArch core.
+- Order: renderer split and Vulkan backend against the reference renders;
+  the layer with Dolphin on Linux (headless through lavapipe in the VM,
+  compared with today's preload); Ryujinx and Cemu; Azahar with its screen
+  rectangles; the macOS proxy; Windows later.
+
+Done when: Dolphin, Azahar and Ryujinx draw inside their bezels with the
+system shader on Linux and macOS, observed in inspected screenshots, and a
+mouse click on the 3DS bottom screen lands where it is drawn.
+
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
 The review ran on the Mac (mbp21, aarch64-darwin, macOS 27). FRACTAL-NORTH did not resolve
