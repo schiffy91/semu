@@ -60,7 +60,8 @@
     "aspect": {
       "w": 4,
       "h": 3
-    }
+    },
+    "refresh_hz": 60.0988
   },
   "render": {
     "style": "console",

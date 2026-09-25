@@ -75,7 +75,8 @@
     },
     "doc": {
       "native": "Real 1x emulator output (was a 256x240 placeholder that corrupted integer placement)."
-    }
+    },
+    "refresh_hz": 59.94
   },
   "render": {
     "style": "console",

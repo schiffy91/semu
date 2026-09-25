@@ -64,7 +64,8 @@
     "aspect": {
       "w": 16,
       "h": 9
-    }
+    },
+    "refresh_hz": 60
   },
   "render": {
     "style": "handheld",

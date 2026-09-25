@@ -67,7 +67,8 @@
     },
     "doc": {
       "aspect": "30:17 is the exact reduced ratio of the square-pixel 480x272 PSP LCD; it avoids the fractional horizontal distortion introduced by a nominal 16:9 override."
-    }
+    },
+    "refresh_hz": 59.94
   },
   "render": {
     "style": "handheld",

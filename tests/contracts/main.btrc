@@ -505,6 +505,10 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
                 contract.expect(flake.contains("macos = true"), systemId + ": the " + SemuJson.textAt(binding, "core") + " core builds for macOS");
             }
         }
+        for systemId in mac.model.systemIds() {  // shader timing follows the console, not a 60 Hz guess
+            double refresh = atof(SemuRenderEnvironment.numberOr(SemuJson.get(mac.model.system(systemId).definition, "display"), "refresh_hz", "0"));
+            contract.expect(refresh > 45.0 && refresh < 75.0, systemId + " declares its display refresh rate (display.refresh_hz)");
+        }
         for systemId in mac.model.systemIds() {  // a game window appears on ES-DE's Space, never a small window sliding to a black fullscreen Space
             JSONValue bindings = mac.model.system(systemId).definition.get("emulators");
             for (int index = 0; bindings != null && index < bindings.size(); index++) {
