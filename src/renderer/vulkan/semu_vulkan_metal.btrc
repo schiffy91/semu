@@ -1,9 +1,11 @@
 // Semu's Vulkan composition on macOS: a stand-in for MoltenVK. macOS emulators load MoltenVK
 // directly, never through a Vulkan loader, so no layer reaches them; this library is found under
-// the name they ask for (libvulkan.dylib, libMoltenVK.dylib), forwards every call to the real
-// MoltenVK (SEMU_VULKAN_DRIVER, else the one it re-exports) and hooks the calls the
-// composition needs (semu_vulkan_core.btrc). The shared image is backed by an IOSurface that
-// MoltenVK exports (VK_EXT_metal_objects) and an offscreen CGL context binds as a texture.
+// the name they ask for: libvulkan.dylib on DYLD_LIBRARY_PATH, or, for an app that bundles its
+// own MoltenVK, the beside/ link placed as that libMoltenVK.dylib (a library-path MoltenVK would
+// shadow the app's). It forwards every call to the real MoltenVK (SEMU_VULKAN_DRIVER, else the one
+// it re-exports) and hooks the calls the composition needs (semu_vulkan_core.btrc). The shared
+// image is backed by an IOSurface that MoltenVK exports (VK_EXT_metal_objects) and an offscreen
+// CGL context binds as a texture.
 import ./semu_vulkan_core.btrc;
 
 struct SemuVulkanCglState {
