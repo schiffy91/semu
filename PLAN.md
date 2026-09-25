@@ -670,6 +670,11 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   `--fuzz=0`; the Deck's Steam Virtual Gamepad autoconfig ships in the bundle; PCSX2 follows the
   root renderer and btrc; the slang tree is pinned by rev; the platform matrix also checks
   `emulator.json` slices and `package.json` systems against each flake.
+- Tried 2026-09-25: the root on `nixos-26.05` (c508844) does not evaluate for aarch64-darwin:
+  its libretro core builder references `retroarch-bare` while installing a core, and that package
+  is marked broken on darwin. Moving would mean overriding nixpkgs' problem handlers in all
+  eleven core flakes, so the root stays on its exact unstable revision (e554fab), which is as
+  reproducible; revisit when 26.11 lands or the core flakes stop using the nixpkgs builder.
 - Remaining: nixpkgs still tracks `nixos-unstable`; ES-DE's nixpkgs (2026-01-02, insecure
   FreeImage) and the pins M4 names (Cemu v2.6, Ryujinx 1.3.3, ES-DE, RetroArch 1.22.2, PCSX2
   v2.6.3) are not refreshed; `librashader`, `syncthing` and `retroarch-joypad-autoconfig` are
