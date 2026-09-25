@@ -38,7 +38,7 @@ stdenv.mkDerivation {
     $CC -c semu_vulkan_metal.c -o semu_vulkan_metal.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function -Wno-incompatible-pointer-types \
       -Wno-incompatible-function-pointer-types -DVK_USE_PLATFORM_METAL_EXT -I.
     aliases=""
-    for entry in GetInstanceProcAddr GetDeviceProcAddr CreateInstance CreateDevice DestroyDevice CreateSwapchainKHR DestroySwapchainKHR QueuePresentKHR GetDeviceQueue GetDeviceQueue2; do
+    for entry in GetInstanceProcAddr GetDeviceProcAddr CreateInstance DestroyInstance CreateDevice DestroyDevice CreateSwapchainKHR DestroySwapchainKHR QueuePresentKHR GetDeviceQueue GetDeviceQueue2; do
       aliases="$aliases -Wl,-alias,_semu_vk$entry,_vk$entry"
     done
     $CC -dynamiclib semu_vulkan_metal.o -L. -lsemurenderer $aliases -Wl,-reexport_library,${moltenvk}/lib/libMoltenVK.dylib \

@@ -67,6 +67,11 @@ class SemuVulkanMac {
             return false;
         }
         SemuVulkanCore.bind(&SemuVulkanCgl.driverProcAddress, dlsym(SemuVulkanCgl.driver, "vkGetInstanceProcAddr"));
+        if (getenv("SEMU_RENDER_DEBUG") != null) {
+            struct dl_info library;
+            dladdr(&SemuVulkanCgl, &library);
+            fprintf(stderr, "semu-vulkan: stand-in at %p, MoltenVK %s\n", library.dli_fbase, path);
+        }
         return SemuVulkanCgl.driverProcAddress != null;
     }
 
@@ -177,6 +182,7 @@ class SemuVulkanMac {
 
 int semu_vkCreateInstance(const struct VkInstanceCreateInfo* create, const void* allocator, void** result);
 int semu_vkCreateDevice(void* physical, const struct VkDeviceCreateInfo* create, const void* allocator, void** result);
+void semu_vkDestroyInstance(void* instance, const void* allocator);
 void semu_vkDestroyDevice(void* device, const void* allocator);
 int semu_vkCreateSwapchainKHR(void* device, const struct VkSwapchainCreateInfoKHR* create, const void* allocator, void** result);
 void semu_vkDestroySwapchainKHR(void* device, void* swapchain, const void* allocator);
@@ -190,6 +196,7 @@ __fn_ptr<void> semu_vkGetInstanceProcAddr(void* instance, const char* name) {
     if (strcmp(name, "vkGetInstanceProcAddr") == 0) { return (__fn_ptr<void>)semu_vkGetInstanceProcAddr; }
     if (strcmp(name, "vkCreateInstance") == 0) { return (__fn_ptr<void>)semu_vkCreateInstance; }
     if (strcmp(name, "vkCreateDevice") == 0) { return (__fn_ptr<void>)semu_vkCreateDevice; }
+    if (strcmp(name, "vkDestroyInstance") == 0) { return (__fn_ptr<void>)semu_vkDestroyInstance; }
     if (strcmp(name, "vkGetDeviceProcAddr") == 0 || strncmp(name, "vkQueuePresent", 14) == 0 || strcmp(name, "vkCreateSwapchainKHR") == 0
         || strcmp(name, "vkDestroySwapchainKHR") == 0 || strcmp(name, "vkDestroyDevice") == 0 || strncmp(name, "vkGetDeviceQueue", 16) == 0) {
         return semu_vkGetDeviceProcAddr(null, name);
@@ -228,6 +235,10 @@ int semu_vkCreateDevice(void* physical, const struct VkDeviceCreateInfo* create,
     SemuVulkanCore.bind(&nextCreate, SemuVulkanCgl.driverProcAddress(instance->handle, "vkCreateDevice"));
     SemuVulkanCore.bind(&nextDevice, SemuVulkanCgl.driverProcAddress(instance->handle, "vkGetDeviceProcAddr"));
     return SemuVulkanCore.createDevice(instance, physical, create, allocator, result, nextCreate, nextDevice, null);
+}
+
+void semu_vkDestroyInstance(void* instance, const void* allocator) {
+    SemuVulkanCore.destroyInstance(instance, allocator);
 }
 
 void semu_vkDestroyDevice(void* device, const void* allocator) {

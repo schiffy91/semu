@@ -8,8 +8,8 @@
 // dialog) is revealed after a moment. AppKit is reached through the
 // Objective-C runtime's C interface; nothing else in the app changes.
 // An OpenGL emulator (Dolphin) is also composed here when the launcher asks for it
-// (SEMU_RENDER_SYSTEM_ID): at -[NSOpenGLContext flushBuffer] the back buffer goes through
-// libsemurenderer before it is shown, as the Linux preload does at the GL swap.
+// (SEMU_WINDOW_COMPOSE, only for render_preload emulators): at -[NSOpenGLContext flushBuffer]
+// the back buffer goes through libsemurenderer before it is shown, as the Linux preload does at the GL swap.
 import ./semu_compose.btrc;
 #include <dlfcn.h>
 #include <objc/runtime.h>
@@ -246,7 +246,7 @@ class SemuWindowShim {
         }
         void* openGlContext = (void*)objc_lookUpClass("NSOpenGLContext");
         void* flushMethod = openGlContext != null ? (void*)class_getInstanceMethod(openGlContext, sel_registerName("flushBuffer")) : null;
-        if (flushMethod != null && SemuCompose.enabled()) {
+        if (flushMethod != null && getenv("SEMU_WINDOW_COMPOSE") != null && SemuCompose.enabled()) {  // a Vulkan emulator's toolkit may flush GL contexts of its own
             SemuWindowShim.bind(&SemuWindow.flush, (void*)method_setImplementation(flushMethod, SemuWindowShim.flushBuffer));
         }
         if (SemuWindow.debug) { fprintf(stderr, "semu-window: installed (toggle %d, order %d)\n", toggleMethod != null, orderMethod != null); }

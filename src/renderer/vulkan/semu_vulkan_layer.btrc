@@ -221,12 +221,7 @@ int semu_vkCreateInstance(const struct VkInstanceCreateInfo* create, const void*
 }
 
 void semu_vkDestroyInstance(void* instance, const void* allocator) {
-    struct SemuVulkanInstance* record = SemuVulkanCore.instance(instance);
-    if (record == null) { return; }
-    __fn_ptr<void, void*, const void*> destroy;
-    memcpy(&destroy, &record->destroy, sizeof(destroy));
-    record->key = null;
-    destroy(instance, allocator);
+    SemuVulkanCore.destroyInstance(instance, allocator);
 }
 
 int semu_vkCreateDevice(void* physical, const struct VkDeviceCreateInfo* create, const void* allocator, void** result) {
