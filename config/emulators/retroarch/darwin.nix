@@ -11,7 +11,7 @@ let
     inherit version;
     src = source;
     allowSubstitutes = false;  # compiled by Semu, never a cache binary
-    patches = [ ./retroarch.patch ./retroarch_commands.patch ./retroarch_get_status_null_safety.patch ./retroarch_darwin.patch ./retroarch_darwin_fullscreen.patch ];
+    patches = [ ./retroarch.patch ./retroarch_commands.patch ./retroarch_get_status_null_safety.patch ./retroarch_darwin.patch ./retroarch_darwin_fullscreen.patch ./retroarch_darwin_runloop.patch ];
     patchFlags = [ "-p1" "--fuzz=0" ];  # a patch that drifted from the pinned source fails
     nativeBuildInputs = [ pkg-config unzip btrcpy ];
     buildInputs = [ zlib semuRendererLoader ];
