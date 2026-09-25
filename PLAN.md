@@ -659,7 +659,11 @@ Rulings taken as defaults because the owner was not available (reversible; say i
 - Remaining: nixpkgs still tracks `nixos-unstable`; ES-DE's nixpkgs (2026-01-02, insecure
   FreeImage) and the pins M4 names (Cemu v2.6, Ryujinx 1.3.3, ES-DE, RetroArch 1.22.2, PCSX2
   v2.6.3) are not refreshed; `librashader`, `syncthing` and `retroarch-joypad-autoconfig` are
-  nixpkgs packages used as-is; the two targets and input files are copies, not inheritance.
+  nixpkgs packages used as-is. Since done (2026-09-25): definitions can `extends` another (objects
+  merge key by key, a null removes an inherited key); the macOS input file is the desktop's and the
+  Deck's refines only its device and pad identities, and every target emits byte-identical
+  configs to before (contract-tested). The targets stay whole: they differ mostly in whole path
+  blocks.
 
 ### G7. Art licence — done, history is the owner's call
 

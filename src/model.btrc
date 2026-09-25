@@ -176,6 +176,13 @@ class SemuModel {
     }
 
     class JSONValue readObject(string path, SemuDiagnostics diagnostics) {
+        return SemuModel.readInherited(path, diagnostics, 0);
+    }
+
+    // A definition may name the one it refines ("extends", relative to its own file): its keys are
+    // laid over that base, objects key by key and everything else whole, and a null removes an
+    // inherited key. Targets and input files share their common parts this way.
+    class JSONValue readInherited(string path, SemuDiagnostics diagnostics, int depth) {
         if (!FileSystem.isFile(path)) {
             diagnostics.add(path, "file", "definition is missing");
             return JSONValue.makeObject();
@@ -185,7 +192,31 @@ class SemuModel {
             diagnostics.add(path, "json", "definition is not a JSON object");
             return JSONValue.makeObject();
         }
-        return value;
+        if (!value.has("extends")) { return value; }
+        if (depth >= 4) {
+            diagnostics.add(path, "extends", "definitions extend each other more than four deep");
+            return value;
+        }
+        JSONValue base = SemuModel.readInherited(PathTools.join(PathTools.dirname(path), SemuJson.textAt(value, "extends")), diagnostics, depth + 1);
+        return SemuModel.overlay(base, value);
+    }
+
+    class JSONValue overlay(JSONValue base, JSONValue refinement) {
+        JSONValue result = JSONValue.makeObject();
+        for key in base.keys() {
+            if (!refinement.has(key)) {
+                result.set(key, base.get(key));
+                continue;
+            }
+            JSONValue replacement = refinement.get(key);
+            if (replacement.isNull()) { continue; }
+            result.set(key, base.get(key).isObject() && replacement.isObject() ? SemuModel.overlay(base.get(key), replacement) : replacement);
+        }
+        for key in refinement.keys() {
+            if (key.equals("extends") || base.has(key) || refinement.get(key).isNull()) { continue; }
+            result.set(key, refinement.get(key));
+        }
+        return result;
     }
 
     class SemuModel load(string configRoot, SemuDiagnostics diagnostics) {
