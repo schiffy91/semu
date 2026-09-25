@@ -548,12 +548,12 @@ Progress (2026-09-25):
   before it exited at about 2:40 at emulated speed; Cemu (Kirby and the
   Rainbow Curse) composed its first frame, then segfaulted inside its own PPC
   interpreter. Both need a native Linux machine for an inspected picture.
-- The Mac touch path: the stand-in, opened the way Azahar opens it, exposes
-  `semu_touch_unmap` to `dlsym(RTLD_DEFAULT)` and passes clicks through (-1)
-  until a frame is composed; the mapping itself is the code observed on
-  Linux. A live click on the Mac waits for an unlocked session.
-- Open: those two inspected pictures on real Linux hardware, a live click on
-  the Mac, and the Deck
+- Observed live on the owner's unlocked Mac (2026-09-25): Pushmo launched through semu's plan
+  opened at the full screen size and faded in (alpha 0 to 1 in about 260 ms, no small window);
+  a real click on OK in the composed bottom screen of the 3DS shell (screen point 1756,984;
+  framebuffer 3512,1892) mapped to Azahar's layout at 2052,2269 and dismissed "Save data
+  created", and the game went on to its intro. The touch criterion is met on both platforms.
+- Open: those two inspected pictures on real Linux hardware, and the Deck
   (gamescope's WSI layer alongside ours).
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
@@ -808,7 +808,8 @@ state under `~/Library/Application Support/Semu`. Done and observed on mbp21:
   fullscreen (Ryujinx's controller applet) after 1.5 s. `tests/visual/mac-launch-trace.sh`
   records every emulator window at 15 ms steps with the screen locked: all four open at
   3008x1692 from their first visible frame and reach full opacity in about 200 ms; no small
-  window is ever visible. Not yet seen by eye on the unlocked display.
+  window is ever visible. Seen live on the unlocked display 2026-09-25 (Azahar: full size, alpha 0
+  to 1 in about 260 ms).
 - RetroArch's macOS draw loop only iterated on AppKit events, so with the display asleep
   (locked, dimmed) the game stopped after a few seconds. `retroarch_darwin_runloop.patch` keeps
   the loop awake. With the display asleep behind the lock (2026-09-25) `mac-locked.sh` passes
