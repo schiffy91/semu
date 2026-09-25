@@ -32,11 +32,14 @@ forAllSystems (system:
         semuRenderer = renderer.packages.${system}.default;
         platform = if pkgs.stdenv.hostPlatform.isDarwin then "macos" else "linux";
         emulators = import ../emulators.nix { inherit lib repositoryRoot system platform emulatorFlakes coreFlakes; retroarchFlake = retroarch; };
+        emulatorPackages = emulators.packages // lib.optionalAttrs (platform == "macos" && emulators.packages ? ryujinx) {
+          ryujinx = pkgs.callPackage ../ryujinx_semu.nix { ryujinx = emulators.packages.ryujinx; inherit semuRenderer; };  # Semu's stand-in beside its MoltenVK
+        };
         esDe = esde.packages.${system}.default;
         retroarchAutoconfig = pkgs.callPackage ../retroarch_autoconfig.nix { inherit repositoryRoot; };  # first, so the Deck profiles win the merged autoconfig dir
         semu = pkgs.callPackage ../semu_bundle.nix {
           inherit semuCli esDe repositoryRoot platform;
-          emulatorPackages = lib.attrValues emulators.packages ++ emulators.corePackages;
+          emulatorPackages = lib.attrValues emulatorPackages ++ emulators.corePackages;
           extraPackages = [ retroarchAutoconfig pkgs.retroarch-joypad-autoconfig pkgs.syncthing semuRenderer visualAssets.combined bezelLayers ];
         };
       in {
@@ -46,5 +49,5 @@ forAllSystems (system:
         default = semu;
         es-de = esDe;
       } // lib.optionalAttrs (platform == "linux") { release = pkgs.callPackage ../release.nix { inherit semu repositoryRoot; }; }
-        // lib.mapAttrs' (id: package: lib.nameValuePair "emulator-${id}" package) emulators.packages;
+        // lib.mapAttrs' (id: package: lib.nameValuePair "emulator-${id}" package) emulatorPackages;
   in development // product)

@@ -514,6 +514,20 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
                 contract.expect(SemuJson.boolAt(mac.model.emulator(emulatorId).platform("macos"), "window_shim", false), systemId + ": macOS " + emulatorId + " launches through libsemuwindow");
             }
         }
+        for platformId in ["linux", "macos"] {  // every standalone draws inside Semu's bezel: a hook, the GL preload or the Vulkan composition
+            Fixture target = platformId.equals("macos") ? mac : desktop;
+            for emulatorId in target.model.emulatorIds() {
+                JSONValue platform = target.model.emulator(emulatorId).platform(platformId);
+                if (emulatorId.equals("retroarch") || !platform.isObject()) { continue; }
+                bool composed = SemuJson.boolAt(platform, "render_hook", false) || SemuJson.boolAt(platform, "render_preload", false)
+                    || SemuJson.boolAt(platform, "render_vulkan", false);
+                if (emulatorId.equals("melonds") && platformId.equals("linux")) {
+                    contract.expect(!composed, "linux melonDS stays uncomposed: it never reaches a swap Semu can hook, and DS runs on RetroArch's melonDS core");
+                    continue;
+                }
+                contract.expect(composed, platformId + " " + emulatorId + " is composed by Semu (render_hook, render_preload or render_vulkan)");
+            }
+        }
         contract.expect(!SemuJson.boolAt(mac.model.emulator("retroarch").platform("macos"), "window_shim", false)
             && FileSystem.readText(PathTools.join(mac.project, "config/emulators/retroarch/darwin.nix")).contains("retroarch_darwin_fullscreen.patch"),
             "macOS RetroArch goes fullscreen on ES-DE's Space through its own patch, not the shim");

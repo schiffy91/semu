@@ -150,7 +150,8 @@
       "ryujinx": {
         "use_hypervisor": "false"
       },
-      "window_shim": true
+      "window_shim": true,
+      "render_vulkan": true
     }
   },
   "doc": {
@@ -159,6 +160,6 @@
     "input": "The managed Config.json contains the active Player1 GamepadSDL2 binding for the target Steam virtual controller. Ryujinx has no native save-state contract; app.quit remains process-group owned.",
     "keys": "prod.keys and title.keys are copied into the isolated root-data system directory from read-only external/project sources without modifying those sources.",
     "saves": "Native Switch game saves are emulator-owned at ${state_root}/config/Ryujinx/bis/user/save. Profile convergence owns only Config.json, so save data and installed firmware remain untouched.",
-    "rendering": "Vulkan on both platforms. On Linux VK_LAYER_SEMU_compositor (render_vulkan) composes Semu's bezel and shader into the swapchain image at present; macOS has no Semu composition yet."
+    "rendering": "Vulkan on both platforms. render_vulkan composes Semu's bezel and shader into the swapchain image at present: on Linux through VK_LAYER_SEMU_compositor, on macOS through Semu's stand-in placed as Ryujinx's own libMoltenVK.dylib (packaging/nix/ryujinx_semu.nix)."
   }
 }
