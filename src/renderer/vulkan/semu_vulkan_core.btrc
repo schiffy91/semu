@@ -127,9 +127,11 @@ class SemuVulkanCore {
         return result;
     }
 
+    // The newest live instance with the object's dispatch key: a driver used directly (MoltenVK) marks
+    // every object alike, and apps create a throwaway instance first to enumerate the GPUs.
     class struct SemuVulkanInstance* instance(void* dispatchable) {
         void* wanted = SemuVulkanCore.key(dispatchable);
-        for (int index = 0; index < SemuVulkan.instanceCount; index++) {
+        for (int index = SemuVulkan.instanceCount - 1; index >= 0; index--) {
             if (SemuVulkan.instances[index].key == wanted) { return &SemuVulkan.instances[index]; }
         }
         return null;
@@ -404,10 +406,16 @@ class SemuVulkanCore {
     // ---- hook bodies shared by the entry points ----
 
     class struct SemuVulkanInstance* addInstance(void* handle, __fn_ptr<void*, void*, const char*> next) {
-        if (SemuVulkan.instanceCount >= 8) { return null; }
         SemuVulkan.debug = getenv("SEMU_RENDER_DEBUG") != null;
-        struct SemuVulkanInstance* record = &SemuVulkan.instances[SemuVulkan.instanceCount];
-        SemuVulkan.instanceCount = SemuVulkan.instanceCount + 1;
+        struct SemuVulkanInstance* record = null;
+        for (int index = 0; index < SemuVulkan.instanceCount; index++) {  // a destroyed instance's slot
+            if (SemuVulkan.instances[index].key == null) { record = &SemuVulkan.instances[index]; }
+        }
+        if (record == null) {
+            if (SemuVulkan.instanceCount >= 8) { return null; }
+            record = &SemuVulkan.instances[SemuVulkan.instanceCount];
+            SemuVulkan.instanceCount = SemuVulkan.instanceCount + 1;
+        }
         memset(record, 0, sizeof(struct SemuVulkanInstance));
         record->handle = handle;
         record->key = SemuVulkanCore.key(handle);
@@ -454,6 +462,19 @@ class SemuVulkanCore {
         SemuVulkanCore.bindDevice(record);
         if (SemuVulkan.debug) { fprintf(stderr, "semu-vulkan: device %s\n", interop ? "composes at present" : "presents unchanged (no sharing extension or no SEMU_RENDER_SYSTEM_ID)"); }
         return status;
+    }
+
+    class void destroyInstance(void* instance, const void* allocator) {
+        struct SemuVulkanInstance* record = null;
+        for (int index = 0; index < SemuVulkan.instanceCount; index++) {  // by handle: MoltenVK's dispatch keys are all alike
+            if (SemuVulkan.instances[index].handle == instance && SemuVulkan.instances[index].key != null) { record = &SemuVulkan.instances[index]; }
+        }
+        if (record == null) { return; }
+        __fn_ptr<void, void*, const void*> destroy;
+        memcpy(&destroy, &record->destroy, sizeof(destroy));
+        record->key = null;
+        record->handle = null;
+        destroy(instance, allocator);
     }
 
     class void destroyDevice(void* device, const void* allocator) {
