@@ -548,8 +548,12 @@ Progress (2026-09-25):
   before it exited at about 2:40 at emulated speed; Cemu (Kirby and the
   Rainbow Curse) composed its first frame, then segfaulted inside its own PPC
   interpreter. Both need a native Linux machine for an inspected picture.
-- Open: those two inspected pictures on real Linux hardware, the Mac half of
-  the touch check (a click cannot reach a locked session), and the Deck
+- The Mac touch path: the stand-in, opened the way Azahar opens it, exposes
+  `semu_touch_unmap` to `dlsym(RTLD_DEFAULT)` and passes clicks through (-1)
+  until a frame is composed; the mapping itself is the code observed on
+  Linux. A live click on the Mac waits for an unlocked session.
+- Open: those two inspected pictures on real Linux hardware, a live click on
+  the Mac, and the Deck
   (gamescope's WSI layer alongside ours).
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
