@@ -639,10 +639,10 @@ Rulings taken as defaults because the owner was not available (reversible; say i
 - Placement modes (d1b9014): `visual.placement` or `visual.systems.<id>.placement` = `fit`
   (default), `game` (the picture at the largest whole multiple the screen holds, shell cropped:
   DMG, GBC and GBA reach 5x on the Deck) or `bezel` (largest whole multiple with the shell
-  whole); inspected at 1280x800. **Ruling needed:** which default per system (today `fit`,
-  so the DMG LCD stays about 1.15x on the Deck).
+  whole); inspected at 1280x800. Ruled 2026-09-23 and in place: gb, gbc, gba and psp default to
+  `game`, every other system to `fit` (checked 2026-09-25 through `semu render-env`).
 
-### G5. Launch, input, settings, owned paths — done, rulings pending
+### G5. Launch, input, settings, owned paths — done
 
 - The quit chord comes from config; RetroArch gets `QUIT` over its command port (port read from
   its profile) before SIGTERM and the bounded SIGKILL; the group is ended after a normal exit;
