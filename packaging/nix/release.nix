@@ -1,9 +1,12 @@
 # A relocatable release: the bundle's whole Nix closure in a tarball plus a
 # bubblewrap launcher that mounts it at /nix on hosts without a Nix store.
-{ lib, stdenvNoCC, closureInfo, zstd, gnutar, semu, repositoryRoot, version ? "0.2.0" }:
+# The closure carries Mesa: a host's own GPU drivers (SteamOS keeps them in /usr/lib) are built
+# against the host's libc, which the bundle's programs cannot load, so on any host but NixOS the
+# launcher points GL, EGL, GBM and Vulkan at the bundled Mesa (what nixGL does).
+{ lib, stdenvNoCC, closureInfo, zstd, gnutar, mesa, semu, repositoryRoot, version ? "0.2.0" }:
 
 let
-  closure = closureInfo { rootPaths = [ semu ]; };
+  closure = closureInfo { rootPaths = [ semu mesa ]; };
   launcher = ''
     #!/bin/sh
     # Runs a bundle program inside bubblewrap with this release mounted at /nix.
@@ -19,6 +22,16 @@ let
     for path in "$here"/nix/store/*; do store="$store --ro-bind $path /nix/store/$(basename "$path")"; done
     if [ -d /run/opengl-driver ] && command -v nix-store >/dev/null 2>&1; then  # NixOS host: its GPU drivers live in its own store
       for path in $(nix-store -qR /run/opengl-driver 2>/dev/null); do store="$store --ro-bind $path $path"; done
+    else  # any other host: the bundled Mesa (lavapipe left out, so Vulkan programs pick the real GPU)
+      export LIBGL_DRIVERS_PATH="${mesa}/lib/dri" LIBVA_DRIVERS_PATH="${mesa}/lib/dri" GBM_BACKENDS_PATH="${mesa}/lib/gbm"
+      export __EGL_VENDOR_LIBRARY_DIRS="${mesa}/share/glvnd/egl_vendor.d" __GLX_VENDOR_LIBRARY_NAME=mesa
+      export LD_LIBRARY_PATH="${mesa}/lib"  # replaces Steam's runtime paths, whose older libraries would shadow the bundle's
+      icds=""
+      for icd in "$here"${mesa}/share/vulkan/icd.d/*.json; do  # listed from the release, used at /nix inside the sandbox
+        case "$icd" in *lvp_icd*|*'*'*) continue ;; esac
+        icds="''${icds:+$icds:}${mesa}/share/vulkan/icd.d/$(basename "$icd")"
+      done
+      export VK_DRIVER_FILES="$icds" VK_ICD_FILENAMES="$icds"
     fi
     bwrap --tmpfs / --dev-bind /dev /dev --proc /proc --bind /sys /sys $binds \
       --tmpfs /nix $store --die-with-parent -- "${semu}/bin/$program" "$@" &
