@@ -641,8 +641,13 @@ class RendererGeometry {
             int across = (int)((float)areaWidth / (native * shown));
             multiple = down < across ? down : across;
         }
-        if (multiple < 1) { multiple = 1; }
-        float grow = (float)multiple * native / pictureHeight;
+        float steps = (float)multiple;
+        if (multiple < 1) {  // larger than the screen at 1x (PPSSPP's internal resolution set for a bigger display): the scaling fallback, fractional_downscale, never an overflow
+            float down = (float)areaHeight / native;
+            float across = (float)areaWidth / (native * shown);
+            steps = placement == 1 ? (down < across ? down : across) : pictureHeight / native;
+        }
+        float grow = steps * native / pictureHeight;
         float centerX = canvas->x + (image->x + image->width * 0.5f) * canvas->width;
         float centerY = canvas->y + (1.0f - image->y - image->height * 0.5f) * canvas->height;  // pixel rows count up from the bottom
         float anchorX = placement == 1 ? (float)areaWidth * 0.5f : canvas->x + canvas->width * 0.5f + (centerX - canvas->x - canvas->width * 0.5f) * grow;
