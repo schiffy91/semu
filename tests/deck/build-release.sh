@@ -47,7 +47,8 @@ if [ -n "$have" ]; then
     && zstd=\$(nix build $offline --no-link --print-out-paths --inputs-from /src nixpkgs#zstd.bin)/bin/zstd \
     && sort /have > /tmp/have && comm -23 /tmp/tree/store-paths /tmp/have > /out/delta-paths \
     && rm -f /out/Semu-x86_64.delta.tar.zst /out/Semu-x86_64.delta.tar.zst.sha256 /out/install.sh \
-    && tar -cf - -C /tmp/tree . -C / \$(sed 's|^|nix/store/|' /out/delta-paths) | \$zstd -q -T0 -3 -o /out/Semu-x86_64.delta.tar.zst \
+    && while read -r name; do printf 'nix/store/%s\\n' \"\$name\"; done < /out/delta-paths > /tmp/delta-list \
+    && (set -o pipefail; tar -cf - -C /tmp/tree . -C / -T /tmp/delta-list | \$zstd -q -T0 -3 -o /out/Semu-x86_64.delta.tar.zst) \
     && (cd /out && sha256sum Semu-x86_64.delta.tar.zst > Semu-x86_64.delta.tar.zst.sha256) \
     && cp /tmp/tree/install.sh /out/install.sh"
   mounts="-v $have:/have:ro"
