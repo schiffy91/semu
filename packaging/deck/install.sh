@@ -58,11 +58,11 @@ install_delta() {  # a release tree plus only the store paths the current releas
       exit 1
     fi
   done < "$staging/store-paths"
-  release="$(digest_of "$staging/store-paths")"  # the release is named by what it contains
-  target="$releases/$release"
+  named="$(cat "$staging/store-paths" "$staging/VERSION" "$staging"/bin/* | sha256sum | cut -d' ' -f1)"  # named by its store and its launchers
+  target="$releases/$named"
   if [ -d "$target" ]; then remove_tree "$staging"; else mv "$staging" "$target"; fi
   switch_to "$target"
-  echo "installed $release (delta $actual) -> $root/current"
+  echo "installed $named (delta $actual) -> $root/current"
 }
 
 switch_to() {  # make TARGET current, keep the old current as previous, refresh launchers
