@@ -11,6 +11,10 @@ let
     #!/bin/sh
     # Runs a bundle program inside bubblewrap with this release mounted at /nix.
     set -eu
+    # Steam preloads its overlay into every game. It needs the host's libGL.so.1, which the bundle's
+    # programs cannot resolve, so the first of them died before ES-DE started, and every process
+    # forked here paid for loading it. Game Mode draws Steam's own UI through gamescope without it.
+    unset LD_PRELOAD
     here="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd -P)"
     program="$1"; shift
     export SEMU_TARGET="''${SEMU_TARGET:-steam-deck}"
@@ -19,7 +23,7 @@ let
       [ -e "$entry" ] && binds="$binds --bind $entry $entry"
     done
     store=""
-    for path in "$here"/nix/store/*; do store="$store --ro-bind $path /nix/store/$(basename "$path")"; done
+    for path in "$here"/nix/store/*; do store="$store --ro-bind $path /nix/store/''${path##*/}"; done
     if [ -d /run/opengl-driver ] && command -v nix-store >/dev/null 2>&1; then  # NixOS host: its GPU drivers live in its own store
       for path in $(nix-store -qR /run/opengl-driver 2>/dev/null); do store="$store --ro-bind $path $path"; done
     else  # any other host: the bundled Mesa (lavapipe left out, so Vulkan programs pick the real GPU)
@@ -33,10 +37,6 @@ let
       done
       export VK_DRIVER_FILES="$icds" VK_ICD_FILENAMES="$icds"
     fi
-    # Steam preloads its overlay into every game; it needs the host's libGL.so.1, which the bundle's
-    # programs cannot resolve, so the first of them would die before ES-DE starts. Game Mode draws
-    # Steam's own UI through gamescope without it.
-    unset LD_PRELOAD
     bwrap --tmpfs / --dev-bind /dev /dev --proc /proc --bind /sys /sys $binds \
       --tmpfs /nix $store --die-with-parent -- "${semu}/bin/$program" "$@" &
     sandbox=$!
