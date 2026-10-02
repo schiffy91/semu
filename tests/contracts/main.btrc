@@ -202,7 +202,8 @@ class LaunchPlanContract {
         contract.expect(psp.ok(), "psp fallback core launches: " + psp.error);
         contract.expect(psp.argv.contains("--appendconfig"), "per-core overrides are appended for ppsspp");
         string overrides = FileSystem.readText(PathTools.join(fixture.plan.stateRoot(), "retroarch/core-ppsspp.cfg"));
-        contract.contains(overrides, "video_driver = \"vulkan\"", "ppsspp override selects vulkan");
+        contract.contains(overrides, "video_context_driver = \"x\"", "ppsspp gets a GLX context: its GLX-built GLEW has no draw context under EGL");
+        contract.lacks(overrides, "video_driver = ", "ppsspp stays on the glcore driver the tap lives in");
         contract.expect(!launch.argv.contains("--appendconfig"), "gambatte has no overrides");
         string emulation = PathTools.join(fixture.scratch, "emulation");
         FileSystem.mkdirp(PathTools.join(emulation, "Dolphin/data/GC"));
