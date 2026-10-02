@@ -262,6 +262,8 @@
         "\t\t<Notification>",
         "\t\t\t<ControllerProfiles>false</ControllerProfiles>",
         "\t\t\t<ControllerBattery>false</ControllerBattery>",
+        "\t\t\t<Position>0</Position>",
+        "\t\t\t<ShaderCompiling>false</ShaderCompiling>",
         "\t\t</Notification>",
         "\t</Graphic>",
         "\t<fullscreen>true</fullscreen>",
@@ -278,7 +280,7 @@
   ],
   "doc": {
     "controller": "Cemu automatically loads controllerProfiles/controller0.xml for player one before CafeSystem initialization. The 0_ prefix is Cemu's duplicate-GUID index followed by SDL_JoystickGetGUIDString's 32 lowercase hexadecimal digits. Mapping ids are VPAD ButtonId values; button ids are the pinned 2.6 SDL_GameControllerButton values and Controller.h synthetic axis values. The Semu source build ignores per-title controller overrides so this generated profile remains authoritative.",
-    "display": "open_pad=false leaves one primary game window. Ctrl+Tab changes whether that main window presents TV or GamePad output; the separate pad window remains closed.",
+    "display": "open_pad=false leaves one primary game window. Ctrl+Tab changes whether that main window presents TV or GamePad output; the separate pad window remains closed. Notification Position 0 is ScreenPosition::kDisabled, so Cemu draws no notification box (shader compiles, friends, controllers, warnings) over the game.",
     "storage": "The profile pins only input and UI settings. emulator.json owns the XDG and -m paths that keep normal Wii U title saves inside the isolated MLC root.",
     "actions": "Native rows are fail-closed invariants checked against steamdeck.skm before emission. Unsupported rows document shared Semu actions that this exact upstream release cannot consume."
   }

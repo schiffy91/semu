@@ -185,6 +185,8 @@ class CemuSpecContract {
         contract.contains(settings, "\t<open_pad>false</open_pad>", target + " cemu keeps one game window");
         contract.contains(settings, "\t\t\t<ControllerProfiles>false</ControllerProfiles>", target + " cemu hides controller notifications");
         contract.contains(settings, "\t\t\t<ControllerBattery>false</ControllerBattery>", target + " cemu hides battery notifications");
+        contract.contains(settings, "\t\t\t<Position>0</Position>", target + " cemu draws no notifications over the game");
+        contract.contains(settings, "\t\t\t<ShaderCompiling>false</ShaderCompiling>", target + " cemu hides shader-compile notifications");
         contract.contains(settings, "\t<check_update>false</check_update>", target + " cemu never checks for updates");
         contract.expect(fixture.diagnostics.ok(), target + " cemu profile renders cleanly: " + fixture.diagnostics.render());
     }
