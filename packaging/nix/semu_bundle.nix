@@ -37,7 +37,7 @@ symlinkJoin {
     export PATH="$out/bin:\$PATH"  # ES-DE finds the semu-* shims on PATH; an app opened from Finder has only /usr/bin:/bin
     target="\''${SEMU_TARGET:-${defaultTarget}}"
     export SEMU_TARGET="\$target"  # games ES-DE starts run through the semu-* shims, which must use the same target
-    ${lib.optionalString (platform == "linux") ''export SDL_AUDIO_DRIVER="\''${SDL_AUDIO_DRIVER:-pulseaudio,pipewire}"  # SDL3's PipeWire backend held its device lock against ES-DE's main thread: stutter on every move, then a freeze; PipeWire serves Pulse clients too''}
+    ${lib.optionalString (platform == "linux") ''export SDL_AUDIO_DRIVER="\''${SDL_AUDIO_DRIVER:-pulseaudio,pipewire,dummy}"  # SDL3's PipeWire backend held its device lock against ES-DE's main thread: stutter on every move, then a freeze; PipeWire serves Pulse clients too. dummy last: with no sound server ES-DE fed a null stream to SDL_AudioStreamPut and crashed on its first sound''}
     "$out/bin/semu" prepare --target "\$target" || exit 1
     "$out/bin/semu" sync start --target "\$target" >/dev/null 2>&1 || true
     home="\$("$out/bin/semu" path esde_home --target "\$target")" || exit 1
