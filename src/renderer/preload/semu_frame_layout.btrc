@@ -11,8 +11,11 @@ struct SemuComposeRect {  // top-left origin, in framebuffer pixels
 
 class SemuFrameLayout {
     // One screen letterboxed at the system aspect (SEMU_RENDER_ASPECT) and centered, where every
-    // single-screen standalone is expected to draw it (Dolphin by its CustomStretch pin): the
-    // fitted side rounded, the offset floored. No aspect (0) cuts the whole frame.
+    // single-screen standalone is expected to draw it (Dolphin by its CustomStretch pin). Only the
+    // pixels wholly inside the exact letterbox are cut, so the cut stays inside the picture however
+    // the emulator rounds its edges: Dolphin rounds its offset (107 at 1280x800), Flycast draws from
+    // a fractional one (106.67); a floored cut (106) took a column of their black clear colour.
+    // No aspect (0) cuts the whole frame.
     class void letterboxed(int width, int height, float aspect, struct SemuComposeRect* picture) {
         picture->x = 0;
         picture->y = 0;
@@ -20,12 +23,25 @@ class SemuFrameLayout {
         picture->height = height;
         if (aspect <= 0.01f) { return; }
         if ((float)width / (float)height > aspect) {
-            picture->width = (int)((float)height * aspect + 0.5f);
-            picture->x = (width - picture->width) / 2;
+            float exact = (float)height * aspect;
+            float left = ((float)width - exact) * 0.5f;
+            picture->x = SemuFrameLayout.inside(left, true);
+            picture->width = SemuFrameLayout.inside(left + exact, false) - picture->x;
         } else {
-            picture->height = (int)((float)width / aspect + 0.5f);
-            picture->y = (height - picture->height) / 2;
+            float exact = (float)width / aspect;
+            float upper = ((float)height - exact) * 0.5f;
+            picture->y = SemuFrameLayout.inside(upper, true);
+            picture->height = SemuFrameLayout.inside(upper + exact, false) - picture->y;
         }
+    }
+
+    // A picture edge (non-negative, in pixels) moved to the nearest pixel boundary inside the
+    // picture: up for a leading edge, down for a trailing one, ignoring float noise on whole edges.
+    class int inside(float edge, bool leading) {
+        if (!leading) { return (int)(edge + 0.001f); }
+        float shifted = edge - 0.001f;
+        int truncated = (int)shifted;
+        return (float)truncated < shifted ? truncated + 1 : truncated;
     }
 
     // Azahar's DefaultFrameLayout (LargeFrameLayout with the small screen below), neither upright,
