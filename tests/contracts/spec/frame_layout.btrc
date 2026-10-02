@@ -1,0 +1,49 @@
+// Frame layout spec: the compositor cuts each 3DS screen where Azahar drew it. On the Deck's
+// 1280x800 with Azahar's integer scaling the screens sit at native size in the middle; cutting
+// them where a fitted layout would have put them showed each screen small inside its bezel hole.
+
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/model.btrc;
+import ../../../src/renderer/preload/semu_frame_layout.btrc;
+
+class FrameLayoutSpecContract {
+    class bool at(struct SemuComposeRect rect, int x, int y, int width, int height) {
+        return rect.x == x && rect.y == y && rect.width == width && rect.height == height;
+    }
+
+    class string text(struct SemuComposeRect rect) { return f"{rect.x},{rect.y} {rect.width}x{rect.height}"; }
+
+    class void run(Contract contract) {
+        struct SemuComposeRect top;
+        struct SemuComposeRect bottom;
+        SemuFrameLayout.stacked(1280, 800, 400, 240, 320, 240, true, &top, &bottom);
+        contract.expect(FrameLayoutSpecContract.at(top, 440, 160, 400, 240) && FrameLayoutSpecContract.at(bottom, 480, 400, 320, 240),
+            "Deck 1280x800, integer: both screens at 1x, centered (measured on the Deck): " + FrameLayoutSpecContract.text(top) + " / " + FrameLayoutSpecContract.text(bottom));
+        SemuFrameLayout.stacked(1280, 800, 400, 240, 320, 240, false, &top, &bottom);
+        contract.expect(FrameLayoutSpecContract.at(top, 307, 0, 666, 400) && FrameLayoutSpecContract.at(bottom, 374, 400, 533, 400),
+            "Deck 1280x800, fitted: Azahar's truncating arithmetic: " + FrameLayoutSpecContract.text(top) + " / " + FrameLayoutSpecContract.text(bottom));
+        SemuFrameLayout.stacked(3024, 1964, 400, 240, 320, 240, true, &top, &bottom);
+        contract.expect(FrameLayoutSpecContract.at(top, 712, 22, 1600, 960) && FrameLayoutSpecContract.at(bottom, 872, 982, 1280, 960),
+            "a 3024x1964 Mac screen, integer: 4x, centered: " + FrameLayoutSpecContract.text(top) + " / " + FrameLayoutSpecContract.text(bottom));
+        SemuFrameLayout.stacked(320, 400, 400, 240, 320, 240, true, &top, &bottom);
+        contract.expect(top.width < 400 && top.height + bottom.height <= 400, "integer scaling never floors below 1x: a small window still fits both screens");
+
+        Fixture fixture = Fixture("steam-deck");
+        SemuEmulator azahar = fixture.model.emulator("azahar");
+        for platform in ["linux", "macos"] {
+            JSONValue settings = azahar.platform(platform);
+            bool pinned = false;
+            JSONValue pins = SemuJson.get(azahar.definition, "platforms." + platform + ".graphics.extra_pins");
+            if (pins == null || !pins.isArray()) { pins = JSONValue.makeArray(); }
+            for (int index = 0; index < pins.size(); index++) {
+                if (SemuJson.textAt(pins.at(index), "key").equals("use_integer_scaling")) { pinned = SemuJson.textAt(pins.at(index), "value").equals("true"); }
+            }
+            contract.expect(pinned == SemuJson.boolAt(settings, "render_frame_integer", false),
+                platform + ": Azahar's pinned use_integer_scaling and render_frame_integer agree, so the compositor models the frame Azahar draws");
+        }
+    }
+}

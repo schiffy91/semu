@@ -111,6 +111,7 @@
       "azahar": {
         "graphics_api": "2"
       },
+      "render_frame_integer": true,
       "render_vulkan": true
     },
     "macos": {
@@ -205,6 +206,7 @@
         "graphics_api": "2"
       },
       "window_shim": true,
+      "render_frame_integer": true,
       "render_vulkan": true
     }
   },

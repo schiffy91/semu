@@ -4,27 +4,24 @@
 // into the same framebuffer. Configuration comes from the SEMU_RENDER_* environment the launcher
 // emits. Where the emulator draws its screens:
 //   one screen: letterboxed, centered at the system aspect (every single-screen emulator);
-//   two screens (SEMU_RENDER_SURFACE_COUNT=2, vertical): Azahar's default layout, each screen the
-//   largest rectangle of its aspect in its half of the window, centered, meeting at the middle.
+//   two screens (SEMU_RENDER_SURFACE_COUNT=2, vertical): Azahar's default layout (its
+//   LargeFrameLayout, small screen below): both screens form one box, scaled to the largest fit
+//   (a whole multiple when SEMU_RENDER_FRAME_INTEGER=1, as Azahar's use_integer_scaling does) and
+//   centered; each screen is cut from it at the box's scale.
 // The last composition's pointer map is kept, so a touch hook can turn a click on the composed
 // picture back into the point the emulator drew there.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "semu_renderer.h"
-
-struct SemuComposeRect {  // top-left origin, in framebuffer pixels
-    int x;
-    int y;
-    int width;
-    int height;
-};
+import ./semu_frame_layout.btrc;
 
 struct SemuComposeState {
     bool initialized;
     bool enabled;
     bool reported;
     bool stacked;
+    bool integer;  // the emulator scales its frame by whole multiples (SEMU_RENDER_FRAME_INTEGER=1)
     unsigned long long frame_id;
     float aspect;
     int native_width;
@@ -62,6 +59,8 @@ class SemuCompose {
         SemuComposition.stacked = count != null && strcmp(count, "2") == 0 && layout != null && strcmp(layout, "vertical") == 0
             && SemuComposition.native_width > 0
             && SemuCompose.size("SEMU_RENDER_SURFACE_1_NATIVE", &SemuComposition.second_native_width, &SemuComposition.second_native_height);
+        char* integer = getenv("SEMU_RENDER_FRAME_INTEGER");
+        SemuComposition.integer = integer != null && strcmp(integer, "1") == 0;
         SemuComposition.enabled = getenv("SEMU_RENDER_SYSTEM_ID") != null;
     }
 
@@ -78,34 +77,9 @@ class SemuCompose {
         return (int)(value + 0.5f);
     }
 
-    // The largest rectangle of the screen's aspect (height over width) inside the area, at its origin.
-    class struct SemuComposeRect largest(int areaWidth, int areaHeight, float aspect) {
-        float scale = (float)areaWidth;
-        if ((float)areaHeight / aspect < scale) { scale = (float)areaHeight / aspect; }
-        struct SemuComposeRect rect;
-        rect.x = 0;
-        rect.y = 0;
-        rect.width = SemuCompose.round(scale);
-        rect.height = SemuCompose.round(scale * aspect);
-        return rect;
-    }
-
-    // Azahar's DefaultFrameLayout, neither upright nor swapped.
     class void stackedLayout(int width, int height, struct SemuComposeRect* top, struct SemuComposeRect* bottom) {
-        float topAspect = (float)SemuComposition.native_height / (float)SemuComposition.native_width;
-        float bottomAspect = (float)SemuComposition.second_native_height / (float)SemuComposition.second_native_width;
-        int half = height / 2;
-        *top = SemuCompose.largest(width, half, topAspect);
-        *bottom = SemuCompose.largest(width, half, bottomAspect);
-        if ((float)height / (float)width < topAspect * 2.0f) {  // wider than the content: borders left and right
-            top->x = (width - top->width) / 2;
-            bottom->x = (width - bottom->width) / 2;
-        } else {  // narrower: borders above and below, the screens meet in the middle
-            *bottom = SemuCompose.largest(width, top->height, bottomAspect);
-            bottom->x = (top->width - bottom->width) / 2;
-            top->y = half - top->height;
-        }
-        bottom->y = bottom->y + half;
+        SemuFrameLayout.stacked(width, height, SemuComposition.native_width, SemuComposition.native_height,
+                                SemuComposition.second_native_width, SemuComposition.second_native_height, SemuComposition.integer, top, bottom);
     }
 
     class void surface(struct SemuRenderFrameGl* frame, int index, struct SemuComposeRect rect, int nativeWidth, int nativeHeight) {

@@ -28,6 +28,7 @@ import ./spec/emulator_runtime.btrc;
 import ./spec/standalone.btrc;
 import ./spec/cemu.btrc;
 import ./spec/steam_input.btrc;
+import ./spec/frame_layout.btrc;
 import ./spec/esde.btrc;
 import ./spec/gameboy.btrc;
 import ./spec/touch.btrc;
@@ -857,6 +858,7 @@ int main() {
     SteamInputInstallContract.run(contract);
     LibrarySettingsContract.run(contract);
     MacTargetContract.run(contract);
+    FrameLayoutSpecContract.run(contract);
     RetroArchSpecContract.run(contract);
     EmulatorRuntimeSpecContract.run(contract);
     StandaloneSpecContract.run(contract);
