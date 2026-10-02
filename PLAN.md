@@ -939,6 +939,18 @@ Update this block whenever a milestone criterion changes state.
   In the VM, Mesa's GLX and EGL drivers force-loaded into the old ES-DE reproduce the Deck's error
   exactly, and load in the patched one. Release `5484d585` carries all three. It is to be
   installed and checked on the Deck when it is next online.
+  The owner's next launch, 2026-10-02, showed ES-DE stalling from 90 to 2-16 fps on every move
+  through a list, and freezing after a 3DS game. Off-screen on the Deck, with audio on and
+  keyboard events sent only to a private headless gamescope:
+  - the main thread deadlocked in SDL3's `ObtainLogicalAudioDevice` under the old pin's
+    sdl2-compat 2.32.56 / SDL3 3.2.20, with the PipeWire backend and with Pulse;
+  - on the current sdl2-compat 2.32.72 / SDL3 3.4.16, three runs (b70f198) launched a 3DS game
+    through standalone Azahar, quit it through Semu, and kept ES-DE drawing and taking input
+    after it. The capture shows the 3DS list live with "last played 0 seconds ago".
+  The 3DS gamelist's `Azahar (Standalone)` pin is an alias now (4d74563), so the startup warning
+  is gone and 3DS games open in the standalone Azahar the owner chose. ES-DE's launch shell exits
+  at once and the game runs under gamescope's reaper, so ES-DE waits on the launch pipe, not on
+  a child. Release `a2aec13f` carries all of it.
 - M6 renderer: done on the desktop 2026-09-19, Deck pending. `libsemurenderer`
   (librashader GL) is linked into RetroArch's gl3 driver by the Semu build;
   the launcher passes `SEMU_RENDER_*` from `config/systems/<id>/{shaders,bezels}.json`.
