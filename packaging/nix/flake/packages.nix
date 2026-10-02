@@ -35,7 +35,8 @@ forAllSystems (system:
         emulatorPackages = emulators.packages // lib.optionalAttrs (platform == "macos" && emulators.packages ? ryujinx) {
           ryujinx = pkgs.callPackage ../ryujinx_semu.nix { ryujinx = emulators.packages.ryujinx; inherit semuRenderer; };  # Semu's stand-in beside its MoltenVK
         };
-        esDe = esde.packages.${system}.default;
+        esDe = if platform == "linux" then pkgs.callPackage ../es_de_semu.nix { esDe = esde.packages.${system}.default; }  # on the bundle's glibc, so it can load current GPU drivers
+          else esde.packages.${system}.default;
         retroarchAutoconfig = pkgs.callPackage ../retroarch_autoconfig.nix { inherit repositoryRoot; };  # first, so the Deck profiles win the merged autoconfig dir
         semu = pkgs.callPackage ../semu_bundle.nix {
           inherit semuCli esDe repositoryRoot platform;
