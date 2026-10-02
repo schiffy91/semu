@@ -348,6 +348,59 @@ class RenderingContract {
     }
 }
 
+class ShaderPipelineContract {  // screen presets: native-size passes before the last, text matching its pin
+    class string pipelineText(JSONValue manifest, string logical) {  // byte for byte what shaders.nix emitPipeline writes
+        JSONValue recipe = manifest.get("assets").get(logical);
+        string relative = "semu/" + logical.substring(15, logical.len() - 15);
+        string climb = "";
+        for (int index = 0; index < relative.len(); index++) { if (relative.charAt(index) == '/') { climb = climb + "../"; } }
+        JSONValue passes = recipe.get("passes");
+        string text = f"shaders = \"{passes.size()}\"\n\n";
+        for (int index = 0; index < passes.size(); index++) {
+            JSONValue pass = passes.at(index);
+            string stage = SemuJson.textAt(manifest, "trees." + SemuJson.textAt(pass, "tree") + ".stage");
+            text = text + f"shader{index} = \"{climb}{stage}/{SemuJson.textAt(pass, "path")}\"\n";
+            text = text + f"filter_linear{index} = \"{SemuJson.boolAt(pass, "filter_linear", false) ? "true" : "false"}\"\n";
+            if (pass.has("scale_type")) { text = text + f"scale_type{index} = \"{SemuJson.textAt(pass, "scale_type")}\"\n"; }
+            if (pass.has("scale")) { text = text + f"scale{index} = \"{SemuRenderEnvironment.number(pass.get("scale"))}\"\n"; }
+        }
+        text = text + "\n";
+        JSONValue parameters = recipe.get("params");
+        if (parameters != null && parameters.isObject()) {
+            for name in parameters.keys().sorted() { text = text + name + " = \"" + SemuRenderEnvironment.number(parameters.get(name)) + "\"\n"; }
+        }
+        return text;
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        JSONValue manifest = SemuJson.readFile(PathTools.join(fixture.project, "config/assets/shaders.json"));
+        JSONValue assets = manifest.get("assets");
+        string path = PathTools.join(fixture.scratch, "preset.slangp");
+        int pipelines = 0;
+        for logical in assets.keys().sorted() {
+            JSONValue recipe = assets.get(logical);
+            string type = SemuJson.textAt(recipe, "type");
+            if (!type.equals("slang_pipeline") && !type.equals("slang_wrapper")) { continue; }
+            if (type.equals("slang_pipeline")) {
+                pipelines++;
+                JSONValue passes = recipe.get("passes");
+                for (int index = 0; index + 1 < passes.size(); index++) {  // lcd-grid-v2 takes its LCD cell from SourceSize
+                    JSONValue pass = passes.at(index);
+                    contract.expect(SemuJson.textAt(pass, "scale_type").equals("source") && SemuJson.intAt(pass, "scale", 0) == 1 && !SemuJson.boolAt(pass, "filter_linear", true), logical + f": pass {index} stays at the native surface, unfiltered, so the last pass sees game pixels");
+                }
+            }
+            string text = type.equals("slang_pipeline") ? ShaderPipelineContract.pipelineText(manifest, logical) : GameBoySpecFiles.wrapperText(manifest, logical);
+            contract.expect(FileSystem.writeText(path, text) && GameBoySpecFiles.sha256(path).equals(SemuJson.textAt(recipe, "output.sha256")), logical + ": the emitted preset text hashes to its pinned output");
+        }
+        contract.expect(pipelines > 0, f"the multi-pass screen presets were checked: {pipelines}");
+        JSONValue pspPasses = SemuJson.get(assets.get("assets/shaders/psp/screen.slangp"), "passes");
+        bool oneSided = pspPasses.isArray() && pspPasses.size() > 0 && SemuJson.textAt(pspPasses.at(pspPasses.size() - 1), "path").equals("handheld/shaders/lcd3x.slang");
+        contract.expect(oneSided, "the PSP grid ends in lcd3x: lcd1x_psp's quarter-pixel phase samples sine zeros at 2x and draws no grid");
+        contract.expect(GameBoySpecJson.number(assets.get("assets/shaders/nds/top.slangp"), "params.BRIGHTEN_LCD") >= 12.0, "the DS grid stays shallow: the shell fits both screens at a fractional scale, where a deep grid beats into bands");
+    }
+}
+
 class BezelPackageContract {  // every calibrated package: the picture sits inside its opening at the system's aspect
     class double aspectOf(JSONValue rect) {
         double w = SemuJson.intAt(rect, "w", 0);
@@ -850,6 +903,7 @@ int main() {
     UnifiedInputContract.run(contract);
     SteamInputContract.run(contract);
     RenderingContract.run(contract);
+    ShaderPipelineContract.run(contract);
     BezelPackageContract.run(contract);
     BezelPlacementContract.run(contract);
     LayerLookContract.run(contract);

@@ -4,7 +4,7 @@
   "renderer": true,
   "screen": "assets/shaders/gba/screen.slangp",
   "doc": {
-    "intent": "Readable AGB-001 reflected color response and LCD persistence without a magnified RGB textile pattern"
+    "intent": "Readable AGB-001 reflected color response, LCD persistence and the subpixel grid, one grid cell per game pixel"
   },
   "variants": [
     {
