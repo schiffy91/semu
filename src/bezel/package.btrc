@@ -27,7 +27,7 @@ class ImageSize {  // pixel dimensions from a PNG IHDR or a JPEG start-of-frame,
     class int be32(Bytes data, int at) { return ((data.get(at) * 256 + data.get(at + 1)) * 256 + data.get(at + 2)) * 256 + data.get(at + 3); }
 
     class ImageSize of(string path) {
-        Bytes data = FileSystem.readBytes(path);
+        Bytes data = SemuPaths.readBytes(path);
         if (data.len >= 24 && data.get(0) == 137 && data.get(1) == 80 && data.get(2) == 78 && data.get(3) == 71) { return ImageSize(ImageSize.be32(data, 16), ImageSize.be32(data, 20)); }
         if (data.len >= 4 && data.get(0) == 255 && data.get(1) == 216) {
             int at = 2;

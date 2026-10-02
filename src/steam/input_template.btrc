@@ -375,7 +375,7 @@ class SteamInputTemplates {  // semu steam input: write every declared Neptune t
     class string source(SemuPlan plan) { return PathTools.join(plan.configRoot, "input/" + plan.target.input + "/steam_input.json"); }
 
     class bool copyBytes(string source, string destination) {  // PNGs carry NUL bytes, so never through text
-        Bytes content = FileSystem.readBytes(source);
+        Bytes content = SemuPaths.readBytes(source);
         if (content.isEmpty() || FileSystem.isSymlink(destination)) { return false; }
         File file = File(destination, "wb");
         if (!file.ok()) { return false; }

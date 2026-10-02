@@ -93,7 +93,7 @@ class BezelEditor {
         string file = SemuPaths.normalize(self.tree.absolute(reference));
         bool served = SemuPaths.inside(self.tree.root, file) || SemuPaths.inside("/nix/store", file) || SemuPaths.inside(self.repository.configRoot, file);
         if (!served || !FileSystem.isFile(file)) { return HTTPResponse.notFound(); }
-        Bytes data = FileSystem.readBytes(file);
+        Bytes data = SemuPaths.readBytes(file);
         if (data.len == 0) { return HTTPResponse.error(500, "unreadable " + file); }
         return HTTPResponse.bytes(200, file.toLower().endsWith(".png") ? "image/png" : "image/jpeg", data);
     }
