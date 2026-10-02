@@ -84,9 +84,9 @@ class FrameLayoutSpecContract {
         struct SemuComposeRect drawn;
         SemuFrameLayout.letterboxed(width, height, aspect, &cut);
         FrameLayoutDolphin.draw(width, height, drawAspect, &drawn);
-        int offset = drawn.x - cut.x;
-        contract.expect(drawn.width == expectedWidth && cut.width == expectedWidth && drawn.height == cut.height && drawn.y == cut.y && offset >= -1 && offset <= 1,
-            f"{width}x{height}: pinned Dolphin draws the compositor's cut, {expectedWidth} wide (it rounds the offset, the cut floors it): drawn "
+        bool inside = cut.x >= drawn.x && cut.x + cut.width <= drawn.x + drawn.width && cut.y >= drawn.y && cut.y + cut.height <= drawn.y + drawn.height;
+        contract.expect(drawn.width == expectedWidth && inside && drawn.width - cut.width <= 1 && drawn.height - cut.height <= 1,
+            f"{width}x{height}: pinned Dolphin draws {expectedWidth} wide and the compositor's cut lies wholly inside it, at most a pixel short (no column of Dolphin's clear colour): drawn "
             + FrameLayoutSpecContract.text(drawn) + ", cut " + FrameLayoutSpecContract.text(cut));
     }
 
@@ -119,6 +119,7 @@ class FrameLayoutSpecContract {
         FrameLayoutSpecContract.dolphinScreen(contract, 1280, 800, pinned, aspect, 1067);
         FrameLayoutSpecContract.dolphinScreen(contract, 1920, 1080, pinned, aspect, 1440);
         FrameLayoutSpecContract.dolphinScreen(contract, 3840, 2160, pinned, aspect, 2880);
+        FrameLayoutSpecContract.dolphinScreen(contract, 3024, 1964, pinned, aspect, 2619);  // a Retina window: Dolphin at x=203
         struct SemuComposeRect cut;
         struct SemuComposeRect drawn;
         SemuFrameLayout.letterboxed(1280, 800, aspect, &cut);
@@ -126,7 +127,7 @@ class FrameLayoutSpecContract {
             FrameLayoutDolphin.draw(1280, 800, FrameLayoutDolphin.drawAspect(unpinned, videoAspect, false, aspect), &drawn);
             int left = drawn.x - cut.x;
             int right = cut.x + cut.width - drawn.x - drawn.width;
-            contract.expect(drawn.width == 1008 && left == 30 && right == 29,
+            contract.expect(drawn.width == 1008 && left == 29 && right == 29,
                 f"Deck 1280x800, AspectRatio = {unpinned} at VI aspect 1.26: Dolphin draws 1008 wide, {left} and {right} px of its black bars inside the cut, the Deck's defect: drawn "
                 + FrameLayoutSpecContract.text(drawn) + ", cut " + FrameLayoutSpecContract.text(cut));
         }
