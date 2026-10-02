@@ -1,0 +1,25 @@
+# Every launch command ES-DE offers on the Deck (es_systems.xml), with a game that reaches a title
+# or attract screen without input. SYSTEM EMULATOR CORE|- WAIT... -- ROM-GLOB; see system-matrix.sh.
+gb retroarch gambatte 20 40 -- Tetris (World) (Rev 1).zip
+gbc retroarch gambatte 20 40 -- Tetris DX*.zip
+gba retroarch mgba 20 40 -- Legend of Zelda, The - The Minish Cap (USA).zip
+nes retroarch mesen 20 40 -- Super Mario Bros. (World).zip
+snes retroarch snes9x 20 40 -- Super Mario World (USA).zip
+genesis retroarch genesis_plus_gx 20 40 -- Sonic The Hedgehog (USA, Europe).zip
+n64 retroarch mupen64plus_next 30 60 -- Mario Kart 64 (USA).zip
+psx retroarch mednafen_psx 30 60 -- Crash Bandicoot (USA).m3u
+nds retroarch melonds 30 60 -- Legend of Zelda, The - Phantom Hourglass*.zip
+nds retroarch desmume 30 60 -- Legend of Zelda, The - Phantom Hourglass*.zip
+nds melonds - 30 60 -- Legend of Zelda, The - Phantom Hourglass*.zip
+dreamcast flycast - 30 60 -- Crazy Taxi (USA).chd
+dreamcast retroarch flycast 30 60 -- Crazy Taxi (USA).chd
+psp ppsspp - 30 60 -- Daxter*.iso
+psp retroarch ppsspp 30 60 -- Daxter*.iso
+n3ds azahar - 40 75 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+n3ds retroarch azahar 40 75 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+n3ds retroarch citra 40 75 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+gc dolphin - 45 90 -- Legend of Zelda, The - The Wind Waker (USA).rvz
+wii dolphin - 45 90 -- New Super Mario Bros. Wii*.wbfs
+ps2 pcsx2 - 45 90 -- Devil May Cry (USA).iso
+switch ryujinx - 60 120 -- Animal Crossing New Horizons*.nsp
+wiiu cemu - 60 120 -- MARIO KART 8 (US).wua
