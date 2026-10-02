@@ -33,6 +33,10 @@ let
       done
       export VK_DRIVER_FILES="$icds" VK_ICD_FILENAMES="$icds"
     fi
+    # Steam preloads its overlay into every game; it needs the host's libGL.so.1, which the bundle's
+    # programs cannot resolve, so the first of them would die before ES-DE starts. Game Mode draws
+    # Steam's own UI through gamescope without it.
+    unset LD_PRELOAD
     bwrap --tmpfs / --dev-bind /dev /dev --proc /proc --bind /sys /sys $binds \
       --tmpfs /nix $store --die-with-parent -- "${semu}/bin/$program" "$@" &
     sandbox=$!
