@@ -3,7 +3,7 @@
 # stable launcher symlinks, one previous release, rollback, pruning.
 set -eu
 work="${TMPDIR:-/tmp}/semu-installer"
-rm -rf "$work"
+chmod -R u+w "$work" 2>/dev/null || true; rm -rf "$work"  # earlier runs leave read-only store fixtures
 mkdir -p "$work/home" "$work/src"
 export HOME="$work/home" SEMU_INSTALL_ROOT="$work/root"
 installer="${INSTALLER:?path to install.sh}"
@@ -78,4 +78,11 @@ sh "$installer" install-delta "$work/six.delta.tar.zst" >/dev/null || { echo "in
 [ "$("$work/root/bin/semu-deck")" = "six" ] || { echo "delta six is not current" >&2; exit 1; }
 count="$(find "$work/root/releases" -mindepth 1 -maxdepth 1 -type d | wc -l)"
 [ "$count" -eq 2 ] || { echo "read-only store paths blocked pruning: $count releases kept" >&2; exit 1; }
+
+dir="$work/src/seven"  # the same store as six, new launchers: a fixed tree must not reuse six
+mkdir -p "$dir/bin"; printf '7\n' > "$dir/VERSION"; printf 'x-four\nx-six\n' > "$dir/store-paths"
+printf '#!/bin/sh\necho seven\n' > "$dir/bin/semu-deck"; printf '#!/bin/sh\necho cli-seven\n' > "$dir/bin/semu-deck-cli"; chmod +x "$dir/bin/"*
+tar -C "$work/src/seven" -cf - . | zstd -q -f -o "$work/seven.delta.tar.zst"; (cd "$work" && sha256sum seven.delta.tar.zst > seven.delta.tar.zst.sha256)
+sh "$installer" install-delta "$work/seven.delta.tar.zst" >/dev/null || { echo "install-delta seven failed" >&2; exit 1; }
+[ "$("$work/root/bin/semu-deck")" = "seven" ] || { echo "a delta with the same store but new launchers reused the old release" >&2; exit 1; }
 echo "installer: pass"

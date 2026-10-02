@@ -69,6 +69,13 @@ let
       sed 's|.*/||' ${closure}/store-paths | sort > stage/store-paths
     '';
     installPhase = "cp -a stage $out";
+    dontFixup = true;  # patchShebangs would point the launchers at a store shell the host does not have
+    doInstallCheck = true;
+    installCheckPhase = ''
+      for launcher in $out/bin/*; do
+        [ "$(head -1 "$launcher")" = "#!/bin/sh" ] || { echo "$launcher must start with #!/bin/sh: it runs on the host"; exit 1; }
+      done
+    '';
   };
 in
 stdenvNoCC.mkDerivation {
