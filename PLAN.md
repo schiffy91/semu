@@ -907,6 +907,23 @@ Update this block whenever a milestone criterion changes state.
   under its own store). `tests/deck/deploy.sh` copies, installs, prepares and
   screenshots over SSH once `DECK_HOST` is set. Steam Input publication and
   Steam shortcuts are not done.
+  2026-10-01, on the physical Deck (SteamOS 3.9, OLED): the old AppImage-era Semu is gone. Its
+  saves, keys and captures were archived first and checked byte for byte
+  (SD `Emulation/backups/old-semu-2026-10-01`, 10,422 files). Removed: the old install, its nine
+  user flatpak emulators and their runtimes, its state, caches, dev trees and 25k unrooted store
+  paths; /home went from 27 to 220 GB free. Release `63c8fca1` (built on the Mac in podman's VM
+  under Rosetta by `tests/deck/build-release.sh`) installed through `install.sh`. `doctor` finds
+  all nine emulators, and `prepare` wrote the SD ES-DE home. RetroArch gb Tetris rendered
+  off-screen in a headless gamescope on the Deck's GPU; inspected: the DMG shell and LCD shader at
+  5x. Two release faults found and fixed:
+  - SteamOS keeps its GPU drivers against its own libc, so the release now carries nixpkgs Mesa
+    and points GL, EGL, GBM and Vulkan at it (67e0855).
+  - `semu steam input` failed in every bundle: the stdlib reads regular files only, and bundle
+    icons are store links (c0fbf12).
+  Game Mode upholds `steam-launcher.service`, so Steam is only down long enough to write its
+  files while the unit is masked in /run and `steam -shutdown` quits it cleanly. Still to observe
+  in Game Mode: the shortcut and Steam Input layout, then per system pad input, save/load and
+  Start+Select.
 - M6 renderer: done on the desktop 2026-09-19, Deck pending. `libsemurenderer`
   (librashader GL) is linked into RetroArch's gl3 driver by the Semu build;
   the launcher passes `SEMU_RENDER_*` from `config/systems/<id>/{shaders,bezels}.json`.
