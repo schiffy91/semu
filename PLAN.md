@@ -921,8 +921,11 @@ Update this block whenever a milestone criterion changes state.
   - `semu steam input` failed in every bundle: the stdlib reads regular files only, and bundle
     icons are store links (c0fbf12).
   Game Mode upholds `steam-launcher.service`, so Steam is only down long enough to write its
-  files while the unit is masked in /run and `steam -shutdown` quits it cleanly. Still to observe
-  in Game Mode: the shortcut and Steam Input layout, then per system pad input, save/load and
+  files while the unit is masked in /run and `steam -shutdown` quits it cleanly. Release
+  `45f8abe0` (with c0fbf12) is current, `63c8fca1` kept for rollback. Done that way: the Semu
+  shortcut is in the library and survived Steam's restart; the Steam Input templates, 21 icons and
+  the per-user Semu profile are published; the two dead AppImage-era shortcuts and controller
+  configs are gone. Still to observe in Game Mode, per system: pad input, save/load and
   Start+Select.
 - M6 renderer: done on the desktop 2026-09-19, Deck pending. `libsemurenderer`
   (librashader GL) is linked into RetroArch's gl3 driver by the Semu build;

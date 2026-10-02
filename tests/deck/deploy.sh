@@ -26,7 +26,7 @@ screenshot() {  # gamescope screenshot type 3 is the composited frame; wait unti
 case "${1:-}" in
   install)
     [ -f "$release/Semu-x86_64.tar.zst" ] || { echo "build the release first: nix build .#release --out-link build/release" >&2; exit 1; }
-    run "mkdir -p ~/Downloads/semu"
+    run "mkdir -p ~/Downloads/semu && rm -f ~/Downloads/semu/Semu-x86_64.tar.zst ~/Downloads/semu/Semu-x86_64.tar.zst.sha256 ~/Downloads/semu/install.sh"  # the last upload kept the store's read-only modes
     scp -q "$release/Semu-x86_64.tar.zst" "$release/Semu-x86_64.tar.zst.sha256" "$release/install.sh" "$deck:~/Downloads/semu/"
     run "sh ~/Downloads/semu/install.sh install ~/Downloads/semu/Semu-x86_64.tar.zst && sh ~/Downloads/semu/install.sh status"
     ;;
