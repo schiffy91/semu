@@ -1,10 +1,11 @@
 #!/bin/bash
 # Every system on the Steam Deck, off-screen. Each case runs the installed release the way ES-DE
 # does (semu-deck-cli launch), inside a private headless gamescope at the Deck's 1280x800 with the
-# sound cut, so the Deck's own screen, Steam and Game Mode are left alone. A case is captured at
-# each of its waits (seconds after launch) and then quit the way Semu quits: SIGTERM to semu-btrc,
-# which ends the emulator's whole process group. Everything is tracked by PID. The script writes
-# only below OUT and removes nothing.
+# sound cut (SDL gets its silent dummy driver: Ryujinx refuses to start without an audio device),
+# so the Deck's own screen, Steam and Game Mode are left alone. A case is captured at each of its
+# waits (seconds after launch), with the emulator's state and bytes read, and then quit the way
+# Semu quits: SIGTERM to semu-btrc, which ends the emulator's whole process group. Everything is
+# tracked by PID. The script writes only below OUT and removes nothing.
 #
 #   system-matrix.sh CASES OUT
 #
@@ -42,7 +43,7 @@ while IFS= read -r line; do
   chmod +x "$dir/inner.sh"
 
   start=$(date +%s)
-  PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SEMU_RENDER_DEBUG=1 SEMU_MATRIX_ROM="$rom" \
+  PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy SEMU_RENDER_DEBUG=1 SEMU_MATRIX_ROM="$rom" \
     gamescope --backend headless -W 1280 -H 800 -w 1280 -h 800 -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
   headless=$!
   game=""; display=""
@@ -63,7 +64,9 @@ while IFS= read -r line; do
     shot="$dir/at-$wait.png"
     [ -n "$display" ] && GAMESCOPE_WAYLAND_DISPLAY="$display" timeout 20 gamescopectl screenshot "$shot" > /dev/null 2>&1
     for _ in $(seq 1 10); do [ -s "$shot" ] && break; sleep 1; done
-    note "t=$wait running=$running shot=$([ -s "$shot" ] && echo yes || echo no)"
+    leaf="$game"; while [ -n "$leaf" ] && child=$(pgrep -P "$leaf" | tail -1) && [ -n "$child" ]; do leaf=$child; done
+    io=""; [ -n "$leaf" ] && io="$(cat "/proc/$leaf/comm" 2>/dev/null) state $(awk '{print $3}' "/proc/$leaf/stat" 2>/dev/null), read $(( $(sed -n 's/^rchar: //p' "/proc/$leaf/io" 2>/dev/null || echo 0) / 1048576 )) MB, cpu $(ps -o pcpu= -p "$leaf" 2>/dev/null | tr -d ' ')%"
+    note "t=$wait running=$running shot=$([ -s "$shot" ] && echo yes || echo no) $io"
   done
   leaf="$game"; while [ -n "$leaf" ] && child=$(pgrep -P "$leaf" | tail -1) && [ -n "$child" ]; do leaf=$child; done
   [ -n "$leaf" ] && tr '\0' '\n' < "/proc/$leaf/environ" 2>/dev/null | grep '^SEMU_RENDER_' | sort > "$dir/render-env"

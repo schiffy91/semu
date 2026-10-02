@@ -1,0 +1,40 @@
+Azahar opens the joysticks that are already connected before its SDL poll thread starts.
+
+InitJoystick holds joystick_map_mutex while it calls into SDL (SDLJoystick's constructor asks
+SDL_GameControllerGetBindForButton, which takes SDL's joystick lock). The poll thread holds SDL's
+joystick lock inside SDL_PumpEvents while SDL runs SDLEventWatcher, which waits for
+joystick_map_mutex. Upstream starts the poll thread first, so one joystick event during the first
+InitJoystick loop deadlocked Azahar before its window opened (observed on the Steam Deck: main
+thread in SDL_LockJoysticks under GMainWindow::InitializeWidgets, 0% CPU, no window). Hot-plugged
+devices are still opened from the watcher, on the poll thread, where SDL's lock is re-entrant.
+
+--- a/src/input_common/sdl/sdl_impl.cpp
++++ b/src/input_common/sdl/sdl_impl.cpp
+@@ -811,6 +811,15 @@
+ #endif
+ 
+     SDL_AddEventWatch(&SDLEventWatcher, this);
++
++    // Because the events for joystick connection happens before we have our event watcher
++    // added, we can just open all the joysticks right here. Semu: before the poll thread starts.
++    // InitJoystick holds joystick_map_mutex while it calls into SDL, and the poll thread holds
++    // SDL's joystick lock in SDL_PumpEvents while SDLEventWatcher waits for joystick_map_mutex:
++    // one joystick event during this loop deadlocked Azahar before its window opened.
++    for (int i = 0; i < SDL_NumJoysticks(); ++i) {
++        InitJoystick(i);
++    }
+ 
+     initialized = true;
+     if (start_thread) {
+@@ -821,11 +830,6 @@
+                 std::this_thread::sleep_for(10ms);
+             }
+         });
+-    }
+-    // Because the events for joystick connection happens before we have our event watcher
+-    // added, we can just open all the joysticks right here
+-    for (int i = 0; i < SDL_NumJoysticks(); ++i) {
+-        InitJoystick(i);
+     }
+ }
+ 
