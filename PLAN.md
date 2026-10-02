@@ -874,11 +874,17 @@ Update this block whenever a milestone criterion changes state.
   session), and survival across a reboot.
 - M3 RetroArch systems on desktop: 11 of 11 launched on FRACTAL-NORTH on
   2026-09-19 with an inspected screenshot each (gb, gbc, gba, nes, snes,
-  genesis, n64, psx, nds, psp, dreamcast; psx needs about 20 s to boot; psp
-  needs the vulkan per-core override because the PPSSPP core segfaults under
-  glcore). `nix flake check` runs the contract tests and a sandboxed headless
-  RetroArch run (Xvfb, llvmpipe, synthetic core) that must answer VERSION,
-  write a non-blank screenshot and exit on QUIT. Not yet observed: pad input,
+  genesis, n64, psx, nds, psp, dreamcast; psx needs about 20 s to boot). The
+  PPSSPP core segfaulted there under glcore on the Wayland (EGL) context: its
+  bundled GLEW is built for GLX, `glewInit()` fails with no GLX display, and the
+  core then dereferences a null draw context. It was first worked around with a
+  per-core Vulkan driver, which left the only RetroArch tap (glcore) and showed
+  the raw picture on black on the Deck (2026-10-02). PPSSPP now stays on glcore
+  and is pinned to the GLX context (`video_context_driver = "x"`), which is
+  what gamescope already gives every core on the Deck. `nix flake check` runs
+  the contract tests and a sandboxed headless RetroArch run (Xvfb, llvmpipe,
+  synthetic core) that must answer VERSION, write a non-blank screenshot and
+  exit on QUIT. Not yet observed: pad input,
   save and load, and the Start+Select chord on hardware (no controller was
   connected). RetroArch 1.22 segfaults on GET_STATUS when the loaded core has
   no core-info entry, so the check uses VERSION.

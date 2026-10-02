@@ -378,7 +378,7 @@
         },
         "core_overrides": {
           "ppsspp": {
-            "video_driver": "vulkan"
+            "video_context_driver": "x"
           }
         },
         "audio_driver": "pulse",

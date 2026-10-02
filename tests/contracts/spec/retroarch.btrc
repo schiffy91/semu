@@ -100,6 +100,13 @@ class RetroArchSpecPlatforms {  // emulator.json slices: Linux frame ownership; 
         contract.expect(SemuJson.boolAt(frame, "fullscreen", false) && !SemuJson.boolAt(frame, "native_shader", true) && !SemuJson.boolAt(frame, "native_bezel", true), "Linux frame output is fullscreen with no native shader or bezel");
         contract.expect(SemuJson.textAt(frame, "origin").equals("bottom_left") && SemuJson.textAt(frame, "orientation").equals("upright"), "Linux frame is upright, bottom-left origin in GL space");
         contract.expect(SemuJson.textAt(linux, "retroarch.video_driver").equals("glcore"), "Linux forces the glcore driver the tap lives in");
+        for platformId in ["linux", "macos"] {  // only glcore carries the tap: a core on another driver shows a raw picture on black
+            JSONValue overrides = SemuJson.get(emulator.platform(platformId), "retroarch.core_overrides");
+            if (overrides == null || !overrides.isObject()) { continue; }
+            for core in overrides.keys() {
+                contract.expect(!overrides.get(core).has("video_driver"), f"{platformId} {core}: a per-core override never leaves the glcore driver the tap lives in");
+            }
+        }
         Vector<string> directories = SemuJson.strings(SemuJson.get(linux, "core_loader.directories"));
         contract.expect(directories.size() == 1 && directories.get(0).equals("${asset_root}/lib/retroarch/cores"), "cores load only from the bundled core directory");
         contract.expect(!SemuJson.get(linux, "retroarch").has("settings_overrides"), "retroarch.cfg keys live only in profile.json, not in an unread settings_overrides copy");
