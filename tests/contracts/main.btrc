@@ -449,6 +449,12 @@ class SteamInputInstallContract {  // one Steam root holds the templates, icons 
         string profile = PathTools.join(configs, "semu/controller_neptune.vdf");
         contract.expect(FileSystem.isFile(profile) && FileSystem.readText(profile).contains("controller_mappings") && FileSystem.readText(profile).contains("Semu Full Radial"), "each Steam user gets the default FULL template as the Semu profile");
         contract.expect(!FileSystem.isFile(PathTools.join(configs, "semu-x86_64appimage/controller_neptune.vdf")) && FileSystem.isFile(PathTools.join(configs, "semu-x86_64appimage/notes.txt")), "a retired id loses only Semu's own profile");
+        string icon = PathTools.join(fixture.scratch, "store-icon.png");  // a Nix bundle links each icon into the store
+        FileSystem.writeText(icon, "\x89PNG linked");
+        string linked = PathTools.join(fixture.scratch, "linked-icon.png");
+        FileSystem.symlink(icon, linked);
+        string copied = PathTools.join(fixture.scratch, "copied-icon.png");
+        contract.expect(SteamInputTemplates.copyBytes(linked, copied) && FileSystem.readText(copied).equals(FileSystem.readText(icon)), "an icon the bundle links into the store still copies");
     }
 }
 

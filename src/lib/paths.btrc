@@ -1,3 +1,4 @@
+import Library.Bytes;
 import Library.FileSystem;
 import Library.Platform;
 import Library.Strings;
@@ -86,4 +87,9 @@ class SemuPaths {
     class string join(string left, string right) { return PathTools.join(left, right); }
 
     class bool removeFile(string path) { return !FileSystem.isFile(path) || unlink(path) == 0; }  // missing counts as removed
+
+    class Bytes readBytes(string path) {  // the stdlib reads only regular files, and a Nix bundle links its files into the store
+        string real = UnixFileSystem.realPath(path);
+        return FileSystem.readBytes(real.isEmpty() ? path : real);
+    }
 }
