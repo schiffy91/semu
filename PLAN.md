@@ -951,6 +951,23 @@ Update this block whenever a milestone criterion changes state.
   is gone and 3DS games open in the standalone Azahar the owner chose. ES-DE's launch shell exits
   at once and the game runs under gamescope's reaper, so ES-DE waits on the launch pipe, not on
   a child. Release `a2aec13f` carries all of it.
+  The owner's capture of Ocarina of Time 3D showed both screens small inside the 3DS shell's holes,
+  with the reflection fill around them. Semu pins Azahar's `use_integer_scaling`, but the
+  compositor modelled a fitted layout. On the Deck's 1280x800 Azahar draws both screens at 1x in
+  the middle; on a Mac screen the two models nearly agree, which is why it never showed there.
+  `SemuFrameLayout` (bbd9f66) ports Azahar's LargeFrameLayout arithmetic exactly. Contracts cover:
+  - the layout at 1280x800 (integer and fitted, matching the capture to the pixel) and 3024x1964;
+  - Azahar's pin agreeing with its `render_frame_integer` declaration;
+  - the launch passing `SEMU_RENDER_FRAME_INTEGER`;
+  - render-environment completeness over every bound emulator.
+  The owner refuses rebuild-and-redeploy loops for picture checks. Deck deploys are deltas now
+  (682b945, dc5cad9): `build-release.sh --delta` packs only the store paths the Deck lacks, and
+  `install.sh install-delta` hard-links the rest. The fix shipped as 4 paths, 7.5 MB, installed in
+  21 s, with no emulator rebuilt; RetroArch loads the renderer at run time. The first delta's
+  launchers carried a store-shell shebang from fixup, rolled back within minutes. The tree now skips
+  fixup and checks for `#!/bin/sh`. A delta is named by its launchers as well as its store, with an
+  installer case for it. Release `04fd2d58` is current. The 3DS picture on it awaits the owner's
+  Game Mode launch.
 - M6 renderer: done on the desktop 2026-09-19, Deck pending. `libsemurenderer`
   (librashader GL) is linked into RetroArch's gl3 driver by the Semu build;
   the launcher passes `SEMU_RENDER_*` from `config/systems/<id>/{shaders,bezels}.json`.
