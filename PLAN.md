@@ -995,15 +995,17 @@ Update this block whenever a milestone criterion changes state.
   - PSP on the PPSSPP core ran Vulkan, outside the GL tap, with no bezel: glcore with a GLX
     context (56e7d6f). GBC, GBA and PSP LCD grids, and the DS grid's banding (2a533c7).
   - Reflections now mirror the shaded picture, the curved CRTs lose their moire rings, and no
-    dark seam rims a bent picture edge (e09c10a).
+    dark seam rims a bent picture edge (e09c10a). A frame larger than the screen (PPSSPP set for
+    a bigger display) is scaled down to fit instead of drawn at 1x past the edges (268c8a8,
+    observed in the VM with real RetroArch and PPSSPP).
   Not product defects: Ryujinx off-screen stops at its controller applet, because Steam's
   virtual pad exists only in Game Mode (Ryujinx itself starts and composes). The SD card reads
   2.0 MB/s even sequentially, so big zipped ROMs open about 20 s late on RetroArch.
   `tests/visual/gallery.sh` without `--quick` had gone red (16 curved 4K cells, up to 7 px): it
   measured placement on a picture bent, bloomed and mirrored by the tube. Its measuring renders
   now turn those off, and all 68 cells sit within 2 px again. The release with all of the above
-  is built as a 55 MB delta (5 store paths, no emulator rebuilt) and installs when the Deck is
-  next online.
+  is built from 268c8a8 as a 55 MB delta (5 store paths, no emulator rebuilt) and installs when
+  the Deck is next online.
 - M6 renderer: done on the desktop 2026-09-19, Deck pending. `libsemurenderer`
   (librashader GL) is linked into RetroArch's gl3 driver by the Semu build;
   the launcher passes `SEMU_RENDER_*` from `config/systems/<id>/{shaders,bezels}.json`.
