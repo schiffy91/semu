@@ -51,6 +51,9 @@
     },
     {
       "emulator": "azahar",
+      "label_aliases": [
+        "Azahar (Standalone)"
+      ],
       "platforms": [
         "linux",
         "macos"

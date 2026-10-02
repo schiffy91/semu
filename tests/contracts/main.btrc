@@ -79,6 +79,7 @@ class EsDeContract {
         contract.contains(systems, "<command label=\"Gambatte\">%EMULATOR_RETROARCH% --system gb --core gambatte --rom %ROM%</command>", "gb launches through the retroarch shim");
         contract.contains(systems, "<command label=\"Dolphin\">%EMULATOR_DOLPHIN% --system gc --rom %ROM%</command>", "gc launches through the dolphin shim");
         contract.contains(systems, "<command label=\"Dolphin (Standalone)\">%EMULATOR_DOLPHIN% --system gc --rom %ROM%</command>", "gamelist alias labels get their own command entry");
+        contract.contains(systems, "<command label=\"Azahar (Standalone)\">%EMULATOR_AZAHAR% --system n3ds --rom %ROM%</command>", "a 3DS gamelist pinned to the standalone Azahar still matches");
         contract.contains(systems, "<platform>genesis, megadrive</platform>", "multiple ES-DE platforms are joined");
         contract.lacks(systems, "${", "no unresolved tokens in es_systems");
         contract.lacks(systems, "\n\n", "no blank lines between commands");
