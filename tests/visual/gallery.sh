@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The bezel gallery from the real renderer on this Mac (M11.5 and M11.6): every system's variants at
 # Deck (1280x800) and 4K (3840x2160), each fixed-layout screen verified by lighting a flat card and
-# measuring where it lands (within 2 px of the package's picture rectangle), the dimensions table and
-# the plate overlays, written as OUT_DIR/index.html. usage: gallery.sh [--quick] OUT_DIR [system...]
+# measuring where it lands with the tube's bend and light off (within 2 px of the package's picture
+# rectangle), the dimensions table and the plate overlays, written as OUT_DIR/index.html.
+# usage: gallery.sh [--quick] OUT_DIR [system...]
 # --quick renders the Deck size only and skips the flat-card verification (the fast loop).
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -26,8 +27,16 @@ environment() {  # SYSTEM VARIANT [SHADER]: the launcher's render environment fo
     --settings-json "{\"visual\":{\"systems\":{\"$1\":{\"bezel_variant\":\"$2\"${3:+,\"shader_variant\":\"$3\",\"placement\":\"fit\"}}}}}"  # a measuring render checks the package geometry, so fit
 }
 
-render() {  # SYSTEM VARIANT WIDTH HEIGHT OUT.ppm [CARD LIT]: a lit card measures geometry, so its shader is off
-  ( while IFS= read -r line; do export "$line"; done < <(environment "$1" "$2" "${6:+none}")
+placement_only() {  # ENV-LINE: a screen's look without curvature, vignette, bloom, glow or reflection, its shape, radius, fit and inset kept
+  case "$1" in
+    SEMU_RENDER_SCREEN_*_LOOK*=*) IFS=, read -r shape radius exponent fit inset _ <<< "${1#*=}"; echo "${1%%=*}=$shape,$radius,$exponent,$fit,$inset,0,0,0,0,0" ;;
+    SEMU_RENDER_SCREEN_*_REFLECT*=*) echo "${1%%=*}=0,0,0" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+render() {  # SYSTEM VARIANT WIDTH HEIGHT OUT.ppm [CARD LIT]: a lit card measures placement, so its shader and the tube's bend and light are off
+  ( while IFS= read -r line; do [ -n "${6:-}" ] && line="$(placement_only "$line")"; export "$line"; done < <(environment "$1" "$2" "${6:+none}")
     RENDER_HOST_CARD="${6:-}" RENDER_HOST_LIT="${7:-}" RENDER_HOST_ASPECT="$wide" "$host" "$3" "$4" "$5" ) 2>>"$work/render.log"
 }
 

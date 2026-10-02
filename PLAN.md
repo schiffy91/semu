@@ -998,11 +998,12 @@ Update this block whenever a milestone criterion changes state.
     dark seam rims a bent picture edge (e09c10a).
   Not product defects: Ryujinx off-screen stops at its controller applet, because Steam's
   virtual pad exists only in Game Mode (Ryujinx itself starts and composes). The SD card reads
-  2.0 MB/s even sequentially, so big zipped ROMs open about 20 s late on RetroArch. Open:
-  `tests/visual/gallery.sh` without `--quick` was already red before these commits: 16 curved
-  4K cells, up to 7 px, because the bent picture bows past the flat package rectangle. The rule
-  or the measurement needs the curvature. The release with all of the above is built as a delta,
-  and installs when the Deck is next online.
+  2.0 MB/s even sequentially, so big zipped ROMs open about 20 s late on RetroArch.
+  `tests/visual/gallery.sh` without `--quick` had gone red (16 curved 4K cells, up to 7 px): it
+  measured placement on a picture bent, bloomed and mirrored by the tube. Its measuring renders
+  now turn those off, and all 68 cells sit within 2 px again. The release with all of the above
+  is built as a 55 MB delta (5 store paths, no emulator rebuilt) and installs when the Deck is
+  next online.
 - M6 renderer: done on the desktop 2026-09-19, Deck pending. `libsemurenderer`
   (librashader GL) is linked into RetroArch's gl3 driver by the Semu build;
   the launcher passes `SEMU_RENDER_*` from `config/systems/<id>/{shaders,bezels}.json`.
