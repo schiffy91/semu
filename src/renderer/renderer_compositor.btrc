@@ -264,7 +264,7 @@ struct RendererGlResources {
     char failure_reason[64];
     int uniform_game;
     int uniform_game2;
-    int uniform_raw;   // the unshaded frames, which reflections mirror
+    int uniform_raw;   // the unshaded frames: their size is the source-pixel grid reflections average the shaded picture over
     int uniform_raw2;
     int uniform_bezel;
     int uniform_glass;
@@ -1396,9 +1396,9 @@ class RendererShaderPasses {
     }
 
     class bool prepareTexture(struct RendererGlApi* gl, unsigned int texture,
-                              int width, int height, bool resize) {
+                              int width, int height, bool resize, int filter) {
         RendererGlErrors.clear(gl);
-        RendererResources.configureTexture(gl, texture, RGL_NEAREST);
+        RendererResources.configureTexture(gl, texture, filter);
         if (resize) {
             RendererResources.normalizeUnpack(gl);
             gl->texture_image_2d((unsigned int)RGL_TEXTURE_2D, 0, RGL_RGBA8,
@@ -1423,10 +1423,10 @@ class RendererShaderPasses {
         gl->bind_sampler(0, 0);
         if (!RendererShaderPasses.prepareTexture(gl,
                 resources->raw_textures[index], lane->native_width,
-                lane->native_height, nativeChanged)
+                lane->native_height, nativeChanged, RGL_NEAREST)  // the core's pixels: the unfiltered picture and the reflections' source-pixel grid
             || !RendererShaderPasses.prepareTexture(gl,
                 resources->shader_textures[index], lane->output_width,
-                lane->output_height, outputChanged)) {
+                lane->output_height, outputChanged, RGL_LINEAR)) {  // already screen-sized: only the curvature resamples it, and point sampling bends its scanlines into rings
             return false;
         }
         resources->lane_native_width[index] = lane->native_width;
@@ -1508,6 +1508,11 @@ class RendererShaderPasses {
             (size_t)resources->lane_history[index], false, 1, rotation, aspect,
             config->frames_per_second, config->frame_delta_ms,
             frame->context_generation);
+        if (result == SEMU_LIBRASHADER_RENDERED) {  // the mip chain holds each source pixel's light as displayed, which reflections mirror
+            gl->active_texture((unsigned int)RGL_TEXTURE0);
+            gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->shader_textures[index]);
+            RendererResources.mipmap(gl);
+        }
         if (result != SEMU_LIBRASHADER_RENDERED
                 || !RendererGlErrors.none(gl)) {
             fprintf(stderr, "semu-renderer: shader chain for %s stopped rendering; the game runs unfiltered\n", preset);
@@ -1763,7 +1768,7 @@ class RendererCompositor {
         gl->bind_sampler(6, 0);
         gl->bind_texture((unsigned int)RGL_TEXTURE_2D,
             resources->background_textures[variantIndex]);
-        gl->active_texture((unsigned int)(RGL_TEXTURE0 + 7));  // reflections mirror the picture's light, not the CRT mask and scanlines
+        gl->active_texture((unsigned int)(RGL_TEXTURE0 + 7));  // the raw frames give the source-pixel size: reflections mirror the shaded picture one source pixel wide, its colour without the mask and scanlines
         gl->bind_sampler(7, 0);
         gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->raw_textures[0]);
         gl->active_texture((unsigned int)(RGL_TEXTURE0 + 8));
