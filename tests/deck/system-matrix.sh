@@ -35,6 +35,10 @@ while IFS= read -r line; do
   dir="$out/$name"; mkdir -p "$dir"; : > "$dir/result"
   note() { echo "$*" >> "$dir/result"; }
   if [ "$(battery)" -lt 20 ] && ! charging; then note "skipped: battery $(battery)% and not charging"; continue; fi
+  for pid in $(pgrep -f "/(es-de|$emulators)([^/]*)( |$)" 2>/dev/null); do  # the owner is playing: leave the Deck to them
+    tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -q '^SEMU_MATRIX_ROM=' && continue
+    note "stopped: the owner's $(cat "/proc/$pid/comm" 2>/dev/null) (pid $pid) is running"; { echo "== $name"; cat "$dir/result"; } >> "$out/summary"; date > "$out/done"; exit 0
+  done
   rom="$(compgen -G "$roms/$system/$pattern" | head -1)"
   if [ -z "$rom" ]; then note "skipped: no ROM matches $system/$pattern"; continue; fi
   note "rom: ${rom#"$roms/"}"
