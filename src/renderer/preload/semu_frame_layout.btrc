@@ -1,0 +1,39 @@
+// Where an emulator draws its screens inside its own frame, ported from that emulator's layout code,
+// so the compositor cuts each screen out exactly where it was drawn. Pure arithmetic, no GL, so the
+// contracts check it directly.
+
+struct SemuComposeRect {  // top-left origin, in framebuffer pixels
+    int x;
+    int y;
+    int width;
+    int height;
+};
+
+class SemuFrameLayout {
+    // Azahar's DefaultFrameLayout (LargeFrameLayout with the small screen below), neither upright,
+    // swapped nor gapped, with its arithmetic: the box of both screens takes the largest scale that
+    // fits (floored to a whole multiple under use_integer_scaling, from 1x up) and is centered; each
+    // screen is cut from it at the box's scale, the narrower one centered under the wider one.
+    class void stacked(int width, int height, int largeWidth, int largeHeight, int smallWidth, int smallHeight, bool integer,
+                       struct SemuComposeRect* top, struct SemuComposeRect* bottom) {
+        int boxWidth = largeWidth > smallWidth ? largeWidth : smallWidth;
+        int boxHeight = largeHeight + smallHeight;
+        float scale = (float)width / (float)boxWidth;
+        if ((float)height / (float)boxHeight < scale) { scale = (float)height / (float)boxHeight; }
+        if (integer && scale >= 1.0f) { scale = (float)(int)scale; }
+        int totalWidth = (int)((float)boxWidth * scale);
+        int totalHeight = (int)((float)boxHeight * scale);
+        int left = (width - totalWidth) / 2;
+        int upper = (height - totalHeight) / 2;
+        float amount = (float)totalHeight / (float)boxHeight;
+        top->x = left;
+        top->y = upper;
+        top->width = (int)((float)largeWidth * amount);
+        top->height = (int)((float)largeHeight * amount);
+        if (top->width < totalWidth) { top->x = top->x + (totalWidth - top->width) / 2; }
+        bottom->width = (int)((float)smallWidth * amount);
+        bottom->height = (int)((float)smallHeight * amount);
+        bottom->y = upper + top->height;
+        bottom->x = top->x + top->width / 2 - bottom->width / 2;
+    }
+}

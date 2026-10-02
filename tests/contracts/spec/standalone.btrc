@@ -348,6 +348,7 @@ class StandaloneSpecContract {
         contract.expect(azahar.environment.contains("QT_QPA_PLATFORM=xcb"), "azahar runs on XWayland");
         contract.expect(azahar.environment.contains("VK_ADD_LAYER_PATH=" + layers) && azahar.environment.contains("VK_INSTANCE_LAYERS=VK_LAYER_SEMU_compositor")
             && azahar.environment.contains("SEMU_RENDER_SYSTEM_ID=n3ds"), "render_vulkan loads VK_LAYER_SEMU_compositor with the SEMU_RENDER_* environment");
+        contract.expect(azahar.environment.contains("SEMU_RENDER_FRAME_INTEGER=1"), "the compositor is told Azahar scales its frame by whole multiples");
         bed.write(PathTools.join(bed.fixture.plan.semuHome, "firmware/ryujinx/prod.keys"), "owned");
         bed.write(PathTools.join(bed.stateRoot("ryujinx"), "config/Ryujinx/system/prod.keys.semu-partial"), "interrupted");  // a copy cut short last time
         bed.write(PathTools.join(bed.bios, "switch/prod.keys"), "bios");

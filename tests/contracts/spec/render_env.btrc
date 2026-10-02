@@ -144,10 +144,14 @@ class RenderEnvSpecContract {
             for variant in variants {
                 string overlay = variant.isEmpty() ? "{}" : "{\"visual\":{\"systems\":{\"" + systemId + "\":{\"bezel_variant\":\"" + variant + "\"}}}}";
                 SemuPlan plan = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
-                for entry in SemuRenderEnvironment.compile(plan, system, "retroarch", "/state/retroarch", diagnostics) {
-                    int equals = Strings.find(entry, "=", 0);
-                    string name = equals > 0 ? entry.substring(0, equals) : entry;
-                    if (!names.contains(name)) { names.push(name); }
+                Vector<string> emulatorIds = ["retroarch"];
+                for binding in system.bindingsFor("linux") { if (!emulatorIds.contains(binding.emulator)) { emulatorIds.push(binding.emulator); } }
+                for emulatorId in emulatorIds {
+                    for entry in SemuRenderEnvironment.compile(plan, system, emulatorId, "/state/" + emulatorId, diagnostics) {
+                        int equals = Strings.find(entry, "=", 0);
+                        string name = equals > 0 ? entry.substring(0, equals) : entry;
+                        if (!names.contains(name)) { names.push(name); }
+                    }
                 }
             }
         }

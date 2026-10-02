@@ -384,6 +384,10 @@ class SemuRenderEnvironment {
         bool bezels = SemuRenderEnvironment.usable(plan, package);
         env.set("SEMU_RENDER_SYSTEM_ID", system.id);
         env.set("SEMU_RENDER_EMULATOR_ID", emulatorId);
+        JSONValue emulator = SemuJson.readFile(PathTools.join(plan.configRoot, "emulators/" + emulatorId + "/emulator.json"));
+        if (!emulator.isError() && SemuJson.boolAt(emulator, "platforms." + plan.platform + ".render_frame_integer", false)) {
+            env.set("SEMU_RENDER_FRAME_INTEGER", "1");  // the emulator scales its own frame by whole multiples (Azahar's pinned use_integer_scaling)
+        }
         env.set("SEMU_RENDER_STATE_DIR", stateRoot);
         if (!plan.assetRoot.isEmpty()) { env.set("SEMU_RENDERER_LIBRARY", PathTools.join(plan.assetRoot, "lib/libsemurenderer.so")); }  // the hooked emulators load it at run time
         env.set("SEMU_RENDER_COMPOSITOR_DIR", PathTools.join(plan.configRoot, "render"));  // the compositor GLSL is data: config/render/compositor.{vert,frag}
