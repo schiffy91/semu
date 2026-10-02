@@ -10,6 +10,24 @@ struct SemuComposeRect {  // top-left origin, in framebuffer pixels
 };
 
 class SemuFrameLayout {
+    // One screen letterboxed at the system aspect (SEMU_RENDER_ASPECT) and centered, where every
+    // single-screen standalone is expected to draw it (Dolphin by its CustomStretch pin): the
+    // fitted side rounded, the offset floored. No aspect (0) cuts the whole frame.
+    class void letterboxed(int width, int height, float aspect, struct SemuComposeRect* picture) {
+        picture->x = 0;
+        picture->y = 0;
+        picture->width = width;
+        picture->height = height;
+        if (aspect <= 0.01f) { return; }
+        if ((float)width / (float)height > aspect) {
+            picture->width = (int)((float)height * aspect + 0.5f);
+            picture->x = (width - picture->width) / 2;
+        } else {
+            picture->height = (int)((float)width / aspect + 0.5f);
+            picture->y = (height - picture->height) / 2;
+        }
+    }
+
     // Azahar's DefaultFrameLayout (LargeFrameLayout with the small screen below), neither upright,
     // swapped nor gapped, with its arithmetic: the box of both screens takes the largest scale that
     // fits (floored to a whole multiple under use_integer_scaling, from 1x up) and is centered; each

@@ -86,7 +86,8 @@
   },
   "doc": {
     "purpose": "Dolphin profile tree content as data: every INI body lives here, substituted by the generic profile compiler. Controller modes declare semantic actions, native hotkey settings, exact generated profile names, and the Dolphin input tree that owns each profile. The owned input.systems.wii.controller_mode setting selects the initial Wii Remote source and extension; all four profile hotkeys remain available for radial runtime switching.",
-    "grammar": "Dolphin's control-expression wire format: backtick controls, `<device>:<control>` qualified references, @(...) hotkey chords."
+    "grammar": "Dolphin's control-expression wire format: backtick controls, `<device>:<control>` qualified references, @(...) hotkey chords.",
+    "aspect": "GFX.ini pins AspectRatio = 5 (AspectMode::CustomStretch) at 4:3, the gc and wii display.aspect, so Dolphin draws exactly the SEMU_RENDER_ASPECT rectangle the compositor cuts (1067x800 on the Deck). Auto, the default, and Force 4:3 both draw at the VI's analog aspect (about 1.26 on GameCube), which left Dolphin's own black bars inside the cut. Both custom values are set because they default to 1:1."
   },
   "controller_modes": [
     {
@@ -251,6 +252,15 @@
         "",
         "[Semu Controller Modes]",
         "@lines:controller_mode_profiles"
+      ]
+    },
+    {
+      "path": "${emulator_name}/config/GFX.ini",
+      "lines": [
+        "[Settings]",
+        "AspectRatio = 5",
+        "CustomAspectRatioWidth = 4",
+        "CustomAspectRatioHeight = 3"
       ]
     },
     {
