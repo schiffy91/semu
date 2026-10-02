@@ -974,6 +974,35 @@ Update this block whenever a milestone criterion changes state.
   fixup and checks for `#!/bin/sh`. A delta is named by its launchers as well as its store, with an
   installer case for it. Release `04fd2d58` is current. The 3DS picture on it awaits the owner's
   Game Mode launch.
+  Every system on the Deck, 2026-10-02 evening, with the owner away. `tests/deck/system-matrix.sh`
+  runs each of the 23 launch commands ES-DE offers through the installed release, in a private
+  headless gamescope at 1280x800 on the Deck's GPU, takes screenshots, and quits through
+  semu-btrc. `tests/deck/esde-tour.sh` does the same for ES-DE itself. A workflow judged every
+  screenshot by eye, put each claimed defect to three refuting lenses (19 confirmed, 5 refuted,
+  among them a suspected DS mis-cut that is Phantom Hourglass's own letterbox), and root-caused
+  each group offline. Fixed, each with a contract or a render-host proof:
+  - Standalone Azahar deadlocked at start, 0% CPU, no window. Its main thread sat in
+    `SDL_LockJoysticks` under `InitJoystick`, against its own SDL poll thread: a lock-order
+    inversion in upstream Azahar that the old release had too. Patched (3d05d20, Azahar
+    rebuilt): 3 of 3 Ocarina of Time cold starts on the Deck now open in 20 s with both screens
+    filling the shell's holes (before: 0 of 3).
+  - Azahar's UI pins used names it ignores, so `confirmClose` stayed on behind the compositor
+    (f34705a). ES-DE crashed on its first sound when no sound server answered; dummy is its last
+    SDL audio driver (1aba0f6). Cemu's notification box over the game (a470c5f).
+  - Dolphin drew the VI's analog aspect (and Wii in 16:9), so its own black bars showed inside
+    the 4:3 hole: pinned CustomStretch 4:3 and `SYSCONF.IPL.AR=False` (bffc1f2); the single-screen
+    cut takes only pixels wholly inside the letterbox (f74a176).
+  - PSP on the PPSSPP core ran Vulkan, outside the GL tap, with no bezel: glcore with a GLX
+    context (56e7d6f). GBC, GBA and PSP LCD grids, and the DS grid's banding (2a533c7).
+  - Reflections now mirror the shaded picture, the curved CRTs lose their moire rings, and no
+    dark seam rims a bent picture edge (e09c10a).
+  Not product defects: Ryujinx off-screen stops at its controller applet, because Steam's
+  virtual pad exists only in Game Mode (Ryujinx itself starts and composes). The SD card reads
+  2.0 MB/s even sequentially, so big zipped ROMs open about 20 s late on RetroArch. Open:
+  `tests/visual/gallery.sh` without `--quick` was already red before these commits: 16 curved
+  4K cells, up to 7 px, because the bent picture bows past the flat package rectangle. The rule
+  or the measurement needs the curvature. The release with all of the above is built as a delta,
+  and installs when the Deck is next online.
 - M6 renderer: done on the desktop 2026-09-19, Deck pending. `libsemurenderer`
   (librashader GL) is linked into RetroArch's gl3 driver by the Semu build;
   the launcher passes `SEMU_RENDER_*` from `config/systems/<id>/{shaders,bezels}.json`.
