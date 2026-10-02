@@ -5,7 +5,7 @@
   "screen": "assets/shaders/nds/screen.slangp",
   "doc": {
     "intent": "Nintendo DS LCD pixel structure and panel color response; each screen receives an independent shader instance",
-    "screens": "both screens use the LCD grid: the layout scales them by the same whole multiple"
+    "screens": "both screens use the same LCD grid; the shell places them at the fractional fit scale (2.2x on the Deck), not a whole multiple, so the grid is kept shallow (BRIGHTEN_LCD 12) to stay under the beat with the panel pixel grid"
   },
   "variants": [
     {

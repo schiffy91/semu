@@ -94,16 +94,16 @@
           "tree": "shaders_slang",
           "path": "handheld/shaders/color/gbc-color.slang",
           "sha256": "ef74a7c7a9519fd4301ea55ad09ecbd8e958f6f03657c83a7a45fcfb429b15b3",
-          "filter_linear": true,
-          "scale_type": "viewport",
+          "filter_linear": false,
+          "scale_type": "source",
           "scale": 1
         },
         {
           "tree": "shaders_slang",
           "path": "misc/shaders/image-adjustment.slang",
           "sha256": "e608b1dd71d660d2ce8a77ee3e3a62ad5047d50a75adc8db7b4a1b7c1be83e2d",
-          "filter_linear": true,
-          "scale_type": "viewport",
+          "filter_linear": false,
+          "scale_type": "source",
           "scale": 1
         },
         {
@@ -133,10 +133,11 @@
         "BGR": 0
       },
       "doc": {
-        "why": "GBC response and color, luminance, then the cgwg subpixel grid so the panel reads as a GBC LCD"
+        "why": "GBC response and color, luminance, then the cgwg subpixel grid so the panel reads as a GBC LCD",
+        "passes": "Colour passes stay at the native 160x144, unfiltered, and only the grid renders at the viewport: lcd-grid-v2 takes its LCD cell from its source size, so a viewport-sized source turns one cell into one screen pixel (no grid, flat lifted blacks, 1-px subpixel streaks). This is the upstream nds/3ds-lcd-grid-v2 structure."
       },
       "output": {
-        "sha256": "19637d96c6802ea92f796d34b57709c74c67fa1fe3e154a682523080fdd2b5d7"
+        "sha256": "945522f6581c5b43beb7a28e1b4e226659b764b4964ab3030e7deacf6cc16d80"
       }
     },
     "assets/shaders/gba/screen.slangp": {
@@ -154,16 +155,16 @@
           "tree": "shaders_slang",
           "path": "handheld/shaders/color/NSO-gba-color.slang",
           "sha256": "e6d1917e9b72b5535f9bf523a518e62bfb3f19f3f819e994fe585dda985385e2",
-          "filter_linear": true,
-          "scale_type": "viewport",
+          "filter_linear": false,
+          "scale_type": "source",
           "scale": 1
         },
         {
           "tree": "shaders_slang",
           "path": "misc/shaders/image-adjustment.slang",
           "sha256": "e608b1dd71d660d2ce8a77ee3e3a62ad5047d50a75adc8db7b4a1b7c1be83e2d",
-          "filter_linear": true,
-          "scale_type": "viewport",
+          "filter_linear": false,
+          "scale_type": "source",
           "scale": 1
         },
         {
@@ -192,10 +193,11 @@
         "BGR": 0
       },
       "doc": {
-        "why": "GBA response, NSO color matrix, luminance, then the cgwg subpixel grid so the panel reads as an AGB-001 LCD"
+        "why": "GBA response, NSO color matrix, luminance, then the cgwg subpixel grid so the panel reads as an AGB-001 LCD",
+        "passes": "Colour passes stay at the native 240x160, unfiltered, and only the grid renders at the viewport: lcd-grid-v2 takes its LCD cell from its source size, so a viewport-sized source turns one cell into one screen pixel (no grid, flat lifted blacks, 1-px subpixel streaks). This is the upstream nds/3ds-lcd-grid-v2 structure."
       },
       "output": {
-        "sha256": "65c10589642cf63383ba24c7ea03051632fd902f786b2e74a7c48c891a6bde8d"
+        "sha256": "54c3ff3b1c08807e346811af8c75deadd25b52c9dfe84d68648984d04a701466"
       }
     },
     "assets/shaders/nes/screen.slangp": {
@@ -296,20 +298,38 @@
       }
     },
     "assets/shaders/psp/screen.slangp": {
-      "type": "slang_wrapper",
-      "reference": {
-        "tree": "shaders_slang",
-        "path": "handheld/lcd1x_psp.slangp",
-        "sha256": "17f797ceb0fb46e0af61e5a5b4a7a14a99213fa611470cd6ba8e478a1f8debd4"
-      },
+      "type": "slang_pipeline",
+      "passes": [
+        {
+          "tree": "shaders_slang",
+          "path": "handheld/shaders/color/psp-color.slang",
+          "sha256": "303e1c0443118d974f057ff709d652371f569df2cabb6b80f39f4fb6b229e6b2",
+          "filter_linear": false,
+          "scale_type": "source",
+          "scale": 1
+        },
+        {
+          "tree": "shaders_slang",
+          "path": "handheld/shaders/lcd3x.slang",
+          "sha256": "58cb684d42d3ab336aefedb7f961bf551428d21d7371d2fa9eae64cbdaafcdec",
+          "filter_linear": false,
+          "scale_type": "viewport",
+          "scale": 1
+        }
+      ],
       "requires": [
         "shaders_slang"
       ],
-      "output": {
-        "sha256": "a3ebc7effe657acb51c291d95daa57e2e5eb86e5194f5adf88650a1e3c5fc4f9"
+      "params": {
+        "brighten_scanlines": 12.5,
+        "brighten_lcd": 7.7
       },
       "doc": {
-        "why": "PSP-tuned LCD grid; replaces the missing lcd-grid-v2 motionblur edition"
+        "why": "PSP colour profile, then the lcd3x grid. lcd1x_psp's -0.25 phase puts both samples of a 2x pixel on sine zeros, so the Deck's 2x lane showed no grid at all; lcd3x's one-sided phase draws the gap at every integer scale from 2x up.",
+        "params": "brighten_scanlines 12.5 is the 15% row gap of system.json lcd_grid; brighten_lcd 7.7 is the 20% subpixel swing of lcd_subpixel at 2x."
+      },
+      "output": {
+        "sha256": "64d49dd29a0e02fda7a02f1ae62d934e6b4f7e60a80cfd904d778b42c413b8cf"
       }
     },
     "assets/shaders/dreamcast/screen.slangp": {
@@ -668,11 +688,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "BRIGHTEN_LCD": 12.0
+      },
       "doc": {
-        "why": "DS main screen: the NDS-tuned lcd1x grid at integer scale"
+        "why": "DS screens: the NDS-tuned lcd1x grid",
+        "params": "BRIGHTEN_LCD 12 keeps the column grid at +-7.7% instead of upstream's +-20%. The shell places both screens at the fractional fit scale (2.2x on the Deck), where a grid near two pixels a cell beats against the panel's pixel grid into 11-px vertical bands; the shallow grid keeps that beat below sight."
       },
       "output": {
-        "sha256": "41a305a4d8b792b7f0d5c196198842ab0aaf38afa37a0f1722f8ae5e14f8ca99"
+        "sha256": "9cc7a4c7e491b270fb7710833d5139cbe3ce305d43e98e3a2234e12bf3ef0471"
       }
     }
   }
