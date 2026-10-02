@@ -285,6 +285,11 @@ class StandaloneSpecContract {
         contract.contains(main, "profiles\\1\\button_a=engine:sdl,guid:" + guid + ",port:0,button:1", target + " azahar binds the target pad");
         contract.contains(main, "graphics_api=2", target + " azahar runs Vulkan for VK_LAYER_SEMU_compositor");
         contract.contains(main, "fullscreen=true", target + " azahar fullscreen");
+        // Azahar's UI keys are camelCase (GenerateSettingKeys.cmake); a snake_case key is ignored. A
+        // close confirmation would open a dialog the compositor never shows, and the game would hang.
+        contract.contains(main, "confirmClose=false\nconfirmClose\\default=false\n", target + " azahar closes without asking");
+        contract.contains(main, "displayTitleBars=false\n", target + " azahar draws no title bar");
+        contract.lacks(main, "confirm_before_closing", target + " azahar profile has no snake_case UI keys");
         contract.contains(main, "Main%20Window\\Quick%20Save\\KeySeq=Ctrl+S", target + " azahar save chord");
         contract.contains(main, "Main%20Window\\Quick%20Load\\KeySeq=Ctrl+A", target + " azahar load chord");
         contract.contains(main, "Main%20Window\\Exit%20Azahar\\KeySeq=Ctrl+Q", target + " azahar quit chord");
