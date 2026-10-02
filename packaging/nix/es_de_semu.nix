@@ -5,7 +5,10 @@
 # ES-DE got no OpenGL and no window. glibc and libstdc++ are backward compatible, so this copy
 # points ES-DE's binaries at the current ones (interpreter and front of the runpath); its other
 # libraries stay where they are. share/ is linked, since ES-DE finds its resources beside its binary.
-{ runCommand, patchelf, glibc, stdenv, esDe }:
+# SDL comes first from the current nixpkgs too: on the old pin's sdl2-compat 2.32.56 over SDL3 3.2.20,
+# ES-DE's main thread deadlocked in SDL's audio device lock on the Deck (a stutter on every move
+# through a list, then a freeze), whichever audio backend SDL used.
+{ runCommand, patchelf, glibc, stdenv, SDL2, esDe }:
 
 runCommand "es-de-semu-${esDe.version}" { nativeBuildInputs = [ patchelf ]; passthru = { inherit (esDe) version; }; } ''
   mkdir -p "$out/bin"
@@ -15,7 +18,7 @@ runCommand "es-de-semu-${esDe.version}" { nativeBuildInputs = [ patchelf ]; pass
     cp "$program" "$out/bin/$name"
     chmod u+w "$out/bin/$name"
     patchelf --set-interpreter ${glibc}/lib/ld-linux-x86-64.so.2 \
-      --set-rpath "${glibc}/lib:${stdenv.cc.cc.lib}/lib:$(patchelf --print-rpath "$program")" "$out/bin/$name"
+      --set-rpath "${glibc}/lib:${stdenv.cc.cc.lib}/lib:${SDL2}/lib:$(patchelf --print-rpath "$program")" "$out/bin/$name"
   done
   HOME="$TMPDIR" "$out/bin/es-de" --help > /dev/null  # starts on the new loader without a display
 ''
