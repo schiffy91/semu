@@ -927,6 +927,18 @@ Update this block whenever a milestone criterion changes state.
   the per-user Semu profile are published; the two dead AppImage-era shortcuts and controller
   configs are gone. Still to observe in Game Mode, per system: pad input, save/load and
   Start+Select.
+  The owner's first Game Mode launch showed a long loading screen, then a crash. Three causes,
+  none visible from SSH:
+  - Steam preloads its overlay, which needs the host's libGL.so.1. The bundle's first program
+    died on it.
+  - The launcher's per-store-path `basename` forks each loaded that overlay (925 of them).
+  - ES-DE (on the older FreeImage nixpkgs, glibc 2.40) could not load the bundled Mesa (glibc
+    2.42, `GLIBC_ABI_GNU2_TLS`). It got no OpenGL and stopped at "Couldn't create SDL window".
+  Fixed: 303226d, 8657a6c, and c5e3b99 (a copy of ES-DE on the bundle's glibc and libstdc++).
+  A Steam-like launch (overlay preloaded, headless gamescope) now reaches ES-DE's window code.
+  In the VM, Mesa's GLX and EGL drivers force-loaded into the old ES-DE reproduce the Deck's error
+  exactly, and load in the patched one. Release `5484d585` carries all three. It is to be
+  installed and checked on the Deck when it is next online.
 - M6 renderer: done on the desktop 2026-09-19, Deck pending. `libsemurenderer`
   (librashader GL) is linked into RetroArch's gl3 driver by the Semu build;
   the launcher passes `SEMU_RENDER_*` from `config/systems/<id>/{shaders,bezels}.json`.
