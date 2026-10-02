@@ -49,6 +49,6 @@ forAllSystems (system:
         semu-renderer = semuRenderer;
         default = semu;
         es-de = esDe;
-      } // lib.optionalAttrs (platform == "linux") { release = pkgs.callPackage ../release.nix { inherit semu repositoryRoot; }; }
+      } // lib.optionalAttrs (platform == "linux") (let release = pkgs.callPackage ../release.nix { inherit semu repositoryRoot; }; in { inherit release; release-tree = release.tree; })
         // lib.mapAttrs' (id: package: lib.nameValuePair "emulator-${id}" package) emulatorPackages;
   in development // product)

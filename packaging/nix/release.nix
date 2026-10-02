@@ -50,6 +50,26 @@ let
     SHIM
     chmod +x "stage/bin/${name}"
   '';
+  # Everything of a release except its store: launchers, installer, version, and the names of the
+  # store paths it needs. A delta deploy builds only this and sends just the paths a Deck lacks.
+  tree = stdenvNoCC.mkDerivation {
+    pname = "semu-release-tree";
+    inherit version;
+    dontUnpack = true;
+    buildPhase = ''
+      mkdir -p stage/bin
+      cat > stage/bin/semu-deck-run <<'RUN'
+      ${launcher}
+      RUN
+      chmod +x stage/bin/semu-deck-run
+      ${shim "semu-deck" "semu-es-de"}
+      ${shim "semu-deck-cli" "semu"}
+      install -Dm755 ${repositoryRoot + "/packaging/deck/install.sh"} stage/install.sh
+      printf '%s\n' "${version}" > stage/VERSION
+      sed 's|.*/||' ${closure}/store-paths | sort > stage/store-paths
+    '';
+    installPhase = "cp -a stage $out";
+  };
 in
 stdenvNoCC.mkDerivation {
   pname = "semu-release";
@@ -58,18 +78,12 @@ stdenvNoCC.mkDerivation {
   nativeBuildInputs = [ zstd gnutar ];
 
   buildPhase = ''
-    mkdir -p stage/bin stage/nix/store
+    cp -a ${tree} stage
+    chmod -R u+w stage
+    mkdir -p stage/nix/store
     while read -r path; do
       cp -a "$path" stage/nix/store/
     done < ${closure}/store-paths
-    cat > stage/bin/semu-deck-run <<'RUN'
-    ${launcher}
-    RUN
-    chmod +x stage/bin/semu-deck-run
-    ${shim "semu-deck" "semu-es-de"}
-    ${shim "semu-deck-cli" "semu"}
-    install -Dm755 ${repositoryRoot + "/packaging/deck/install.sh"} stage/install.sh
-    printf '%s\n' "${version}" > stage/VERSION
     chmod -R u+w stage
     tar --sort=name --mtime='@1' --owner=0 --group=0 --numeric-owner -C stage -cf - . | zstd -T0 -19 -o Semu-x86_64.tar.zst
   '';
@@ -81,5 +95,6 @@ stdenvNoCC.mkDerivation {
     cp ${repositoryRoot + "/packaging/deck/install.sh"} "$out/install.sh"
   '';
 
+  passthru = { inherit tree; };
   meta.description = "Semu relocatable release for the Steam Deck";
 }
