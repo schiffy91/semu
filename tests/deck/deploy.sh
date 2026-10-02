@@ -2,8 +2,11 @@
 # Deploy a release to the physical Steam Deck over SSH and drive the acceptance
 # steps from the desktop. Needs DECK_HOST (ssh alias or user@host) and a built
 # release at build/release.
+# DECK_SSH_OPTS adds ssh options, e.g. "-o HostKeyAlias=steamdeck.local" when DECK_HOST is an address.
 #
 #   tests/deck/deploy.sh install            # copy the tarball, run install.sh, print status
+#   tests/deck/deploy.sh store-list         # the store paths of the installed release (for build-release.sh --delta)
+#   tests/deck/deploy.sh install-delta      # copy a delta from build-release.sh --delta, install it, print status
 #   tests/deck/deploy.sh prepare            # run semu prepare on the Deck
 #   tests/deck/deploy.sh launch EMULATOR SYSTEM ROM  # launch on the Deck, screenshot after 20 s
 #   tests/deck/deploy.sh screenshot NAME    # gamescope screenshot type 3 into build/verification
@@ -12,14 +15,15 @@ here="$(cd "$(dirname "$0")/../.." && pwd -P)"
 deck="${DECK_HOST:?set DECK_HOST to the Deck's ssh target}"
 release="$here/build/release"
 verification="$here/build/verification/steam-deck"
-run() { ssh -o BatchMode=yes "$deck" "$@"; }
+ssh_opts="-o BatchMode=yes ${DECK_SSH_OPTS:-}"
+run() { ssh $ssh_opts "$deck" "$@"; }
 
 screenshot() {  # gamescope screenshot type 3 is the composited frame; wait until the file stops growing
   name="$1"
   mkdir -p "$verification"
   run "rm -f /tmp/semu-shot.png; gamescopectl screenshot /tmp/semu-shot.png 3 >/dev/null 2>&1 || gamescope-screenshot /tmp/semu-shot.png 3; \
     last=0; for _ in 1 2 3 4 5 6 7 8 9 10; do sleep 0.5; size=\$(stat -c %s /tmp/semu-shot.png 2>/dev/null || echo 0); [ \"\$size\" -gt 0 ] && [ \"\$size\" = \"\$last\" ] && break; last=\$size; done"
-  scp -q "$deck:/tmp/semu-shot.png" "$verification/$name.png"
+  scp -q $ssh_opts "$deck:/tmp/semu-shot.png" "$verification/$name.png"
   echo "$verification/$name.png"
 }
 
@@ -27,8 +31,15 @@ case "${1:-}" in
   install)
     [ -f "$release/Semu-x86_64.tar.zst" ] || { echo "build the release first: nix build .#release --out-link build/release" >&2; exit 1; }
     run "mkdir -p ~/Downloads/semu && rm -f ~/Downloads/semu/Semu-x86_64.tar.zst ~/Downloads/semu/Semu-x86_64.tar.zst.sha256 ~/Downloads/semu/install.sh"  # the last upload kept the store's read-only modes
-    scp -q "$release/Semu-x86_64.tar.zst" "$release/Semu-x86_64.tar.zst.sha256" "$release/install.sh" "$deck:~/Downloads/semu/"
+    scp -q $ssh_opts "$release/Semu-x86_64.tar.zst" "$release/Semu-x86_64.tar.zst.sha256" "$release/install.sh" "$deck:~/Downloads/semu/"
     run "sh ~/Downloads/semu/install.sh install ~/Downloads/semu/Semu-x86_64.tar.zst && sh ~/Downloads/semu/install.sh status"
+    ;;
+  store-list) run 'ls "$HOME/Applications/Semu/current/nix/store"' ;;
+  install-delta)
+    [ -f "$release/Semu-x86_64.delta.tar.zst" ] || { echo "build a delta first: tests/deck/build-release.sh --delta HAVE" >&2; exit 1; }
+    run "mkdir -p ~/Downloads/semu && rm -f ~/Downloads/semu/Semu-x86_64.delta.tar.zst ~/Downloads/semu/Semu-x86_64.delta.tar.zst.sha256 ~/Downloads/semu/install.sh"
+    scp -q $ssh_opts "$release/Semu-x86_64.delta.tar.zst" "$release/Semu-x86_64.delta.tar.zst.sha256" "$release/install.sh" "$deck:~/Downloads/semu/"
+    run "sh ~/Downloads/semu/install.sh install-delta ~/Downloads/semu/Semu-x86_64.delta.tar.zst && sh ~/Downloads/semu/install.sh status"
     ;;
   prepare) run "~/Applications/Semu/bin/semu-deck-cli prepare --target steam-deck" ;;
   launch)
@@ -39,5 +50,5 @@ case "${1:-}" in
     run "tail -5 /tmp/semu-launch.log"
     ;;
   screenshot) screenshot "${2:-screen}" ;;
-  *) echo "usage: deploy.sh install | prepare | launch EMULATOR SYSTEM ROM | screenshot NAME" >&2; exit 64 ;;
+  *) echo "usage: deploy.sh install | store-list | install-delta | prepare | launch EMULATOR SYSTEM ROM | screenshot NAME" >&2; exit 64 ;;
 esac
