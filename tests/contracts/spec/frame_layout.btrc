@@ -1,6 +1,9 @@
 // Frame layout spec: the compositor cuts each 3DS screen where Azahar drew it. On the Deck's
 // 1280x800 with Azahar's integer scaling the screens sit at native size in the middle; cutting
 // them where a fitted layout would have put them showed each screen small inside its bezel hole.
+// Dolphin draws the one picture the compositor cuts at the system aspect. Unpinned, it drew at the
+// VI's analog aspect (about 1.26 on GameCube, 1008 wide on the Deck), and the 1067-wide cut showed
+// Dolphin's own black bars inside the bezel hole.
 
 import Library.JSON;
 import Library.Strings;
@@ -10,12 +13,124 @@ import ../../../src/lib/json.btrc;
 import ../../../src/model.btrc;
 import ../../../src/renderer/preload/semu_frame_layout.btrc;
 
+// Dolphin 2606a's Presenter::UpdateDrawRectangle (Source/Core/VideoCommon/Present.cpp) with its
+// defaults besides the aspect: Crop off, no stereo, no widescreen hack. Stretch and Raw are not
+// ported; neither is the XFB snap, which only moves a size within one pixel per EFB scale of the
+// XFB's (about 640x480 per scale), never one of the screen sizes checked here.
+class FrameLayoutDolphin {
+    // CalculateDrawAspectRatio: the AspectRatio setting (an AspectMode) over the VI's analog aspect.
+    class float drawAspect(int mode, float videoAspect, bool widescreen, float customAspect) {
+        float standard = 4.0f / 3.0f;
+        if (mode == 1 || (mode == 0 && widescreen)) { return videoAspect * ((16.0f / 9.0f) / standard); }  // ForceWide, or Auto on a widescreen game
+        if (mode == 4) { return videoAspect * (customAspect / standard); }  // Custom: relative to the VI's aspect
+        if (mode == 5) { return customAspect; }  // CustomStretch: exactly the custom ratio, the VI's aspect ignored
+        return videoAspect;  // Auto on a 4:3 game and ForceStandard both draw the VI's aspect, not 4:3
+    }
+
+    // FindClosestIntegerResolution: of the floored and ceiled sides, the pair nearest the aspect,
+    // ceiled first, the first of equals kept.
+    class void closest(float width, float height, float aspect, struct SemuComposeRect* rect) {
+        int flooredWidth = (int)width;
+        int flooredHeight = (int)height;
+        Vector<int> widths = [(float)flooredWidth < width ? flooredWidth + 1 : flooredWidth, flooredWidth];
+        Vector<int> heights = [(float)flooredHeight < height ? flooredHeight + 1 : flooredHeight, flooredHeight];
+        float best = -1.0f;
+        for candidateWidth in widths {
+            for candidateHeight in heights {
+                float distance = (float)candidateWidth / (float)candidateHeight / aspect - 1.0f;
+                if (distance < 0.0f) { distance = -distance; }
+                if (best < 0.0f || distance < best) {
+                    best = distance;
+                    rect->width = candidateWidth;
+                    rect->height = candidateHeight;
+                }
+            }
+        }
+    }
+
+    // UpdateDrawRectangle: the picture fitted to the window, made whole, never larger than the
+    // window, and centered with std::round (the offsets are never negative, so +0.5 truncated).
+    class void draw(int windowWidth, int windowHeight, float aspect, struct SemuComposeRect* rect) {
+        float width = (float)windowWidth;
+        float height = (float)windowHeight;
+        float scale = width / height >= aspect ? height : width / aspect;  // the window is flatter than the picture, or skinnier
+        float drawWidth = aspect * scale;
+        float drawHeight = scale;
+        FrameLayoutDolphin.closest(drawWidth, drawHeight, drawWidth / drawHeight, rect);
+        if (rect->width > windowWidth) { rect->width = windowWidth; }
+        if (rect->height > windowHeight) { rect->height = windowHeight; }
+        rect->x = (int)((double)windowWidth / 2.0 - (double)rect->width / 2.0 + 0.5);
+        rect->y = (int)((double)windowHeight / 2.0 - (double)rect->height / 2.0 + 0.5);
+    }
+}
+
 class FrameLayoutSpecContract {
     class bool at(struct SemuComposeRect rect, int x, int y, int width, int height) {
         return rect.x == x && rect.y == y && rect.width == width && rect.height == height;
     }
 
     class string text(struct SemuComposeRect rect) { return f"{rect.x},{rect.y} {rect.width}x{rect.height}"; }
+
+    class string iniValue(string text, string key) {  // "key = value" in a rendered INI, "" when absent
+        string prefix = key + " = ";
+        for line in Strings.split(text, "\n") {
+            if (line.startsWith(prefix)) { return line.substring(prefix.len(), line.len() - prefix.len()); }
+        }
+        return "";
+    }
+
+    class void dolphinScreen(Contract contract, int width, int height, float drawAspect, float aspect, int expectedWidth) {
+        struct SemuComposeRect cut;
+        struct SemuComposeRect drawn;
+        SemuFrameLayout.letterboxed(width, height, aspect, &cut);
+        FrameLayoutDolphin.draw(width, height, drawAspect, &drawn);
+        int offset = drawn.x - cut.x;
+        contract.expect(drawn.width == expectedWidth && cut.width == expectedWidth && drawn.height == cut.height && drawn.y == cut.y && offset >= -1 && offset <= 1,
+            f"{width}x{height}: pinned Dolphin draws the compositor's cut, {expectedWidth} wide (it rounds the offset, the cut floors it): drawn "
+            + FrameLayoutSpecContract.text(drawn) + ", cut " + FrameLayoutSpecContract.text(cut));
+    }
+
+    // Dolphin's GFX.ini pins CustomStretch at the aspect of every system it runs, so at any screen
+    // size it draws the rectangle the compositor cuts. Auto (Dolphin's default) and Force 4:3 draw
+    // the VI's analog aspect instead: the Deck's black bars inside the bezel hole.
+    class void dolphin(Contract contract, Fixture fixture) {
+        string graphics = fixture.profile("dolphin", "dolphin-user/Config/GFX.ini");
+        int mode = Strings.toInt(FrameLayoutSpecContract.iniValue(graphics, "AspectRatio"));
+        int customWidth = Strings.toInt(FrameLayoutSpecContract.iniValue(graphics, "CustomAspectRatioWidth"));
+        int customHeight = Strings.toInt(FrameLayoutSpecContract.iniValue(graphics, "CustomAspectRatioHeight"));
+        contract.expect(graphics.startsWith("[Settings]\n") && mode == 5 && customWidth > 0 && customHeight > 0,
+            f"Dolphin's GFX.ini pins AspectRatio = 5, CustomStretch, the one mode that draws its custom ratio without the VI's analog aspect: mode {mode}, {customWidth}:{customHeight}");
+        Vector<string> systems = [];
+        for systemId in fixture.model.systemIds() {
+            SemuSystem system = fixture.model.system(systemId);
+            for binding in system.bindings {
+                if (!binding.emulator.equals("dolphin") || systems.contains(systemId)) { continue; }
+                systems.push(systemId);
+                JSONValue display = system.definition.get("display");
+                contract.expect(SemuJson.intAt(display, "aspect.w", 0) == customWidth && SemuJson.intAt(display, "aspect.h", 0) == customHeight,
+                    systemId + ": display.aspect, the SEMU_RENDER_ASPECT the compositor cuts at, is Dolphin's pinned custom ratio");
+            }
+        }
+        contract.expect(systems.contains("gc") && systems.contains("wii"), "the Dolphin aspect pin is checked against gc and wii: " + systems.join(","));
+        if (customHeight < 1) { return; }
+        float aspect = (float)customWidth / (float)customHeight;  // as the compositor reads SEMU_RENDER_ASPECT
+        float videoAspect = 1.26f;  // a GameCube VI's analog aspect (Wind Waker), what Auto drew on the Deck
+        float pinned = FrameLayoutDolphin.drawAspect(mode, videoAspect, false, aspect);
+        FrameLayoutSpecContract.dolphinScreen(contract, 1280, 800, pinned, aspect, 1067);
+        FrameLayoutSpecContract.dolphinScreen(contract, 1920, 1080, pinned, aspect, 1440);
+        FrameLayoutSpecContract.dolphinScreen(contract, 3840, 2160, pinned, aspect, 2880);
+        struct SemuComposeRect cut;
+        struct SemuComposeRect drawn;
+        SemuFrameLayout.letterboxed(1280, 800, aspect, &cut);
+        for unpinned in [0, 2] {  // Auto and Force 4:3
+            FrameLayoutDolphin.draw(1280, 800, FrameLayoutDolphin.drawAspect(unpinned, videoAspect, false, aspect), &drawn);
+            int left = drawn.x - cut.x;
+            int right = cut.x + cut.width - drawn.x - drawn.width;
+            contract.expect(drawn.width == 1008 && left == 30 && right == 29,
+                f"Deck 1280x800, AspectRatio = {unpinned} at VI aspect 1.26: Dolphin draws 1008 wide, {left} and {right} px of its black bars inside the cut, the Deck's defect: drawn "
+                + FrameLayoutSpecContract.text(drawn) + ", cut " + FrameLayoutSpecContract.text(cut));
+        }
+    }
 
     class void run(Contract contract) {
         struct SemuComposeRect top;
@@ -45,5 +160,6 @@ class FrameLayoutSpecContract {
             contract.expect(pinned == SemuJson.boolAt(settings, "render_frame_integer", false),
                 platform + ": Azahar's pinned use_integer_scaling and render_frame_integer agree, so the compositor models the frame Azahar draws");
         }
+        FrameLayoutSpecContract.dolphin(contract, fixture);
     }
 }

@@ -73,10 +73,6 @@ class SemuCompose {
         return getenv("SEMU_RENDER_DEBUG") != null;
     }
 
-    class int round(float value) {
-        return (int)(value + 0.5f);
-    }
-
     class void stackedLayout(int width, int height, struct SemuComposeRect* top, struct SemuComposeRect* bottom) {
         SemuFrameLayout.stacked(width, height, SemuComposition.native_width, SemuComposition.native_height,
                                 SemuComposition.second_native_width, SemuComposition.second_native_height, SemuComposition.integer, top, bottom);
@@ -122,19 +118,7 @@ class SemuCompose {
             SemuCompose.surface(&frame, 1, bottom, SemuComposition.second_native_width, SemuComposition.second_native_height);
         } else {
             struct SemuComposeRect picture;
-            picture.x = 0;
-            picture.y = 0;
-            picture.width = width;
-            picture.height = height;
-            if (SemuComposition.aspect > 0.01f) {
-                if ((float)width / (float)height > SemuComposition.aspect) {
-                    picture.width = SemuCompose.round((float)height * SemuComposition.aspect);
-                    picture.x = (width - picture.width) / 2;
-                } else {
-                    picture.height = SemuCompose.round((float)width / SemuComposition.aspect);
-                    picture.y = (height - picture.height) / 2;
-                }
-            }
+            SemuFrameLayout.letterboxed(width, height, SemuComposition.aspect, &picture);
             if (picture.width < 1 || picture.height < 1) { return; }
             frame.surface_count = 1;
             frame.presentation_aspect = (float)picture.width / (float)picture.height;
