@@ -90,7 +90,7 @@ int RGL_UNIFORM_BUFFER_BINDING = 0x8A28;
 int RGL_UNIFORM_BUFFER_START = 0x8A29;
 int RGL_UNIFORM_BUFFER_SIZE = 0x8A2A;
 int RGL_COLOR_CLEAR_VALUE = 0x0C22;
-int SEMU_RENDER_TEXTURE_UNITS = 7;  // game, art, glass, menu, game2, glass2, background
+int SEMU_RENDER_TEXTURE_UNITS = 9;  // game, art, glass, menu, game2, glass2, background, raw, raw2
 int SEMU_RENDER_GUARDED_TEXTURE_UNITS = 16;  // librashader binds pass textures on units 0..15
 int SEMU_RENDER_GUARDED_UNIFORM_BUFFERS = 4;  // librashader and PCSX2 bind indexed UBOs 0..3
 
