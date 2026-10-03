@@ -51,10 +51,6 @@ class SemuEsDeTemplates {
 }
 
 class SemuEsDeDocuments {
-    public Vector<string> commands;
-
-    public SemuEsDeDocuments() { self.commands = []; }
-
     class string shim(string emulatorId) { return "semu-" + emulatorId; }
 
     class string command(SemuSystem system, SemuSystemBinding binding) {
