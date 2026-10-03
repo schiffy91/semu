@@ -20,6 +20,7 @@ cli="$HOME/Applications/Semu/bin/semu-deck-cli"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 emulators='retroarch|azahar|dolphin|pcsx2|ppsspp|melonds|flycast|cemu|ryujinx|semu-btrc'
 mkdir -p "$out"
+printf "pcm.!default {\n  type null\n}\nctl.!default {\n  type hw\n  card 0\n}\n" > "$out/alsa-null.conf"  # cubeb (PCSX2) falls back to ALSA: a silent device, or a modal error dialog hides the game
 
 descendants() { local child; for child in $(pgrep -P "$1"); do echo "$child"; descendants "$child"; done; }
 battery() { cat /sys/class/power_supply/BAT1/capacity 2>/dev/null || echo 100; }
@@ -47,7 +48,7 @@ while IFS= read -r line; do
   chmod +x "$dir/inner.sh"
 
   start=$(date +%s)
-  PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy SEMU_RENDER_DEBUG=1 SEMU_MATRIX_ROM="$rom" \
+  PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy ALSA_CONFIG_PATH="$out/alsa-null.conf" SEMU_RENDER_DEBUG=1 SEMU_MATRIX_ROM="$rom" \
     gamescope --backend headless -W 1280 -H 800 -w 1280 -h 800 -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
   headless=$!
   game=""; display=""
