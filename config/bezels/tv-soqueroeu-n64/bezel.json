@@ -54,7 +54,6 @@
       "curvature": 0.035000000000000003,
       "vignette": 0.20000000000000001,
       "bloom": 0.17999999999999999,
-      "glow": 0.20000000000000001,
       "glass": {
         "asset": "assets/bezels/tv/tube-reflection.png",
         "reflect": 0.12
