@@ -382,7 +382,7 @@ class SemuLauncher {
         SemuLauncher.stateEnvironment(launch, plan, emulator, platform);
         bool preload = SemuJson.boolAt(platform, "render_preload", false);  // GL emulator hooked at its SDL swap by libsemupreload
         bool vulkan = SemuJson.boolAt(platform, "render_vulkan", false);  // Vulkan emulator composed at present by VK_LAYER_SEMU_compositor
-        if (SemuJson.boolAt(platform, "render_hook", false) || preload || vulkan) {  // the emulator links libsemurenderer and reads SEMU_RENDER_*
+        if (SemuJson.boolAt(platform, "render_hook", false) || preload || vulkan) {  // the renderer composes from SEMU_RENDER_*: a render_hook emulator links the loader, which loads SEMU_RENDERER_LIBRARY; the preload and Vulkan shims link the renderer
             for entry in SemuRenderEnvironment.compile(plan, system, emulatorId, stateRoot, diagnostics) { launch.environment.push(entry); }
             string shim = PathTools.join(plan.assetRoot, "lib/libsemupreload.so");
             if (preload && FileSystem.isFile(shim)) { launch.environment.push("LD_PRELOAD=" + shim); }
