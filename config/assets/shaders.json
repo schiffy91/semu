@@ -19,20 +19,6 @@
     }
   },
   "assets": {
-    "assets/shaders/fallback/crt.slangp": {
-      "type": "slang_wrapper",
-      "reference": {
-        "tree": "shaders_slang",
-        "path": "bezel/Mega_Bezel/Presets/MBZ__5__POTATO.slangp",
-        "sha256": "4a6bb7fd0e716013f28b2c93d97c9b787f20c2b0a728e9208a786887861797f6"
-      },
-      "requires": [
-        "shaders_slang"
-      ],
-      "output": {
-        "sha256": "9e622ef865a95f6c8c6b5e11f5e9e920200777ad5b7f4d3e4a804fa6cb217c7c"
-      }
-    },
     "assets/shaders/gb/screen.slangp": {
       "type": "slang_wrapper",
       "reference": {
