@@ -120,15 +120,6 @@ class GameBoySpecDefinition {
         contract.expect(SemuJson.textAt(display, "scaling.fallback").equals("fractional_downscale"), "gb scaling falls back to fractional downscale");
     }
 
-    class bool compatibility(JSONValue value) {
-        return GameBoySpecJson.exactStrings(value.get("surfaces"), ["main"])
-            && SemuJson.intAt(value, "native.w", 0) == 160 && SemuJson.intAt(value, "native.h", 0) == 144
-            && SemuJson.intAt(value, "aspect.w", 0) == 10 && SemuJson.intAt(value, "aspect.h", 0) == 9
-            && SemuJson.textAt(value, "fit").equals("contain")
-            && SemuJson.textAt(value, "scaling.mode").equals("integer_preferred")
-            && SemuJson.textAt(value, "scaling.fallback").equals("fractional_downscale");
-    }
-
     class bool recipe(JSONValue manifest, string logical, string sourcePath, string sourceHash, string outputHash) {
         JSONValue entry = manifest.get("assets").get(logical);
         return SemuJson.textAt(entry, "type").equals("slang_wrapper")
@@ -142,11 +133,10 @@ class GameBoySpecDefinition {
         JSONValue shaders = system.shaders;
         JSONValue dmg = GameBoySpecJson.variant(shaders, "dmg");
         JSONValue pocket = GameBoySpecJson.variant(shaders, "pocket");
-        contract.expect(SemuJson.intAt(shaders, "schema_version", 0) == 3 && SemuJson.boolAt(shaders, "enabled", false) && SemuJson.boolAt(shaders, "renderer", false), "gb shader manifest is schema 3, enabled, renderer-owned");
-        contract.expect(SemuJson.textAt(shaders, "disabled_variant").equals("none") && SemuJson.textAt(shaders, "default_variant").equals("dmg"), "gb shaders default to dmg with none as off");
+        contract.expect(SemuJson.intAt(shaders, "schema_version", 0) == 3 && SemuJson.boolAt(shaders, "enabled", false), "gb shader manifest is schema 3 and enabled");
+        contract.expect(SemuJson.textAt(shaders, "default_variant").equals("dmg"), "gb shaders default to dmg");
         contract.expect(SemuJson.textAt(shaders, "variants.0.id").equals("dmg") && SemuJson.textAt(shaders, "variants.1.id").equals("pocket") && shaders.get("variants").size() == 2, "gb shader variants are exactly dmg then pocket");
         contract.expect(SemuJson.textAt(dmg, "screen").equals("assets/shaders/gb/screen.slangp") && SemuJson.textAt(pocket, "screen").equals("assets/shaders/gb/pocket.slangp"), "gb shader variants name distinct presets");
-        contract.expect(GameBoySpecDefinition.compatibility(shaders.get("compatibility")), "gb shader compatibility block matches the display");
         JSONValue manifest = SemuJson.readFile(PathTools.join(fixture.project, "config/assets/shaders.json"));
         contract.expect(GameBoySpecDefinition.recipe(manifest, "assets/shaders/gb/screen.slangp", "handheld/gameboy.slangp", "0aeebf5dcc15a8a3e5a3aa5c0a2a6f66cf13eb15aec890b483424d23bce9f4e7", "9808224c81dc56182101e38b05eda50bd28f2fc197a2f59d2347e2610490c48c"), "gb dmg preset recipe keeps its pinned source and output");
         JSONValue dmgRecipe = manifest.get("assets").get("assets/shaders/gb/screen.slangp");

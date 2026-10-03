@@ -1,7 +1,6 @@
 {
   "schema_version": 3,
   "enabled": true,
-  "renderer": true,
   "screen": "assets/shaders/nes/screen.slangp",
   "doc": {
     "intent": "NES composite artifacting, phosphor mask, scanlines"
@@ -18,6 +17,5 @@
       "screen": "assets/shaders/nes/sharp.slangp"
     }
   ],
-  "default_variant": "default",
-  "disabled_variant": "none"
+  "default_variant": "default"
 }

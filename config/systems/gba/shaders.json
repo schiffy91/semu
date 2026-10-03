@@ -1,7 +1,6 @@
 {
   "schema_version": 3,
   "enabled": true,
-  "renderer": true,
   "screen": "assets/shaders/gba/screen.slangp",
   "doc": {
     "intent": "Readable AGB-001 reflected color response, LCD persistence and the subpixel grid, one grid cell per game pixel"
@@ -18,6 +17,5 @@
       "screen": "assets/shaders/gba/agb001.slangp"
     }
   ],
-  "default_variant": "default",
-  "disabled_variant": "none"
+  "default_variant": "default"
 }

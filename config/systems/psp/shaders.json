@@ -1,7 +1,6 @@
 {
   "schema_version": 3,
   "enabled": true,
-  "renderer": true,
   "screen": "assets/shaders/psp/screen.slangp",
   "doc": {
     "intent": "PSP LCD color response and pixel structure at the exact 480x272 panel ratio"
@@ -18,6 +17,5 @@
       "screen": "assets/shaders/psp/lcd3x.slangp"
     }
   ],
-  "default_variant": "default",
-  "disabled_variant": "none"
+  "default_variant": "default"
 }

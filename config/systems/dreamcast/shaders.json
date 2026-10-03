@@ -1,7 +1,6 @@
 {
   "schema_version": 3,
   "enabled": true,
-  "renderer": true,
   "screen": "assets/shaders/dreamcast/sharp.slangp",
   "doc": {
     "intent": "480i/480p era CRT or VGA softness",
@@ -19,6 +18,5 @@
       "screen": "assets/shaders/dreamcast/screen.slangp"
     }
   ],
-  "default_variant": "default",
-  "disabled_variant": "none"
+  "default_variant": "default"
 }
