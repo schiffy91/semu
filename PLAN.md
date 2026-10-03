@@ -1023,6 +1023,36 @@ Update this block whenever a milestone criterion changes state.
   now turn those off, and all 68 cells sit within 2 px again. The release with all of the above
   is built from 268c8a8 as a 55 MB delta (5 store paths, no emulator rebuilt) and installs when
   the Deck is next online.
+  Installed and re-swept 2026-10-03: all 23 cases quit cleanly on releases 6ce00f0e, 7ffab6db and
+  df7c9f07, and a by-eye before/after review confirmed the round's fixes on the Deck. The
+  overnight pass (owner asleep, Deck held awake) then found and fixed, each with a contract or a
+  render-host proof:
+  - Bezels off and every computed DS/3DS layout drew a black picture since e09c10a (a zero-residue
+    picture test; 91029ed), seen on the Deck too and fixed there.
+  - PCSX2 drew PS2 into its first 640x480 corner in 3 launches of 4: a fullscreen resize arrived
+    before its GS device existed. Semu's patch follows the EGL surface's real size each present
+    (559c3ee); 4 of 4 correct on the Deck. The sweep now gives PCSX2 a silent ALSA device, so its
+    audio error dialog no longer hides the game (4e094e3).
+  - The bezel editor draws its preview through the renderer's own compositor.frag (WebGL2), frames
+    each system as the renderer does, previews the computed DS/3DS layouts, and has a Production
+    view (the real renderer's frame); `tests/visual/editor-sync.sh` puts editor and renderer side
+    by side for every variant (MAE 0 on the variants checked). Production fixes from the same
+    comparison: computed layouts choose their scale from the screens alone (stacked DS 2x, not 1x)
+    and centre the pair when that is better; no edge-clamped glow on drawn frames; gb-studio's
+    integer placement and lens reflection; lip bevel as ring data; LCD packages lose the CRT look.
+  - GBC/GBA LCD grids and colour: Gambatte's own GBC correction is turned off when the chosen
+    shader has a colour-matrix pass (a variant's `core_options`), saturation stays under each
+    colour pass's clip point, the 3DS touch screen resamples sharp-bilinear. The render host now
+    settles 12 frames (history passes), with ramp, line, bar and clip cards.
+  - About fifty cleanup commits removed verified dead code, unread keys (system.json render,
+    verification, aliases and bios blocks; emulator default_system; steam_input key_names) and
+    stale docs. Left for the owner, since nothing was deleted: config/assets/fonts/menu-font.png
+    and packaging/sync/{package.nix,semu-syncthing.service.template} are orphaned.
+  - All ten Linux checks pass in the VM (platform-matrix again after Azahar's and RetroArch's
+    package.json learned their macOS build), and the macOS contracts in the Nix sandbox.
+  Open: the Deck's charger cannot keep up with Steam's idle UI (it discharged about 5 W net while
+  plugged in), so the final release waits for the Deck to come back charged; GBC/GBA mid-greys
+  are darker after removing the gamma lift that forced the clipping (owner's call on the Deck).
 - M6 renderer: done on the desktop 2026-09-19, Deck pending. `libsemurenderer`
   (librashader GL) is linked into RetroArch's gl3 driver by the Semu build;
   the launcher passes `SEMU_RENDER_*` from `config/systems/<id>/{shaders,bezels}.json`.
