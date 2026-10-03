@@ -119,25 +119,34 @@
         "shaders_slang"
       ],
       "params": {
-        "ia_black_level": 0.3,
-        "ia_bright_boost": 0.3,
-        "ia_luminance": 2,
-        "ia_saturation": 1,
+        "ia_black_level": 0,
+        "ia_bright_boost": 0,
+        "ia_luminance": 1.35,
+        "ia_saturation": 2.0,
+        "ia_target_gamma": 1.2,
         "lighten_screen": 0.15,
         "mode": 1,
         "response_time": 0.222,
-        "gain": 1.35,
+        "gain": 1.8,
         "gamma": 2.2,
-        "blacklevel": 0.02,
-        "ambient": 0.08,
+        "blacklevel": 0,
+        "ambient": 0,
+        "RSUBPIX_G": 0.3,
+        "RSUBPIX_B": 0.3,
+        "GSUBPIX_R": 0.3,
+        "GSUBPIX_B": 0.3,
+        "BSUBPIX_R": 0.3,
+        "BSUBPIX_G": 0.3,
+        "BSUBPIX_B": 0.82,
         "BGR": 0
       },
       "doc": {
         "why": "GBC response and color, luminance, then the cgwg subpixel grid so the panel reads as a GBC LCD",
-        "passes": "Colour passes stay at the native 160x144, unfiltered, and only the grid renders at the viewport: lcd-grid-v2 takes its LCD cell from its source size, so a viewport-sized source turns one cell into one screen pixel (no grid, flat lifted blacks, 1-px subpixel streaks). This is the upstream nds/3ds-lcd-grid-v2 structure."
+        "passes": "Colour passes stay at the native 160x144, unfiltered, and only the grid renders at the viewport: lcd-grid-v2 takes its LCD cell from its source size, so a viewport-sized source turns one cell into one screen pixel (no grid, flat lifted blacks, 1-px subpixel streaks). This is the upstream nds/3ds-lcd-grid-v2 structure.",
+        "params": "With native-size cells each channel lights only its own third of a cell, so the gain tuned for one-pixel cells (1.35, white 232) clipped every subpixel peak: white fell to 189 and the warm tint and pale colours went grey. The subpixels now leak 0.3 into each other, so all three channels light the outer columns and a cell can stay bright; gain 1.8 lifts white back to about 230 with the row gaps and subpixel stripes still drawn; the blue subpixel at 0.82 keeps a warm white. The image-adjustment pass brightens with a curve (luminance 1.35, gamma 1.2) instead of the old luminance-times-2.86 clip that turned mid grey white, and saturation 2.0 pays back what the leak and the GBC colour matrix take. blacklevel and ambient 0 keep black black."
       },
       "output": {
-        "sha256": "945522f6581c5b43beb7a28e1b4e226659b764b4964ab3030e7deacf6cc16d80"
+        "sha256": "47087bc28a41ad856ab0466cf70a3153ca929c6ddd7e0b096546817508c6eaf5"
       }
     },
     "assets/shaders/gba/screen.slangp": {
@@ -181,23 +190,32 @@
       ],
       "params": {
         "darken_screen": 0,
-        "ia_bright_boost": 0.05,
-        "ia_luminance": 1.5,
-        "ia_saturation": 1,
+        "ia_bright_boost": 0,
+        "ia_luminance": 1.4,
+        "ia_saturation": 1.6,
+        "ia_target_gamma": 1.7,
         "mode": 1,
         "response_time": 0.222,
-        "gain": 1.35,
+        "gain": 1.8,
         "gamma": 2.2,
-        "blacklevel": 0.02,
-        "ambient": 0.08,
+        "blacklevel": 0,
+        "ambient": 0,
+        "RSUBPIX_G": 0.3,
+        "RSUBPIX_B": 0.3,
+        "GSUBPIX_R": 0.3,
+        "GSUBPIX_B": 0.3,
+        "BSUBPIX_R": 0.3,
+        "BSUBPIX_G": 0.3,
+        "BSUBPIX_B": 0.82,
         "BGR": 0
       },
       "doc": {
         "why": "GBA response, NSO color matrix, luminance, then the cgwg subpixel grid so the panel reads as an AGB-001 LCD",
-        "passes": "Colour passes stay at the native 240x160, unfiltered, and only the grid renders at the viewport: lcd-grid-v2 takes its LCD cell from its source size, so a viewport-sized source turns one cell into one screen pixel (no grid, flat lifted blacks, 1-px subpixel streaks). This is the upstream nds/3ds-lcd-grid-v2 structure."
+        "passes": "Colour passes stay at the native 240x160, unfiltered, and only the grid renders at the viewport: lcd-grid-v2 takes its LCD cell from its source size, so a viewport-sized source turns one cell into one screen pixel (no grid, flat lifted blacks, 1-px subpixel streaks). This is the upstream nds/3ds-lcd-grid-v2 structure.",
+        "params": "The same grid as gbc/screen.slangp: subpixels leaking 0.3, gain 1.8 and a 0.82 blue subpixel bring white back to about 230 and warm (the native-cell grid at the old gain clipped it to a neutral 188) while the row gaps and stripes stay drawn. The image-adjustment pass brightens with a curve (luminance 1.4, gamma 1.7) that keeps every step of a grey ramp apart, and saturation 1.6 pays back the leak. blacklevel and ambient 0 take the lift off black (54 before)."
       },
       "output": {
-        "sha256": "54c3ff3b1c08807e346811af8c75deadd25b52c9dfe84d68648984d04a701466"
+        "sha256": "0858fdef143930a00c568a088f10b2a216aa5d506969965bf52f08ad782e18d3"
       }
     },
     "assets/shaders/nes/screen.slangp": {
@@ -676,6 +694,32 @@
       },
       "output": {
         "sha256": "89136a8350725a81271ee4e457e938f2ca41bb865066dcd1ccb9a22fabd27766"
+      }
+    },
+    "assets/shaders/n3ds/bottom.slangp": {
+      "type": "slang_pipeline",
+      "passes": [
+        {
+          "tree": "shaders_slang",
+          "path": "misc/shaders/image-adjustment.slang",
+          "sha256": "e608b1dd71d660d2ce8a77ee3e3a62ad5047d50a75adc8db7b4a1b7c1be83e2d",
+          "filter_linear": false,
+          "scale_type": "viewport",
+          "scale": 1
+        }
+      ],
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "ia_luminance": 0.75
+      },
+      "doc": {
+        "why": "3DS touch screen: the panel's light without a drawn pixel grid. The shell's bottom opening holds 320x240 at a fractional scale on every display (0.95x on the Deck, 1.4x at 1080p, 2.8x at 4K), where lcd1x's one-sine-per-game-pixel grid beats against the screen's pixels: top.slangp drew 18-px vertical and horizontal bands there (column profile 146..238 on a white card). Below one screen pixel per game pixel no grid can be resolved anyway.",
+        "params": "ia_luminance 0.75 is the mean of top.slangp's grid ((4/5) x (16/17)), so both screens keep the same brightness"
+      },
+      "output": {
+        "sha256": "27c65c175992de3e0f802c4fa285f799de22af9a27ea614749f3b5c0b480ac15"
       }
     },
     "assets/shaders/nds/top.slangp": {
