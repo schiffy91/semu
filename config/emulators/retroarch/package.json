@@ -37,11 +37,6 @@
     "environment_search": false,
     "host_search": false
   },
-  "core_host": {
-    "enabled": true,
-    "selector_field": "core",
-    "implementation_manifest": "cores.json"
-  },
   "runtime_extras": {
     "selected_cores": {
       "kind": "core_host_bundle",
