@@ -6,11 +6,9 @@
 #if defined(__linux__)
 #include <linux/input.h>
 #include <linux/uinput.h>
-#define SEMU_HAS_EVDEV 1
 #else
 #include <stdint.h>
 #include <sys/time.h>
-#define SEMU_HAS_EVDEV 0
 struct input_event { struct timeval time; uint16_t type; uint16_t code; int32_t value; };
 struct input_id { uint16_t bustype; uint16_t vendor; uint16_t product; uint16_t version; };
 #define UINPUT_MAX_NAME_SIZE 80
