@@ -240,7 +240,7 @@ class SemuRenderEnvironment {
         return f"{SemuRenderEnvironment.fraction(strength)},{SemuRenderEnvironment.fraction(atof(SemuRenderEnvironment.numberOr(reflection, "blur", "0")))},{SemuRenderEnvironment.fraction(atof(SemuRenderEnvironment.numberOr(reflection, "fade", "0")))}";
     }
 
-    class string look(JSONValue screen) {  // shape,radius,exponent,fit,inset,curvature,vignette,bloom,glow,reflect
+    class string look(JSONValue screen) {  // shape,radius,exponent,fit,inset,curvature,vignette,bloom,0,reflect: slot nine was glow
         JSONValue shape = screen.get("shape");
         string kind = SemuJson.textAt(shape, "kind");
         string shapeCode = kind.equals("rounded") ? "1" : (kind.equals("squircle") ? "2" : "0");
@@ -248,7 +248,7 @@ class SemuRenderEnvironment {
         string fitCode = fit.equals("fill") ? "1" : (fit.equals("integer") ? "2" : "0");
         JSONValue glass = screen.get("glass");
         string reflect = glass != null && glass.isObject() ? SemuRenderEnvironment.numberOr(glass, "reflect", "0") : "0";
-        return f"{shapeCode},{SemuRenderEnvironment.numberOr(shape, "radius", "0")},{SemuRenderEnvironment.numberOr(shape, "exponent", "4")},{fitCode},{SemuRenderEnvironment.numberOr(screen, "inset", "0")},{SemuRenderEnvironment.numberOr(screen, "curvature", "0")},{SemuRenderEnvironment.numberOr(screen, "vignette", "0")},{SemuRenderEnvironment.numberOr(screen, "bloom", "0")},{SemuRenderEnvironment.numberOr(screen, "glow", "0")},{reflect}";
+        return f"{shapeCode},{SemuRenderEnvironment.numberOr(shape, "radius", "0")},{SemuRenderEnvironment.numberOr(shape, "exponent", "4")},{fitCode},{SemuRenderEnvironment.numberOr(screen, "inset", "0")},{SemuRenderEnvironment.numberOr(screen, "curvature", "0")},{SemuRenderEnvironment.numberOr(screen, "vignette", "0")},{SemuRenderEnvironment.numberOr(screen, "bloom", "0")},0,{reflect}";
     }
 
     class JSONValue findVariant(JSONValue manifest, string id) {

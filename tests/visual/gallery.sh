@@ -27,7 +27,7 @@ environment() {  # SYSTEM VARIANT [SHADER]: the launcher's render environment fo
     --settings-json "{\"visual\":{\"systems\":{\"$1\":{\"bezel_variant\":\"$2\"${3:+,\"shader_variant\":\"$3\",\"placement\":\"fit\"}}}}}"  # a measuring render checks the package geometry, so fit
 }
 
-placement_only() {  # ENV-LINE: a screen's look without curvature, vignette, bloom, glow or reflection, its shape, radius, fit and inset kept
+placement_only() {  # ENV-LINE: a screen's look without curvature, vignette, bloom or reflection, its shape, radius, fit and inset kept
   case "$1" in
     SEMU_RENDER_SCREEN_*_LOOK*=*) IFS=, read -r shape radius exponent fit inset _ <<< "${1#*=}"; echo "${1%%=*}=$shape,$radius,$exponent,$fit,$inset,0,0,0,0,0" ;;
     SEMU_RENDER_SCREEN_*_REFLECT*=*) echo "${1%%=*}=0,0,0" ;;
