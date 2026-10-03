@@ -1,0 +1,308 @@
+// Input delivery spec: chords reach the supervisor from evdev or the X raw-key adapter and fire once.
+
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/launch/process.btrc;
+import ../../../src/launch/supervisor.btrc;
+import ../../../src/renderer/action_abi.btrc;
+
+class InputDeliveryTools {
+    class Vector<string> none() {
+        Vector<string> result = [];
+        return result;
+    }
+
+    class SemuLaunchPlan launch(string stateDir, Vector<string> chords, Vector<string> declared) {  // a standalone-style launch: no command port, nothing typed for a keyboard chord
+        SemuLaunchPlan launch = SemuLaunchPlan();
+        FileSystem.mkdirp(stateDir);
+        launch.stateDir = stateDir;
+        launch.emulator = "contract";
+        launch.chordModifier = "select";
+        launch.chordButtons = ["north"];
+        launch.chordActions = ["ui.menu"];
+        for chord in chords { launch.actionChords.push(chord); }
+        for action in declared { launch.emulatorActions.push(action); }
+        return launch;
+    }
+
+    class void fresh() {  // an empty supervisor with its X keyboard pseudo-device
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+        SemuSupervisor.keySource();
+    }
+
+    class int records(string stateDir) {  // journal records written so far
+        struct stat info;
+        string path = PathTools.join(stateDir, RendererActionJournal.fileName());
+        if (stat(path, &info) != 0) { return 0; }
+        return (int)((size_t)info.st_size / sizeof(struct SemuActionRecord));
+    }
+
+    class bool record(string stateDir, int index, int action, int slot) {  // record INDEX carries ACTION and SLOT
+        FILE* file = fopen(PathTools.join(stateDir, RendererActionJournal.fileName()), "rb");
+        if (file == null) { return false; }
+        struct SemuActionRecord record;
+        memset(&record, 0, sizeof(record));
+        fseek(file, (long)((size_t)index * sizeof(struct SemuActionRecord)), SEEK_SET);
+        bool read = fread(&record, sizeof(record), 1, file) == (size_t)1;
+        fclose(file);
+        return read && record.action == action && record.slot == slot && record.size == (unsigned int)sizeof(struct SemuActionRecord);
+    }
+
+    class void rawKey(unsigned char* event, int opcode, int type, int keycode) {  // one 32-byte XI raw key event as the server sends it
+        memset(event, 0, 32);
+        event[0] = (unsigned char)35;
+        event[1] = (unsigned char)opcode;
+        unsigned short eventType = (unsigned short)type;
+        memcpy(event + 8, &eventType, sizeof(eventType));
+        unsigned int detail = (unsigned int)keycode;
+        memcpy(event + 16, &detail, sizeof(detail));
+    }
+
+    class Vector<string> fired(SemuLaunchPlan launch, Vector<int> presses) {  // each code pressed in order and held: the actions that fire
+        struct SemuInputDevice device;
+        memset(&device, 0, sizeof(device));
+        device.keyboard = 1;
+        device.source = SEMU_SOURCE_X11;
+        Vector<string> result = [];
+        for code in presses {
+            device.down[code] = 1;
+            string action = SemuInputEvents.keyboardAction(launch, &device, code);
+            if (!action.isEmpty()) { result.push(action); }
+        }
+        return result;
+    }
+}
+
+class InputDeliveryWire {  // the X adapter's pure readers over synthetic wire bytes
+    class void run(Contract contract) {
+        unsigned char event[64];
+        int code = -1;
+        int pressed = -1;
+        InputDeliveryTools.rawKey(event, 131, 13, 58);
+        contract.expect(SemuX11Events.decode(event, 131, &code, &pressed) && code == KEY_M && pressed == 1, "an XI_RawKeyPress of X keycode 58 is KEY_M pressed");
+        InputDeliveryTools.rawKey(event, 131, 14, 58);
+        contract.expect(SemuX11Events.decode(event, 131, &code, &pressed) && code == KEY_M && pressed == 0, "an XI_RawKeyRelease is the same key released");
+        InputDeliveryTools.rawKey(event, 130, 13, 58);
+        contract.expect(!SemuX11Events.decode(event, 131, &code, &pressed), "another extension's generic event is ignored");
+        InputDeliveryTools.rawKey(event, 131, 2, 58);
+        contract.expect(!SemuX11Events.decode(event, 131, &code, &pressed), "a focused XI_KeyPress is not a raw key");
+        InputDeliveryTools.rawKey(event, 131, 13, 58);
+        event[0] = (unsigned char)2;
+        contract.expect(!SemuX11Events.decode(event, 131, &code, &pressed) && SemuX11Events.size(event) == 32, "a core KeyPress is ignored and is 32 bytes");
+        InputDeliveryTools.rawKey(event, 131, 13, 58);
+        unsigned int repeat = 1u << 16;
+        memcpy(event + 24, &repeat, sizeof(repeat));
+        contract.expect(!SemuX11Events.decode(event, 131, &code, &pressed), "an autorepeated raw press is ignored");
+        InputDeliveryTools.rawKey(event, 131, 13, 58);
+        unsigned int words = 2u;
+        memcpy(event + 4, &words, sizeof(words));
+        contract.expect(SemuX11Events.size(event) == 40, "a generic event carries length extra words");
+        unsigned char reply[32];
+        memset(reply, 0, sizeof(reply));
+        reply[8] = (unsigned char)1;
+        reply[9] = (unsigned char)131;
+        contract.expect(SemuX11Events.opcode(reply) == 131, "the extension reply's major opcode is read at byte 9");
+        reply[8] = (unsigned char)0;
+        contract.expect(SemuX11Events.opcode(reply) == -1 && SemuX11Events.opcode(null) == -1, "an absent XInputExtension has no opcode");
+        unsigned char setup[176];  // two screens: the first with one depth of one visual
+        memset(setup, 0, sizeof(setup));
+        unsigned short length = (unsigned short)42;
+        unsigned short vendor = (unsigned short)5;
+        memcpy(setup + 6, &length, sizeof(length));
+        memcpy(setup + 24, &vendor, sizeof(vendor));
+        setup[28] = (unsigned char)2;
+        setup[29] = (unsigned char)2;
+        unsigned int first = 0x111u;
+        unsigned int second = 0x222u;
+        memcpy(setup + 64, &first, sizeof(first));
+        setup[64 + 39] = (unsigned char)1;
+        unsigned short visuals = (unsigned short)1;
+        memcpy(setup + 104 + 2, &visuals, sizeof(visuals));
+        memcpy(setup + 136, &second, sizeof(second));
+        contract.expect(SemuX11Events.rootWindow(setup, 0) == 0x111u, "screen 0's root follows the padded vendor and the pixmap formats");
+        contract.expect(SemuX11Events.rootWindow(setup, 1) == 0x222u, "screen 1's root follows screen 0's depths and visuals");
+        contract.expect(SemuX11Events.rootWindow(setup, 2) == 0u && SemuX11Events.rootWindow(null, 0) == 0u, "a screen past the setup's count has no root");
+        length = (unsigned short)30;
+        memcpy(setup + 6, &length, sizeof(length));
+        contract.expect(SemuX11Events.rootWindow(setup, 1) == 0u, "a truncated setup is refused");
+    }
+}
+
+class InputDeliveryChords {  // a chord fires on its own key with exactly its modifiers held
+    class void run(Contract contract, Fixture fixture) {
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan launch = InputDeliveryTools.launch(PathTools.join(fixture.scratch, "delivery/chords"), ["visual.bezels.toggle=Ctrl+B", "visual.bezel.next=Ctrl+Shift+B", "speed.fast=Ctrl++", "speed.rewind=Ctrl+-"], InputDeliveryTools.none());
+        Vector<string> shiftFirst = InputDeliveryTools.fired(launch, [KEY_LEFTCTRL, KEY_LEFTSHIFT, KEY_B]);
+        contract.expect(shiftFirst.size() == 1 && shiftFirst.get(0).equals("visual.bezel.next"), "Ctrl, Shift, B fires Ctrl+Shift+B once and never Ctrl+B");
+        Vector<string> shiftLast = InputDeliveryTools.fired(launch, [KEY_LEFTCTRL, KEY_B, KEY_LEFTSHIFT]);
+        contract.expect(shiftLast.size() == 1 && shiftLast.get(0).equals("visual.bezels.toggle"), "Ctrl, B, Shift fires Ctrl+B once; the late Shift fires nothing");
+        Vector<string> keyFirst = InputDeliveryTools.fired(launch, [KEY_B, KEY_LEFTSHIFT, KEY_LEFTCTRL]);
+        contract.expect(keyFirst.isEmpty(), "modifiers pressed after the key fire nothing");
+        Vector<string> rightHand = InputDeliveryTools.fired(launch, [KEY_RIGHTCTRL, KEY_RIGHTSHIFT, KEY_B]);
+        contract.expect(rightHand.size() == 1 && rightHand.get(0).equals("visual.bezel.next"), "right-hand modifiers count as the chord's modifiers");
+        Vector<string> keypad = InputDeliveryTools.fired(launch, [KEY_LEFTCTRL, KEY_KPPLUS]);
+        contract.expect(keypad.size() == 1 && keypad.get(0).equals("speed.fast"), "Ctrl++ matches the KEYPAD_PLUS Steam types");
+        Vector<string> equal = InputDeliveryTools.fired(launch, [KEY_LEFTCTRL, KEY_EQUAL]);
+        contract.expect(equal.size() == 1 && equal.get(0).equals("speed.fast"), "Ctrl++ still matches the main-row key");
+        Vector<string> minus = InputDeliveryTools.fired(launch, [KEY_LEFTCTRL, KEY_KPMINUS]);
+        contract.expect(minus.size() == 1 && minus.get(0).equals("speed.rewind"), "Ctrl+- matches the keypad minus too");
+        int lastFunction = KEY_F24;
+        int keypadPlus = KEY_KPPLUS;
+        int keypadMinus = KEY_KPMINUS;
+        contract.expect(SemuKeyNames.key("F13") == KEY_F13 && SemuKeyNames.key("F24") == lastFunction && lastFunction == 194, "F13 to F24 are key names");
+        contract.expect(SemuKeyNames.key("kp_plus") == keypadPlus && keypadPlus == 78 && SemuKeyNames.key("kp_minus") == keypadMinus && keypadMinus == 74, "keypad plus and minus are key names");
+    }
+}
+
+class InputDeliveryFaces {  // Steam's virtual pad and Microsoft pads report the top face button as BTN_WEST
+    class void run(Contract contract, Fixture fixture) {
+        Vector<string> identities = SemuJson.strings(SemuJson.get(fixture.plan.input.definition, "gamepad_chords.xpad_layout_ids"));
+        contract.expect(SemuFaceLayout.swapped(0x28de, 0x11ff, identities), "Steam's virtual pad 28de:11ff is xpad-ordered");
+        contract.expect(SemuFaceLayout.swapped(0x045e, 0x02ea, identities) && SemuFaceLayout.swapped(0x045e, 0x0b12, identities), "every Microsoft pad is xpad-ordered");
+        contract.expect(!SemuFaceLayout.swapped(0x28de, 0x1205, identities) && !SemuFaceLayout.swapped(0x5345, 0x4d55, identities), "the Deck's own controller and Semu's test pad are positional");
+        contract.expect(SemuFaceLayout.positional(BTN_WEST) == BTN_NORTH && SemuFaceLayout.positional(BTN_NORTH) == BTN_WEST && SemuFaceLayout.positional(BTN_SOUTH) == BTN_SOUTH, "only the top and left face buttons trade places");
+        for (int swapped = 0; swapped <= 1; swapped++) {
+            InputDeliveryTools.fresh();
+            SemuLaunchPlan launch = InputDeliveryTools.launch(PathTools.join(fixture.scratch, "delivery/faces"), InputDeliveryTools.none(), InputDeliveryTools.none());
+            struct SemuInputDevice pad;
+            memset(&pad, 0, sizeof(pad));
+            pad.gamepad = 1;
+            pad.source = SEMU_SOURCE_GAMEPAD;
+            pad.face_swapped = swapped;
+            SemuInputEvents.key(launch, &pad, BTN_SELECT, 1, 1000LL);
+            SemuInputEvents.key(launch, &pad, BTN_WEST, 1, 1010LL);
+            if (swapped == 1) {
+                contract.expect(SemuSupervisorRuntime.menu_visible == 1, "Select plus BTN_WEST on Steam's pad is Select+Y: the Semu menu opens");
+            } else {
+                contract.expect(SemuSupervisorRuntime.menu_visible == 0, "Select plus BTN_WEST on a positional pad is Select+X: nothing opens");
+            }
+        }
+    }
+}
+
+class InputDeliveryOnce {  // one execution per chord: per-action dedupe and the echo of Semu's typing
+    class void run(Contract contract, Fixture fixture) {
+        InputDeliveryTools.fresh();
+        contract.expect(SemuActionDedupe.accept("state.save", SEMU_SOURCE_X11, 1000LL) && !SemuActionDedupe.accept("state.save", SEMU_SOURCE_KEYBOARD, 1100LL), "the same action from evdev 100 ms after X is dropped");
+        contract.expect(SemuActionDedupe.accept("state.save", SEMU_SOURCE_X11, 1150LL), "a second press from the same source runs again");
+        contract.expect(SemuActionDedupe.accept("state.save", SEMU_SOURCE_KEYBOARD, 1500LL), "another source after the 250 ms window runs");
+        contract.expect(SemuActionDedupe.accept("state.load", SEMU_SOURCE_KEYBOARD, 2000LL) && SemuActionDedupe.accept("state.save", SEMU_SOURCE_KEYBOARD, 2010LL), "two different actions from one source both run");
+        contract.expect(!SemuActionDedupe.accept("state.save", SEMU_SOURCE_X11, 2050LL) && !SemuActionDedupe.accept("state.load", SEMU_SOURCE_X11, 2060LL), "each action keeps its own source and time, so interleaved duplicates are dropped");
+        string journal = PathTools.join(fixture.scratch, "delivery/once");
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan launch = InputDeliveryTools.launch(journal, ["state.save=Ctrl+S"], ["state.save"]);
+        SemuActionExecutor.execute(launch, "state.save", SEMU_SOURCE_X11);
+        SemuActionExecutor.execute(launch, "state.save", SEMU_SOURCE_KEYBOARD);
+        contract.expect(InputDeliveryTools.records(journal) == 1, "one chord delivered by X and by evdev journals one save");
+        SemuActionExecutor.execute(launch, "state.save", SEMU_SOURCE_X11);
+        contract.expect(InputDeliveryTools.records(journal) == 2, "two presses from one source journal two saves");
+        InputDeliveryTools.fresh();
+        Vector<int> typed = [KEY_LEFTCTRL, KEY_S];
+        SemuKeyEcho.expect(typed, 1750LL);
+        contract.expect(SemuKeyEcho.consume(KEY_S, 1500LL) && !SemuKeyEcho.consume(KEY_S, 1600LL), "a typed key's echo is swallowed once");
+        Vector<int> late = [KEY_S];
+        SemuKeyEcho.expect(late, 1750LL);
+        contract.expect(!SemuKeyEcho.consume(KEY_S, 1751LL), "after the 750 ms deadline a press is real again");
+        string echoes = PathTools.join(fixture.scratch, "delivery/echo");
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan echoed = InputDeliveryTools.launch(echoes, ["state.save=Ctrl+S"], ["state.save"]);
+        long long now = SemuClock.milliseconds();
+        SemuKeyEcho.expect(typed, now + 750LL);
+        struct SemuInputDevice* keyboard = &SemuSupervisorRuntime.x11_keyboard;
+        SemuInputEvents.key(echoed, keyboard, KEY_LEFTCTRL, 1, now);
+        SemuInputEvents.key(echoed, keyboard, KEY_S, 1, now);
+        SemuInputEvents.key(echoed, keyboard, KEY_S, 0, now);
+        SemuInputEvents.key(echoed, keyboard, KEY_LEFTCTRL, 0, now);
+        contract.expect(InputDeliveryTools.records(echoes) == 0 && (int)keyboard->down[(int)KEY_S] == 0, "Semu's own Ctrl+S coming back through X runs nothing");
+        SemuInputEvents.key(echoed, keyboard, KEY_LEFTCTRL, 1, now);
+        SemuInputEvents.key(echoed, keyboard, KEY_S, 1, now);
+        contract.expect(InputDeliveryTools.records(echoes) == 1, "the next real Ctrl+S on X saves");
+    }
+}
+
+class InputDeliveryRoutes {  // RetroArch keeps the command port; unknown and undeclared actions do nothing
+    class void run(Contract contract, Fixture fixture) {
+        contract.expect(SemuActionRouter.route("state.save", true, false).equals("udp:SAVE_STATE"), "a gamepad save reaches RetroArch over the command port");
+        string visual = PathTools.join(fixture.scratch, "delivery/visual");
+        string home = PathTools.join(fixture.scratch, "delivery/visual-home");
+        FileSystem.mkdirp(home);
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan launch = InputDeliveryTools.launch(visual, InputDeliveryTools.none(), InputDeliveryTools.none());
+        launch.semuHome = home;
+        SemuActionExecutor.execute(launch, "visual.unknown", SEMU_SOURCE_KEYBOARD);
+        contract.expect(InputDeliveryTools.records(visual) == 0 && launch.shadersOn && launch.bezelsOn && !FileSystem.isFile(PathTools.join(home, "semu.json")), "an unknown visual action journals, flips and saves nothing");
+        SemuActionExecutor.execute(launch, "visual.shaders.toggle", SEMU_SOURCE_KEYBOARD);
+        contract.expect(InputDeliveryTools.record(visual, 0, SemuActions.shadersToggle(), 0) && !launch.shadersOn && launch.bezelsOn, "the shader switch still toggles shaders only");
+        string slots = PathTools.join(fixture.scratch, "delivery/slots");
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan saving = InputDeliveryTools.launch(slots, InputDeliveryTools.none(), ["state.save"]);
+        SemuActionExecutor.execute(saving, "state.next", SEMU_SOURCE_GAMEPAD);
+        contract.expect(SemuSupervisorRuntime.slot == 0 && InputDeliveryTools.records(slots) == 0, "an emulator that does not declare state.next keeps slot 0 and journals nothing");
+        saving.emulatorActions.push("state.next");
+        SemuActionExecutor.execute(saving, "state.next", SEMU_SOURCE_GAMEPAD);
+        contract.expect(SemuSupervisorRuntime.slot == 1 && InputDeliveryTools.record(slots, 0, SemuActions.stateNext(), 1), "a declared state.next moves the slot and journals it");
+    }
+}
+
+class InputDeliverySeam {  // synthetic XI raw key bytes through one real pollDevices tick reach the journal
+    class void run(Contract contract, Fixture fixture) {
+        for (int opcode = 130; opcode <= 131; opcode++) {
+            string journal = PathTools.join(fixture.scratch, f"delivery/seam-{opcode}");
+            InputDeliveryTools.fresh();
+            SemuLaunchPlan launch = InputDeliveryTools.launch(journal, ["state.next=Ctrl+K", "ui.menu=Ctrl+M"], ["state.next"]);
+            int pair[2];
+            if (socketpair(AF_UNIX, SOCK_STREAM, 0, pair) != 0) {
+                contract.expect(false, "a socketpair for the key-source seam");
+                return;
+            }
+            SemuX11KeyListener.attachWire(&SemuSupervisorRuntime.key_source, pair[0], 131);
+            unsigned char events[128];
+            InputDeliveryTools.rawKey(events, opcode, 13, KEY_LEFTCTRL + 8);
+            InputDeliveryTools.rawKey(events + 32, opcode, 13, KEY_K + 8);
+            InputDeliveryTools.rawKey(events + 64, opcode, 14, KEY_K + 8);
+            InputDeliveryTools.rawKey(events + 96, opcode, 14, KEY_LEFTCTRL + 8);
+            bool written = write(pair[1], events, sizeof(events)) == (ssize_t)sizeof(events);
+            SemuSupervisor.pollDevices(launch);
+            if (opcode == 131) {
+                contract.expect(written && InputDeliveryTools.records(journal) == 1 && InputDeliveryTools.record(journal, 0, SemuActions.stateNext(), 1), "Ctrl+K as XI raw keys on the key source journals one state.next for slot 1");
+                contract.expect((int)SemuSupervisorRuntime.x11_keyboard.down[(int)KEY_K] == 0 && (int)SemuSupervisorRuntime.x11_keyboard.down[(int)KEY_LEFTCTRL] == 0, "the releases reach the X keyboard pseudo-device too");
+            } else {
+                contract.expect(written && InputDeliveryTools.records(journal) == 0, "raw keys of another extension's opcode run nothing");
+            }
+            SemuX11KeyListener.disconnect(&SemuSupervisorRuntime.key_source);
+            close(pair[1]);
+            contract.expect(!SemuX11KeyListener.active(&SemuSupervisorRuntime.key_source), "a disconnected key source is idle");
+        }
+        InputDeliveryTools.fresh();
+        contract.expect(!SemuX11KeyListener.active(&SemuSupervisorRuntime.key_source) && SemuSupervisorRuntime.x11_keyboard.source == SEMU_SOURCE_X11 && SemuSupervisorRuntime.x11_keyboard.keyboard == 1, "a fresh supervisor's key source idles beside a keyboard pseudo-device");
+        string source = FileSystem.readText(PathTools.join(fixture.project, "packaging/nix/semu_program.nix"));
+        contract.contains(source, "-DSEMU_XCB_LIBRARY=", "the Nix build bakes libxcb's store path into the program");
+        contract.contains(source, "-DSEMU_XCB_INPUT_LIBRARY=", "the Nix build bakes libxcb-xinput's store path into the program");
+        contract.lacks(FileSystem.readText(PathTools.join(fixture.project, "src/launch/x11_keys.btrc")), "libX11", "the adapter never loads Xlib, whose I/O errors exit");
+    }
+}
+
+class InputDeliverySpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        InputDeliveryWire.run(contract);
+        InputDeliveryChords.run(contract, fixture);
+        InputDeliveryFaces.run(contract, fixture);
+        InputDeliveryOnce.run(contract, fixture);
+        InputDeliveryRoutes.run(contract, fixture);
+        InputDeliverySeam.run(contract, fixture);
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}

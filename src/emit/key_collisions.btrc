@@ -1,0 +1,32 @@
+// An emulator's own keyboard defaults that share a key with a Semu chord: vendored rows of
+// {setting, key}, cleared so the emulator never acts on a chord the supervisor already handles.
+
+import Library.JSON;
+import Library.Vector;
+import ../lib/json.btrc;
+
+class SemuKeyCollisions {
+    class Vector<string> settings(JSONValue rows) {  // the setting of every row, e.g. Semu's own keymap rows
+        Vector<string> result = [];
+        for (int index = 0; rows != null && rows.isArray() && index < rows.size(); index++) {
+            string setting = SemuJson.textAt(rows.at(index), "setting");
+            if (!setting.isEmpty()) { result.push(setting); }
+        }
+        return result;
+    }
+
+    class bool collides(JSONValue row, Vector<string> chordKeys, Vector<string> always) {
+        return chordKeys.contains(SemuJson.textAt(row, "key")) || always.contains(SemuJson.textAt(row, "setting"));
+    }
+
+    class Vector<string> lines(JSONValue rows, Vector<string> chordKeys, Vector<string> excluded, Vector<string> always, string format) {  // one line per colliding default, in vendored order
+        Vector<string> result = [];
+        for (int index = 0; rows != null && rows.isArray() && index < rows.size(); index++) {
+            JSONValue row = rows.at(index);
+            string setting = SemuJson.textAt(row, "setting");
+            if (setting.isEmpty() || excluded.contains(setting) || !SemuKeyCollisions.collides(row, chordKeys, always)) { continue; }
+            result.push(format.replace("${setting}", setting).replace("${key}", SemuJson.textAt(row, "key")));
+        }
+        return result;
+    }
+}

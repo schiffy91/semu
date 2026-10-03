@@ -14,6 +14,7 @@ import ../lib/paths.btrc;
 import ../lib/settings.btrc;
 import ../renderer/action_abi.btrc;
 import ./input_state.btrc;
+import ./input_filters.btrc;
 import ./process.btrc;
 import ./plan.btrc;
 
@@ -142,6 +143,7 @@ class SemuVirtualKeyboard {  // types an action's chord into whatever emulator h
             SemuVirtualKeyboard.emit(synType, synReport, 0);
             usleep(15000);
         }
+        SemuKeyEcho.expect(codes, SemuClock.milliseconds() + (long long)SEMU_ECHO_MS);  // gamescope hands the typing back as X keys
         return true;
     }
 
@@ -162,7 +164,11 @@ class SemuActionExecutor {  // execution of one action id (SemuActions is the re
         return "";
     }
 
-    class void toEmulator(SemuLaunchPlan launch, string action, bool fromKeyboard) {
+    class void toEmulator(SemuLaunchPlan launch, string action, bool fromKeyboard) {  // only what the emulator declares moves a slot or journals
+        if (!launch.emulatorActions.contains(action)) {
+            if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: " + launch.emulator + " does not declare " + action); }
+            return;
+        }
         string route = SemuActionRouter.route(action, launch.retroarchPort > 0, fromKeyboard);
         if (route.startsWith("udp:")) {
             SemuCommandPort.send(launch.retroarchPort, route.substring(4, route.len() - 4));
@@ -193,8 +199,12 @@ class SemuActionExecutor {  // execution of one action id (SemuActions is the re
         if (!launch.pauseAction.isEmpty()) { SemuActionExecutor.toEmulator(launch, launch.pauseAction, false); }
     }
 
-    class void toggleVisual(SemuLaunchPlan launch, string action) {
+    class void toggleVisual(SemuLaunchPlan launch, string action) {  // exactly the two global switches; any other visual id is ignored
         bool bezels = action.equals("visual.bezels.toggle");
+        if (!bezels && !action.equals("visual.shaders.toggle")) {
+            if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: no visual action named " + action); }
+            return;
+        }
         SemuActionJournal.append(launch, bezels ? SemuActions.bezelsToggle() : SemuActions.shadersToggle(), 0);
         if (bezels) { launch.bezelsOn = !launch.bezelsOn; } else { launch.shadersOn = !launch.shadersOn; }
         if (!launch.semuHome.isEmpty()) {  // the choice survives the session
@@ -217,9 +227,15 @@ class SemuActionExecutor {  // execution of one action id (SemuActions is the re
         }
     }
 
-    class void execute(SemuLaunchPlan launch, string action, bool fromKeyboard) {
+    class void execute(SemuLaunchPlan launch, string action, int source) {  // SEMU_SOURCE_*: the same chord from two sources runs once
         if (action.isEmpty()) { return; }
-        if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: action " + action + (fromKeyboard ? " (keyboard)" : " (gamepad)")); }
+        bool fromKeyboard = source != SEMU_SOURCE_GAMEPAD;
+        bool debug = getenv("SEMU_RENDER_DEBUG") != null;
+        if (!SemuActionDedupe.accept(action, source, SemuClock.milliseconds())) {
+            if (debug) { Console.error("semu: " + action + " already ran from another input source"); }
+            return;
+        }
+        if (debug) { Console.error("semu: action " + action + (fromKeyboard ? " (keyboard)" : " (gamepad)")); }
         if (action.equals("app.quit")) {
             SemuSupervisorRuntime.quit = 1;
         } else if (action.equals("ui.menu")) {

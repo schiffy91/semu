@@ -67,8 +67,8 @@ class RetroArchSpecProfile {  // retroarch.cfg per target: fullscreen, shader ow
         contract.contains(cfg, "notification_show_autoconfig_fails = \"false\"", label + ": autoconfig failure toast off");
         contract.lacks(cfg, "input_player1_reserved_device", label + ": no name-based device reservation");
         contract.lacks(cfg, "input_player1_device_reservation_type", label + ": no reservation type");
-        contract.contains(cfg, "input_save_state = \"s\"", label + ": state.save is Ctrl+S");
-        contract.contains(cfg, "input_load_state = \"a\"", label + ": state.load is Ctrl+A");
+        contract.contains(cfg, "input_save_state = \"nul\"", label + ": Ctrl+S reaches RetroArch through the supervisor, never its own key");
+        contract.contains(cfg, "input_load_state = \"nul\"", label + ": Ctrl+A reaches RetroArch through the supervisor, never its own key");
         RetroArchSpecText.fixtureLines(contract, fixture, "interaction.cfg", cfg, "\"/output", "\"" + fixture.plan.path("content_root"), label);
         RetroArchSpecText.fixtureLines(contract, fixture, "system-directory.cfg", cfg, "\"/system", "\"" + PathTools.join(fixture.plan.stateRoot(), "retroarch/system"), label);
         SemuEmulator emulator = fixture.model.emulator("retroarch");

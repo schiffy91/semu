@@ -1,0 +1,275 @@
+// An optional key adapter beside evdev for the environment Steam actually uses: in Game Mode its
+// radial keys arrive only as XTest in the game's Xwayland. The supervisor reads XInput2 raw key
+// events on the emulator's own display through libxcb, loaded at run time; never Xlib, whose I/O
+// error path exits. Without DISPLAY or the libraries it stays idle and evdev remains the contract.
+
+#include <dlfcn.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include "semu_x11.h"
+
+import Library.Console;
+import Library.Platform;
+import ./input_state.btrc;
+
+struct SemuX11Runtime {  // libxcb entry points, resolved once per process
+    int attempted;
+    int ready;
+    int reported;  // the first connection failure is logged once
+    void* connect;  // xcb_connect
+    void* hasError;  // xcb_connection_has_error
+    void* fileDescriptor;  // xcb_get_file_descriptor
+    void* setup;  // xcb_get_setup
+    void* extensionData;  // xcb_get_extension_data
+    void* inputExtension;  // &xcb_input_id, a data symbol
+    void* queryVersion;  // xcb_input_xi_query_version
+    void* queryVersionReply;  // xcb_input_xi_query_version_reply
+    void* selectEvents;  // xcb_input_xi_select_events
+    void* flush;  // xcb_flush
+    void* pollEvent;  // xcb_poll_for_event
+    void* disconnect;  // xcb_disconnect
+};
+
+struct SemuX11Runtime SemuX11Loaded;
+
+class SemuX11Events {  // pure readers of X wire bytes, shared by the adapter and the contracts
+    class int word(unsigned char* bytes, int offset) {  // a native-order u16
+        unsigned short value = 0;
+        memcpy(&value, bytes + offset, sizeof(value));
+        return (int)value;
+    }
+
+    class unsigned int longWord(unsigned char* bytes, int offset) {  // a native-order u32
+        unsigned int value = 0u;
+        memcpy(&value, bytes + offset, sizeof(value));
+        return value;
+    }
+
+    class int opcode(unsigned char* reply) {  // the extension's major opcode, -1 when absent
+        if (reply == null || reply[(int)SEMU_X11_REPLY_PRESENT] == 0) { return -1; }
+        return (int)reply[(int)SEMU_X11_REPLY_OPCODE];
+    }
+
+    class unsigned int rootWindow(unsigned char* setup, int screen) {  // the screen's root window from the connection setup; 0 when malformed
+        if (setup == null || screen < 0 || screen >= (int)setup[(int)SEMU_X11_SETUP_ROOTS]) { return 0u; }
+        int total = 8 + 4 * SemuX11Events.word(setup, SEMU_X11_SETUP_LENGTH);
+        int vendor = SemuX11Events.word(setup, SEMU_X11_SETUP_VENDOR_LENGTH);
+        int offset = (int)SEMU_X11_SETUP_FIXED + ((vendor + 3) / 4) * 4 + 8 * (int)setup[(int)SEMU_X11_SETUP_FORMATS];
+        for (int skipped = 0; skipped < screen; skipped++) {
+            if (offset + SEMU_X11_SCREEN_FIXED > total) { return 0u; }
+            int depths = (int)setup[offset + (int)SEMU_X11_SCREEN_DEPTHS];
+            offset += SEMU_X11_SCREEN_FIXED;
+            for (int depth = 0; depth < depths; depth++) {
+                if (offset + SEMU_X11_DEPTH_FIXED > total) { return 0u; }
+                int visuals = SemuX11Events.word(setup, offset + SEMU_X11_DEPTH_VISUALS);
+                offset += (int)SEMU_X11_DEPTH_FIXED + (int)SEMU_X11_VISUAL_SIZE * visuals;
+            }
+        }
+        if (offset + 4 > total) { return 0u; }
+        return SemuX11Events.longWord(setup, offset);
+    }
+
+    class int size(unsigned char* event) {  // bytes one event occupies on the wire
+        if (((int)event[0] & ~(int)SEMU_X11_SEND_EVENT_BIT) != SEMU_X11_GENERIC_EVENT) { return SEMU_X11_EVENT_SIZE; }
+        return (int)SEMU_X11_EVENT_SIZE + 4 * (int)SemuX11Events.longWord(event, (int)SEMU_X11_EVENT_LENGTH);
+    }
+
+    class bool decode(unsigned char* event, int opcode, int* code, int* pressed) {  // an XI raw key event of our extension, as an evdev code
+        if (((int)event[0] & ~(int)SEMU_X11_SEND_EVENT_BIT) != SEMU_X11_GENERIC_EVENT || (int)event[(int)SEMU_X11_EVENT_EXTENSION] != opcode) { return false; }
+        int type = SemuX11Events.word(event, SEMU_X11_EVENT_TYPE);
+        if (type != SEMU_X11_RAW_KEY_PRESS && type != SEMU_X11_RAW_KEY_RELEASE) { return false; }
+        if (type == (int)SEMU_X11_RAW_KEY_PRESS && (SemuX11Events.longWord(event, SEMU_X11_EVENT_FLAGS) & SEMU_X11_KEY_REPEAT_FLAG) != 0u) { return false; }
+        unsigned int detail = SemuX11Events.longWord(event, SEMU_X11_EVENT_DETAIL);
+        if (detail < (unsigned int)SEMU_X11_KEYCODE_OFFSET) { return false; }
+        *code = (int)(detail - (unsigned int)SEMU_X11_KEYCODE_OFFSET);
+        *pressed = type == SEMU_X11_RAW_KEY_PRESS ? 1 : 0;
+        return true;
+    }
+}
+
+class SemuX11Library {  // libxcb and libxcb-xinput through dlopen, as gamepad.btrc reaches GameController
+    class void* symbol(void* library, char* name) { return library == null ? null : dlsym(library, name); }
+
+    class bool load() {
+        if (SemuX11Loaded.attempted != 0) { return SemuX11Loaded.ready != 0; }
+        SemuX11Loaded.attempted = 1;
+        int flags = (int)RTLD_NOW | (int)RTLD_LOCAL;
+        void* core = dlopen((char*)SEMU_XCB_LIBRARY, flags);
+        void* input = core == null ? null : dlopen((char*)SEMU_XCB_INPUT_LIBRARY, flags);
+        SemuX11Loaded.connect = SemuX11Library.symbol(core, "xcb_connect");
+        SemuX11Loaded.hasError = SemuX11Library.symbol(core, "xcb_connection_has_error");
+        SemuX11Loaded.fileDescriptor = SemuX11Library.symbol(core, "xcb_get_file_descriptor");
+        SemuX11Loaded.setup = SemuX11Library.symbol(core, "xcb_get_setup");
+        SemuX11Loaded.extensionData = SemuX11Library.symbol(core, "xcb_get_extension_data");
+        SemuX11Loaded.flush = SemuX11Library.symbol(core, "xcb_flush");
+        SemuX11Loaded.pollEvent = SemuX11Library.symbol(core, "xcb_poll_for_event");
+        SemuX11Loaded.disconnect = SemuX11Library.symbol(core, "xcb_disconnect");
+        SemuX11Loaded.inputExtension = SemuX11Library.symbol(input, "xcb_input_id");
+        SemuX11Loaded.queryVersion = SemuX11Library.symbol(input, "xcb_input_xi_query_version");
+        SemuX11Loaded.queryVersionReply = SemuX11Library.symbol(input, "xcb_input_xi_query_version_reply");
+        SemuX11Loaded.selectEvents = SemuX11Library.symbol(input, "xcb_input_xi_select_events");
+        bool complete = SemuX11Loaded.connect != null && SemuX11Loaded.hasError != null && SemuX11Loaded.fileDescriptor != null
+            && SemuX11Loaded.setup != null && SemuX11Loaded.extensionData != null && SemuX11Loaded.flush != null
+            && SemuX11Loaded.pollEvent != null && SemuX11Loaded.disconnect != null && SemuX11Loaded.inputExtension != null
+            && SemuX11Loaded.queryVersion != null && SemuX11Loaded.queryVersionReply != null && SemuX11Loaded.selectEvents != null;
+        if (!complete && Environment.get("SEMU_RENDER_DEBUG", "").len() > 0) { Console.error("semu: no X key adapter: libxcb or libxcb-xinput did not load"); }
+        SemuX11Loaded.ready = complete ? 1 : 0;
+        return complete;
+    }
+
+    class int failed(void* connection) {
+        __fn_ptr<int, void*> call;
+        memcpy(&call, &SemuX11Loaded.hasError, sizeof(call));
+        return call(connection);
+    }
+
+    class void hangUp(void* connection) {
+        __fn_ptr<void, void*> call;
+        memcpy(&call, &SemuX11Loaded.disconnect, sizeof(call));
+        call(connection);
+    }
+
+    class unsigned char* next(void* connection) {  // one queued event or reply error, malloc'd by xcb
+        __fn_ptr<void*, void*> call;
+        memcpy(&call, &SemuX11Loaded.pollEvent, sizeof(call));
+        return (unsigned char*)call(connection);
+    }
+
+    class bool supportsInputTwo(void* connection) {  // announces XI 2.2, which raw key events require
+        __fn_ptr<unsigned int, void*, unsigned short, unsigned short> query;
+        memcpy(&query, &SemuX11Loaded.queryVersion, sizeof(query));
+        unsigned int cookie = query(connection, (unsigned short)2, (unsigned short)2);
+        __fn_ptr<void*, void*, unsigned int, void**> answer;
+        memcpy(&answer, &SemuX11Loaded.queryVersionReply, sizeof(answer));
+        unsigned char* reply = (unsigned char*)answer(connection, cookie, null);
+        if (reply == null) { return false; }
+        bool supported = SemuX11Events.word(reply, 8) >= 2;
+        free(reply);
+        return supported;
+    }
+
+    class void selectRawKeys(void* connection, unsigned int root) {  // one xcb_input_event_mask_t: all master devices, raw press and release
+        unsigned char masks[8];
+        unsigned short device = (unsigned short)SEMU_X11_ALL_MASTER_DEVICES;
+        unsigned short words = (unsigned short)1;
+        unsigned int bits = SEMU_X11_RAW_KEY_MASK;
+        memcpy(masks, &device, sizeof(device));
+        memcpy(masks + 2, &words, sizeof(words));
+        memcpy(masks + 4, &bits, sizeof(bits));
+        __fn_ptr<unsigned int, void*, unsigned int, unsigned short, void*> selection;
+        memcpy(&selection, &SemuX11Loaded.selectEvents, sizeof(selection));
+        selection(connection, root, (unsigned short)1, (void*)masks);
+        __fn_ptr<int, void*> flusher;
+        memcpy(&flusher, &SemuX11Loaded.flush, sizeof(flusher));
+        flusher(connection);
+    }
+}
+
+class SemuX11KeyListener {  // the supervisor's X key source: connect, yield decoded keys, disconnect
+    class bool active(struct SemuKeySource* source) { return source->kind != 0 && source->descriptor >= 0; }
+
+    class void report(string reason) {  // the first failure only, so a missing server is not logged every rescan
+        if (SemuX11Loaded.reported != 0 || Environment.get("SEMU_RENDER_DEBUG", "").len() == 0) { return; }
+        SemuX11Loaded.reported = 1;
+        Console.error("semu: no X key adapter: " + reason);
+    }
+
+    class bool connect(struct SemuKeySource* source) {  // the inherited DISPLAY is the emulator's own; idle without it
+        string display = Environment.get("DISPLAY", "");
+        if (SemuX11KeyListener.active(source) || display.isEmpty() || !SemuX11Library.load()) { return false; }
+        int screen = 0;
+        __fn_ptr<void*, void*, int*> connector;
+        memcpy(&connector, &SemuX11Loaded.connect, sizeof(connector));
+        void* connection = connector(null, &screen);
+        if (connection == null) { return false; }
+        if (SemuX11Library.failed(connection) != 0) {
+            SemuX11Library.hangUp(connection);
+            SemuX11KeyListener.report("cannot connect to X display " + display);
+            return false;
+        }
+        __fn_ptr<void*, void*, void*> extension;
+        memcpy(&extension, &SemuX11Loaded.extensionData, sizeof(extension));
+        int opcode = SemuX11Events.opcode((unsigned char*)extension(connection, SemuX11Loaded.inputExtension));
+        __fn_ptr<void*, void*> setup;
+        memcpy(&setup, &SemuX11Loaded.setup, sizeof(setup));
+        unsigned int root = SemuX11Events.rootWindow((unsigned char*)setup(connection), screen);
+        if (opcode < 0 || root == 0u || !SemuX11Library.supportsInputTwo(connection)) {
+            SemuX11Library.hangUp(connection);
+            SemuX11KeyListener.report("X display " + display + " has no XInput 2");
+            return false;
+        }
+        SemuX11Library.selectRawKeys(connection, root);
+        __fn_ptr<int, void*> descriptor;
+        memcpy(&descriptor, &SemuX11Loaded.fileDescriptor, sizeof(descriptor));
+        source->descriptor = descriptor(connection);
+        source->kind = SEMU_KEY_SOURCE_XCB;
+        source->opcode = opcode;
+        source->connection = connection;
+        source->buffered = 0;
+        if (Environment.get("SEMU_RENDER_DEBUG", "").len() > 0) { Console.error("semu: listening for keys on X display " + display); }
+        return true;
+    }
+
+    class void attachWire(struct SemuKeySource* source, int descriptor, int opcode) {  // raw X event bytes on a descriptor: the contracts' seam
+        int flags = fcntl(descriptor, F_GETFL, 0);
+        fcntl(descriptor, F_SETFL, flags | (int)O_NONBLOCK);
+        source->descriptor = descriptor;
+        source->kind = SEMU_KEY_SOURCE_WIRE;
+        source->opcode = opcode;
+        source->connection = null;
+        source->buffered = 0;
+    }
+
+    class void disconnect(struct SemuKeySource* source) {  // the next rescan connects again
+        if (source->kind == SEMU_KEY_SOURCE_XCB && source->connection != null) { SemuX11Library.hangUp(source->connection); }
+        if (source->kind == SEMU_KEY_SOURCE_WIRE && source->descriptor >= 0) { close(source->descriptor); }
+        source->descriptor = -1;
+        source->kind = 0;
+        source->connection = null;
+        source->buffered = 0;
+    }
+
+    class bool nextWire(struct SemuKeySource* source, int* code, int* pressed) {
+        while (true) {
+            while (source->buffered >= (int)SEMU_X11_EVENT_SIZE) {
+                int size = SemuX11Events.size(source->buffer);
+                if (size > (int)SEMU_X11_BUFFER) {  // larger than any key event: drop the stream's buffer
+                    source->buffered = 0;
+                    break;
+                }
+                if (source->buffered < size) { break; }
+                bool key = SemuX11Events.decode(source->buffer, source->opcode, code, pressed);
+                source->buffered -= size;
+                memmove(source->buffer, source->buffer + size, (size_t)source->buffered);
+                if (key) { return true; }
+            }
+            ssize_t got = read(source->descriptor, source->buffer + source->buffered, (size_t)((int)SEMU_X11_BUFFER - source->buffered));
+            if (got <= (ssize_t)0) { return false; }
+            source->buffered += (int)got;
+        }
+        return false;
+    }
+
+    class bool nextConnection(struct SemuKeySource* source, int* code, int* pressed) {
+        while (true) {
+            unsigned char* event = SemuX11Library.next(source->connection);
+            if (event == null) {
+                if (SemuX11Library.failed(source->connection) != 0) { SemuX11KeyListener.disconnect(source); }
+                return false;
+            }
+            bool key = SemuX11Events.decode(event, source->opcode, code, pressed);
+            free(event);
+            if (key) { return true; }
+        }
+        return false;
+    }
+
+    class bool next(struct SemuKeySource* source, int* code, int* pressed) {  // the next raw key, false once nothing is queued
+        if (!SemuX11KeyListener.active(source)) { return false; }
+        if (source->kind == SEMU_KEY_SOURCE_WIRE) { return SemuX11KeyListener.nextWire(source, code, pressed); }
+        return SemuX11KeyListener.nextConnection(source, code, pressed);
+    }
+}

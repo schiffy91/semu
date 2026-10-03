@@ -14,10 +14,12 @@ import Library.Console;
 import Library.Strings;
 import Library.Vector;
 import ./input_state.btrc;
+import ./input_filters.btrc;
 import ./actions.btrc;
 import ./process.btrc;
 import ./plan.btrc;
 import ./gamepad.btrc;
+import ./x11_keys.btrc;
 
 struct SemuInputDevice SemuControllerDevices[SEMU_SUPERVISOR_DEVICES];  // GameController pads, one slot per connected controller
 unsigned int SemuControllerButtons[SEMU_SUPERVISOR_DEVICES];  // last polled button bits per pad
@@ -31,7 +33,13 @@ class SemuInputDevices {  // evdev gamepads and keyboards, opened into reusable 
         return ((bits[word] >> offset) & 1UL) != 0UL;
     }
 
-    class bool classify(int handle, int* gamepad, int* keyboard) {
+    class bool classify(int handle, int* gamepad, int* keyboard, int* vendor, int* product) {
+        struct input_id identity;
+        memset(&identity, 0, sizeof(identity));
+        unsigned long identityRequest = (unsigned long)EVIOCGID;
+        ioctl(handle, identityRequest, &identity);
+        *vendor = (int)identity.vendor;
+        *product = (int)identity.product;
         unsigned long eventBits[SEMU_BIT_WORDS];
         unsigned long keyBits[SEMU_BIT_WORDS];
         memset(eventBits, 0, sizeof(eventBits));
@@ -70,6 +78,7 @@ class SemuInputDevices {  // evdev gamepads and keyboards, opened into reusable 
         device->descriptor = handle;
         device->gamepad = gamepad;
         device->keyboard = keyboard;
+        device->source = gamepad != 0 ? SEMU_SOURCE_GAMEPAD : SEMU_SOURCE_KEYBOARD;
         memcpy(&device->quit_chord, &SemuSupervisorRuntime.quit_template, sizeof(struct SemuChordState));
         SemuInputDevices.remember(slot, path);
         if (slot == SemuSupervisorRuntime.device_count) { SemuSupervisorRuntime.device_count++; }
@@ -82,7 +91,7 @@ class SemuInputDevices {  // evdev gamepads and keyboards, opened into reusable 
         SemuDevicePaths[slot * 64] = 0;
     }
 
-    class void scan() {  // opens every gamepad and keyboard; safe to call repeatedly for hotplug
+    class void scan(SemuLaunchPlan launch) {  // opens every gamepad and keyboard; safe to call repeatedly for hotplug
         DIR* directory = opendir("/dev/input");
         if (directory == null) { return; }
         struct dirent* entry = readdir(directory);
@@ -98,8 +107,13 @@ class SemuInputDevices {  // evdev gamepads and keyboards, opened into reusable 
                     if (handle >= 0) {
                         int gamepad = 0;
                         int keyboard = 0;
-                        if (SemuInputDevices.classify(handle, &gamepad, &keyboard)) {
-                            SemuInputDevices.adopt(SemuInputDevices.freeSlot(), handle, gamepad, keyboard, path);
+                        int vendor = 0;
+                        int product = 0;
+                        if (SemuInputDevices.classify(handle, &gamepad, &keyboard, &vendor, &product)) {
+                            int slot = SemuInputDevices.freeSlot();
+                            SemuInputDevices.adopt(slot, handle, gamepad, keyboard, path);
+                            bool swapped = gamepad != 0 && SemuFaceLayout.swapped(vendor, product, launch.xpadLayoutIds);
+                            SemuSupervisorRuntime.devices[slot].face_swapped = swapped ? 1 : 0;
                         } else {
                             close(handle);
                         }
@@ -126,14 +140,14 @@ class SemuInputDevices {  // evdev gamepads and keyboards, opened into reusable 
 class SemuInputEvents {  // evdev events to Semu actions and the quit chord
     class bool held(struct SemuInputDevice* device, int left, int right) { return device->down[left] != 0 || device->down[right] != 0; }
 
-    class string keyboardAction(SemuLaunchPlan launch, struct SemuInputDevice* device, int code) {  // match the chord's key code and modifier set
+    class string keyboardAction(SemuLaunchPlan launch, struct SemuInputDevice* device, int code) {  // fires on the chord's own key with exactly its modifiers held
         for entry in launch.actionChords {
             int equals = SemuSupervisor.indexOf(entry, "=");
             if (equals < 0) { continue; }
             string action = entry.substring(0, equals);
             string chord = entry.substring(equals + 1, entry.len() - equals - 1);
             Vector<int> codes = SemuKeyNames.chord(chord);
-            if (codes.isEmpty() || codes.get(codes.size() - 1) != code) { continue; }
+            if (codes.isEmpty() || !SemuKeyNames.same(codes.get(codes.size() - 1), code)) { continue; }
             int leftControlKey = KEY_LEFTCTRL;
             int rightControlKey = KEY_RIGHTCTRL;
             int leftShiftKey = KEY_LEFTSHIFT;
@@ -207,7 +221,7 @@ class SemuInputEvents {  // evdev events to Semu actions and the quit chord
         if (value == previous || value == 0) { return; }
         int code = downward;
         if (horizontal) { code = value < 0 ? left : right; } else if (value < 0) { code = upward; }
-        SemuActionExecutor.execute(launch, SemuInputEvents.gamepadAction(launch, device, code), false);
+        SemuActionExecutor.execute(launch, SemuInputEvents.gamepadAction(launch, device, code), device->source);
     }
 
     class void drain(SemuLaunchPlan launch, struct SemuInputDevice* device) {
@@ -236,9 +250,10 @@ class SemuInputEvents {  // evdev events to Semu actions and the quit chord
         }
     }
 
-    class bool key(SemuLaunchPlan launch, struct SemuInputDevice* device, int code, int value, long long now) {  // true once the quit chord completes
+    class bool key(SemuLaunchPlan launch, struct SemuInputDevice* device, int pressedCode, int value, long long now) {  // true once the quit chord completes
         int keyLimit = SEMU_SUPERVISOR_KEYS;
-        if (code < 0 || code >= keyLimit) { return false; }
+        if (pressedCode < 0 || pressedCode >= keyLimit) { return false; }
+        int code = device->face_swapped != 0 ? SemuFaceLayout.positional(pressedCode) : pressedCode;
         bool press = value != 0 && device->down[code] == 0;
         device->down[code] = value != 0 ? 1 : 0;
         if (device->gamepad != 0) {
@@ -246,11 +261,21 @@ class SemuInputEvents {  // evdev events to Semu actions and the quit chord
                 SemuSupervisorRuntime.quit = 1;
                 return true;
             }
-            if (press) { SemuActionExecutor.execute(launch, SemuInputEvents.gamepadAction(launch, device, code), false); }
+            if (press) { SemuActionExecutor.execute(launch, SemuInputEvents.gamepadAction(launch, device, code), device->source); }
         } else if (device->keyboard != 0 && press) {
-            SemuActionExecutor.execute(launch, SemuInputEvents.keyboardAction(launch, device, code), true);
+            if (device->source == SEMU_SOURCE_X11 && SemuKeyEcho.consume(code, now)) { return false; }  // our own typing, back through X
+            SemuActionExecutor.execute(launch, SemuInputEvents.keyboardAction(launch, device, code), device->source);
         }
         return false;
+    }
+
+    class void keys(SemuLaunchPlan launch) {  // drains the key source: the X display's keyboard as one pseudo-device
+        int code = 0;
+        int pressed = 0;
+        long long now = SemuClock.milliseconds();
+        while (SemuX11KeyListener.next(&SemuSupervisorRuntime.key_source, &code, &pressed)) {
+            if (SemuInputEvents.key(launch, &SemuSupervisorRuntime.x11_keyboard, code, pressed, now)) { return; }
+        }
     }
 }
 
@@ -333,15 +358,27 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
         bool chord = SemuQuitChord.configure(&SemuSupervisorRuntime.quit_template, launch.quitButtons, launch.chordWindowMs);
         if (!chord) { Console.error("semu: the quit chord is not usable: " + SemuQuitChord.describe(launch.quitButtons)); }
         SemuActionJournal.reset(launch);
-        SemuInputDevices.scan();
+        SemuInputDevices.scan(launch);
+        SemuSupervisor.keySource();
+        SemuX11KeyListener.connect(&SemuSupervisorRuntime.key_source);
         SemuGameControllers.reset();
         bool anyPad = SemuGameControllers.poll(launch) > 0;
         for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) { if (SemuSupervisorRuntime.devices[index].gamepad != 0) { anyPad = true; } }
         if (!anyPad) { Console.error("semu: no gamepad found for the " + SemuQuitChord.describe(launch.quitButtons) + " quit chord"); }
     }
 
-    class void pollDevices(SemuLaunchPlan launch) {  // one bounded wait for input, then drain it
-        struct pollfd polls[SEMU_SUPERVISOR_DEVICES];
+    class void keySource() {  // the X keyboard pseudo-device and an idle key source
+        struct SemuInputDevice* keyboard = &SemuSupervisorRuntime.x11_keyboard;
+        memset(keyboard, 0, sizeof(struct SemuInputDevice));
+        keyboard->descriptor = -1;
+        keyboard->keyboard = 1;
+        keyboard->source = SEMU_SOURCE_X11;
+        memset(&SemuSupervisorRuntime.key_source, 0, sizeof(struct SemuKeySource));
+        SemuSupervisorRuntime.key_source.descriptor = -1;
+    }
+
+    class void pollDevices(SemuLaunchPlan launch) {  // one bounded wait for evdev devices and the key source, then drain them
+        struct pollfd polls[SEMU_SUPERVISOR_DEVICES + 1];
         int count = SemuSupervisorRuntime.device_count;
         int open = 0;
         for (int index = 0; index < count; index++) {
@@ -350,8 +387,14 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
             polls[index].revents = 0;
             if (polls[index].fd >= 0) { open++; }
         }
+        struct SemuKeySource* source = &SemuSupervisorRuntime.key_source;
+        bool keys = SemuX11KeyListener.active(source);
+        polls[count].fd = keys ? source->descriptor : -1;
+        polls[count].events = POLLIN;
+        polls[count].revents = 0;
+        if (keys) { open++; }
         int ready = 0;
-        nfds_t total = (nfds_t)count;
+        nfds_t total = (nfds_t)(count + 1);
         if (open > 0) { ready = poll(polls, total, SEMU_POLL_MS); } else { usleep(SEMU_POLL_MS * 1000); }
         if (ready <= 0) { return; }
         for (int index = 0; index < count; index++) {
@@ -361,12 +404,16 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
             if ((returned & (int)POLLIN) != 0) { SemuInputEvents.drain(launch, device); }
             if ((returned & ((int)POLLERR | (int)POLLHUP)) != 0) { SemuInputDevices.vacate(index); }
         }
+        int sourceReturned = (int)polls[count].revents;
+        if (keys && (sourceReturned & (int)POLLIN) != 0) { SemuInputEvents.keys(launch); }
+        if (keys && (sourceReturned & ((int)POLLERR | (int)POLLHUP)) != 0) { SemuX11KeyListener.disconnect(source); }  // the next rescan reconnects
     }
 
-    class void end() {  // closes every device and the virtual keyboard
+    class void end() {  // closes every device, the key source and the virtual keyboard
         for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) {
             if (SemuSupervisorRuntime.devices[index].descriptor >= 0) { SemuInputDevices.vacate(index); }
         }
+        SemuX11KeyListener.disconnect(&SemuSupervisorRuntime.key_source);
         SemuVirtualKeyboard.removeDevice();
     }
 
@@ -390,7 +437,10 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
             }
             ticks++;
             int rescanTicks = SEMU_SUPERVISOR_RESCAN_TICKS;
-            if (ticks % rescanTicks == 0) { SemuInputDevices.scan(); }
+            if (ticks % rescanTicks == 0) {
+                SemuInputDevices.scan(launch);
+                SemuX11KeyListener.connect(&SemuSupervisorRuntime.key_source);  // a no-op while connected or without DISPLAY
+            }
             SemuSupervisor.pollDevices(launch);
             if (SemuSupervisorRuntime.quit == 0) { SemuGameControllers.poll(launch); }
             if (SemuSupervisorRuntime.quit != 0) {

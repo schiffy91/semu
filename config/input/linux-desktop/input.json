@@ -171,6 +171,10 @@
       "dpad_left": "state.prev",
       "dpad_right": "state.next"
     },
-    "doc": "The plain-controller paradigm: hold Select and press a button. Start+Select stays the quit chord. On the Deck the trackpad radial emits the keyboard chords instead; both paths produce the same actions."
+    "xpad_layout_ids": [
+      "28de:11ff",
+      "045e:*"
+    ],
+    "doc": "The plain-controller paradigm: hold Select and press a button. Start+Select stays the quit chord. Button names are positions (north is the top face button); pads listed in xpad_layout_ids (vendor:product, * for any product) are xpad-ordered and report their top button as BTN_WEST, so the supervisor swaps BTN_NORTH and BTN_WEST for them: Steam's virtual pad (28de:11ff) and Microsoft pads. On the Deck the trackpad radial emits the keyboard chords instead, which reach the supervisor as X raw keys in Game Mode; both paths produce the same actions."
   }
 }

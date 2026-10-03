@@ -1,0 +1,100 @@
+// Which input fires: the pad's face-button layout, the echo of Semu's own typing, and one
+// execution per action however many sources deliver the same chord.
+
+#include <stdio.h>
+#include <string.h>
+#include "semu_evdev.h"
+
+import Library.Strings;
+import Library.Vector;
+import ./input_state.btrc;
+
+class SemuFaceLayout {  // xpad-ordered pads report their top face button as BTN_WEST
+    class int hex(string text) {  // four lower- or upper-case hex digits; -1 otherwise
+        if (text.len() != 4) { return -1; }
+        int value = 0;
+        for (int index = 0; index < 4; index++) {
+            char digit = text.charAt(index);
+            int nibble = -1;
+            if (digit >= '0' && digit <= '9') { nibble = digit - '0'; }
+            if (digit >= 'a' && digit <= 'f') { nibble = digit - 'a' + 10; }
+            if (digit >= 'A' && digit <= 'F') { nibble = digit - 'A' + 10; }
+            if (nibble < 0) { return -1; }
+            value = value * 16 + nibble;
+        }
+        return value;
+    }
+
+    class bool matches(string identity, int vendor, int product) {  // "28de:11ff" exactly, or "045e:*" for every product
+        if (identity.len() < 6 || identity.charAt(4) != ':') { return false; }
+        if (SemuFaceLayout.hex(identity.substring(0, 4)) != vendor) { return false; }
+        string model = identity.substring(5, identity.len() - 5);
+        return model.equals("*") || SemuFaceLayout.hex(model) == product;
+    }
+
+    class bool swapped(int vendor, int product, Vector<string> identities) {
+        for identity in identities {
+            if (SemuFaceLayout.matches(identity, vendor, product)) { return true; }
+        }
+        return false;
+    }
+
+    class int positional(int code) {  // the swapped pad's code as the button's position names it
+        int north = BTN_NORTH;
+        int west = BTN_WEST;
+        if (code == north) { return west; }
+        if (code == west) { return north; }
+        return code;
+    }
+}
+
+class SemuKeyEcho {  // Semu's own uinput typing comes back through Xwayland as X keys
+    class void expect(Vector<int> codes, long long deadline) {  // each typed code is swallowed once until the deadline
+        for code in codes {
+            int slot = SemuSupervisorRuntime.echo_count;
+            for (int index = 0; index < SemuSupervisorRuntime.echo_count; index++) {
+                if (SemuSupervisorRuntime.echo_codes[index] == code) { slot = index; }
+            }
+            if (slot >= SEMU_ECHO_CODES) { continue; }
+            SemuSupervisorRuntime.echo_codes[slot] = code;
+            SemuSupervisorRuntime.echo_deadlines[slot] = deadline;
+            if (slot == SemuSupervisorRuntime.echo_count) { SemuSupervisorRuntime.echo_count++; }
+        }
+    }
+
+    class bool consume(int code, long long now) {  // true when this press is the echo of our typing
+        for (int index = 0; index < SemuSupervisorRuntime.echo_count; index++) {
+            if (SemuSupervisorRuntime.echo_codes[index] != code) { continue; }
+            bool current = now <= SemuSupervisorRuntime.echo_deadlines[index];
+            int last = SemuSupervisorRuntime.echo_count - 1;
+            SemuSupervisorRuntime.echo_codes[index] = SemuSupervisorRuntime.echo_codes[last];
+            SemuSupervisorRuntime.echo_deadlines[index] = SemuSupervisorRuntime.echo_deadlines[last];
+            SemuSupervisorRuntime.echo_count = last;
+            return current;
+        }
+        return false;
+    }
+}
+
+class SemuActionDedupe {  // one chord seen by evdev and X at once executes once
+    class int find(string action) {
+        for (int index = 0; index < SemuSupervisorRuntime.dedupe_count; index++) {
+            if (strcmp(SemuSupervisorRuntime.dedupe_actions + index * SEMU_DEDUPE_ACTION_BYTES, action) == 0) { return index; }
+        }
+        return -1;
+    }
+
+    class bool accept(string action, int source, long long now) {  // false for the same action from another source within the window
+        int index = SemuActionDedupe.find(action);
+        if (index >= 0 && SemuSupervisorRuntime.dedupe_sources[index] != source && now - SemuSupervisorRuntime.dedupe_ms[index] < (long long)SEMU_DEDUPE_WINDOW_MS) { return false; }
+        if (index < 0) {
+            if (SemuSupervisorRuntime.dedupe_count >= SEMU_DEDUPE_ACTIONS || action.len() >= SEMU_DEDUPE_ACTION_BYTES) { return true; }
+            index = SemuSupervisorRuntime.dedupe_count;
+            SemuSupervisorRuntime.dedupe_count++;
+            snprintf(SemuSupervisorRuntime.dedupe_actions + index * SEMU_DEDUPE_ACTION_BYTES, (size_t)SEMU_DEDUPE_ACTION_BYTES, "%s", action);
+        }
+        SemuSupervisorRuntime.dedupe_sources[index] = source;
+        SemuSupervisorRuntime.dedupe_ms[index] = now;
+        return true;
+    }
+}

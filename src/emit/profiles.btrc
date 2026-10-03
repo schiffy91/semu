@@ -7,6 +7,7 @@ import ../lib/json.btrc;
 import ../lib/paths.btrc;
 import ../model.btrc;
 import ../resolve.btrc;
+import ./key_collisions.btrc;
 
 class SemuChords {
     class Vector<string> known() { return ["Ctrl", "Alt", "Shift", "Meta"]; }
@@ -92,6 +93,18 @@ class SemuChords {
         if (mode.equals("joined")) { return SemuChords.joined(encoding, chord); }
         if (mode.equals("sum")) { return SemuChords.sum(encoding, chord); }
         return "";
+    }
+
+    class Vector<string> keys(JSONValue inputDefinition, JSONValue encoding) {  // every config/input chord as this encoding writes it
+        Vector<string> result = [];
+        JSONValue actions = inputDefinition == null ? null : inputDefinition.get("actions");
+        if (actions == null || !actions.isObject()) { return result; }
+        for action in actions.keys().sorted() {
+            string chord = SemuJson.textAt(actions.get(action), "chord");
+            string compiled = chord.isEmpty() ? "" : SemuChords.compile(encoding, chord);
+            if (!compiled.isEmpty() && !result.contains(compiled)) { result.push(compiled); }
+        }
+        return result;
     }
 }
 
@@ -220,13 +233,34 @@ class SemuProfileContext {
         return bindings.render(format);
     }
 
-    public SemuBindings lineGroups(SemuBindings bindings) {
+    public string collisions(JSONValue groups, JSONValue spec, string format) {  // the emulator's vendored defaults that share a key with a Semu chord
+        JSONValue encoding = SemuJson.get(groups.get(SemuJson.textAt(spec, "chord_encoding_of")), "chord_encoding");
+        Vector<string> chordKeys = SemuChords.keys(self.plan.input == null ? null : self.plan.input.definition, encoding);
+        Vector<string> excluded = SemuKeyCollisions.settings(SemuJson.get(self.emulator.profile, SemuJson.textAt(spec, "except_rows")));
+        JSONValue rows = SemuJson.get(self.emulator.profile, SemuJson.textAt(spec, "rows"));
+        if (rows == null || !rows.isArray() || format.isEmpty() || encoding == null || !encoding.isObject()) {
+            self.diagnostics.add(self.emulator.profileFile, "compiler.line_groups", "a collisions group needs rows, a format and chord_encoding_of");
+            return "";
+        }
+        return SemuKeyCollisions.lines(rows, chordKeys, excluded, SemuJson.strings(spec.get("always")), format).join("\n");
+    }
+
+    public SemuBindings lineGroups(SemuBindings bindings) {  // a group may be limited to "platforms" and give "formats" per platform
         SemuBindings result = SemuBindings();
         JSONValue groups = SemuJson.get(self.emulator.profile, "compiler.line_groups");
         if (!groups.isObject()) { return result; }
         for name in groups.keys().sorted() {
             JSONValue spec = groups.get(name);
-            string format = SemuJson.textAt(spec, "format");
+            if (spec.has("platforms") && !SemuJson.strings(spec.get("platforms")).contains(self.plan.platform)) {
+                result.put(name, "");
+                continue;
+            }
+            JSONValue platformFormat = SemuJson.get(spec, "formats." + self.plan.platform);
+            string format = platformFormat != null && platformFormat.isString() ? platformFormat.asString() : SemuJson.textAt(spec, "format");
+            if (SemuJson.textAt(spec, "kind").equals("collisions")) {
+                result.put(name, self.collisions(groups, spec, format));
+                continue;
+            }
             JSONValue rows = SemuJson.get(self.emulator.profile, SemuJson.textAt(spec, "rows"));
             Vector<string> lines = [];
             for prefix in SemuJson.strings(spec.get("prefix")) { lines.push(bindings.render(prefix)); }
