@@ -378,7 +378,8 @@ preset parameter chains. This milestone computes the dimensions from those
 files, reviews them without any emulator, and keeps the emulator only for the
 final visual check. Already in place from the earlier attempt and kept: the
 `image` rectangle in the renderer, emitter and fast preview; the synthetic
-core's flat-card and control-file modes; the gallery's verify mode.
+core's flat-card and control-file modes (removed 2026-10-03 with the
+RetroArch calibration path, G8); the gallery's verify mode.
 
 **M11.1 Preset resolution.** `tools/bezel-dimensions.py` resolves each
 package's upstream preset through its `#reference` chain (Duimon or Soqueroeu
