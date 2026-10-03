@@ -40,8 +40,8 @@ render() {  # SYSTEM VARIANT WIDTH HEIGHT OUT.ppm [CARD LIT]: a lit card measure
     RENDER_HOST_CARD="${6:-}" RENDER_HOST_LIT="${7:-}" RENDER_HOST_ASPECT="$wide" "$host" "$3" "$4" "$5" ) 2>>"$work/render.log"
 }
 
-expected() {  # PACKAGE SCREEN WIDTH HEIGHT CANVAS_FIT ASPECT: the game fitted at ASPECT inside the picture rectangle, in output pixels, as W H X Y
-  jq -r --argjson screen "$2" '[.canvas.w, .canvas.h, .screens[$screen].image.x, .screens[$screen].image.y, .screens[$screen].image.w, .screens[$screen].image.h, ([.screens[] | .tube | "\(.x) \(.y) \(.w) \(.h)"] | join(" "))] | @tsv' \
+expected() {  # PACKAGE SCREEN WIDTH HEIGHT CANVAS_FIT ASPECT: the game fitted at ASPECT inside the picture rectangle (else the opening less its inset), in output pixels, as W H X Y
+  jq -r --argjson screen "$2" '(.screens[$screen] | .image // (.tube as $tube | ((.inset // 0) * 0.45 * ([$tube.w, $tube.h] | min)) as $inset | {x: ($tube.x + $inset), y: ($tube.y + $inset), w: ($tube.w - 2 * $inset), h: ($tube.h - 2 * $inset)})) as $picture | [.canvas.w, .canvas.h, $picture.x, $picture.y, $picture.w, $picture.h, ([.screens[] | .tube | "\(.x) \(.y) \(.w) \(.h)"] | join(" "))] | @tsv' \
     "$root/config/bezels/$1/bezel.json" | awk -v width="$3" -v height="$4" -v fit="$5" -v aspect="$6" -F'\t' '{
       split($7, tubes, " "); canvasWidth = $1; canvasHeight = $2
       scale = width / canvasWidth < height / canvasHeight ? width / canvasWidth : height / canvasHeight
@@ -77,7 +77,7 @@ for system in "${systems[@]}"; do
       fit="$(environment "$system" "$variant" | sed -n 's/^SEMU_RENDER_CANVAS_FIT=//p')"
       count="$(jq '.screens | length' "$root/config/bezels/$package/bezel.json")"
       for (( screen = 0; screen < count; screen++ )); do
-        jq -e --argjson screen "$screen" '.screens[$screen].image.w > 0' "$root/config/bezels/$package/bezel.json" >/dev/null 2>&1 || continue
+        jq -e --argjson screen "$screen" '(.screens[$screen] | .image // .tube).w > 0' "$root/config/bezels/$package/bezel.json" >/dev/null 2>&1 || continue
         render "$system" "$variant" "$width" "$height" "$work/white.ppm" white "$screen"
         render "$system" "$variant" "$width" "$height" "$work/black.ppm" black "$screen"
         read -r measuredWidth measuredHeight measuredX measuredY < <(measure "$work/white.ppm" "$work/black.ppm")
