@@ -177,7 +177,19 @@ function viewCanvasRect() {  // the canvas on the view, bottom-up like a GL fram
   return { x: float(state.ox), y: float(canvas.height - state.oy - c.h * state.zoom), width: float(c.w * state.zoom), height: float(c.h * state.zoom) };
 }
 function previewVariant() { return BezelRenderer.Environment.variant(state.current, state.preview, id => id === "ambient" ? !!(state.current.ambient && state.current.ambient.file) : !!(layerById(id) && layerById(id).file)); }
+function isComputed() { return !!state.current && ["main_right", "main_left", "side_by_side", "stacked"].includes(state.current.layout); }  // a DS/3DS layout the renderer works out from the screen itself
+const geometryCache = new Map();
+function computedGeometry() {  // RendererLayout.computed on the target screen, asked of the editor server (the renderer's own code); null until it answers
+  const variant = previewVariant(), frame = variant.frame;
+  const query = new URLSearchParams({ layout: variant.layout, width: state.target.width, height: state.target.height, native: state.preview.screens.map(native => `${native.w}x${native.h}`).join(","),
+    frame: frame.set ? frame.width : 0, around: frame.aroundGame ? 1 : 0, gap: state.gap === undefined ? (state.preview.gap || 0) : state.gap }).toString();
+  if (geometryCache.has(query)) return geometryCache.get(query);
+  geometryCache.set(query, null);
+  fetch(`/api/geometry?${query}`).then(response => response.json()).then(result => { geometryCache.set(query, result.lanes ? result : null); if (result.error) status("layout: " + result.error); compositeKey = ""; if (isComputed()) buildProps(); draw(); }, error => status("layout: " + error));
+  return null;
+}
 function targetScreenRect() {  // the target screen on the view, top-down: where the renderer's framing puts it around the canvas
+  if (isComputed()) { const [left, top] = toScreen(0, 0); return { x: left, y: top, w: state.current.canvas.w * state.zoom, h: state.current.canvas.h * state.zoom }; }  // the layout is the whole screen
   const onTarget = BezelRenderer.Geometry.canvasOn(previewVariant(), state.preview, state.target.width, state.target.height), view = viewCanvasRect();
   if (!(onTarget.width > 0)) return null;
   const scale = view.width / onTarget.width, width = state.target.width * scale, height = state.target.height * scale;
@@ -197,7 +209,7 @@ function setScreenRect(screen, key, r) { if (key === "tube" || key === "image") 
 function record() { state.past.push(clone(state.current)); if (state.past.length > 200) state.past.shift(); state.future = []; state.dirty = true; updateHistoryButtons(); }
 function undo() { if (!state.past.length) return; state.future.push(clone(state.current)); state.current = state.past.pop(); state.dirty = true; afterHistory(); }
 function redo() { if (!state.future.length) return; state.past.push(clone(state.current)); state.current = state.future.pop(); state.dirty = true; afterHistory(); }
-function afterHistory() { if (state.selected && state.selected.kind === "screen" && !state.current.screens[state.selected.screen]) state.selected = null; buildLayers(); buildProps(); draw(); updateHistoryButtons(); }
+function afterHistory() { if (isComputed()) state.current.canvas = { w: state.target.width, h: state.target.height }; if (state.selected && state.selected.kind === "screen" && !state.current.screens[state.selected.screen]) state.selected = null; buildLayers(); buildProps(); draw(); updateHistoryButtons(); }
 function updateHistoryButtons() { document.getElementById("undo").disabled = !state.past.length; document.getElementById("redo").disabled = !state.future.length; }
 
 // ---- shapes
@@ -280,6 +292,7 @@ async function open(id) {
   if (state.dirty && !confirm("Discard unsaved changes?")) { document.getElementById("package").value = state.current.id; return; }
   const source = state.packages.find(p => p.id === id);
   state.current = clone(source);
+  if (isComputed()) { state.current.layers = []; state.current.canvas = { w: state.target.width, h: state.target.height }; }  // no plates and no canvas: the view is the target screen, never saved
   for (const layer of state.current.layers) if (layer.id === "screens") layer.id = CUTOUTS;
   state.original = clone(state.current);
   state.selected = null; state.dirty = false; state.images = {}; state.thumbs = {}; state.past = []; state.future = [];
@@ -321,6 +334,7 @@ function thumbnail(id, image) {  // from the stored values, as the plate is draw
 function buildLayers() {
   const root = document.getElementById("layers");
   root.innerHTML = "";
+  if (isComputed()) root.innerHTML = `<div class="muted">A computed layout has no plates: the renderer lays both screens out on the screen it runs on, with the background plate behind them and a drawn frame round each.</div>`;
   for (const layer of layersTopFirst()) {
     const row = document.createElement("div");
     const active = state.selected && ((state.selected.kind === "layer" && state.selected.id === layer.id) || (state.selected.kind === "screen" && layer.id === CUTOUTS));
@@ -454,10 +468,45 @@ function rectFields(rect) {
   frag.appendChild(field("Size", numberInput("W", rect.w, v => { rect.w = Math.round(v); }), numberInput("H", rect.h, v => { rect.h = Math.round(v); })));
   return frag;
 }
+function buildComputedProps(root) {  // a computed layout's knobs: the drawn frame, the gap (a setting, previewed here), each screen's corners and edge colour
+  const pkg = state.current, group = document.createElement("div"); group.className = "group";
+  group.innerHTML = `<h3>Layout <span class="muted">${pkg.layout.replace(/_/g, " ")}</span></h3><div class="muted file">${(pkg.doc && pkg.doc.layout) || ""}</div>`;
+  const geometry = computedGeometry();
+  if (geometry) {  // what the renderer works out on the target screen
+    const steps = geometry.lanes.map((lane, index) => { const native = state.preview.screens[index]; return `${lane.output.width}×${lane.output.height} (${Math.round(lane.output.height / native.h * 100) / 100}x)`; });
+    const note = document.createElement("div"); note.className = "muted"; note.style.margin = "0 0 8px";
+    note.textContent = `On ${state.target.width}×${state.target.height}: ${steps.join(" and ")}, frame ${geometry.frame} px.`;
+    group.appendChild(note);
+  }
+  if (pkg.frame) {
+    const frame = pkg.frame, swatches = document.createElement("div"); swatches.className = "swatches";
+    group.appendChild(field("Frame", numberInput("%", Math.round((frame.width || 0) * 1000) / 10, value => { frame.width = Math.max(0, Math.min(25, value)) / 100; }, 0.1, 'min="0" title="the frame width, a share of the screen height; it shrinks to the room the screens leave"')));
+    swatches.appendChild(swatch("Colour", frame.color || "#141414", value => { frame.color = value; }));
+    group.appendChild(field("", swatches));
+  }
+  const gap = document.createElement("label"); gap.className = "in"; gap.title = "visual.dual_screen_gap, a share of the screen width: a setting, previewed here and not saved with the package";
+  gap.innerHTML = `<span>%</span><input type="number" step="0.1" min="0" value="${Math.round((state.gap === undefined ? state.preview.gap || 0 : state.gap) * 10000) / 100}">`;
+  gap.querySelector("input").addEventListener("change", event => { const value = parseFloat(event.target.value); if (Number.isFinite(value)) { state.gap = Math.max(0, Math.min(25, value)) / 100; buildProps(); draw(); } });
+  group.appendChild(field("Gap", gap));
+  root.appendChild(group);
+  pkg.screens.forEach((screen, index) => {
+    const native = state.preview.screens[index] || state.preview.screens[0], box = document.createElement("div"); box.className = "group";
+    box.innerHTML = `<h3>Screen <span class="muted">${screen.id} · ${native.w}×${native.h}</span></h3>`;
+    const shape = screen.shape = screen.shape || { kind: "none" }, kind = document.createElement("label"); kind.className = "in";
+    kind.innerHTML = `<select><option value="none" ${shape.kind === "none" ? "selected" : ""}>square</option><option value="rounded" ${shape.kind === "rounded" ? "selected" : ""}>round</option><option value="squircle" ${shape.kind === "squircle" ? "selected" : ""}>squircle</option></select>`;
+    kind.querySelector("select").addEventListener("change", event => { record(); shape.kind = event.target.value; shape.radius = shape.radius || 0.04; shape.exponent = shape.exponent || 4; buildProps(); draw(); });
+    box.appendChild(field("Corners", kind, numberInput("r%", Math.round((shape.radius || 0) * 1000) / 10, value => { shape.radius = Math.max(0, Math.min(50, value)) / 100; if (shape.kind === "none") shape.kind = "rounded"; }, 0.1, 'min="0" title="corner radius, a share of the screen\'s short side; the frame follows it"')));
+    const swatches = document.createElement("div"); swatches.className = "swatches";
+    swatches.appendChild(swatch("Edge", screen.surround || "#000000", value => { screen.surround = value; }));
+    box.appendChild(field("Colours", swatches));
+    root.appendChild(box);
+  });
+}
 function aspectText(aspect) { for (const [w, h] of [[4, 3], [16, 9], [3, 2], [10, 9], [5, 3], [16, 10], [8, 7]]) if (Math.abs(aspect - w / h) < 0.004) return `${w}:${h}`; return aspect.toFixed(4); }
 function buildProps() {
   const root = document.getElementById("props");
   root.innerHTML = "";
+  if (isComputed()) { buildComputedProps(root); return; }
   const s = state.selected;
   if (!s) { root.innerHTML = `<div class="muted">Select a layer, or click a cutout on the canvas.</div>`; return; }
   if (s.kind === "layer") {
@@ -547,7 +596,7 @@ function buildProps() {
 
 // ---- view
 function captureFit() {  // the renderer's framing of the capture screen: contain, cover keeping every opening, or the integer placement
-  const plate = state.current.canvas, placed = BezelRenderer.Geometry.canvasOn(previewVariant(), state.preview, canvas.width, canvas.height);
+  const plate = state.current.canvas, placed = isComputed() ? { x: 0, y: 0, width: canvas.width, height: canvas.height } : BezelRenderer.Geometry.canvasOn(previewVariant(), state.preview, canvas.width, canvas.height);  // a computed layout is the whole screen
   state.productionCanvas = placed;
   state.zoom = placed.width / plate.w; state.ox = placed.x; state.oy = canvas.height - placed.y - placed.height;
   console.log(`semu-capture canvas ${Math.round(placed.x)},${Math.round(state.oy)},${Math.round(placed.width)},${Math.round(placed.height)}`);  // tests/visual/editor-sync.sh compares it with the renderer's
@@ -635,16 +684,20 @@ function frameKey(index) {  // the native frame's texture, made on first use
 }
 function targetScreenOnView() { const rect = targetScreenRect(); return rect ? { x: rect.x, y: canvas.height - rect.y - rect.h, width: rect.w, height: rect.h } : { x: 0, y: 0, width: canvas.width, height: canvas.height }; }
 function previewScene(cutouts) {  // what RendererCompositor.game gets: the variant, its lanes on the view, the frames and glass, the target screen
-  const variant = previewVariant(), canvasRect = viewCanvasRect(), lanes = BezelRenderer.Geometry.lanes(variant, state.preview, canvasRect);
+  const variant = previewVariant(), canvasRect = viewCanvasRect(), computed = isComputed() ? computedGeometry() : null, scale = canvasRect.width / state.current.canvas.w;
+  const onView = rect => ({ x: canvasRect.x + rect.x * scale, y: canvasRect.y + rect.y * scale, width: rect.width * scale, height: rect.height * scale });  // screen pixels to the view: identical in capture mode
+  const lanes = isComputed() ? (computed ? computed.lanes.map((lane, index) => ({ output: onView(lane.output), tube: onView(lane.tube), native: state.preview.screens[index] })) : []) : BezelRenderer.Geometry.lanes(variant, state.preview, canvasRect);
+  const framed = variant.frame.set ? (variant.frame.aroundGame ? 2 : 1) : 0, screen = targetScreenOnView();  // geometry->framed: a drawn frame round each opening, or round the game
+  const frameWidth = !framed ? 0 : (isComputed() ? (computed ? computed.frame : 0) : Math.trunc(Math.fround(Math.fround(variant.frame.width * state.target.height) + 0.5))) * screen.width / state.target.width;  // in screen pixels, then on the view
   return {
-    width: canvas.width, height: canvas.height, clear: CAPTURE ? [0, 0, 0] : [17 / 255, 17 / 255, 19 / 255], screen: targetScreenOnView(), canvas: canvasRect, variant, lanes, cutouts,
+    width: canvas.width, height: canvas.height, clear: CAPTURE ? [0, 0, 0] : [17 / 255, 17 / 255, 19 / 255], screen, canvas: isComputed() ? { x: 0, y: 0, width: 0, height: 0 } : canvasRect, variant, lanes, cutouts,
     frames: lanes.map((lane, index) => frameKey(index)), glass: variant.screens.map(screen => screen && screen.glass && compositor.textures.has(`glass:${screen.id}`) ? `glass:${screen.id}` : null),
-    background: variant.background && compositor.textures.has("background") ? "background" : null, framed: 0, frameWidth: 0,
+    background: variant.background && compositor.textures.has("background") ? "background" : null, framed, frameWidth,
   };
 }
 function composeView() {  // the frame on the view; with X-ray the cutouts fade over the frame without them
   const cutouts = cutoutsLayer(), alpha = cutouts && cutouts.visible === false ? 0 : state.cutoutAlpha;
-  const key = JSON.stringify([state.current, state.zoom, state.ox, state.oy, canvas.width, canvas.height, state.preview, state.target, state.showGame, alpha, [...compositor.textures.keys()]]);
+  const key = JSON.stringify([state.current, state.zoom, state.ox, state.oy, canvas.width, canvas.height, state.preview, state.target, state.showGame, state.gap, alpha, [...compositor.textures.keys()]]);
   if (key === compositeKey) return composite;
   if (composite.width !== canvas.width || composite.height !== canvas.height) { composite.width = canvas.width; composite.height = canvas.height; }
   const context = composite.getContext("2d");
@@ -719,7 +772,7 @@ function draw() {
     }
   });
   const [px, py] = state.cursor ? toPlate(state.cursor[0], state.cursor[1]) : [0, 0];
-  hud.textContent = `${c.w}×${c.h} · canvas ${state.current.canvas_layer} · ${Math.floor(px)}, ${Math.floor(py)}${state.dirty ? " · unsaved" : ""}`;
+  hud.textContent = `${c.w}×${c.h} · ${isComputed() ? "computed " + state.current.layout.replace(/_/g, " ") : "canvas " + state.current.canvas_layer} · ${Math.floor(px)}, ${Math.floor(py)}${state.dirty ? " · unsaved" : ""}`;
   document.getElementById("zoom-label").textContent = state.zoom >= 1 ? `${state.zoom * 100}%` : `${Math.round(state.zoom * 1000) / 10}%`;
 }
 
@@ -938,7 +991,7 @@ document.getElementById("preview").addEventListener("change", event => { chooseP
 const targetSelect = document.getElementById("target");
 targetSelect.innerHTML = TARGETS.map(([width, height, label]) => `<option value="${width}x${height}">${label}</option>`).join("");
 targetSelect.value = `${state.target.width}x${state.target.height}`;
-targetSelect.addEventListener("change", () => { const [width, height] = targetSelect.value.split("x").map(Number); state.target = { width, height }; try { localStorage.setItem("semu-bezel-target", targetSelect.value); } catch (error) {} if (state.fitted) fit(); else draw(); });
+targetSelect.addEventListener("change", () => { const [width, height] = targetSelect.value.split("x").map(Number); state.target = { width, height }; if (isComputed()) state.current.canvas = { w: width, h: height }; try { localStorage.setItem("semu-bezel-target", targetSelect.value); } catch (error) {} if (state.fitted) fit(); else draw(); });
 document.getElementById("fit").addEventListener("click", fit);
 document.getElementById("zoom-in").addEventListener("click", () => zoomTo(ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(state.zoom) + 1)], canvas.width / 2, canvas.height / 2));
 document.getElementById("zoom-out").addEventListener("click", () => zoomTo(ZOOMS[Math.max(0, ZOOMS.indexOf(state.zoom) - 1)], canvas.width / 2, canvas.height / 2));
@@ -953,6 +1006,7 @@ async function save() {
     id: state.current.id, canvas_layer: state.current.canvas_layer,
     layers: state.current.layers.map(l => ({ id: l.id, visible: l.visible !== false, order: l.order, rect: l.rect, blend: l.blend || "normal", opacity: l.opacity === undefined ? 1 : l.opacity })),
     screens: state.current.screens.map(s => ({ id: s.id, tube: s.tube, image: s.image, surround: s.surround, shape: s.shape || null, ring: s.ring ? { inner: s.ring.inner, outer: s.ring.outer, inner_radius: s.ring.inner_radius || 0, outer_radius: s.ring.outer_radius || 0, color: s.ring.color || "#202020" } : null, reflection: s.reflection || null })),
+    frame: state.current.frame ? { width: state.current.frame.width, color: state.current.frame.color } : null,  // a computed layout's drawn frame
   };
   const response = await fetch("/api/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   const result = await response.json().catch(() => ({ error: "bad response" }));

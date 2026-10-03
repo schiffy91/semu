@@ -15,6 +15,7 @@ import ../lib/paths.btrc;
 import ./preset.btrc;
 import ./placement.btrc;
 import ./package.btrc;
+import ../renderer/renderer_layout.btrc;
 
 class BezelEditor {
     public BezelRepository repository;
@@ -62,6 +63,7 @@ class BezelEditor {
         if (request.isPost() && path.equals("/api/save")) { return self.save(request.body); }
         if (path.equals("/")) { return FileSystem.isFile(self.pagePath) ? HTTPResponse.html(FileSystem.readText(self.pagePath)) : HTTPResponse.error(500, "no editor page at " + self.pagePath); }
         if (path.equals("/api/packages")) { return HTTPResponse.json(self.packages().stringify()); }
+        if (path.equals("/api/geometry")) { return HTTPResponse.json(BezelComputedLayout.lanes(request.queryParams()).stringify()); }
         if (path.startsWith("/layer/")) { return self.layer(path.substring(7, path.len() - 7)); }
         if (path.equals("/bezel-renderer.js")) { return self.script("bezel-renderer.js"); }
         if (path.equals("/render/compositor.frag") || path.equals("/render/compositor.vert")) { return self.compositor(path.substring(8, path.len() - 8)); }
@@ -114,7 +116,8 @@ class BezelEditor {
         JSONValue result = JSONValue.makeArray();
         for id in self.repository.packageIds() {
             JSONValue package = self.repository.package(id);
-            if (package == null || package.get("canvas") == null || !package.get("canvas").isObject()) { continue; }
+            bool computed = package != null && BezelComputedLayout.code(SemuJson.textAt(package, "layout")) != SEMU_LAYOUT_FIXED;  // a DS/3DS layout the renderer works out from the screen: no canvas, drawn frames
+            if (package == null || (!computed && (package.get("canvas") == null || !package.get("canvas").isObject()))) { continue; }
             JSONValue systems = JSONValue.makeArray();
             Vector<string> bound = [];
             if (bindings.has(id)) { for system in bindings.get(id) { systems.push(JSONValue.makeString(system)); bound.push(system); } }
@@ -235,6 +238,13 @@ class BezelEditor {
                 provenance.set("edited", edit);
             }
         }
+        JSONValue frame = payload.get("frame");
+        JSONValue drawnFrame = package.get("frame");
+        if (frame != null && frame.isObject() && drawnFrame != null && drawnFrame.isObject()) {  // a drawn frame's width (a share of the screen height) and colour; a package without one keeps none
+            drawnFrame.set("width", JSONValue.makeFloat(BezelNumber.clamp(BezelNumber.of(frame.get("width")), 0.0, 0.25)));
+            string frameColor = SemuJson.textAt(frame, "color");
+            if (frameColor.len() == 7 && frameColor.startsWith("#")) { drawnFrame.set("color", JSONValue.makeString(frameColor)); }
+        }
         if (!self.repository.save(id, package)) { return HTTPResponse.error(500, "could not write config/bezels/" + id + "/bezel.json"); }
         JSONValue saved = JSONValue.makeArray();
         saved.push(JSONValue.makeString(id));
@@ -314,6 +324,61 @@ class BezelPreview {  // what the launcher gives the renderer when a system show
         result.set("preset", JSONValue.makeString(preset));
         JSONValue screens = chosen.isObject() ? chosen.get("screens") : null;
         result.set("screens", screens != null && screens.isObject() ? screens : JSONValue.makeObject());
+        return result;
+    }
+}
+
+class BezelComputedLayout {  // the computed DS/3DS layouts by the renderer's own arithmetic (src/renderer/renderer_layout.btrc), for the editor's preview
+    class int code(string layout) {  // RendererConfiguration.parseLayout
+        if (layout.equals("main_right")) { return SEMU_LAYOUT_MAIN_RIGHT; }
+        if (layout.equals("main_left")) { return SEMU_LAYOUT_MAIN_LEFT; }
+        if (layout.equals("side_by_side")) { return SEMU_LAYOUT_SIDE_BY_SIDE; }
+        if (layout.equals("stacked")) { return SEMU_LAYOUT_STACKED; }
+        return SEMU_LAYOUT_FIXED;
+    }
+
+    class JSONValue rect(int x, int y, int width, int height) {
+        JSONValue value = JSONValue.makeObject();
+        value.set("x", JSONValue.makeInt(x));
+        value.set("y", JSONValue.makeInt(y));
+        value.set("width", JSONValue.makeInt(width));
+        value.set("height", JSONValue.makeInt(height));
+        return value;
+    }
+
+    class JSONValue lanes(Map<string, string> query) {  // ?layout=&width=&height=&native=WxH,WxH&frame=&around=&gap=: each lane and the drawn frame, bottom-up as GL counts rows
+        int layout = BezelComputedLayout.code(query.getOrDefault("layout", ""));
+        int areaWidth = Strings.toInt(query.getOrDefault("width", "0"));
+        int areaHeight = Strings.toInt(query.getOrDefault("height", "0"));
+        float frameFraction = (float)BezelNumber.parse(query.getOrDefault("frame", "0"), 0.0);  // SEMU_RENDER_FRAME's width, a fraction of the height
+        bool around = query.getOrDefault("around", "0").equals("1");
+        float gapFraction = (float)BezelNumber.clamp(BezelNumber.parse(query.getOrDefault("gap", "0"), 0.0), 0.0, 1.0);
+        Vector<string> natives = Strings.split(query.getOrDefault("native", ""), ",");
+        JSONValue result = JSONValue.makeObject();
+        if (layout == SEMU_LAYOUT_FIXED || areaWidth < 16 || areaHeight < 16 || natives.size() != 2) { result.set("error", JSONValue.makeString("a computed layout, a screen size and two native sizes")); return result; }
+        struct RendererCompositionGeometry geometry;
+        memset(&geometry, 0, sizeof(struct RendererCompositionGeometry));
+        geometry.lane_count = 2;
+        for (int index = 0; index < 2; index++) {
+            Vector<string> size = Strings.split(natives[index], "x");
+            geometry.lanes[index].native_width = size.size() == 2 ? Strings.toInt(size[0]) : 0;
+            geometry.lanes[index].native_height = size.size() == 2 ? Strings.toInt(size[1]) : 0;
+            if (geometry.lanes[index].native_width < 1 || geometry.lanes[index].native_height < 1) { result.set("error", JSONValue.makeString("native sizes are WxH")); return result; }
+        }
+        int frameWidth = frameFraction > 0.0f ? (int)(frameFraction * (float)areaHeight + 0.5f) : 0;  // RendererGeometry.resolve: the frame, then the room the screens leave it
+        int frame = frameWidth;
+        int drawn = RendererLayout.computed(&geometry, layout, areaWidth, areaHeight, around ? 0 : frameWidth, gapFraction);
+        if (!around && frameWidth > 0) { frame = drawn; }
+        JSONValue lanes = JSONValue.makeArray();
+        for (int index = 0; index < 2; index++) {
+            struct RendererLaneGeometry* lane = &geometry.lanes[index];
+            JSONValue entry = JSONValue.makeObject();
+            entry.set("output", BezelComputedLayout.rect(lane->output_x, lane->output_y, lane->output_width, lane->output_height));
+            entry.set("tube", BezelComputedLayout.rect(lane->tube_x, lane->tube_y, lane->tube_width, lane->tube_height));
+            lanes.push(entry);
+        }
+        result.set("lanes", lanes);
+        result.set("frame", JSONValue.makeInt(frame));
         return result;
     }
 }
