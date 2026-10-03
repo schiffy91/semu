@@ -241,7 +241,6 @@ class SemuLauncher {
                 launch.environment.push(key + "=" + plan.tokens.resolve(SemuJson.text(set.get(key))));
             }
         }
-        launch.environment.push("SEMU_STATE_ROOT=" + stateRoot);
         launch.environment.push("SEMU_TARGET=" + plan.target.id);
     }
 
