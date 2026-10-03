@@ -244,6 +244,20 @@ class StandaloneSpecContract {
         contract.contains(main, "ConfirmShutdown = false", target + " pcsx2 quits without a prompt");
         contract.expect(StandaloneSpecText.occurrences(input, " = SDL-0/") == 24, target + " pcsx2 binds all 24 Pad1 controls to SDL-0");
         contract.lacks(input, "SDL-1", target + " pcsx2 never binds a second SDL index");
+        // Seen next: the face buttons still did nothing ("Invalid binding: 'SDL-0/A'"). PCSX2 2.6 parses
+        // SDL3 setting names; the SDL2 names A/B/X/Y migrate only while that pad is already connected.
+        Vector<string> settingNames = ["FaceSouth", "FaceEast", "FaceWest", "FaceNorth", "Back", "Guide", "Start", "LeftStick", "RightStick", "LeftShoulder", "RightShoulder",
+            "DPadUp", "DPadDown", "DPadLeft", "DPadRight", "LeftX", "LeftY", "RightX", "RightY", "LeftTrigger", "RightTrigger"];
+        int bound = 0;
+        int known = 0;
+        for line in Strings.split(input, "\n") {
+            if (!line.contains(" = SDL-0/")) { continue; }
+            bound++;
+            string control = line.substring(line.indexOf("SDL-0/") + 6, line.len() - line.indexOf("SDL-0/") - 6);
+            if (control.startsWith("+") || control.startsWith("-")) { control = control.substring(1, control.len() - 1); }
+            for name in settingNames { if (control.equals(name)) { known++; } }
+        }
+        contract.expect(bound == 24 && known == bound, f"{target} pcsx2 names every SDL control with a PCSX2 2.6 setting name (FaceSouth, not A): {known} of {bound}");
         // Seen on the Deck: Start did nothing in PCSX2, whose log said "Invalid binding: 'SDL-0/Start |
         // Keyboard/Enter'". PCSX2 reads a repeated key as a list of alternatives and has no " | ".
         for file in [main, input] {
