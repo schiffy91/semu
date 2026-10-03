@@ -308,9 +308,8 @@ class SemuRenderEnvironment {
             SemuRenderLayers.emit(env, plan, package, suffix, diagnostics);
             JSONValue frame = package.get("frame");
             if (frame != null && frame.isObject()) {
-                string around = SemuJson.textAt(frame, "around").equals("game") ? "1" : "0";  // ring around the fitted game inside a device opening, else around the opening
                 string width = SemuRenderEnvironment.numberOr(frame, "width", SemuRenderEnvironment.numberOr(SemuJson.get(plan.settings, "visual"), "frame_width", "0"));  // the package's own width, else visual.frame_width
-                env.set("SEMU_RENDER_FRAME" + suffix, f"{width},{SemuRenderEnvironment.numberOr(frame, "radius", "0")},{SemuRenderEnvironment.color(SemuJson.textAt(frame, "color"), "0.08,0.08,0.08")},{around}");
+                env.set("SEMU_RENDER_FRAME" + suffix, f"{width},{SemuRenderEnvironment.numberOr(frame, "radius", "0")},{SemuRenderEnvironment.color(SemuJson.textAt(frame, "color"), "0.08,0.08,0.08")}");
             }
         }
         for (int index = 0; index < ids.size(); index++) {

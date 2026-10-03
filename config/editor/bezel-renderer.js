@@ -151,7 +151,7 @@ const BezelRenderer = (() => {
         layout, layered: layers.length > 0 && !!canvas, canvasWidth: layers.length ? canvas.w : 0, canvasHeight: layers.length ? canvas.h : 0,
         canvasCover: layers.length > 0 && !!canvasLayer && canvasLayer.follow === "viewport", layers, background: typeof pkg.background === "string" ? pkg.background : "",
         frame: { set: !!frame && frameWidth > 0, width: frameWidth, radius: frame ? Environment.fraction(Environment.number(frame.radius, 0)) : 0,
-          color: frame ? Environment.color(frame.color, [0.08, 0.08, 0.08].map(float)) : [0, 0, 0], aroundGame: !!frame && frame.around === "game" },
+          color: frame ? Environment.color(frame.color, [0.08, 0.08, 0.08].map(float)) : [0, 0, 0] },
         screens: ids.map(id => { const source = Environment.screenOf(pkg, ids.length === 1 ? "main" : id); return source ? Environment.screen(source, canvas) : null; }),
       };
     }

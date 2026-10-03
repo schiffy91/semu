@@ -351,12 +351,11 @@ class BezelComputedLayout {  // the computed DS/3DS layouts by the renderer's ow
         return value;
     }
 
-    class JSONValue lanes(Map<string, string> query) {  // ?layout=&width=&height=&native=WxH,WxH&frame=&around=&gap=: each lane and the drawn frame, bottom-up as GL counts rows
+    class JSONValue lanes(Map<string, string> query) {  // ?layout=&width=&height=&native=WxH,WxH&frame=&gap=: each lane and the drawn frame, bottom-up as GL counts rows
         int layout = BezelComputedLayout.code(query.getOrDefault("layout", ""));
         int areaWidth = Strings.toInt(query.getOrDefault("width", "0"));
         int areaHeight = Strings.toInt(query.getOrDefault("height", "0"));
         float frameFraction = (float)BezelNumber.parse(query.getOrDefault("frame", "0"), 0.0);  // SEMU_RENDER_FRAME's width, a fraction of the height
-        bool around = query.getOrDefault("around", "0").equals("1");
         float gapFraction = (float)BezelNumber.clamp(BezelNumber.parse(query.getOrDefault("gap", "0"), 0.0), 0.0, 1.0);
         Vector<string> natives = Strings.split(query.getOrDefault("native", ""), ",");
         JSONValue result = JSONValue.makeObject();
@@ -372,8 +371,8 @@ class BezelComputedLayout {  // the computed DS/3DS layouts by the renderer's ow
         }
         int frameWidth = frameFraction > 0.0f ? (int)(frameFraction * (float)areaHeight + 0.5f) : 0;  // RendererGeometry.resolve: the frame, then the room the screens leave it
         int frame = frameWidth;
-        int drawn = RendererLayout.computed(&geometry, layout, areaWidth, areaHeight, around ? 0 : frameWidth, gapFraction);
-        if (!around && frameWidth > 0) { frame = drawn; }
+        int drawn = RendererLayout.computed(&geometry, layout, areaWidth, areaHeight, frameWidth, gapFraction);
+        if (frameWidth > 0) { frame = drawn; }
         JSONValue lanes = JSONValue.makeArray();
         for (int index = 0; index < 2; index++) {
             struct RendererLaneGeometry* lane = &geometry.lanes[index];
