@@ -24,16 +24,6 @@
       ]
     }
   ],
-  "bios": {
-    "required": true,
-    "match": "all",
-    "files": [
-      {
-        "name": "keys.txt"
-      }
-    ],
-    "dir": "generated/packaging/emulators/profiles/Cemu/data"
-  },
   "display": {
     "scaling": {
       "mode": "integer_preferred",
@@ -59,6 +49,6 @@
   "doc": {
     "hardware": "HD TV plus optional gamepad screen",
     "intent": "No default CRT; only use TV/gamepad bezel when both regions are exposed.",
-    "bios": "Cemu needs user-supplied Wii U keys for encrypted content. The dir mirrors the manifest/doctor Cemu profile location (manifest.btrc:601, doctor.btrc Cemu/data); there is no bios/wiiu drop dir today."
+    "bios": "Cemu needs user-supplied Wii U keys for encrypted content. keys.txt is copied once into Cemu's data directory from the first of ${semu_home}/firmware/cemu, ${emulation_root}/Cemu/data, ${bios}/wiiu and ${bios} that has it (config/emulators/cemu/emulator.json)."
   }
 }

@@ -35,37 +35,6 @@
       ]
     }
   ],
-  "bios": {
-    "required": true,
-    "match": "any",
-    "files": [
-      {
-        "name": "ps2-0230a-20080220.bin"
-      },
-      {
-        "name": "ps2-0230e-20080220.bin"
-      },
-      {
-        "name": "ps2-0230j-20080220.bin"
-      },
-      {
-        "name": "SCPH-10000.bin"
-      },
-      {
-        "name": "SCPH-30004R.bin"
-      },
-      {
-        "name": "SCPH-39001.bin"
-      },
-      {
-        "name": "SCPH-70012.bin"
-      },
-      {
-        "name": "SCPH-90006.bin"
-      }
-    ],
-    "dir": "bios/ps2"
-  },
   "display": {
     "scaling": {
       "mode": "integer_preferred",
