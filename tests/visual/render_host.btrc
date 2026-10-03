@@ -201,11 +201,12 @@ class RenderHostTarget {  // the emulator's backbuffer: an FBO with the game dra
 }
 
 class RenderHost {
-    class int frames() {  // frames drawn before the capture: RENDER_HOST_FRAMES, else 12; -1 unless all digits
+    class int frames() {  // frames drawn before the capture: RENDER_HOST_FRAMES, else 12; -1 unless all digits and at most 1000
         string text = Environment.get("RENDER_HOST_FRAMES", "");  // response-time reads seven frames of history: settle it
         if (text.isEmpty()) { return 12; }
-        if (!Strings.isDigitStr(text)) { return -1; }  // "12x" or "-3" is a typo, not a frame count
+        if (!Strings.isDigitStr(text) || text.len() > 4) { return -1; }  // "12x" or "-3" is a typo, not a frame count, and no settling needs thousands
         int count = Strings.toInt(text);
+        if (count > 1000) { return -1; }
         return count < 1 ? 1 : count;
     }
 
