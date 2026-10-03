@@ -20,11 +20,13 @@ class BezelEditor {
     public BezelRepository repository;
     public MegaBezelTree tree;
     public string pagePath;
+    public string assetRoot;  // the bundle: the background plates and tube glass the renderer reads
     public int port;
 
-    public BezelEditor(BezelRepository repository, MegaBezelTree tree) {
+    public BezelEditor(BezelRepository repository, MegaBezelTree tree, string assetRoot) {
         self.repository = repository;
         self.tree = tree;
+        self.assetRoot = BezelEditor.assets(repository.configRoot, assetRoot);
         self.pagePath = PathTools.join(repository.configRoot, "editor/bezel-editor.html");
         self.port = 0;
     }
@@ -62,7 +64,43 @@ class BezelEditor {
         if (path.equals("/api/packages")) { return HTTPResponse.json(self.packages().stringify()); }
         if (path.startsWith("/layer/")) { return self.layer(path.substring(7, path.len() - 7)); }
         if (path.equals("/bezel-renderer.js")) { return self.script("bezel-renderer.js"); }
+        if (path.equals("/render/compositor.frag") || path.equals("/render/compositor.vert")) { return self.compositor(path.substring(8, path.len() - 8)); }
+        if (path.startsWith("/asset/")) { return self.asset(path.substring(7, path.len() - 7)); }
         return HTTPResponse.notFound();
+    }
+
+    class string assets(string configRoot, string declared) {  // --asset-root or SEMU_ASSET_ROOT, else the checkout's build/asset-root
+        if (!declared.isEmpty()) { return declared; }
+        string built = SemuPaths.normalize(PathTools.join(PathTools.join(configRoot, ".."), "build/asset-root"));
+        return FileSystem.isDir(built) ? built : "";
+    }
+
+    public HTTPResponse compositor(string name) {  // config/render as WebGL2 compiles it: GLSL ES 3.00 in place of 330 core, the rest the renderer's own text
+        string file = PathTools.join(PathTools.join(self.repository.configRoot, "render"), name);
+        if (!FileSystem.isFile(file)) { return HTTPResponse.error(500, "no compositor shader at " + file); }
+        string text = FileSystem.readText(file);
+        string header = "#version 330 core";
+        if (!text.startsWith(header)) { return HTTPResponse.error(500, file + " does not start with " + header); }
+        return HTTPResponse.text("#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;" + text.substring(header.len(), text.len() - header.len()));
+    }
+
+    public HTTPResponse asset(string rest) {  // /asset/<package>/background or /asset/<package>/glass/<screen id>: what SEMU_RENDER_BACKGROUND and _GLASS name
+        int slash = Strings.find(rest, "/", 0);
+        JSONValue package = slash > 0 ? self.repository.package(rest.substring(0, slash)) : null;
+        if (package == null) { return HTTPResponse.notFound(); }
+        string what = rest.substring(slash + 1, rest.len() - slash - 1);
+        string logical = what.equals("background") ? SemuJson.textAt(package, "background") : "";
+        JSONValue screens = package.get("screens");
+        for (int index = 0; what.startsWith("glass/") && screens != null && screens.isArray() && index < screens.size(); index++) {
+            if (SemuJson.textAt(screens.at(index), "id").equals(what.substring(6, what.len() - 6))) { logical = SemuJson.textAt(screens.at(index), "glass.asset"); }
+        }
+        if (!logical.startsWith("assets/") || logical.contains("..")) { return HTTPResponse.notFound(); }
+        string file = PathTools.join(PathTools.join(self.assetRoot, "share/semu"), logical);  // SemuRenderAssets.image: the bundle, then the config tree
+        if (self.assetRoot.isEmpty() || !FileSystem.isFile(file)) { file = PathTools.join(self.repository.configRoot, logical); }
+        if (!FileSystem.isFile(file)) { return HTTPResponse.notFound(); }
+        Bytes data = SemuPaths.readBytes(file);
+        if (data.len == 0) { return HTTPResponse.error(500, "unreadable " + file); }
+        return HTTPResponse.bytes(200, file.toLower().endsWith(".png") ? "image/png" : "image/jpeg", data);
     }
 
     public HTTPResponse script(string name) {  // the page's own scripts beside it in config/editor

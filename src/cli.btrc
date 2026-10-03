@@ -248,7 +248,7 @@ class SemuCli {
         MegaBezelTree tree = MegaBezelTree(configRoot, MegaBezelTree.locate(configRoot, self.option("asset-root", Environment.get("SEMU_ASSET_ROOT", ""))));
         if (!tree.ready) { Console.error("bezel: " + tree.failure); return 1; }
         Vector<string> wanted = self.option("packages", "").isEmpty() ? repository.upstreamIds() : Strings.split(self.option("packages", ""), ",");
-        if (action.equals("edit")) { return BezelEditor(repository, tree).serve(Strings.toInt(self.option("port", "8765"))); }
+        if (action.equals("edit")) { return BezelEditor(repository, tree, self.option("asset-root", Environment.get("SEMU_ASSET_ROOT", ""))).serve(Strings.toInt(self.option("port", "8765"))); }
         if (action.equals("resolve")) {
             for packageId in wanted {
                 JSONValue package = repository.package(packageId);

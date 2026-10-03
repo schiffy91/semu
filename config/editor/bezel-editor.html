@@ -145,7 +145,6 @@ const probe = document.createElement("canvas"); probe.width = probe.height = 1;
 const probeCtx = probe.getContext("2d", { willReadFrequently: true });
 const EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.2A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6C3.7 8.6 2 12 2 12s3.5 7 10 7c1.6 0 3-.4 4.3-1"/></svg>';
-const cards = {};
 const hud = document.getElementById("hud");
 const state = { packages: [], current: null, original: null, images: {}, thumbs: {}, zoom: 1, ox: 0, oy: 0, selected: null, hover: null, drag: null, space: false, dirty: false, cursor: null, showGame: true, cutoutAlpha: 1, past: [], future: [] };
 const pageQuery = new URLSearchParams(location.search);
@@ -171,13 +170,6 @@ function choosePreview(wanted) {  // ?preview=system:variant, else the one alrea
   select.innerHTML = previews.map(preview => `<option value="${key(preview)}">${preview.label}</option>`).join("");
   select.value = key(state.preview);
   select.disabled = previews.length < 2;
-  cards.native = {};
-}
-function nativeCard(index) {  // the picture the renderer gets: the test card at the screen's native size (RENDER_HOST_CARD=editor), or a flat one
-  const native = state.preview.screens[index] || state.preview.screens[0], kind = FLAT_CARD || (state.showGame ? "test" : "black"), key = `${index}/${native.w}x${native.h}/${kind}`;
-  cards.native = cards.native || {};
-  if (!cards.native[key]) cards.native[key] = BezelRenderer.TestCard.canvas(native.w, native.h, index, kind);
-  return cards.native[key];
 }
 function viewCanvasRect() {  // the canvas on the view, bottom-up like a GL framebuffer: the renderer's own placement in capture mode
   if (CAPTURE && state.productionCanvas) return state.productionCanvas;
@@ -191,11 +183,6 @@ function targetScreenRect() {  // the target screen on the view, top-down: where
   const scale = view.width / onTarget.width, width = state.target.width * scale, height = state.target.height * scale;
   return { x: view.x - onTarget.x * scale, y: canvas.height - (view.y - onTarget.y * scale) - height, w: width, h: height };
 }
-function previewLanes() {  // each screen's opening and fitted picture on the view, as the renderer places them; rows counted from the top
-  const lanes = BezelRenderer.Geometry.lanes(previewVariant(), state.preview, viewCanvasRect());
-  return lanes.map(lane => lane && { native: lane.native, tube: topDown(lane.tube), output: topDown(lane.output) });
-}
-function topDown(rect) { return { x: rect.x, y: canvas.height - rect.y - rect.height, w: rect.width, h: rect.height }; }
 
 function status(text) { document.getElementById("status").textContent = text; }
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
@@ -298,16 +285,19 @@ async function open(id) {
   state.selected = null; state.dirty = false; state.images = {}; state.thumbs = {}; state.past = []; state.future = [];
   location.hash = id;
   choosePreview(pageQuery.get("preview"));
-  let pending = 0;
-  for (const layer of state.current.layers) {
-    if (!layer.file) continue;
-    pending++;
-    const image = new Image();
-    image.onload = () => { state.images[layer.id] = image; thumbnail(layer.id, image); pending--; if (pending === 0) { status(`${id} · ${state.current.canvas.w}×${state.current.canvas.h}`); if (!state.pinnedView) fit(); } buildLayers(); draw(); };
-    image.onerror = () => { pending--; status(`layer ${layer.id} failed to load`); draw(); };
-    image.src = `/layer/${id}/${layer.id}`;
-  }
-  if (state.current.ambient) { const night = new Image(); night.onload = () => { state.images.__ambient = liftedCopy(night, 1 - (state.current.ambient.opacity ?? 1)); draw(); }; night.src = `/layer/${id}/ambient`; }
+  compositor.forget("");
+  const files = state.current.layers.filter(layer => layer.file).map(layer => ({ url: `/layer/${id}/${layer.id}`, key: `layer:${layer.id}`, layer: layer.id }));  // every plate, the night light, the background plate and the tube glass
+  if (state.current.ambient) files.push({ url: `/layer/${id}/ambient`, key: "layer:ambient" });
+  if (state.current.background) files.push({ url: `/asset/${id}/background`, key: "background" });
+  for (const screen of state.current.screens) if (screen.glass && screen.glass.asset) files.push({ url: `/asset/${id}/glass/${screen.id}`, key: `glass:${screen.id}` });
+  let pending = files.length;
+  const loaded = () => { pending--; if (pending === 0) { status(`${id} · ${state.current.canvas.w}×${state.current.canvas.h}`); if (!state.pinnedView) fit(); } buildLayers(); draw(); };
+  for (const file of files) fetched(file.url).then(image => {
+    if (state.current.id !== id) return;
+    if (file.layer) { state.images[file.layer] = image; thumbnail(file.layer, image); }
+    if (compositor.gl) compositor.image(file.key, image);
+    loaded();
+  }, error => { status(`${file.key} failed to load`); console.error(String(error)); loaded(); });
   status("loading layers…");
   const wanted = new URLSearchParams(location.search).get("select");  // ?select=0:tube opens with that cutout rectangle selected
   if (wanted && wanted.startsWith("layer:")) { if (layerById(wanted.slice(6))) state.selected = { kind: "layer", id: wanted.slice(6) }; }
@@ -315,7 +305,7 @@ async function open(id) {
   buildLayers(); buildProps(); updateHistoryButtons();
   fit();
   const zoom = Number(new URLSearchParams(location.search).get("zoom")), at = (new URLSearchParams(location.search).get("at") || "").split(",").map(Number);  // ?zoom=4&at=176,105 opens zoomed on a canvas point
-  if (!CAPTURE && ZOOMS.includes(zoom) && at.length === 2 && at.every(Number.isFinite)) { state.pinnedView = true; state.zoom = zoom; state.ox = canvas.width / 2 - at[0] * zoom; state.oy = canvas.height / 2 - at[1] * zoom; draw(); }
+  if (!CAPTURE && ZOOMS.includes(zoom) && at.length === 2 && at.every(Number.isFinite)) { state.pinnedView = true; state.fitted = false; state.zoom = zoom; state.ox = canvas.width / 2 - at[0] * zoom; state.oy = canvas.height / 2 - at[1] * zoom; draw(); }
 }
 function thumbnail(id, image) {
   const t = document.createElement("canvas"); t.width = 88; t.height = 52;
@@ -406,9 +396,9 @@ function layerMenu(layer) {
   items.push({ label: "Send backward", run: () => reorder(layer, -1) });
   if (layer.size) items.push({ label: "Make this the canvas", hint: state.current.canvas_layer === layer.id ? "✓" : "", run: () => setCanvasLayer(layer) });
   items.push({ sep: true });
-  for (const blend of ["normal", "add", "multiply"]) items.push({ label: `Blend: ${blend}`, hint: (layer.blend || "normal") === blend ? "✓" : "", run: () => { record(); layer.blend = blend; buildLayers(); draw(); } });
+  if (layer.id !== CUTOUTS) for (const blend of ["normal", "add", "multiply"]) items.push({ label: `Blend: ${blend}`, hint: (layer.blend || "normal") === blend ? "✓" : "", run: () => { record(); layer.blend = blend; buildLayers(); draw(); } });
   items.push({ sep: true });
-  for (const opacity of [1, 0.75, 0.5, 0.25]) items.push({ label: `Opacity ${Math.round(opacity * 100)}%`, hint: (layer.opacity === undefined ? 1 : layer.opacity) === opacity ? "✓" : "", run: () => { record(); layer.opacity = opacity; buildLayers(); draw(); } });
+  if (layer.id !== CUTOUTS) for (const opacity of [1, 0.75, 0.5, 0.25]) items.push({ label: `Opacity ${Math.round(opacity * 100)}%`, hint: (layer.opacity === undefined ? 1 : layer.opacity) === opacity ? "✓" : "", run: () => { record(); layer.opacity = opacity; buildLayers(); draw(); } });
   if (layer.id === CUTOUTS) {
     items.push({ sep: true });
     state.current.screens.forEach(screen => {
@@ -563,13 +553,19 @@ function captureFit() {  // the renderer's framing of the capture screen: contai
 }
 function fit() {
   if (CAPTURE) { captureFit(); return; }
-  const c = state.current.canvas;
-  const scale = Math.min(canvas.width / c.w, canvas.height / c.h);
+  const area = fitArea(), scale = Math.min(canvas.width / area.w, canvas.height / area.h);
   state.zoom = ZOOMS.filter(z => z <= scale).pop() || ZOOMS[0];
-  state.ox = Math.round((canvas.width - c.w * state.zoom) / 2);
+  state.ox = Math.round((canvas.width - area.w * state.zoom) / 2 - area.x * state.zoom);
   state.fitted = true;
-  state.oy = Math.round((canvas.height - c.h * state.zoom) / 2);
+  state.oy = Math.round((canvas.height - area.h * state.zoom) / 2 - area.y * state.zoom);
   draw();
+}
+function fitArea() {  // canvas px: the canvas and the target screen the renderer frames it on
+  const c = state.current.canvas, onTarget = BezelRenderer.Geometry.canvasOn(previewVariant(), state.preview, state.target.width, state.target.height);
+  if (!(onTarget.width > 0)) return { x: 0, y: 0, w: c.w, h: c.h };
+  const perPixel = c.w / onTarget.width, left = -onTarget.x * perPixel, top = -(state.target.height - onTarget.y - onTarget.height) * perPixel;
+  const x = Math.min(0, left), y = Math.min(0, top);
+  return { x, y, w: Math.max(c.w, left + state.target.width * perPixel) - x, h: Math.max(c.h, top + state.target.height * perPixel) - y };
 }
 function zoomTo(next, sx, sy) {
   const [px, py] = toPlate(sx, sy);
@@ -619,115 +615,44 @@ function curvingHit(r, bulge, sx, sy) {  // near a knob sizes; just beyond it th
   return null;
 }
 
-function rgba(hex, alpha) { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`; }
-const reflectCanvas = document.createElement("canvas"), reflectBlurCanvas = document.createElement("canvas");
-function drawReflection(screen, baseAlpha, lane, card) {  // the picture mirrored across its own edge onto the glass and the lip: sharp at the edge, blurrier and fainter further out (reflectAt in config/render/compositor.frag)
-  const look = screen.reflection, band = screen.ring.outer;
-  const { x: ix, y: iy, w: iw, h: ih } = lane.output;  // the picture where the renderer fits it, mirrored from its native frame
-  const { x: bx, y: by, w: bw, h: bh } = snapped(band);
-  if (bw < 2 || bh < 2 || bw * bh > 16000000) return;
-  const ox = bx, oy = by, ow = bw, oh = bh;
-  const mirrors = (o, blur) => {  // left, right, top, bottom, four corners
-    o.save(); o.translate(-ox, -oy); o.filter = blur > 0.5 ? `blur(${blur}px)` : "none"; o.imageSmoothingEnabled = true;
-    for (const [fx, fy, tx, ty] of [[-1, 1, 0, 0], [-1, 1, 2, 0], [1, -1, 0, 0], [1, -1, 0, 2], [-1, -1, 0, 0], [-1, -1, 2, 0], [-1, -1, 0, 2], [-1, -1, 2, 2]]) {
-      o.save(); o.translate(ix + tx * iw, iy + ty * ih); o.scale(fx, fy); o.drawImage(card, 0, 0, iw, ih); o.restore();
-    }
-    o.restore();
+const compositor = new BezelRenderer.Compositor();  // config/render/compositor.frag itself, drawn as the renderer draws a frame
+let compositorReady = false;
+const composite = document.createElement("canvas");  // the last composed frame; composed again only when the scene changes
+let compositeKey = "";
+async function startCompositor() {
+  try { compositorReady = await compositor.load(); }
+  catch (error) { compositor.failure = String(error.message || error); console.error("compositor: " + compositor.failure); }
+  if (!compositorReady) status("no preview: " + compositor.failure);
+  compositeKey = ""; draw();
+}
+function frameKey(index) {  // the native frame's texture, made on first use
+  const native = state.preview.screens[index] || state.preview.screens[0], kind = FLAT_CARD || (state.showGame ? "test" : "black"), key = `frame:${index}/${native.w}x${native.h}/${kind}`;
+  compositor.frame(key, BezelRenderer.TestCard.pixels(native.w, native.h, index, kind), native.w, native.h);
+  return key;
+}
+function targetScreenOnView() { const rect = targetScreenRect(); return rect ? { x: rect.x, y: canvas.height - rect.y - rect.h, width: rect.w, height: rect.h } : { x: 0, y: 0, width: canvas.width, height: canvas.height }; }
+function previewScene(cutouts) {  // what RendererCompositor.game gets: the variant, its lanes on the view, the frames and glass, the target screen
+  const variant = previewVariant(), canvasRect = viewCanvasRect(), lanes = BezelRenderer.Geometry.lanes(variant, state.preview, canvasRect);
+  return {
+    width: canvas.width, height: canvas.height, clear: CAPTURE ? [0, 0, 0] : [17 / 255, 17 / 255, 19 / 255], screen: targetScreenOnView(), canvas: canvasRect, variant, lanes, cutouts,
+    frames: lanes.map((lane, index) => frameKey(index)), glass: variant.screens.map(screen => screen && screen.glass && compositor.textures.has(`glass:${screen.id}`) ? `glass:${screen.id}` : null),
+    background: variant.background && compositor.textures.has("background") ? "background" : null, framed: 0, frameWidth: 0,
   };
-  const ramp = (o, near, far) => {  // erase with alpha `near` at the picture edge rising to `far` at the band's outer edge, on every side
-    o.save(); o.translate(-ox, -oy); o.globalCompositeOperation = "destination-out";
-    const wash = (x0, y0, x1, y1, rx, ry, rw, rh) => { if (rw <= 0 || rh <= 0) return; const g = o.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, `rgba(0,0,0,${near})`); g.addColorStop(1, `rgba(0,0,0,${far})`); o.fillStyle = g; o.fillRect(rx, ry, rw, rh); };
-    wash(ix, 0, bx, 0, bx, by, ix - bx, oh); wash(ix + iw, 0, bx + ow, 0, ix + iw, by, bx + ow - ix - iw, oh);
-    wash(0, iy, 0, by, bx, by, ow, iy - by); wash(0, iy + ih, 0, by + oh, bx, iy + ih, ow, by + oh - iy - ih);
-    o.restore();
-  };
-  for (const c of [reflectCanvas, reflectBlurCanvas]) if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; }
-  const sharp = reflectCanvas.getContext("2d"), soft = reflectBlurCanvas.getContext("2d");
-  sharp.clearRect(0, 0, bw, bh); soft.clearRect(0, 0, bw, bh);
-  mirrors(sharp, 0.6 * state.zoom);
-  const blurPx = Math.max(1, (0.002 + (look.blur === undefined ? 0.95 : look.blur) * 0.025) * iw);  // like the shader: a fraction of the picture width
-  mirrors(soft, blurPx);
-  ramp(soft, 1, 0);  // the blurred copy only shows further out
-  sharp.drawImage(reflectBlurCanvas, 0, 0);
-  ramp(sharp, 0, look.fade === undefined ? 1 : look.fade);  // then the whole thing fades with distance
-  ctx.save();
-  rectPath(screen, "outer"); ctx.clip();
-  ctx.globalAlpha = baseAlpha * look.strength;
-  ctx.drawImage(reflectCanvas, ox, oy);
-  ctx.restore();
 }
-const lipCache = new Map();
-function lipPaint(screen) {  // lipColor in config/render/compositor.frag: the ring colour shaded toward the outer edge, plus ring.bevel's lit chamfer one width all round
-  const ring = screen.ring, s = snapped(ring.outer);
-  if (s.w < 1 || s.h < 1 || s.w * s.h > 16000000) return null;
-  const hx = s.w / 2, hy = s.h / 2, rad = Math.min((ring.outer_radius || 0) * state.zoom, hx, hy), rim = 0.015 * Math.min(hx, hy);
-  const bevel = ring.bevel === undefined ? 1 : ring.bevel, key = [s.w, s.h, rad, ring.color, bevel].join("/");
-  if (!lipCache.has(key)) {
-    const out = document.createElement("canvas"); out.width = s.w; out.height = s.h;
-    const o = out.getContext("2d"), image = o.createImageData(s.w, s.h), px = image.data, [r, g, b] = hexRgb(ring.color || "#202020");
-    const smooth = (e0, e1, v) => { const t = Math.max(0, Math.min(1, (v - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
-    for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) {
-      const dx = Math.abs(x + 0.5 - hx), dy = Math.abs(y + 0.5 - hy), edge = Math.max(dx / hx, dy / hy);  // the box metric the shade uses
-      const qx = dx - (hx - rad), qy = dy - (hy - rad), distance = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - rad;  // from the rounded outer edge
-      const shade = 0.7 + 0.4 * smooth(0.82, 1, edge), light = smooth(-rim, 0, distance) * 0.22 * bevel * 255, at = (y * s.w + x) * 4;
-      px[at] = r * shade + light; px[at + 1] = g * shade + light; px[at + 2] = b * shade + light; px[at + 3] = 255;
-    }
-    o.putImageData(image, 0, 0);
-    if (lipCache.size > 32) lipCache.clear();
-    lipCache.set(key, out);
-  }
-  return { canvas: lipCache.get(key), x: s.x, y: s.y };
+function composeView() {  // the frame on the view; with X-ray the cutouts fade over the frame without them
+  const cutouts = cutoutsLayer(), alpha = cutouts && cutouts.visible === false ? 0 : state.cutoutAlpha;
+  const key = JSON.stringify([state.current, state.zoom, state.ox, state.oy, canvas.width, canvas.height, state.preview, state.target, state.showGame, alpha, [...compositor.textures.keys()]]);
+  if (key === compositeKey) return composite;
+  if (composite.width !== canvas.width || composite.height !== canvas.height) { composite.width = canvas.width; composite.height = canvas.height; }
+  const context = composite.getContext("2d");
+  compositor.magnify(!CAPTURE && state.zoom >= 1);  // above 1x the plates stay point-sampled for pixel work; the renderer never magnifies them
+  if (alpha < 1) context.drawImage(compositor.render(previewScene(false)), 0, 0);
+  if (alpha > 0) { context.globalAlpha = alpha; context.drawImage(compositor.render(previewScene(true)), 0, 0); context.globalAlpha = 1; }
+  compositeKey = key;
+  return composite;
 }
-function drawCutouts(layer) {  // like Mega Bezel: the ring, the black edge inside it, the picture clipped to the opening; the plate shows through everywhere else
-  ctx.save();
-  ctx.globalAlpha = (layer.opacity === undefined ? 1 : layer.opacity) * state.cutoutAlpha;  // view-only transparency, never saved
-  const lanes = previewLanes();
-  for (const screen of state.current.screens) {
-    const index = state.preview.screens.length === 1 ? 0 : state.preview.screens.findIndex(native => native.id === screen.id), lane = lanes[index];
-    const ring = screen.ring, image = screen.image, reflecting = screen.reflection && screen.reflection.strength > 0 && state.showGame && screen.tube && lane;
-    const filled = ring && ring.color !== "none";  // a ring without fill only marks a painted bezel
-    if (ring && ring.outer && ring.inner) {
-      if (filled) { const lip = lipPaint(screen); ctx.save(); rectPath(screen, "outer"); ctx.clip(); if (lip) ctx.drawImage(lip.canvas, lip.x, lip.y); else { ctx.fillStyle = ring.color || "#202020"; ctx.fill(); } ctx.restore(); }  // the lip as the renderer paints it
-      else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
-      if (reflecting) drawReflection(screen, ctx.globalAlpha, lane, nativeCard(index));  // the lip runs to the picture edge: no black inner rectangle, no second outline
-    } else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
-    if (screen.tube && state.showGame && lane) {  // the native frame, point-sampled into the rectangle the renderer fits it to
-      ctx.save(); rectPath(screen, "tube"); ctx.clip(); ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(nativeCard(index), lane.output.x, lane.output.y, lane.output.w, lane.output.h);
-      ctx.restore();
-    }
-  }
-  ctx.restore();
-}
-function hexRgb(hex) { const n = parseInt((hex || "#ffffff").slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
-function tintedCopy(image, recolor) {  // the renderer's tint: HSL lightness times brightness, times the colour
-  const out = document.createElement("canvas"); out.width = image.width; out.height = image.height;
-  const o = out.getContext("2d"); o.drawImage(image, 0, 0);
-  const data = o.getImageData(0, 0, out.width, out.height), px = data.data, [r, g, b] = hexRgb(recolor.color), k = recolor.brightness ?? 1;
-  for (let i = 0; i < px.length; i += 4) { const l = Math.min(1, (Math.max(px[i], px[i + 1], px[i + 2]) + Math.min(px[i], px[i + 1], px[i + 2])) / 510 * k); px[i] = l * r; px[i + 1] = l * g; px[i + 2] = l * b; }
-  o.putImageData(data, 0, 0); return out;
-}
-function liftedCopy(image, lift) {  // the night plate pushed toward white, as the renderer lifts it before multiplying
-  const out = document.createElement("canvas"); out.width = image.width; out.height = image.height;
-  const o = out.getContext("2d"); o.drawImage(image, 0, 0); o.globalAlpha = Math.max(0, Math.min(1, lift)); o.fillStyle = "#fff"; o.fillRect(0, 0, out.width, out.height); return out;
-}
-function layerImage(layer) {
-  const image = state.images[layer.id], recolor = state.current.recolor;
-  if (!image || !recolor || !(recolor.layers || []).includes(layer.id)) return image;
-  state.tinted = state.tinted || {};
-  const key = `${state.current.id}/${layer.id}`;
-  if (!state.tinted[key]) state.tinted[key] = tintedCopy(image, recolor);
-  return state.tinted[key];
-}
-function drawPlaced(image, layer, c, cx0, cy0) {
-  if (layer.follow === "viewport" && !(layer.size && layer.size.w === c.w && layer.size.h === c.h)) {
-    const scale = Math.max(c.w / image.width, c.h / image.height);
-    const w = image.width * scale, h = image.height * scale;
-    const [x, y] = toScreen((c.w - w) / 2, (c.h - h) / 2);
-    ctx.beginPath(); ctx.rect(cx0, cy0, c.w * state.zoom, c.h * state.zoom); ctx.clip();
-    ctx.drawImage(image, x, y, w * state.zoom, h * state.zoom);
-  } else if (layer.rect) { const s = snapped(layer.rect); ctx.drawImage(image, s.x, s.y, s.w, s.h); }
-  else if (layer.follow === "viewport") { const [x, y] = toScreen(0, 0); ctx.drawImage(image, x, y, c.w * state.zoom, c.h * state.zoom); }
+function fetched(url) {  // an image element: WebGL decodes it on upload, inside the load, so a capture never sees a half-loaded scene
+  return new Promise((resolve, reject) => { const image = new Image(); image.onload = () => resolve(image); image.onerror = () => reject(new Error(`${url} failed to load`)); image.src = url; });
 }
 function draw() {
   ctx.imageSmoothingEnabled = false;
@@ -736,18 +661,7 @@ function draw() {
   if (!state.current) return;
   const c = state.current.canvas;
   const [cx0, cy0] = toScreen(0, 0);
-  for (const layer of layersBottomFirst()) {
-    if (layer.visible === false) continue;
-    if (layer.id === CUTOUTS) { drawCutouts(layer); continue; }
-    const image = layerImage(layer);
-    if (!image) continue;
-    ctx.save();
-    ctx.globalCompositeOperation = layer.blend === "add" ? "lighter" : (layer.blend === "multiply" ? "multiply" : "source-over");
-    ctx.globalAlpha = layer.opacity === undefined ? 1 : Math.max(0, Math.min(1, layer.opacity));
-    drawPlaced(image, layer, c, cx0, cy0);
-    ctx.restore();
-    if (layer.id === "background" && state.images.__ambient) { ctx.save(); ctx.globalCompositeOperation = "multiply"; drawPlaced(state.images.__ambient, layer, c, cx0, cy0); ctx.restore(); }
-  }
+  if (compositorReady) ctx.drawImage(composeView(), 0, 0);  // the renderer's frame; the outlines and handles go over it
   if (CAPTURE) return;  // the picture only: no canvas outline, grid, outlines, handles or HUD
   ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 1; ctx.setLineDash([6, 4]);
   ctx.strokeRect(cx0 + 0.5, cy0 + 0.5, c.w * state.zoom, c.h * state.zoom);
@@ -834,12 +748,16 @@ function hit(sx, sy) {
   if (current && state.selected.kind === "layer" && px >= current.x && px <= current.x + current.w && py >= current.y && py <= current.y + current.h) return { ...state.selected, handle: "move" };
   return stackHit(px, py);
 }
-function layerExtent(layer, image) {  // where a plate is drawn, canvas px
+function layerExtent(layer, image) {  // where a plate is drawn, canvas px: a viewport plate covers the target screen, as the renderer covers its framebuffer
   const c = state.current.canvas;
   if (layer.follow === "viewport" && !(layer.size && layer.size.w === c.w && layer.size.h === c.h)) {
-    const scale = Math.max(c.w / image.width, c.h / image.height), w = image.width * scale, h = image.height * scale;
-    return { x: (c.w - w) / 2, y: (c.h - h) / 2, w, h, clipped: true };
+    const screen = targetScreenRect();
+    if (!screen) return null;
+    const [left, top] = toPlate(screen.x, screen.y), across = screen.w / state.zoom, down = screen.h / state.zoom;
+    const scale = Math.max(across / image.width, down / image.height), w = image.width * scale, h = image.height * scale;
+    return { x: left + (across - w) / 2, y: top + (down - h) / 2, w, h, clipped: false };
   }
+  if (layer.follow === "viewport") return { x: 0, y: 0, w: c.w, h: c.h, clipped: false };
   return layer.rect ? { ...layer.rect, clipped: false } : null;
 }
 function stackHit(px, py) {  // the topmost thing painted under a canvas point: a cutout, or a plate with a visible pixel there
@@ -1046,6 +964,7 @@ document.getElementById("save").addEventListener("click", save);
 window.addEventListener("resize", resize);
 window.addEventListener("beforeunload", event => { if (state.dirty) { event.preventDefault(); event.returnValue = ""; } });
 resize();
+startCompositor();
 loadPackages();
 </script>
 </body>
