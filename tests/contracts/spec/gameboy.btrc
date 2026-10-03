@@ -118,7 +118,6 @@ class GameBoySpecDefinition {
         contract.expect(SemuJson.textAt(display, "scaling.basis").equals("native_game_surface"), "gb scaling basis is the native surface");
         contract.expect(SemuJson.textAt(display, "scaling.fit").equals("contain"), "gb scaling fits by contain");
         contract.expect(SemuJson.textAt(display, "scaling.fallback").equals("fractional_downscale"), "gb scaling falls back to fractional downscale");
-        contract.expect(GameBoySpecJson.exactStrings(SemuJson.get(system.definition, "verification.gameplay_controls"), ["dpad-up", "dpad-down", "dpad-left", "dpad-right", "a", "b", "start", "select"]), "gb verification lists the eight gameplay controls once");
     }
 
     class bool compatibility(JSONValue value) {

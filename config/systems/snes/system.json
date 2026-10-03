@@ -27,13 +27,6 @@
       ".zip"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "Super Mario World (USA).zip",
-      "Super Mario Kart (USA).zip"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "retroarch",

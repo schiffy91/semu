@@ -21,13 +21,6 @@
       ".zip"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "Super Mario Bros. Deluxe (USA, Europe) (Rev 2).zip",
-      "Wario Land 3 (World) (En,Ja).zip"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "retroarch",
