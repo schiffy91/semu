@@ -104,8 +104,6 @@ class MegaBezelParams {  // converted the way params-0-screen-scale.inc, params-
         return self.defaults.get(name);
     }
 
-    public bool known(string name) { return self.preset.has(name) || self.defaults.has(name); }
-
     public double get(string name) {
         self.used.put(name, self.preset.has(name) ? self.preset.value(name) : (self.defaults.has(name) ? SemuNumberText.text(self.defaults.get(name)) : "0"));
         return self.raw(name) * MegaBezelParams.conversion(name);
