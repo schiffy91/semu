@@ -72,7 +72,6 @@
   "doc": {
     "hardware": "consumer CRT, component CRT, or early flat panel",
     "intent": "Aspect should follow PCSX2/game widescreen state.",
-    "native_note": "256x240 carried over from RenderOptionCatalog (the tap's integer-scale base today), not true PS2 output res. Change deliberately, not as a migration side effect.",
     "bios": "PCSX2 needs at least one legally dumped PS2 BIOS image."
   }
 }
