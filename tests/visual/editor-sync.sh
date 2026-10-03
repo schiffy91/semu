@@ -9,8 +9,8 @@
 # (so nearest-neighbour aliasing is not a difference), the mean absolute error of the raw images, and the bounding box
 # of the largest connected differing region; the canvas share counts only the canvas on screen (the renderer paints its
 # background plate around a letterboxed canvas, the editor paints black). Framing: production's canvas rectangle comes
-# from its debug line; when it is not the contain/cover fit the editor computes itself (an integer placement), the
-# editor is given that rectangle.
+# from its debug line and the editor's from its console (it frames the canvas itself, integer placements included, for
+# the system and variant named in ?preview=); the framing column says whether they agree within 1 px.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 card=white; placement=""; size=1280x800
@@ -71,26 +71,12 @@ rendered_rect() {  # SYSTEM VARIANT: production's canvas rectangle as X Y W H fr
     | awk -v height="$height" '$3 > 0 && $4 > 0 { printf "%d %d %d %d\n", $1, height - $2 - $4, $3, $4 }'
 }
 
-editor_fit() {  # PACKAGE: where the editor's capture mode puts the canvas by itself, as X Y W H (contain, or cover keeping every opening)
-  jq -r '. as $package | [.canvas.w, .canvas.h, (any(.layers[]?; .id == $package.canvas_layer and .follow == "viewport") | if . then 1 else 0 end),
-      ([.screens[] | select(.tube) | .tube | "\(.x) \(.y) \(.w) \(.h)"] | join(" "))] | @tsv' "$root/config/bezels/$1/bezel.json" \
-    | awk -v width="$width" -v height="$height" -F'\t' '{
-        canvasWidth = $1; canvasHeight = $2; count = split($4, tubes, " ")
-        scale = width / canvasWidth < height / canvasHeight ? width / canvasWidth : height / canvasHeight
-        if ($3 == 1) {
-          grow = width / canvasWidth > height / canvasHeight ? width / canvasWidth : height / canvasHeight
-          left = (width - canvasWidth * grow) / 2; top = (height - canvasHeight * grow) / 2; inside = 1
-          for (slot = 1; slot <= count; slot += 4) if (left + tubes[slot] * grow < 0 || top + tubes[slot + 1] * grow < 0 || left + (tubes[slot] + tubes[slot + 2]) * grow > width || top + (tubes[slot + 1] + tubes[slot + 3]) * grow > height) inside = 0
-          if (inside) scale = grow
-        }
-        printf "%.0f %.0f %.0f %.0f\n", (width - canvasWidth * scale) / 2, (height - canvasHeight * scale) / 2, canvasWidth * scale, canvasHeight * scale }'
-}
-
-capture() {  # URL OUT.png: headless Chrome on its own profile, stopped by PID once the screenshot is written
+capture() {  # URL OUT.png: headless Chrome on its own profile, stopped by PID once the screenshot is written; the page's console reaches $profile.log
   local profile log pid
-  profile="$(mktemp -d "$work/chrome.XXXXXX")"; log="$profile.log"
+  profile="$(mktemp -d "$work/chrome.XXXXXX")"; log="$profile.log"; captureLog="$log"
   "$chrome" --headless=new --user-data-dir="$profile" --no-first-run --no-default-browser-check --use-mock-keychain --password-store=basic \
     --disable-extensions --disable-background-networking --disable-component-update --disable-sync --hide-scrollbars --force-device-scale-factor=1 \
+    --enable-logging=stderr --log-level=0 \
     --window-size="$width,$height" --virtual-time-budget=15000 --screenshot="$2" "$1" >"$log" 2>&1 &
   pid=$!
   for _ in $(seq 1 900); do grep -q "bytes written to file" "$log" && break; kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
@@ -156,27 +142,20 @@ for cell in "${cells[@]}"; do
       rows+="<tr><td>$system</td><td>$variant</td><td>$package</td><td>$framing</td><td>n/a</td><td>n/a</td><td>n/a</td><td>n/a</td><td>n/a</td><td><a href=\"$name-side.png\"><img loading=\"lazy\" src=\"$name-side.png\"></a></td></tr>"
       continue
     fi
-    read -r fitX fitY fitWidth fitHeight < <(editor_fit "$package")
     rendered="$(rendered_rect "$system" "$variant")"
-    canvasParameter=""; framing="editor fit $fitWidth x $fitHeight at $fitX,$fitY matches production"
-    placed="$fitX $fitY $fitWidth $fitHeight"
-    if [ -n "$rendered" ]; then
-      read -r renderedX renderedY renderedWidth renderedHeight <<<"$rendered"
-      worst=0
-      for delta in $((renderedX - fitX)) $((renderedY - fitY)) $((renderedWidth - fitWidth)) $((renderedHeight - fitHeight)); do delta="${delta#-}"; [ "$delta" -gt "$worst" ] && worst="$delta"; done
-      if [ "$worst" -gt 1 ]; then
-        canvasParameter="&canvas=$renderedX,$renderedY,$renderedWidth,$renderedHeight"; placed="$rendered"
-        framing="production rectangle $renderedWidth x $renderedHeight at $renderedX,$renderedY given to the editor (placement $(environment "$system" "$variant" | sed -n 's/^SEMU_RENDER_PLACEMENT=//p'); its own fit is $fitWidth x $fitHeight at $fitX,$fitY)"
-      fi
-    else
-      framing="production reported no canvas rectangle; editor fit $fitWidth x $fitHeight at $fitX,$fitY"
-    fi
     cardParameter=""; [ "$card" = test ] || cardParameter="&card=$card"
-    url="http://127.0.0.1:$port/?capture=${width}x${height}${cardParameter}${canvasParameter}#$package"
+    url="http://127.0.0.1:$port/?capture=${width}x${height}${cardParameter}&preview=$system:$variant${placement:+&placement=$placement}#$package"
     if ! capture "$url" "$work/editor.png"; then
       echo "$name: editor capture FAILED ($url)"; failures=$((failures + 1)); continue
     fi
     magick "$work/editor.png" -alpha off "PNG24:$editorImage"
+    framed="$(sed -n 's/.*semu-capture canvas \(-\{0,1\}[0-9]*\),\(-\{0,1\}[0-9]*\),\([0-9]*\),\([0-9]*\).*/\1 \2 \3 \4/p' "$captureLog" | tail -1)"  # the editor frames the canvas itself and logs where
+    framing="editor framed $framed, production ${rendered:-nothing}"; placed="${rendered:-$framed}"
+    if [ -n "$rendered" ] && [ -n "$framed" ]; then
+      worst=0; read -r renderedX renderedY renderedWidth renderedHeight <<<"$rendered"; read -r framedX framedY framedWidth framedHeight <<<"$framed"
+      for delta in $((renderedX - framedX)) $((renderedY - framedY)) $((renderedWidth - framedWidth)) $((renderedHeight - framedHeight)); do delta="${delta#-}"; [ "$delta" -gt "$worst" ] && worst="$delta"; done
+      [ "$worst" -le 1 ] && framing="editor framing matches production ($rendered)" || framing="FRAMING DIFFERS by $worst px: editor $framed, production $rendered"
+    fi
     metrics="$(compare "$editorImage" "$productionImage" "$diffImage" "$placed")" || { echo "$name: comparison FAILED"; failures=$((failures + 1)); continue; }
     read -r share subtle inside mae region area <<<"$metrics"
     panel "$editorImage" "editor · $name" "$work/editor-panel.miff"
