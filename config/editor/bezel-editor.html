@@ -307,11 +307,14 @@ async function open(id) {
   const zoom = Number(new URLSearchParams(location.search).get("zoom")), at = (new URLSearchParams(location.search).get("at") || "").split(",").map(Number);  // ?zoom=4&at=176,105 opens zoomed on a canvas point
   if (!CAPTURE && ZOOMS.includes(zoom) && at.length === 2 && at.every(Number.isFinite)) { state.pinnedView = true; state.fitted = false; state.zoom = zoom; state.ox = canvas.width / 2 - at[0] * zoom; state.oy = canvas.height / 2 - at[1] * zoom; draw(); }
 }
-function thumbnail(id, image) {
-  const t = document.createElement("canvas"); t.width = 88; t.height = 52;
-  const c = t.getContext("2d"); const scale = Math.min(88 / image.width, 52 / image.height);
-  c.drawImage(image, (88 - image.width * scale) / 2, (52 - image.height * scale) / 2, image.width * scale, image.height * scale);
-  state.thumbs[id] = t.toDataURL();
+function thumbnail(id, image) {  // from the stored values, as the plate is drawn: no embedded colour profile applied
+  createImageBitmap(image, { colorSpaceConversion: "none" }).then(raw => {
+    const t = document.createElement("canvas"); t.width = 88; t.height = 52;
+    const c = t.getContext("2d"); const scale = Math.min(88 / raw.width, 52 / raw.height);
+    c.drawImage(raw, (88 - raw.width * scale) / 2, (52 - raw.height * scale) / 2, raw.width * scale, raw.height * scale);
+    state.thumbs[id] = t.toDataURL(); raw.close();
+    buildLayers();
+  }, error => console.error(`thumbnail ${id}: ${error}`));
 }
 
 // ---- layers panel
