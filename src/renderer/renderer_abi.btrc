@@ -252,22 +252,6 @@ class RendererCompositionContract {
             && rectangle->height > 0;
     }
 
-    class bool contains(struct RendererPixelRect* outer,
-                        struct RendererPixelRect* inner) {
-        return RendererCompositionContract.valid(outer)
-            && RendererCompositionContract.valid(inner)
-            && inner->x >= outer->x && inner->y >= outer->y
-            && inner->x + inner->width <= outer->x + outer->width
-            && inner->y + inner->height <= outer->y + outer->height;
-    }
-
-    class bool inside(struct RendererPixelRect* rectangle, int x, int y) {
-        return RendererCompositionContract.valid(rectangle)
-            && x >= rectangle->x && y >= rectangle->y
-            && x < rectangle->x + rectangle->width
-            && y < rectangle->y + rectangle->height;
-    }
-
     class void contain(int viewportWidth, int viewportHeight,
                        int contentWidth, int contentHeight,
                        struct RendererCanvasRect* output) {
@@ -285,49 +269,6 @@ class RendererCompositionContract {
         output->height = scale * (float)contentHeight;
         output->x = ((float)viewportWidth - output->width) * 0.5f;
         output->y = ((float)viewportHeight - output->height) * 0.5f;
-    }
-
-    class bool minimumApertureCanvas(
-            int viewportWidth, int viewportHeight,
-            int artWidth, int artHeight, float apertureWidth,
-            float apertureHeight, int nativeWidth, int nativeHeight,
-            int rotation, int minimumScale, float maxWidth,
-            float maxHeight, struct RendererCanvasRect* output) {
-        if (output == null || viewportWidth < 1 || viewportHeight < 1
-                || artWidth < 1 || artHeight < 1
-                || apertureWidth <= 0.0f || apertureHeight <= 0.0f
-                || nativeWidth < 1 || nativeHeight < 1
-                || minimumScale < 1 || minimumScale > 16
-                || maxWidth < 1.0f || maxWidth > 2.0f
-                || maxHeight < 1.0f || maxHeight > 2.0f) {
-            return false;
-        }
-        int rotatedWidth = rotation == 90 || rotation == 270
-            ? nativeHeight : nativeWidth;
-        int rotatedHeight = rotation == 90 || rotation == 270
-            ? nativeWidth : nativeHeight;
-        float requiredWidth = (float)(rotatedWidth * minimumScale);
-        float requiredHeight = (float)(rotatedHeight * minimumScale);
-        if (output->width * apertureWidth >= requiredWidth
-                && output->height * apertureHeight >= requiredHeight) {
-            return true;
-        }
-        float horizontal = requiredWidth
-            / (apertureWidth * (float)artWidth);
-        float vertical = requiredHeight
-            / (apertureHeight * (float)artHeight);
-        float artScale = horizontal > vertical ? horizontal : vertical;
-        float width = artScale * (float)artWidth;
-        float height = artScale * (float)artHeight;
-        if (width > (float)viewportWidth * maxWidth
-                || height > (float)viewportHeight * maxHeight) {
-            return false;
-        }
-        output->width = width;
-        output->height = height;
-        output->x = ((float)viewportWidth - width) * 0.5f;
-        output->y = ((float)viewportHeight - height) * 0.5f;
-        return true;
     }
 
     class void aperture(struct RendererCanvasRect* canvas,
@@ -469,26 +410,6 @@ class RendererEvidenceContract {
                        unsigned long long frameId) {
         return menuVisible != 0 || RendererEvidenceContract.due(targetFrame,
             captureCount, requested, exhausted, frameId);
-    }
-}
-
-class RendererAssetRequirements {
-    class int status(int shadersEnabled, bool presetAvailable,
-                     int bezelsEnabled, bool artDeclared, bool artLoaded,
-                     bool glassDeclared, bool glassLoaded,
-                     bool apertureDeclared) {
-        if (shadersEnabled != 0 && !presetAvailable) {
-            return SEMU_RENDER_ASSET_MISSING;
-        }
-        if (bezelsEnabled != 0
-                && (!artDeclared || !artLoaded
-                    || (glassDeclared && !glassLoaded))) {
-            return SEMU_RENDER_ASSET_MISSING;
-        }
-        if (bezelsEnabled != 0 && !apertureDeclared) {
-            return SEMU_RENDER_PIPELINE_FAILED;
-        }
-        return SEMU_RENDER_APPLIED;
     }
 }
 
