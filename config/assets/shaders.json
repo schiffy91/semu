@@ -708,7 +708,7 @@
           "tree": "shaders_slang",
           "path": "misc/shaders/image-adjustment.slang",
           "sha256": "e608b1dd71d660d2ce8a77ee3e3a62ad5047d50a75adc8db7b4a1b7c1be83e2d",
-          "filter_linear": false,
+          "filter_linear": true,
           "scale_type": "viewport",
           "scale": 1
         }
@@ -721,10 +721,11 @@
       },
       "doc": {
         "why": "3DS touch screen: the panel's light without a drawn pixel grid. The shell's bottom opening holds 320x240 at a fractional scale on every display (0.95x on the Deck, 1.4x at 1080p, 2.8x at 4K), where lcd1x's one-sine-per-game-pixel grid beats against the screen's pixels: top.slangp drew 18-px vertical and horizontal bands there (column profile 146..238 on a white card). Below one screen pixel per game pixel no grid can be resolved anyway.",
+        "passes": "The one pass resamples 320x240 to the opening's fractional size, so it filters linearly: nearest sampling at 0.95x dropped 4 of 80 one-pixel columns and 2 of 30 rows of a line card, and at 1.42x and 2.84x drew each line 1 or 2 (2 or 3) pixels wide. Bilinear keeps every line, each with the same light.",
         "params": "ia_luminance 0.75 is the mean of top.slangp's grid ((4/5) x (16/17)), so both screens keep the same brightness"
       },
       "output": {
-        "sha256": "27c65c175992de3e0f802c4fa285f799de22af9a27ea614749f3b5c0b480ac15"
+        "sha256": "50cb253c4ce33ee87f3804bb5aa05a010f7841935043ca43364b4bf8017accd0"
       }
     },
     "assets/shaders/nds/top.slangp": {
