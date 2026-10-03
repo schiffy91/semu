@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "name": "Azahar",
-  "default_system": "n3ds",
   "input": {
     "actions": [
       "ui.open",

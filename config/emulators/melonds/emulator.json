@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "name": "melonDS",
-  "default_system": "nds",
   "input": {
     "actions": [
       "ui.pause",

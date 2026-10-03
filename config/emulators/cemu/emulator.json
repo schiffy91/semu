@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "name": "Cemu",
-  "default_system": "wiiu",
   "input": {
     "actions": [
       "app.quit",

@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "name": "Flycast",
-  "default_system": "dreamcast",
   "input": {
     "actions": [
       "ui.screenshot",
