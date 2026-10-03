@@ -293,7 +293,6 @@ async function open(id) {
   const source = state.packages.find(p => p.id === id);
   state.current = clone(source);
   if (isComputed()) { state.current.layers = []; state.current.canvas = { w: state.target.width, h: state.target.height }; }  // no plates and no canvas: the view is the target screen, never saved
-  for (const layer of state.current.layers) if (layer.id === "screens") layer.id = CUTOUTS;
   state.original = clone(state.current);
   state.selected = null; state.dirty = false; state.images = {}; state.thumbs = {}; state.past = []; state.future = [];
   location.hash = id;
