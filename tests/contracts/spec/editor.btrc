@@ -1,0 +1,93 @@
+// Bezel editor spec: the editor previews a package as the launcher would hand it to the renderer. It gets each
+// system's native screens, aspect, placement and shader, the computed DS/3DS lanes from the renderer's own layout
+// code, and config/render's compositor with only the GLSL header changed; its file routes stay inside the package.
+
+import Library.FileSystem;
+import Library.HTTP;
+import Library.JSON;
+import Library.Map;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/bezel/preset.btrc;
+import ../../../src/bezel/package.btrc;
+import ../../../src/bezel/editor.btrc;
+import ../../../src/renderer/renderer_layout.btrc;
+
+class EditorSpecContract {
+    class JSONValue preview(BezelRepository repository, string packageId, string system, JSONValue settings) {  // the first preview a system gives the package
+        Vector<string> systems = [system];
+        JSONValue previews = BezelPreview.all(repository, packageId, systems, settings);
+        return previews.size() > 0 ? previews.at(0) : JSONValue.makeNull();
+    }
+
+    class void previews(Contract contract, BezelRepository repository, JSONValue settings) {
+        JSONValue gameBoy = EditorSpecContract.preview(repository, "gb-dmg-shell", "gb", settings);
+        contract.expect(SemuJson.intAt(gameBoy, "screens.0.w", 0) == 160 && SemuJson.intAt(gameBoy, "screens.0.h", 0) == 144 && SemuJson.textAt(gameBoy, "screens.0.id").equals("main"),
+            "the Game Boy shell previews a 160x144 main screen, as SEMU_RENDER_SURFACE_0_NATIVE says");
+        contract.expect(SemuJson.textAt(gameBoy, "placement").equals("game") && SemuJson.intAt(gameBoy, "aspect.w", 0) == 10 && SemuJson.intAt(gameBoy, "aspect.h", 0) == 9,
+            "the Game Boy previews at its own integer game placement and 10:9 aspect");
+        contract.expect(SemuJson.textAt(gameBoy, "shader.preset").equals("assets/shaders/gb/screen.slangp"), "the Game Boy preview names its default shader preset for the badge");
+        JSONValue wide = EditorSpecContract.preview(repository, "tv-soqueroeu-wii-16x9", "wii", settings);
+        JSONValue standard = EditorSpecContract.preview(repository, "tv-soqueroeu-wii", "wii", settings);
+        contract.expect(BezelNumber.of(wide.get("presentation")) > 1.77 && BezelNumber.of(standard.get("presentation")) == 0.0, "only the Wii's widescreen variant previews a 16:9 title");
+        JSONValue dual = EditorSpecContract.preview(repository, "dual-main-right", "n3ds", settings);
+        contract.expect(SemuJson.intAt(dual, "screens.0.w", 0) == 400 && SemuJson.intAt(dual, "screens.1.w", 0) == 320 && BezelNumber.of(dual.get("gap")) > 0.0,
+            "a computed 3DS layout previews 400 and 320 px wide screens and the dual gap setting");
+        Map<string, Vector<string>> bindings = repository.bindings();
+        Vector<string> shared = [];
+        if (bindings.has("tv-soqueroeu-generic")) { shared = bindings.get("tv-soqueroeu-generic"); }
+        contract.expect(BezelPreview.all(repository, "tv-soqueroeu-generic", shared, settings).size() >= 6, "the shared speakers TV previews as each system that uses it");
+    }
+
+    class void lanes(Contract contract, BezelRepository repository, JSONValue settings) {  // the endpoint is RendererLayout.computed itself
+        Map<string, string> query = {};
+        query.put("layout", "main_right");
+        query.put("width", "1280");
+        query.put("height", "800");
+        query.put("native", "256x192,256x192");
+        query.put("frame", "0.03");
+        query.put("gap", "0.015625");
+        JSONValue answer = BezelComputedLayout.lanes(query);
+        struct RendererCompositionGeometry geometry;
+        memset(&geometry, 0, sizeof(struct RendererCompositionGeometry));
+        geometry.lane_count = 2;
+        for (int index = 0; index < 2; index++) { geometry.lanes[index].native_width = 256; geometry.lanes[index].native_height = 192; }
+        int drawn = RendererLayout.computed(&geometry, SEMU_LAYOUT_MAIN_RIGHT, 1280, 800, 24, 0.015625f);
+        bool same = SemuJson.intAt(answer, "frame", -1) == drawn;
+        for (int index = 0; index < 2; index++) {
+            struct RendererLaneGeometry* lane = &geometry.lanes[index];
+            same = same && SemuJson.intAt(answer.get("lanes").at(index), "output.x", -1) == lane->output_x && SemuJson.intAt(answer.get("lanes").at(index), "output.y", -1) == lane->output_y
+                && SemuJson.intAt(answer.get("lanes").at(index), "output.width", -1) == lane->output_width && SemuJson.intAt(answer.get("lanes").at(index), "output.height", -1) == lane->output_height;
+        }
+        contract.expect(answer.get("lanes") != null && same, f"/api/geometry gives the renderer's own nds main_right lanes on the Deck and its {drawn} px frame");
+        query.put("native", "256x192");
+        contract.expect(answer.get("lanes") != null && BezelComputedLayout.lanes(query).get("error") != null, "/api/geometry refuses a layout without two native sizes");
+    }
+
+    class void routes(Contract contract, Fixture fixture, BezelRepository repository) {
+        string configRoot = PathTools.join(fixture.project, "config");
+        BezelEditor editor = BezelEditor(repository, MegaBezelTree(configRoot, MegaBezelTree.locate(configRoot, "")), "");
+        HTTPResponse fragment = editor.compositor("compositor.frag");
+        string source = FileSystem.readText(PathTools.join(configRoot, "render/compositor.frag"));
+        string header = "#version 330 core";
+        string expected = "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;" + source.substring(header.len(), source.len() - header.len());
+        contract.expect(fragment.status == 200 && fragment.body.equals(expected), "the editor compiles config/render/compositor.frag itself: only the GLSL ES header differs");
+        contract.expect(editor.compositor("compositor.vert").status == 200 && editor.compositor("../settings/defaults.json").status != 200, "the compositor route serves the two shader files and nothing beside them");
+        contract.expect(editor.asset("tv-soqueroeu-nes/glass/../../../settings").status == 404 && editor.asset("no-such-package/background").status == 404 && editor.asset("gba-shell/elsewhere").status == 404,
+            "the asset route serves only a package's own background plate and tube glass");
+        contract.expect(editor.production.render("{\"package\":{\"id\":\"../gba-shell\"},\"system\":\"gba\",\"variant\":\"shell\",\"width\":1280,\"height\":800}").status != 200,
+            "the production render refuses a package id that is not a plain name");
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        BezelRepository repository = BezelRepository(PathTools.join(fixture.project, "config"));
+        JSONValue settings = SemuJson.readFile(PathTools.join(fixture.project, "config/settings/defaults.json"));
+        EditorSpecContract.previews(contract, repository, settings);
+        EditorSpecContract.lanes(contract, repository, settings);
+        EditorSpecContract.routes(contract, fixture, repository);
+    }
+}

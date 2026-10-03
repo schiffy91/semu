@@ -35,6 +35,7 @@ import ./spec/touch.btrc;
 import ./spec/launch.btrc;
 import ./spec/render_env.btrc;
 import ./spec/dual_layout.btrc;
+import ./spec/editor.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -926,6 +927,7 @@ int main() {
     LaunchSpecContract.run(contract);
     RenderEnvSpecContract.run(contract);
     DualLayoutSpecContract.run(contract);
+    EditorSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);

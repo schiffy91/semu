@@ -82,6 +82,7 @@ class BezelEditor {
     }
 
     public HTTPResponse compositor(string name) {  // config/render as WebGL2 compiles it: GLSL ES 3.00 in place of 330 core, the rest the renderer's own text
+        if (!name.equals("compositor.frag") && !name.equals("compositor.vert")) { return HTTPResponse.notFound(); }
         string file = PathTools.join(PathTools.join(self.repository.configRoot, "render"), name);
         if (!FileSystem.isFile(file)) { return HTTPResponse.error(500, "no compositor shader at " + file); }
         string text = FileSystem.readText(file);
