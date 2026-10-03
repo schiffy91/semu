@@ -150,7 +150,7 @@ const BezelRenderer = (() => {
       return {
         layout, layered: layers.length > 0 && !!canvas, canvasWidth: layers.length ? canvas.w : 0, canvasHeight: layers.length ? canvas.h : 0,
         canvasCover: layers.length > 0 && !!canvasLayer && canvasLayer.follow === "viewport", layers, background: typeof pkg.background === "string" ? pkg.background : "",
-        frame: { set: !!frame && frameWidth > 0, width: frameWidth, radius: frame ? Environment.fraction(Environment.number(frame.radius, 0)) : 0,
+        frame: { set: !!frame && frameWidth > 0, width: frameWidth,
           color: frame ? Environment.color(frame.color, [0.08, 0.08, 0.08].map(float)) : [0, 0, 0] },
         screens: ids.map(id => { const source = Environment.screenOf(pkg, ids.length === 1 ? "main" : id); return source ? Environment.screen(source, canvas) : null; }),
       };
@@ -381,7 +381,7 @@ const BezelRenderer = (() => {
       this.setRect("uBezelRect", canvas);
       this.setRect("uBackgroundRect", background ? this.cover(screen, background.width, background.height) : CompositionContract.empty());
       this.set4("uFlags", count > 1 ? 1 : 0, 0, background ? 1 : 0, variant.layered ? 1 : 0);
-      this.set4("uFrame", scene.frameWidth || 0, variant.frame.radius, framed, 0);
+      this.set4("uFrame", scene.frameWidth || 0, framed, 0, 0);
       this.set4("uFrameColor", variant.frame.color[0], variant.frame.color[1], variant.frame.color[2], 1);
       const bulge = index => variant.screens[index] ? [variant.screens[index].bulgeX, variant.screens[index].bulgeY] : [0, 0];
       this.set4("uBulge", ...bulge(0), ...bulge(second));

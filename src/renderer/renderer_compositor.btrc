@@ -190,7 +190,6 @@ struct RendererVariantConfig {
     int layout;
     int frame_set;
     float frame_width;
-    float frame_radius;
     float frame_r;
     float frame_g;
     float frame_b;
@@ -493,8 +492,8 @@ class RendererConfiguration {
         }
         snprintf(name, sizeof(name), "SEMU_RENDER_FRAME%s", suffix);
         char* frame = getenv(name);
-        int parsed = frame == null ? 0 : sscanf(frame, "%f,%f,%f,%f,%f", &variant->frame_width, &variant->frame_radius, &variant->frame_r, &variant->frame_g, &variant->frame_b);
-        if (parsed == 5 && variant->frame_width > 0.0f) { variant->frame_set = 1; }
+        int parsed = frame == null ? 0 : sscanf(frame, "%f,%f,%f,%f", &variant->frame_width, &variant->frame_r, &variant->frame_g, &variant->frame_b);  // width, r, g, b: the frame rounds concentric with its opening
+        if (parsed == 4 && variant->frame_width > 0.0f) { variant->frame_set = 1; }
         for (int index = 0; index < 2; index++) {
             RendererConfiguration.loadScreen(&variant->screens[index], index, suffix);
         }
@@ -1722,7 +1721,7 @@ class RendererCompositor {
         RendererCompositor.set4(gl, resources->uniform_flags,
             geometry->lane_count > 1 ? 1.0f : 0.0f, art ? 1.0f : 0.0f, background ? 1.0f : 0.0f, layered ? 1.0f : 0.0f);
         RendererCompositor.set4(gl, resources->uniform_frame,
-            geometry->frame_width, variant->frame_radius, framed ? (float)geometry->framed : 0.0f, 0.0f);
+            geometry->frame_width, framed ? (float)geometry->framed : 0.0f, 0.0f, 0.0f);  // width, then whether a frame is drawn
         RendererCompositor.set4(gl, resources->uniform_frame_color,
             variant->frame_r, variant->frame_g, variant->frame_b, 1.0f);
         RendererCompositor.set4(gl, resources->uniform_bulge,
