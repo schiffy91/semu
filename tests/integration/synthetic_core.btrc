@@ -23,7 +23,6 @@ int SyntheticHeights[2];
 int SyntheticFrameWidth;
 int SyntheticFrameHeight;
 float SyntheticAspect;
-int SyntheticFlat;
 
 class SyntheticGeometry {
     class void load() {  // the launcher's surface contract, else the classic 256x240 card
@@ -56,21 +55,6 @@ class SyntheticGeometry {
         if (SyntheticScreens == 1 && aspect != null && sscanf(aspect, "%d:%d", &aspectWidth, &aspectHeight) == 2 && aspectWidth > 0 && aspectHeight > 0) {
             SyntheticAspect = (float)aspectWidth / (float)aspectHeight;
         }
-        char* flat = getenv("SEMU_SYNTHETIC_FLAT");  // calibration: a bit per lit screen (1 = first, 2 = second), lit screens are one flat saturated color, the rest black
-        SyntheticFlat = flat == null ? 0 : atoi(flat);
-        SyntheticControl.poll();
-    }
-}
-
-class SyntheticControl {
-    class void poll() {  // SEMU_SYNTHETIC_CONTROL names a file whose first integer replaces the flat mask each frame: one launch serves every calibration state
-        char* path = getenv("SEMU_SYNTHETIC_CONTROL");
-        if (path == null || path[0] == 0) { return; }
-        FILE* file = fopen(path, "r");
-        if (file == null) { return; }
-        int value = 0;
-        if (fscanf(file, "%d", &value) == 1) { SyntheticFlat = value; }
-        fclose(file);
     }
 }
 
@@ -80,14 +64,6 @@ class SyntheticPattern {
     }
 
     class void card(int screen, int originX, int originY, int width, int height) {  // border, checker corners, crosshair, a moving marker; hue differs per screen
-        if (SyntheticFlat != 0) {
-            bool lit = ((SyntheticFlat >> screen) & 1) != 0;
-            uint32_t flat = !lit ? SyntheticPattern.color(16, 16, 16) : (screen == 0 ? SyntheticPattern.color(0, 255, 0) : SyntheticPattern.color(255, 0, 255));  // never fully black: Mega Bezel blanks on an all-black source
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) { SyntheticPixels[(originY + y) * SyntheticFrameWidth + originX + x] = flat; }
-            }
-            return;
-        }
         uint32_t sky = screen == 0 ? SyntheticPattern.color(48, 96, 224) : SyntheticPattern.color(200, 72, 48);
         uint32_t ground = screen == 0 ? SyntheticPattern.color(48, 200, 64) : SyntheticPattern.color(232, 176, 40);
         uint32_t border = SyntheticPattern.color(255, 255, 255);
@@ -190,7 +166,6 @@ bool retro_load_game_special(unsigned int type, const struct retro_game_info* in
 
 void retro_run() {
     SyntheticFrame++;
-    SyntheticControl.poll();
     if (SyntheticInputPoll != null) { SyntheticInputPoll(); }
     SyntheticPattern.fill();
     size_t pitch = (size_t)SyntheticFrameWidth * sizeof(uint32_t);
