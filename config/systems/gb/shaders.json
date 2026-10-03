@@ -37,6 +37,6 @@
     }
   },
   "doc": {
-    "intent": "DMG is the production default: restrained olive response, visible dot matrix, and restrained STN persistence. Pocket is a materially distinct pinned reflective-LCD treatment rather than a recolor of the default. The settings model prepends the explicit disabled variant to this finite list."
+    "intent": "DMG is the production default: restrained olive response, visible dot matrix, and restrained STN persistence. Pocket is a materially distinct pinned reflective-LCD treatment rather than a recolor of the default. The settings UI appends \"none\" after these variants, and \"none\" turns the shader off."
   }
 }
