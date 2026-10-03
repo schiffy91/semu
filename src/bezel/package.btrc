@@ -275,12 +275,6 @@ class BezelPackageWriter {
 
     class JSONValue rectJson(BezelRect rect) { return rect.rounded(); }
 
-    class double shortSide(JSONValue rect) {
-        double w = BezelNumber.of(rect.get("w"));
-        double h = BezelNumber.of(rect.get("h"));
-        return w < h ? w : h;
-    }
-
     public string emit(string packageId) {  // "" on success, else why
         JSONValue package = self.repository.package(packageId);
         if (package == null) { return "no such package"; }
