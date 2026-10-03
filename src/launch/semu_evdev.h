@@ -13,6 +13,9 @@ struct input_event { struct timeval time; uint16_t type; uint16_t code; int32_t 
 struct input_id { uint16_t bustype; uint16_t vendor; uint16_t product; uint16_t version; };
 #define UINPUT_MAX_NAME_SIZE 80
 struct uinput_setup { struct input_id id; char name[UINPUT_MAX_NAME_SIZE]; uint32_t ff_effects_max; };
+struct input_absinfo { int32_t value; int32_t minimum; int32_t maximum; int32_t fuzz; int32_t flat; int32_t resolution; };
+struct uinput_abs_setup { uint16_t code; struct input_absinfo absinfo; };
+#define BUS_USB 0x03
 #define BUS_VIRTUAL 0x06
 #define EVIOCGNAME(len) 0UL
 #define EVIOCGBIT(ev, len) 0UL
@@ -21,6 +24,14 @@ struct uinput_setup { struct input_id id; char name[UINPUT_MAX_NAME_SIZE]; uint3
 #define UI_DEV_SETUP 0UL
 #define UI_SET_EVBIT 0UL
 #define UI_SET_KEYBIT 0UL
+#define UI_SET_ABSBIT 0UL
+#define UI_ABS_SETUP 0UL
+#define ABS_X 0x00
+#define ABS_Y 0x01
+#define ABS_Z 0x02
+#define ABS_RX 0x03
+#define ABS_RY 0x04
+#define ABS_RZ 0x05
 #define ABS_HAT0X 0x10
 #define ABS_HAT0Y 0x11
 #define BTN_DPAD_DOWN 0x221

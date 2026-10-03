@@ -1,5 +1,11 @@
-// A truthfully named virtual gamepad for headless input tests, over /dev/uinput (Linux).
-// usage: virtual_pad SECONDS_BEFORE_FIRST token... ; tokens press:NAME hold:NAME release:NAME sleep:SECONDS
+// A virtual gamepad for headless input tests, over /dev/uinput (Linux).
+// usage: virtual_pad [--steam-virtual-pad] SECONDS_BEFORE_FIRST token...
+//        tokens press:NAME hold:NAME release:NAME sleep:SECONDS
+// By default it is the truthfully named "Semu Test Gamepad". With --steam-virtual-pad it is a
+// replica of the pad Steam gives games in Game Mode, the only one a game sees there: the same
+// name, bus and ids (so the same SDL GUID, SDL mapping and emulator device identities) and the
+// same evdev buttons, sticks, triggers and hat. A Deck test hides Steam's own pad from the game
+// while it runs, so the replica is the first pad, as Steam's is in Game Mode.
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,7 +17,7 @@
 import Library.Console;
 import Library.Vector;
 
-class VirtualPadButtons {  // the names the menu tests use, as evdev codes
+class VirtualPadButtons {  // the names the tests use, as evdev codes of the plain test pad
     class int code(char* name) {
         if (strcmp(name, "south") == 0) { return BTN_SOUTH; }
         if (strcmp(name, "east") == 0) { return BTN_EAST; }
@@ -33,38 +39,106 @@ class VirtualPadButtons {  // the names the menu tests use, as evdev codes
     }
 }
 
+class SteamPadControls {  // Steam's virtual pad as Linux sees it: xpad's buttons, two sticks, two triggers, one hat
+    class int button(char* name) {  // by position: SDL's mapping for this pad reads b2 as X (west) and b3 as Y (north)
+        if (strcmp(name, "south") == 0) { return BTN_SOUTH; }
+        if (strcmp(name, "east") == 0) { return BTN_EAST; }
+        if (strcmp(name, "west") == 0) { return BTN_NORTH; }
+        if (strcmp(name, "north") == 0) { return BTN_WEST; }
+        if (strcmp(name, "tl") == 0) { return BTN_TL; }
+        if (strcmp(name, "tr") == 0) { return BTN_TR; }
+        if (strcmp(name, "select") == 0) { return BTN_SELECT; }
+        if (strcmp(name, "start") == 0) { return BTN_START; }
+        if (strcmp(name, "mode") == 0) { return BTN_MODE; }
+        if (strcmp(name, "thumbl") == 0) { return BTN_THUMBL; }
+        if (strcmp(name, "thumbr") == 0) { return BTN_THUMBR; }
+        return -1;
+    }
+
+    class Vector<int> buttons() {
+        return [BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST, BTN_TL, BTN_TR, BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR];
+    }
+
+    class int axis(char* name) {  // the d-pad is the hat, the triggers are Z and RZ
+        if (strcmp(name, "dpad_up") == 0 || strcmp(name, "dpad_down") == 0) { return ABS_HAT0Y; }
+        if (strcmp(name, "dpad_left") == 0 || strcmp(name, "dpad_right") == 0) { return ABS_HAT0X; }
+        if (strcmp(name, "tl2") == 0) { return ABS_Z; }
+        if (strcmp(name, "tr2") == 0) { return ABS_RZ; }
+        return -1;
+    }
+
+    class int pressed(char* name) {  // the axis value while NAME is held
+        if (strcmp(name, "dpad_up") == 0 || strcmp(name, "dpad_left") == 0) { return -1; }
+        if (strcmp(name, "dpad_down") == 0 || strcmp(name, "dpad_right") == 0) { return 1; }
+        return 255;
+    }
+}
+
 class VirtualPad {
     public int device;
+    public bool steam;
 
-    public VirtualPad() { self.device = -1; }
+    public VirtualPad(bool steam) {
+        self.device = -1;
+        self.steam = steam;
+    }
 
-    public bool create() {  // "Semu Test Gamepad": the supervisor sees south and start, so it is a pad
+    public void axis(int code, int minimum, int maximum, int flat) {
+        struct uinput_abs_setup setup;
+        memset(&setup, 0, sizeof(setup));
+        setup.code = (unsigned short)code;
+        setup.absinfo.minimum = minimum;
+        setup.absinfo.maximum = maximum;
+        setup.absinfo.flat = flat;
+        unsigned long absoluteSetup = (unsigned long)UI_ABS_SETUP;
+        ioctl(self.device, absoluteSetup, &setup);
+    }
+
+    public bool create() {  // the supervisor sees south and start, so either one is a pad
         int flags = (int)O_WRONLY | (int)O_NONBLOCK;
         self.device = open("/dev/uinput", flags);
         if (self.device < 0) { return false; }
         unsigned long setEvent = (unsigned long)UI_SET_EVBIT;
         unsigned long setKey = (unsigned long)UI_SET_KEYBIT;
+        unsigned long setAbsolute = (unsigned long)UI_SET_ABSBIT;
         int keyType = EV_KEY;
         int synType = EV_SYN;
+        int absoluteType = EV_ABS;
         ioctl(self.device, setEvent, keyType);
         ioctl(self.device, setEvent, synType);
-        for code in VirtualPadButtons.all() { ioctl(self.device, setKey, code); }
         struct uinput_setup setup;
         memset(&setup, 0, sizeof(setup));
-        setup.id.bustype = BUS_VIRTUAL;
-        setup.id.vendor = 0x5345;
-        setup.id.product = 0x4d55;
         int nameCapacity = UINPUT_MAX_NAME_SIZE;
-        snprintf(setup.name, (size_t)nameCapacity, "%s", "Semu Test Gamepad");
+        if (self.steam) {
+            ioctl(self.device, setEvent, absoluteType);
+            for code in SteamPadControls.buttons() { ioctl(self.device, setKey, code); }
+            Vector<int> sticks = [ABS_X, ABS_Y, ABS_RX, ABS_RY];
+            for code in sticks { ioctl(self.device, setAbsolute, code); self.axis(code, -32768, 32767, 128); }
+            Vector<int> triggers = [ABS_Z, ABS_RZ];
+            for code in triggers { ioctl(self.device, setAbsolute, code); self.axis(code, 0, 255, 0); }
+            Vector<int> hat = [ABS_HAT0X, ABS_HAT0Y];
+            for code in hat { ioctl(self.device, setAbsolute, code); self.axis(code, -1, 1, 0); }
+            setup.id.bustype = BUS_USB;
+            setup.id.vendor = 0x28de;
+            setup.id.product = 0x11ff;
+            setup.id.version = 0x0001;
+            snprintf(setup.name, (size_t)nameCapacity, "%s", "Microsoft X-Box 360 pad 0");
+        } else {
+            for code in VirtualPadButtons.all() { ioctl(self.device, setKey, code); }
+            setup.id.bustype = BUS_VIRTUAL;
+            setup.id.vendor = 0x5345;
+            setup.id.product = 0x4d55;
+            snprintf(setup.name, (size_t)nameCapacity, "%s", "Semu Test Gamepad");
+        }
         unsigned long deviceSetup = (unsigned long)UI_DEV_SETUP;
         unsigned long deviceCreate = (unsigned long)UI_DEV_CREATE;
         return ioctl(self.device, deviceSetup, &setup) >= 0 && ioctl(self.device, deviceCreate) >= 0;
     }
 
-    public void send(int code, int value) {
+    public void send(int type, int code, int value) {
         struct input_event event;
         memset(&event, 0, sizeof(event));
-        event.type = (unsigned short)EV_KEY;
+        event.type = (unsigned short)type;
         event.code = (unsigned short)code;
         event.value = value;
         ssize_t wrote = write(self.device, &event, sizeof(event));
@@ -73,6 +147,18 @@ class VirtualPad {
         event.code = (unsigned short)SYN_REPORT;
         wrote = write(self.device, &event, sizeof(event));
         (void)wrote;
+    }
+
+    public bool knows(char* name) {
+        if (self.steam) { return SteamPadControls.button(name) >= 0 || SteamPadControls.axis(name) >= 0; }
+        return VirtualPadButtons.code(name) >= 0;
+    }
+
+    public void set(char* name, bool down) {  // NAME held down or let go
+        if (!self.steam) { self.send(EV_KEY, VirtualPadButtons.code(name), down ? 1 : 0); return; }
+        int button = SteamPadControls.button(name);
+        if (button >= 0) { self.send(EV_KEY, button, down ? 1 : 0); return; }
+        self.send(EV_ABS, SteamPadControls.axis(name), down ? SteamPadControls.pressed(name) : 0);
     }
 
     public void remove() {
@@ -85,21 +171,23 @@ class VirtualPad {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2) { Console.error("usage: virtual_pad SECONDS_BEFORE_FIRST press:NAME|hold:NAME|release:NAME|sleep:SECONDS ..."); return 64; }
-    VirtualPad pad = VirtualPad();
+    int first = 1;
+    bool steam = argc > 1 && strcmp(argv[1], "--steam-virtual-pad") == 0;
+    if (steam) { first = 2; }
+    if (argc <= first) { Console.error("usage: virtual_pad [--steam-virtual-pad] SECONDS_BEFORE_FIRST press:NAME|hold:NAME|release:NAME|sleep:SECONDS ..."); return 64; }
+    VirtualPad pad = VirtualPad(steam);
     if (!pad.create()) { Console.error("virtual_pad: cannot create a device on /dev/uinput"); return 1; }
-    usleep((unsigned int)(atof(argv[1]) * 1000000.0));
-    for (int index = 2; index < argc; index++) {
+    usleep((unsigned int)(atof(argv[first]) * 1000000.0));
+    for (int index = first + 1; index < argc; index++) {
         char* token = argv[index];
         char* colon = strchr(token, (int)':');
         if (colon == null) { continue; }
         *colon = 0;
         char* name = colon + 1;
         if (strcmp(token, "sleep") == 0) { usleep((unsigned int)(atof(name) * 1000000.0)); continue; }
-        int code = VirtualPadButtons.code(name);
-        if (code < 0) { Console.error(f"virtual_pad: unknown button {name}"); pad.remove(); return 64; }
-        if (strcmp(token, "press") == 0 || strcmp(token, "hold") == 0) { pad.send(code, 1); usleep(60000); }
-        if (strcmp(token, "press") == 0 || strcmp(token, "release") == 0) { pad.send(code, 0); usleep(120000); }
+        if (!pad.knows(name)) { Console.error(f"virtual_pad: unknown button {name}"); pad.remove(); return 64; }
+        if (strcmp(token, "press") == 0 || strcmp(token, "hold") == 0) { pad.set(name, true); usleep(80000); }
+        if (strcmp(token, "press") == 0 || strcmp(token, "release") == 0) { pad.set(name, false); usleep(120000); }
     }
     usleep(300000);
     pad.remove();
