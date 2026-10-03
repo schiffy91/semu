@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "doc": {
-    "purpose": "Global bezel manifest: central selection policy, generic fallbacks, and deterministic bezel-art recipes.",
-    "provenance": "Semu-owned originals carry exact output metadata. Remaining upstream assets are explicitly pinned for handheld and dual-screen presentations only.",
+    "purpose": "Global bezel manifest: upstream pins and deterministic bezel-art recipes.",
+    "provenance": "Semu-owned originals carry exact output metadata. Everything else comes from the pinned upstreams: verbatim copies carry their file hash, rendered plates their output size and PNG type.",
     "shared_pins": "Upstreams named in both this file and shaders.json must carry identical rev/nar_hash pins; NixPackageContract enforces agreement.",
     "scenes": "scene recipes flatten pinned upstream layers, multiply an ambient lighting plate over them (the late-night room), and downscale; bezel packages under config/bezels measure their screens on the upstream canvas."
   },
@@ -48,13 +48,6 @@
         "bit_depth": 8,
         "color_type": 6,
         "sha256": "ff31cc6b4813edc78aa24cfc4569aef7ef100b7f24d0289991f0c0b7693439f3"
-      }
-    },
-    "assets/bezels.json": {
-      "type": "local",
-      "path": "config/assets/bezels.json",
-      "doc": {
-        "why": "BezelResolver reads the generic table from the staged tree at $SEMU_ASSET_ROOT/share/semu/assets/bezels.json."
       }
     },
     "assets/bezels/psp/classic.png": {
