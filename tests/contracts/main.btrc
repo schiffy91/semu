@@ -37,6 +37,7 @@ import ./spec/launch.btrc;
 import ./spec/render_env.btrc;
 import ./spec/dual_layout.btrc;
 import ./spec/editor.btrc;
+import ./spec/core_colour.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -907,6 +908,7 @@ int main() {
     SteamInputContract.run(contract);
     RenderingContract.run(contract);
     ShaderPipelineContract.run(contract);
+    CoreColourSpecContract.run(contract);
     BezelPackageContract.run(contract);
     BezelPlacementContract.run(contract);
     LayerLookContract.run(contract);

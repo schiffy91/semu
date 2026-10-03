@@ -261,6 +261,17 @@ class SemuRenderEnvironment {
         return JSONValue.makeNull();
     }
 
+    class string shaderVariantId(SemuPlan plan, SemuSystem system) {  // the per-system setting, else the manifest's default
+        string id = SemuJson.textAt(plan.settings, "visual.systems." + system.id + ".shader_variant");
+        return id.isEmpty() ? SemuJson.textAt(system.shaders, "default_variant") : id;
+    }
+
+    class JSONValue drawnShaderVariant(SemuPlan plan, SemuSystem system) {  // null with shaders off, "none", or an unbundled preset
+        if (!SemuJson.boolAt(plan.settings, "visual.crt_shaders", true) || !SemuJson.boolAt(system.shaders, "enabled", false)) { return JSONValue.makeNull(); }
+        JSONValue variant = SemuRenderEnvironment.findVariant(system.shaders, SemuRenderEnvironment.shaderVariantId(plan, system));
+        return variant.isObject() && !SemuRenderAssets.shader(plan, SemuJson.textAt(variant, "screen")).isEmpty() ? variant : JSONValue.makeNull();
+    }
+
     class string packageId(SemuSystem system, string variantId) {
         JSONValue variant = SemuRenderEnvironment.findVariant(system.bezels, variantId);
         return variant.isObject() ? SemuJson.textAt(variant, "bezel") : "";
@@ -366,15 +377,11 @@ class SemuRenderEnvironment {
         JSONValue settings = plan.settings;
         bool wantShaders = SemuJson.boolAt(settings, "visual.crt_shaders", true) && SemuJson.boolAt(system.shaders, "enabled", false);
         bool wantBezels = SemuJson.boolAt(settings, "visual.bezels", true) && SemuJson.boolAt(system.bezels, "enabled", false);
-        string shaderId = SemuJson.textAt(settings, "visual.systems." + system.id + ".shader_variant");
-        if (shaderId.isEmpty()) { shaderId = SemuJson.textAt(system.shaders, "default_variant"); }
+        string shaderId = SemuRenderEnvironment.shaderVariantId(plan, system);
         string bezelId = SemuJson.textAt(settings, "visual.systems." + system.id + ".bezel_variant");
         if (bezelId.isEmpty() || (!bezelId.equals("none") && SemuRenderEnvironment.packageId(system, bezelId).isEmpty())) { bezelId = SemuJson.textAt(system.bezels, "default_variant"); }  // "none" turns this system's bezel off
-        string shaderPath = "";
-        if (wantShaders && !shaderId.isEmpty() && !shaderId.equals("none")) {
-            JSONValue variant = SemuRenderEnvironment.findVariant(system.shaders, shaderId);
-            shaderPath = SemuRenderAssets.shader(plan, SemuJson.textAt(variant, "screen"));  // empty when the bundle lacks the preset
-        } else if (wantShaders && shaderId.isEmpty()) {
+        string shaderPath = SemuRenderAssets.shader(plan, SemuJson.textAt(SemuRenderEnvironment.drawnShaderVariant(plan, system), "screen"));  // empty when off or unbundled
+        if (wantShaders && shaderId.isEmpty()) {
             shaderPath = SemuRenderAssets.shader(plan, SemuJson.textAt(system.shaders, "screen"));  // single-preset manifests name the screen directly
         }
         JSONValue package = wantBezels && !bezelId.isEmpty() && !bezelId.equals("none") ? SemuBezelPackage.load(plan, SemuRenderEnvironment.packageId(system, bezelId)) : JSONValue.makeNull();
