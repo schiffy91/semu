@@ -15,7 +15,6 @@
       ".cue",
       ".elf",
       ".gdi",
-      ".iso",
       ".lst",
       ".m3u",
       ".7z",
@@ -72,6 +71,7 @@
   "doc": {
     "hardware": "consumer CRT or VGA monitor",
     "intent": "Prefer 4:3 CRT; swap to 16:9/flat only when config or game profile proves widescreen. Linux and Steam Deck use the source-built standalone Flycast slice; Dreamcast is Linux-only, with no darwin Flycast build.",
-    "bios": "Flycast can use HLE for many games, but original BIOS files improve compatibility."
+    "bios": "Flycast can use HLE for many games, but original BIOS files improve compatibility.",
+    "extensions": "Only formats a bound emulator opens: neither Flycast 2.7 nor its libretro core has an ISO disc driver, so .iso is not offered. .7z, .zip and .lst stay because Flycast plays Naomi and Atomiswave sets and Semu has no naomi system. .m3u stays: standalone Flycast gets the playlist's first disc (emulator.json playlist.open)."
   }
 }
