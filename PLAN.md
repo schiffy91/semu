@@ -571,6 +571,10 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   baked by nix on the building machine, never committed (G4, G7).
 - `semu bezel` may write `config/bezels/<id>/bezel.json` and nothing else under the checkout's
   `src/` or `config/` (`SemuPaths.writeSource`, G5).
+- DS/3DS computed layouts always take whole steps from 1x up, whatever `visual.integer_scaling`
+  says, from the owner's rule that dual screens sit at the largest integer scale (2026-10-03).
+  That switch governs one screen without a bezel (a bezel follows PLACEMENT), and its menu
+  label, INTEGER SCALING (ONE SCREEN, NO BEZEL), says so.
 
 ### G1. Build and tests run on one host only — done on the Mac
 

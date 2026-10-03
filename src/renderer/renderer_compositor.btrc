@@ -203,7 +203,7 @@ struct RendererConfig {
     int loaded;
     int shaders_enabled;
     int bezels_enabled;
-    int integer_scaling;
+    int integer_scaling;  // one screen without a fixed bezel; two screens always integer
     int placement;  // SEMU_RENDER_PLACEMENT: 0 fit, 1 game (integer, shell cropped), 2 bezel (integer, shell whole)
     int active_variant;
     float display_aspect;

@@ -791,6 +791,10 @@ class SettingsUiContract {  // the document ES-DE's SEMU SETTINGS menu validates
             for (int page = 0; page < pages.size(); page++) { SettingsUiContract.page(contract, pages.at(page), keys, placed); }
         }
         contract.expect(keys.contains("visual.bezels") && keys.contains("visual.systems.gb.bezel_variant") && keys.contains("ui.theme"), "settings ui exposes bezels, the gb variant and the theme");
+        string integerLabel = "";
+        JSONValue visuals = sections.at(0).get("fields");
+        for (int index = 0; index < visuals.size(); index++) { if (SemuJson.textAt(visuals.at(index), "key").equals("visual.integer_scaling")) { integerLabel = SemuJson.textAt(visuals.at(index), "label"); } }
+        contract.expect(integerLabel.equals("INTEGER SCALING (ONE SCREEN, NO BEZEL)"), "the integer switch says what it governs: a bezel follows PLACEMENT and the DS/3DS layouts are always whole steps; label " + integerLabel);
         contract.expect(placed.size() == document.get("commands").size() && placed.contains("reset-settings"), "every declared command is placed exactly once");
         JSONValue manifest = SemuSettingsUi.manifest("/nix/store/x-semu/bin/semu");
         contract.expect(manifest.size() == 2 && manifest.get("entry").size() == 5 && manifest.get("entry").get("actions").size() == 3, "manifest has the exact member counts ES-DE checks");
