@@ -28,12 +28,9 @@
       },
       "surround": "#2c2c2c",
       "curvature": 0,
-      "vignette": 0.059999999999999998,
+      "vignette": 0,
       "bloom": 0,
-      "glass": {
-        "asset": "assets/bezels/tv/tube-reflection.png",
-        "reflect": 0.17999999999999999
-      },
+      "glass": null,
       "shader": null,
       "image": {
         "x": 1338,

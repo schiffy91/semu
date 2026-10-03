@@ -52,12 +52,9 @@
       },
       "surround": "#2a2a2a",
       "curvature": 0,
-      "vignette": 0.050000000000000003,
+      "vignette": 0,
       "bloom": 0,
-      "glass": {
-        "asset": "assets/bezels/tv/tube-reflection.png",
-        "reflect": 0.10000000000000001
-      },
+      "glass": null,
       "shader": null,
       "provenance": {
         "tool": "semu bezel emit",
@@ -201,12 +198,9 @@
       },
       "surround": "#2b2b2b",
       "curvature": 0,
-      "vignette": 0.050000000000000003,
+      "vignette": 0,
       "bloom": 0,
-      "glass": {
-        "asset": "assets/bezels/tv/tube-reflection.png",
-        "reflect": 0.10000000000000001
-      },
+      "glass": null,
       "shader": null,
       "provenance": {
         "tool": "semu bezel emit",

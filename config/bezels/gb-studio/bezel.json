@@ -29,7 +29,7 @@
       },
       "surround": "#3c4632",
       "curvature": 0,
-      "vignette": 0.06,
+      "vignette": 0,
       "bloom": 0,
       "glass": null,
       "shader": null,
