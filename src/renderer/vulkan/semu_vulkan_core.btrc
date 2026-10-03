@@ -47,7 +47,6 @@ struct SemuVulkanSwapchain {
 struct SemuVulkanDevice {
     void* key;
     void* handle;
-    void* physical;
     bool interop;
     __fn_ptr<void*, void*, const char*> nextDeviceProcAddress;
     __fn_ptr<int, void*, void*> setLoaderData;
@@ -454,7 +453,6 @@ class SemuVulkanCore {
         memset(record, 0, sizeof(struct SemuVulkanDevice));
         record->handle = *result;
         record->key = SemuVulkanCore.key(*result);
-        record->physical = physical;
         record->interop = interop;
         record->nextDeviceProcAddress = nextDevice;
         if (setLoaderData != null) { SemuVulkanCore.bind(&record->setLoaderData, setLoaderData); }
