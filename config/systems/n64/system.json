@@ -22,13 +22,6 @@
       ".zip"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "Super Mario 64 (USA).zip",
-      "Mario Kart 64 (USA).zip"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "retroarch",

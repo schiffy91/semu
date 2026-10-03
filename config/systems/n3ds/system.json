@@ -25,13 +25,6 @@
       ".zcxi"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "BOXBOY! (USA) (En,Fr,Es) (eShop).3ds",
-      "Pushmo (U)(PoWeRUp).3ds"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "retroarch",

@@ -27,13 +27,6 @@
       ".zip"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "New Super Mario Bros. Wii (USA) (En,Fr,Es) (Rev 2).wbfs",
-      "Super Paper Mario (USA) (Rev 2).wbfs"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "dolphin",

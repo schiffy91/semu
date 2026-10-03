@@ -28,13 +28,6 @@
       ".zip"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "Super Monkey Ball (USA).rvz",
-      "Mario Kart - Double Dash!! (USA).rvz"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "dolphin",

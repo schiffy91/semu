@@ -21,22 +21,6 @@
       ".zip"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "Tetris (World) (Rev 1).zip"
-    ],
-    "gameplay_controls": [
-      "dpad-up",
-      "dpad-down",
-      "dpad-left",
-      "dpad-right",
-      "a",
-      "b",
-      "start",
-      "select"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "retroarch",

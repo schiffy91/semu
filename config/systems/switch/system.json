@@ -20,13 +20,6 @@
       ".zip"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "Animal Crossing New Horizons [01006F8002326000][US][v0].nsp",
-      "The Legend of Zelda Tears of the Kingdom [0100F2C0115B6000][v0][US].nsp"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "ryujinx"

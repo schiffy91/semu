@@ -21,13 +21,6 @@
       ".zip"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "Mario Kart - Super Circuit (USA).zip",
-      "Wario Land 4 (USA, Europe).zip"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "retroarch",

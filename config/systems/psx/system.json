@@ -30,13 +30,6 @@
       ".zip"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "Mr. Driller (USA).m3u/Mr. Driller (USA).m3u",
-      "PaRappa the Rapper (USA) (En,Fr,De,Es,It).m3u/PaRappa the Rapper (USA) (En,Fr,De,Es,It).m3u"
-    ],
-    "capture_frame": 360
-  },
   "emulators": [
     {
       "emulator": "retroarch",

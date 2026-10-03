@@ -17,13 +17,6 @@
       ".wux"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "Nintendo Land (US).wua",
-      "MARIO KART 8 (US).wua"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "cemu",

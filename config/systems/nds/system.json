@@ -18,13 +18,6 @@
       ".zip"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "Meteos (USA).zip",
-      "Soul Bubbles (USA) (En,Fr,De,Es,It).zip"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "retroarch",

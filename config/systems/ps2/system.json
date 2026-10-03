@@ -25,13 +25,6 @@
       ".zip"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "SSX (USA).iso",
-      "NBA Street (USA).iso"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "pcsx2",

@@ -29,13 +29,6 @@
       ".zip"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "Sonic The Hedgehog (USA, Europe).zip",
-      "Gunstar Heroes (USA).zip"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "retroarch",

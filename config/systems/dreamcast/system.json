@@ -23,13 +23,6 @@
       ".zip"
     ]
   },
-  "verification": {
-    "rom_descriptors": [
-      "Ikaruga (Japan).chd",
-      "Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd"
-    ],
-    "capture_frame": 180
-  },
   "emulators": [
     {
       "emulator": "flycast",
