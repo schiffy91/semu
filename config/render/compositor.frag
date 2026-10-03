@@ -24,7 +24,7 @@ uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uR
   for(int i=0;i<4;i++){vec2 g=uv(tube.xy+curved(uv(p+o[i],tube),fx.x)*tube.zw,rect);s+=textureLod(t,rotatedUv(clamp(g,0.0,1.0),rot),0.0).rgb;}return s*0.25;}
  vec3 screenColor(sampler2D t,sampler2D g,vec2 p,vec4 tube,vec4 rect,vec4 fx,vec4 surround,float rot,float reflect,float hasGlass,float edge){  // edge: how many pixels past the bent edge the picture still reaches, so a lip's antialiasing blends from it and never from the surround
   vec2 q0=uv(p,tube);vec2 q1=curved(q0,fx.x);bool on=q1.x>=0.0&&q1.x<=1.0&&q1.y>=0.0&&q1.y<=1.0;
-  vec2 pc=tube.xy+q1*tube.zw;vec2 gq=uv(pc,rect);vec2 past=(gq-clamp(gq,0.0,1.0))*rect.zw;bool game=(on||edge>0.0)&&dot(past,past)<=edge*edge;
+  vec2 pc=tube.xy+q1*tube.zw;vec2 gq=uv(pc,rect);vec2 past=(gq-clamp(gq,0.0,1.0))*rect.zw;bool game=(on&&gq.x>=0.0&&gq.x<=1.0&&gq.y>=0.0&&gq.y<=1.0)||(edge>0.0&&dot(past,past)<=edge*edge);  // inside by comparison, never by a zero residue: compilers fuse (gq-clamp(gq))*size into multiply-adds that leave one, and every screen without a lip (computed layouts, bezels off) went black
   vec3 c=surround.rgb;
   if(game){vec2 q=rotatedUv(clamp(gq,0.0,1.0),rot);c=fx.x>0.0?bentPicture(t,p,tube,rect,fx,rot):textureLod(t,q,0.0).rgb;if(fx.z>0.0){vec3 b=blurred(t,q,glowLod(t));c+=fx.z*max(b-0.4,0.0)*1.3;}}  // the full-size picture, never its mips; a flat lane keeps its single tap on the texel centres
   else if(!on)c=vec3(0.0);
