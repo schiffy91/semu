@@ -10,8 +10,6 @@
   "rom": {
     "dir": "gbc",
     "extensions": [
-      ".bin",
-      ".cgb",
       ".gb",
       ".gbc",
       ".7z",
@@ -53,6 +51,7 @@
   },
   "doc": {
     "hardware": "Game Boy Color TFT LCD",
-    "intent": "GBC LCD color response with mild motion blur; frost purple shell is the desired bezel target."
+    "intent": "GBC LCD color response with mild motion blur; frost purple shell is the desired bezel target.",
+    "extensions": "Only what Gambatte declares it opens (gb, gbc, dmg) plus the archives RetroArch unpacks. .bin and .cgb were dropped; neither occurs in the library."
   }
 }

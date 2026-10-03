@@ -12,9 +12,10 @@
 # CASES has one case per line: SYSTEM EMULATOR CORE|- WAIT... -- ROM-GLOB (relative to the ROM
 # folder of SYSTEM; the first match is played). OUT/<case>/ gets at-<wait>.png for each wait,
 # run.log (everything Semu and the emulator printed), render-env (the SEMU_RENDER_* the emulator
-# saw), cmdline (its argv, one argument per line) and result (one line per check); a second case of
-# the same SYSTEM-EMULATOR[-CORE] gets a -2, -3 suffix. OUT/summary collects every result; OUT/done
-# marks the end.
+# saw), cmdline (its argv, one argument per line, read the moment the emulator is first seen, so an
+# emulator that exits at once still shows which file it was given) and result (one line per check);
+# a second case of the same SYSTEM-EMULATOR[-CORE] gets a -2, -3 suffix. OUT/summary collects every
+# result; OUT/done marks the end.
 set -u
 cases="$1"; out="$2"
 roms=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs
@@ -28,6 +29,14 @@ descendants() { local child; for child in $(pgrep -P "$1"); do echo "$child"; de
 battery() { cat /sys/class/power_supply/BAT1/capacity 2>/dev/null || echo 100; }
 charging() { grep -q -E 'Charging|Full' /sys/class/power_supply/BAT1/status 2>/dev/null; }
 emulator_pids() { pgrep -f "/($emulators)([^/]*)( |$)" 2>/dev/null | sort; }
+leaf_of() { local leaf="$1" child; while [ -n "$leaf" ] && child=$(pgrep -P "$leaf" | tail -1) && [ -n "$child" ]; do leaf=$child; done; echo "$leaf"; }
+record_argv() {  # $1 the emulator: its argv once it has exec'd, silently nothing if it is already gone
+  local leaf="$1"
+  if [ -s "$dir/cmdline" ] || [ -z "$leaf" ] || [ "$leaf" = "$game" ] || [ "$(cat "/proc/$leaf/comm" 2>/dev/null)" = semu-btrc ]; then return 0; fi
+  { tr '\0' '\n' < "/proc/$leaf/cmdline"; } > "$dir/cmdline" 2>/dev/null
+  [ -s "$dir/cmdline" ] && note "argv-last: $(tail -1 "$dir/cmdline")"  # the file the emulator was told to open
+  return 0
+}
 
 before="$(emulator_pids)"
 while IFS= read -r line; do
@@ -55,16 +64,23 @@ while IFS= read -r line; do
     gamescope --backend headless -W 1280 -H 800 -w 1280 -h 800 -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
   headless=$!
   game=""; display=""
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 300); do  # every 0.2 s for 60 s: an emulator that exits within a second is still seen
     for pid in $(descendants "$headless"); do
       [ -z "$display" ] && display="$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | sed -n 's/^GAMESCOPE_WAYLAND_DISPLAY=//p')"
       [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = semu-btrc ] && game=$pid
     done
     [ -n "$game" ] && break
     kill -0 "$headless" 2>/dev/null || break
-    sleep 1
+    sleep 0.2
   done
   [ -n "$game" ] && note "semu-btrc: pid $game after $(( $(date +%s) - start )) s" || note "semu-btrc: never started"
+  for _ in $(seq 1 100); do  # the emulator's argv the moment it appears, before any wait
+    [ -n "$game" ] || break
+    record_argv "$(leaf_of "$game")"
+    [ -s "$dir/cmdline" ] && break
+    kill -0 "$game" 2>/dev/null || break
+    sleep 0.1
+  done
 
   for wait in $waits; do
     while [ $(( $(date +%s) - start )) -lt "$wait" ]; do sleep 1; done
@@ -72,13 +88,13 @@ while IFS= read -r line; do
     shot="$dir/at-$wait.png"
     [ -n "$display" ] && GAMESCOPE_WAYLAND_DISPLAY="$display" timeout 20 gamescopectl screenshot "$shot" > /dev/null 2>&1
     for _ in $(seq 1 10); do [ -s "$shot" ] && break; sleep 1; done
-    leaf="$game"; while [ -n "$leaf" ] && child=$(pgrep -P "$leaf" | tail -1) && [ -n "$child" ]; do leaf=$child; done
+    leaf="$(leaf_of "$game")"; record_argv "$leaf"
     io=""; [ -n "$leaf" ] && io="$(cat "/proc/$leaf/comm" 2>/dev/null) state $(awk '{print $3}' "/proc/$leaf/stat" 2>/dev/null), read $(( $(sed -n 's/^rchar: //p' "/proc/$leaf/io" 2>/dev/null || echo 0) / 1048576 )) MB, cpu $(ps -o pcpu= -p "$leaf" 2>/dev/null | tr -d ' ')%"
     note "t=$wait running=$running shot=$([ -s "$shot" ] && echo yes || echo no) $io"
   done
-  leaf="$game"; while [ -n "$leaf" ] && child=$(pgrep -P "$leaf" | tail -1) && [ -n "$child" ]; do leaf=$child; done
-  [ -n "$leaf" ] && tr '\0' '\n' < "/proc/$leaf/environ" 2>/dev/null | grep '^SEMU_RENDER_' | sort > "$dir/render-env"
-  [ -n "$leaf" ] && tr '\0' '\n' < "/proc/$leaf/cmdline" > "$dir/cmdline" 2>/dev/null && note "argv-last: $(tail -1 "$dir/cmdline")"  # the file the emulator was told to open
+  leaf="$(leaf_of "$game")"; record_argv "$leaf"
+  [ -s "$dir/cmdline" ] || note "argv: the emulator was never seen"
+  [ -n "$leaf" ] && { tr '\0' '\n' < "/proc/$leaf/environ" | grep '^SEMU_RENDER_' | sort; } > "$dir/render-env" 2>/dev/null
   [ -n "$leaf" ] && note "emulator: $(cat "/proc/$leaf/comm" 2>/dev/null) pid $leaf, $(ps -o pcpu=,rss= -p "$leaf" 2>/dev/null | awk '{printf "%s%% cpu, %d MB", $1, $2/1024}')"
 
   if [ -n "$game" ] && kill -0 "$game" 2>/dev/null; then

@@ -1075,6 +1075,37 @@ Update this block whenever a milestone criterion changes state.
   of `tests/deck/system-matrix.cases` (the script now gives repeated cases their own directory
   and records the emulator's argv), and a manual disc swap in each emulator. Left for the owner:
   gc `Baten Kaitos Origins (USA).m3u` lists Disc 1 twice and no Disc 2.
+  Review follow-ups, 2026-10-03 (offline, Deck untouched):
+  - The extension check is general now. Each emulator.json declares `content.extensions`: what
+    the emulator opens at its pinned revision, with file and line in `doc.content`. RetroArch
+    declares `content.archives` (.7z and .zip, unpacked unless a core sets `block_extract`) and
+    `content.cores.<core>.extensions` (each core's own valid_extensions). For every target,
+    SemuChecker requires each extension a system offers to be opened by one of its bindings,
+    matched on the last suffix, so .iso covers .nkit.iso. A first_entry playlist counts as opened.
+    That trimmed the extensions no bound emulator declares; none of them occurs in the Mac or
+    Deck library (read-only find on both):
+    - wii .7z/.zip: Dolphin opens no archive;
+    - switch .7z/.zip: Ryujinx 1.3.3's AppHost.cs loads .xci/.nca/.nsp/.pfs0 and treats anything
+      else as homebrew, so it opens no archive either;
+    - gb .bin/.gbs, gbc .bin/.cgb, gba .agb/.bin/.cgb, n64 .d64/.ndd, nes .3dsen/.bin,
+      snes .bin/.bml/.bsx, psx .psexe, nds .app.
+    Reversible default: a format becomes available again once its emulator's declaration lists
+    it, with source evidence.
+  - A native playlist binding must open .m3u itself, judged per RetroArch core. Adding .m3u to n64
+    (Mupen64Plus-Next) now fails `build configs`. Contracts now pin three rules: fileInside's
+    regular-file check (a playlist naming a folder is refused), an absolute playlist entry inside
+    the ROM directory (kept as written), and `native` as the default `playlist.open`.
+  - Flycast's ContentPath argument is quoted as data (`playlist.quote`): double quotes, or single
+    quotes when the folder holds a double quote. A folder holding both quotes or a semicolon gets
+    no picker argument, and the plan's `notice` says why; disc 1 still boots. A contract port of
+    Flycast's -config grammar and list loader reads the argv back to the exact folder.
+  - `system-matrix.sh` and `input-check.sh` record the emulator's argv the moment it appears,
+    with every error silenced. In a container with an emulator that exits after 1 s, the old
+    scripts printed `/proc/<pid>/cmdline: No such file or directory` and recorded nothing; the new
+    ones record disc 1.
+  Still open from that review: a loose `X.m3u` sitting in the system folder points Flycast's
+  ContentPath at the whole Dreamcast folder. Booting is unaffected, and every library playlist
+  sits in its own folder.
 - M6 renderer: done on the desktop 2026-09-19, Deck pending. `libsemurenderer`
   (librashader GL) is linked into RetroArch's gl3 driver by the Semu build;
   the launcher passes `SEMU_RENDER_*` from `config/systems/<id>/{shaders,bezels}.json`.

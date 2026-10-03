@@ -10,7 +10,6 @@
   "rom": {
     "dir": "nds",
     "extensions": [
-      ".app",
       ".bin",
       ".nds",
       ".7z",
@@ -86,6 +85,7 @@
   "doc": {
     "hardware": "dual 256x192 resistive LCDs",
     "intent": "Expose both screens with independent LCD processing; Semu owns the dual-screen presentation contract.",
-    "core": "RetroArch cores are hooked by the Semu renderer, so the default is the libretro melonDS build; standalone melonDS stays as an unhooked alternate."
+    "core": "RetroArch cores are hooked by the Semu renderer, so the default is the libretro melonDS build; standalone melonDS stays as an unhooked alternate.",
+    "extensions": "Only what a bound emulator declares it opens: DeSmuME takes .bin, both melonDS builds .nds, and RetroArch and melonDS open archives. A DSiWare .app is opened by none, so it was dropped; it does not occur in the library."
   }
 }

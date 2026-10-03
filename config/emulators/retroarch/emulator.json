@@ -17,6 +17,163 @@
       "speed.fast"
     ]
   },
+  "content": {
+    "archives": [
+      ".7z",
+      ".zip"
+    ],
+    "cores": {
+      "azahar": {
+        "extensions": [
+          ".3ds",
+          ".3dsx",
+          ".app",
+          ".axf",
+          ".cci",
+          ".cxi",
+          ".elf",
+          ".z3dsx",
+          ".zcci",
+          ".zcxi"
+        ],
+        "doc": "azahar fbd3fb02 src/citra_libretro/environment.cpp:272"
+      },
+      "citra": {
+        "extensions": [
+          ".3ds",
+          ".3dsx",
+          ".cia",
+          ".elf"
+        ],
+        "doc": "libretro/citra e4cbe379 src/citra_libretro/environment.cpp:183"
+      },
+      "desmume": {
+        "extensions": [
+          ".bin",
+          ".ids",
+          ".nds"
+        ],
+        "doc": "libretro/desmume 8f6b32cb desmume/src/frontend/libretro/libretro.cpp:523"
+      },
+      "flycast": {
+        "extensions": [
+          ".7z",
+          ".bin",
+          ".cdi",
+          ".chd",
+          ".cue",
+          ".dat",
+          ".elf",
+          ".gdi",
+          ".lst",
+          ".m3u",
+          ".zip"
+        ],
+        "block_extract": true,
+        "doc": "flycast d8a76809 shell/libretro/libretro.cpp:2565-2567: reads .m3u itself (read_m3u) and takes archives whole as NAOMI or Atomiswave carts (block_extract)"
+      },
+      "gambatte": {
+        "extensions": [
+          ".dmg",
+          ".gb",
+          ".gbc"
+        ],
+        "doc": "gambatte-libretro d9d6cd06 libgambatte/libretro/libretro.cpp:1666"
+      },
+      "genesis_plus_gx": {
+        "extensions": [
+          ".68k",
+          ".bin",
+          ".bms",
+          ".chd",
+          ".cue",
+          ".gen",
+          ".gg",
+          ".iso",
+          ".m3u",
+          ".md",
+          ".mdx",
+          ".sg",
+          ".sgd",
+          ".smd",
+          ".sms"
+        ],
+        "doc": "Genesis-Plus-GX c2838c7d libretro/libretro.c:3129"
+      },
+      "mednafen_psx": {
+        "extensions": [
+          ".bin",
+          ".ccd",
+          ".chd",
+          ".cue",
+          ".exe",
+          ".img",
+          ".iso",
+          ".m3u",
+          ".pbp",
+          ".toc"
+        ],
+        "doc": "beetle-psx-libretro 82d8e051 libretro.c:6876 (MEDNAFEN_CORE_EXTENSIONS, libretro_options.h:20): reads .m3u itself (ReadM3U_r)"
+      },
+      "melonds": {
+        "extensions": [
+          ".dsi",
+          ".ids",
+          ".nds"
+        ],
+        "doc": "libretro/melonds 66b5d263 src/libretro/libretro.cpp:120"
+      },
+      "mesen": {
+        "extensions": [
+          ".fds",
+          ".nes",
+          ".unf",
+          ".unif"
+        ],
+        "doc": "libretro/mesen 0102910c Libretro/libretro.cpp:1167"
+      },
+      "mgba": {
+        "extensions": [
+          ".gb",
+          ".gba",
+          ".gbc",
+          ".sgb"
+        ],
+        "doc": "libretro/mgba 32de7921 src/platform/libretro/libretro.c:1347 (built with M_CORE_GB)"
+      },
+      "mupen64plus_next": {
+        "extensions": [
+          ".bin",
+          ".n64",
+          ".u1",
+          ".v64",
+          ".z64"
+        ],
+        "doc": "mupen64plus-libretro-nx f275caf4 libretro/libretro.c:656; a 64DD .ndd is a side file found beside the ROM (1884-1893), never content"
+      },
+      "ppsspp": {
+        "extensions": [
+          ".chd",
+          ".cso",
+          ".elf",
+          ".iso",
+          ".pbp",
+          ".prx"
+        ],
+        "doc": "ppsspp a3998322 libretro/libretro.cpp:1307"
+      },
+      "snes9x": {
+        "extensions": [
+          ".bs",
+          ".fig",
+          ".sfc",
+          ".smc",
+          ".swc"
+        ],
+        "doc": "snes9x a0420aef libretro/libretro.cpp:779"
+      }
+    }
+  },
   "platforms": {
     "linux": {
       "executable": "${asset_root}/bin/retroarch",
@@ -762,6 +919,7 @@
     "input": "The declared action set is the exact RetroArch profile/watcher capability surface. Linux uses SDL2 port 1 (joypad index 0) with autodetection and the packaged 28de:11ff aliases; it deliberately has no name-based device reservation because Steam Game Mode exposes the same virtual pad under multiple SDL names. Only autoconfiguration notifications are suppressed.",
     "frame_output": "The forced Linux glcore GL3 package calls one shared geometry tap after the game renderchain draw and again after gameplay overlays, widgets, and OSD. The compiler selects semantic surfaces from each system declaration; live geometry validates and partitions them but never selects a system mode. A successful game composition publishes the touch map independently of post-UI evidence. RetroArch menus and settings bypass the tap. Native shaders and filtering stay disabled so Semu remains the only shader, bezel, and composition owner.",
     "state": "data_home=xdg confines RetroArch config, data, and cache writes to its Semu-owned state root; saves, states, screenshots, and firmware use their separately declared paths.",
-    "playlist": "The cores bound to systems that list .m3u (mednafen_psx and flycast) read playlists through libretro and register disk control, so the .m3u passes through unchanged (playlist.open native)."
+    "playlist": "The cores bound to systems that list .m3u (mednafen_psx and flycast) read playlists through libretro and register disk control, so the .m3u passes through unchanged (playlist.open native). Each declares .m3u among its content extensions; the checker refuses a native playlist binding whose core does not.",
+    "content": "archives: RetroArch 69a4f0e unpacks a .zip (zlib) or .7z (HAVE_7ZIP=yes, qb/config.params.sh:144) and hands the core the first inner file it takes (tasks/task_content.c:803-866, extracted to a temporary file for a full-path core at 985-996), unless the core blocks extraction. cores.<core>.extensions: the core's own valid_extensions at its pinned revision (each core's doc names the line). RetroArch passes any file to a core, but these are what each core declares it opens, and an .m3u among them is how a core says it reads playlists, which a native playlist binding needs."
   }
 }

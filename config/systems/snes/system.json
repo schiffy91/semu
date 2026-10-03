@@ -10,10 +10,7 @@
   "rom": {
     "dir": "snes",
     "extensions": [
-      ".bin",
-      ".bml",
       ".bs",
-      ".bsx",
       ".fig",
       ".sfc",
       ".smc",
@@ -57,6 +54,7 @@
   },
   "doc": {
     "hardware": "consumer CRT over S-Video/composite",
-    "intent": "Prefer S-Video-like clarity unless a game profile requests composite artifacts."
+    "intent": "Prefer S-Video-like clarity unless a game profile requests composite artifacts.",
+    "extensions": "Only what Snes9x declares it opens (smc, sfc, swc, fig, bs) plus the archives RetroArch unpacks. .bin, .bml and .bsx were dropped; none occurs in the library."
   }
 }

@@ -6,6 +6,16 @@
       "app.quit"
     ]
   },
+  "content": {
+    "extensions": [
+      ".nca",
+      ".nro",
+      ".nso",
+      ".nsp",
+      ".pfs0",
+      ".xci"
+    ]
+  },
   "platforms": {
     "linux": {
       "executable": "${asset_root}/bin/Ryujinx",
@@ -152,6 +162,7 @@
     "input": "The managed Config.json contains the active Player1 GamepadSDL2 binding for the target Steam virtual controller. Ryujinx has no native save-state contract; app.quit remains process-group owned.",
     "keys": "prod.keys and title.keys are copied into the isolated root-data system directory from read-only external/project sources without modifying those sources.",
     "saves": "Native Switch game saves are emulator-owned at ${state_root}/config/Ryujinx/bis/user/save. Profile convergence owns only Config.json, so save data and installed firmware remain untouched.",
-    "rendering": "Vulkan on both platforms. render_vulkan composes Semu's bezel and shader into the swapchain image at present: on Linux through VK_LAYER_SEMU_compositor, on macOS through Semu's stand-in placed as Ryujinx's own libMoltenVK.dylib (packaging/nix/ryujinx_semu.nix)."
+    "rendering": "Vulkan on both platforms. render_vulkan composes Semu's bezel and shader into the swapchain image at present: on Linux through VK_LAYER_SEMU_compositor, on macOS through Semu's stand-in placed as Ryujinx's own libMoltenVK.dylib (packaging/nix/ryujinx_semu.nix).",
+    "content": "What Ryujinx 1.3.3 (e2143d43, narHash checked against the Nix store copy) loads: .xci, .nca, .nsp and .pfs0 (src/Ryujinx/Systems/AppHost.cs:819-846), anything else as homebrew, which is .nro or else NSO (859, src/Ryujinx.HLE/Loaders/Processes/ProcessLoader.cs:175-237). No archive: a .zip fails as unsupported homebrew."
   }
 }

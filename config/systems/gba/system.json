@@ -10,9 +10,6 @@
   "rom": {
     "dir": "gba",
     "extensions": [
-      ".agb",
-      ".bin",
-      ".cgb",
       ".gb",
       ".gba",
       ".gbc",
@@ -55,6 +52,7 @@
   },
   "doc": {
     "hardware": "AGB-001 reflective TFT LCD",
-    "intent": "Use the original wide GBA target, not SP-first artwork."
+    "intent": "Use the original wide GBA target, not SP-first artwork.",
+    "extensions": "Only what mGBA declares it opens (gba, gb, gbc, sgb) plus the archives RetroArch unpacks. .agb, .bin and .cgb were dropped; none occurs in the library."
   }
 }

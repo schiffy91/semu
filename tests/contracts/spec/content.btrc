@@ -1,0 +1,133 @@
+// Content spec: ES-DE offers each system only the extensions one of its bound emulators, or cores, declares it opens.
+
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/check.btrc;
+import ../../../src/emit/esde.btrc;
+
+class ContentSpecEvery {  // the real config, every target, every extension
+    class void run(Contract contract) {
+        for target in ["linux-desktop", "steam-deck", "macos"] {
+            Fixture fixture = Fixture(target);
+            int extensions = 0;
+            for systemId in fixture.plan.systems {
+                SemuSystem system = fixture.model.system(systemId);
+                for extension in system.extensions {
+                    extensions++;
+                    Vector<string> openers = [];
+                    for binding in system.bindingsFor(fixture.plan.platform) {
+                        SemuEmulator emulator = fixture.model.emulator(binding.emulator);
+                        if (SemuContent.opens(emulator, emulator.platform(fixture.plan.platform), binding.core, extension)) { openers.push(SemuContent.label(binding)); }
+                    }
+                    contract.expect(!openers.isEmpty(), f"{target} {systemId} {extension} is opened by a bound emulator");
+                }
+            }
+            contract.expect(extensions > 80, f"{target} offers its systems' extensions: {extensions}");
+            for emulatorId in fixture.plan.emulators {
+                contract.expect(SemuJson.get(fixture.model.emulator(emulatorId).definition, "content").isObject(), f"{target} {emulatorId} declares what it opens");
+            }
+            SemuDiagnostics diagnostics = SemuDiagnostics();
+            contract.expect(SemuChecker.check(fixture.model, fixture.plan, diagnostics), target + " checker passes with every content declaration: " + diagnostics.render());
+        }
+    }
+}
+
+class ContentSpecPins {  // the formats that showed the gap, by name
+    class void expectExtensions(Contract contract, Fixture fixture, string systemId, Vector<string> kept, Vector<string> dropped) {
+        Vector<string> extensions = fixture.model.system(systemId).extensions;
+        for extension in kept { contract.expect(extensions.contains(extension), f"{systemId} still offers {extension}"); }
+        for extension in dropped { contract.expect(!extensions.contains(extension), f"{systemId} no longer offers {extension}, which no bound emulator declares it opens"); }
+    }
+
+    class int count(Vector<string> values, string wanted) {
+        int found = 0;
+        for value in values { if (value.equals(wanted)) { found++; } }
+        return found;
+    }
+
+    class string entry(string systems, string systemId) {  // one <system> of es_systems.xml
+        int start = systems.indexOf("<name>" + systemId + "</name>");
+        string rest = start < 0 ? "" : systems.substring(start, systems.len() - start);
+        return rest.contains("</system>") ? rest.substring(0, rest.indexOf("</system>")) : "";
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        ContentSpecPins.expectExtensions(contract, fixture, "wii", [".rvz", ".wbfs", ".wad", ".nkit.iso"], [".7z", ".zip"]);
+        ContentSpecPins.expectExtensions(contract, fixture, "switch", [".nsp", ".xci", ".nro"], [".7z", ".zip"]);
+        ContentSpecPins.expectExtensions(contract, fixture, "gc", [".m3u", ".rvz", ".wad", ".wbfs"], [".7z", ".zip"]);
+        ContentSpecPins.expectExtensions(contract, fixture, "dreamcast", [".m3u", ".chd", ".7z", ".zip", ".lst"], [".iso"]);
+        ContentSpecPins.expectExtensions(contract, fixture, "ps2", [".m3u", ".iso", ".chd", ".nrg"], [".7z", ".zip"]);
+        ContentSpecPins.expectExtensions(contract, fixture, "psx", [".m3u", ".chd", ".exe", ".7z", ".zip"], [".ecm", ".psexe"]);
+        ContentSpecPins.expectExtensions(contract, fixture, "genesis", [".md", ".7z", ".zip"], [".32x"]);
+        ContentSpecPins.expectExtensions(contract, fixture, "gb", [".gb", ".dmg", ".zip"], [".bin", ".gbs"]);
+        ContentSpecPins.expectExtensions(contract, fixture, "nds", [".nds", ".bin", ".zip"], [".app"]);
+        ContentSpecPins.expectExtensions(contract, fixture, "n64", [".z64", ".n64", ".zip"], [".ndd", ".d64"]);
+        string systems = SemuEsDeDocuments.systems(fixture.model, fixture.plan, fixture.diagnostics);
+        contract.contains(ContentSpecPins.entry(systems, "dreamcast"), ".m3u .M3U", "es_systems.xml offers Dreamcast playlists in both cases");
+        contract.lacks(ContentSpecPins.entry(systems, "dreamcast"), ".iso", "es_systems.xml offers no Dreamcast .iso");
+        for systemId in ["wii", "switch"] {
+            contract.lacks(ContentSpecPins.entry(systems, systemId), ".zip", "es_systems.xml offers no " + systemId + " .zip");
+            contract.lacks(ContentSpecPins.entry(systems, systemId), ".7z", "es_systems.xml offers no " + systemId + " .7z");
+        }
+        SemuEmulator ryujinx = fixture.model.emulator("ryujinx");
+        contract.expect(!SemuContent.opened(ryujinx, "").contains(".zip") && SemuContent.opened(ryujinx, "").contains(".nsp"), "Ryujinx 1.3.3 opens .nsp and no archive");
+        SemuEmulator dolphin = fixture.model.emulator("dolphin");
+        JSONValue platform = dolphin.platform("linux");
+        contract.expect(SemuContent.opens(dolphin, platform, "", ".nkit.iso") && SemuContent.opens(dolphin, platform, "", ".NKIT.ISO") && !SemuContent.opens(dolphin, platform, "", ".zip"),
+            "a declared .iso opens .nkit.iso in any case (loaders read the last suffix), and Dolphin opens no .zip");
+        SemuEmulator pcsx2 = fixture.model.emulator("pcsx2");
+        contract.expect(SemuContent.opens(pcsx2, pcsx2.platform("linux"), "", ".m3u") && !SemuContent.opened(pcsx2, "").contains(".m3u"), "PCSX2 opens no .m3u itself; its first_entry declaration lets Semu open one for it");
+        SemuEmulator retroarch = fixture.model.emulator("retroarch");
+        contract.expect(SemuContent.opened(retroarch, "gambatte").contains(".zip") && SemuContent.opened(retroarch, "flycast").contains(".zip"), "RetroArch unpacks archives for Gambatte; the Flycast core takes them whole");
+        contract.expect(ContentSpecPins.count(SemuContent.opened(retroarch, "flycast"), ".7z") == 1, "a core that blocks extraction gets no unpacked archives on top of its own");
+    }
+}
+
+class ContentSpecMutations {  // each rule fails the checker when its declaration is broken in memory
+    class string diagnose(Fixture fixture) {
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        return SemuChecker.check(fixture.model, fixture.plan, diagnostics) ? "" : diagnostics.render();
+    }
+
+    class void run(Contract contract) {
+        Fixture wii = Fixture("linux-desktop");
+        wii.model.system("wii").extensions.push(".zip");
+        contract.contains(ContentSpecMutations.diagnose(wii), "wii/system.json: rom.extensions: .zip: no emulator bound on linux declares that it opens it", "a wii .zip, which Dolphin cannot open, fails the checker");
+        Fixture archive = Fixture("steam-deck");
+        archive.model.system("switch").extensions.push(".7z");
+        contract.contains(ContentSpecMutations.diagnose(archive), "switch/system.json: rom.extensions: .7z: no emulator bound", "a switch .7z, which Ryujinx cannot open, fails the checker");
+        Fixture lost = Fixture("macos");
+        SemuJson.get(lost.model.emulator("dolphin").definition, "content").set("extensions", JSONValue.parse("[\".iso\",\".m3u\",\".wad\"]"));
+        string rvz = ContentSpecMutations.diagnose(lost);
+        contract.expect(rvz.contains("gc/system.json: rom.extensions: .rvz") && rvz.contains("wii/system.json: rom.extensions: .rvz"), "an emulator that stops declaring .rvz fails every system it serves: " + rvz);
+        Fixture unpacked = Fixture("macos");
+        SemuJson.get(unpacked.model.emulator("retroarch").definition, "content").set("archives", JSONValue.parse("[]"));
+        contract.contains(ContentSpecMutations.diagnose(unpacked), "gb/system.json: rom.extensions: .zip: no emulator bound on macos", "without RetroArch's archive support gb offers an unopened .zip");
+        Fixture blocked = Fixture("linux-desktop");
+        SemuContent.core(blocked.model.emulator("retroarch"), "gambatte").set("block_extract", JSONValue.makeBool(true));
+        contract.contains(ContentSpecMutations.diagnose(blocked), "gbc/system.json: rom.extensions: .7z", "a core that blocks extraction and lists no archive opens none");
+        Fixture missing = Fixture("linux-desktop");
+        missing.model.emulator("cemu").definition.set("content", JSONValue.makeNull());
+        contract.contains(ContentSpecMutations.diagnose(missing), "cemu/emulator.json: content: must declare what the emulator opens", "an emulator without a content declaration fails the checker");
+        Fixture undeclared = Fixture("linux-desktop");
+        SemuJson.get(undeclared.model.emulator("retroarch").definition, "content.cores").set("mesen", JSONValue.makeNull());
+        contract.contains(ContentSpecMutations.diagnose(undeclared), "retroarch must declare content.cores.mesen.extensions", "a bound core without a declaration fails the checker");
+        Fixture uppercase = Fixture("linux-desktop");
+        SemuJson.get(uppercase.model.emulator("ppsspp").definition, "content").set("extensions", JSONValue.parse("[\".ISO\",\"cso\"]"));
+        contract.contains(ContentSpecMutations.diagnose(uppercase), "ppsspp/emulator.json: content.extensions: must be an array of lowercase extensions starting with a dot", "an extension without its dot, or in capitals, fails the checker");
+    }
+}
+
+class ContentSpecContract {
+    class void run(Contract contract) {
+        ContentSpecEvery.run(contract);
+        ContentSpecPins.run(contract);
+        ContentSpecMutations.run(contract);
+    }
+}

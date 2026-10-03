@@ -20,6 +20,7 @@ class SemuLaunchPlan {
     public string core;
     public string rom;
     public string playlist;  // the .m3u Semu opened for disc 1, else empty
+    public string notice;  // a launch that went ahead without something, e.g. unquotable playlist arguments
     public int chordWindowMs;
     public Vector<string> quitButtons;  // config/input quit_chord.buttons, e.g. start and select
     public Vector<string> menuLabels;
@@ -44,6 +45,7 @@ class SemuLaunchPlan {
         self.core = "";
         self.rom = "";
         self.playlist = "";
+        self.notice = "";
         self.chordWindowMs = 250;
         self.quitButtons = [];
         self.menuLabels = [];
@@ -75,6 +77,7 @@ class SemuLaunchPlan {
         result.set("core", JSONValue.makeString(self.core));
         result.set("rom", JSONValue.makeString(self.rom));
         result.set("playlist", JSONValue.makeString(self.playlist));
+        result.set("notice", JSONValue.makeString(self.notice));
         result.set("quit_chord_window_ms", JSONValue.makeInt(self.chordWindowMs));
         JSONValue quitButtons = JSONValue.makeArray();
         for button in self.quitButtons { quitButtons.push(JSONValue.makeString(button)); }
@@ -348,6 +351,7 @@ class SemuLauncher {
         }
         launch.rom = content.rom;
         launch.playlist = content.playlist;
+        launch.notice = content.notice;
         plan.tokens.put("rom", content.rom);
         for name in ["playlist", "playlist_dir"] { plan.tokens.remove(name); }  // set only for a playlist Semu opened
         if (!content.playlist.isEmpty()) {
