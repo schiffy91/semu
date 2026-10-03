@@ -17,8 +17,6 @@ assert lib.assertMsg (
   missingRecipes == [ ]
 ) "assets missing a Nix recipe: ${toString missingRecipes}";
 {
-  inherit bezels shaders;
-
   combined = pkgs.symlinkJoin {
     name = "semu-visual-assets";
     paths = [
