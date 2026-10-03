@@ -84,8 +84,6 @@ class SemuPaths {
         return SemuPaths.replace(relative, content);
     }
 
-    class string join(string left, string right) { return PathTools.join(left, right); }
-
     class bool removeFile(string path) { return !FileSystem.isFile(path) || unlink(path) == 0; }  // missing counts as removed
 
     class Bytes readBytes(string path) {  // the stdlib reads only regular files, and a Nix bundle links its files into the store
