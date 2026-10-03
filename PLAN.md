@@ -718,9 +718,21 @@ the same way (2026-09-23, in the VM's Xvfb); its RDP-drawn twin gave a blank fra
 angrylion. Closed 2026-09-25: the twin sends its command lists to the RDP straight from the CPU
 (DPC registers), which mupen64plus-next's angrylion leaves undrawn even after 15 s; GLideN64 draws
 it (spread 0.12, state saved, clean QUIT). Games submit through the RSP, which angrylion draws, so
-the plugin stays and the CPU-drawn program remains the check. Still open: test programs for PSX (Beetle PSX needs a Sony BIOS, which
-is not freely licensed), PSP, DS, 3DS and Dreamcast (no pinned binary with a clear licence yet) and nixpkgs on a release branch with the M4 pin
-refresh (a full rebuild of every emulator; FRACTAL-NORTH).
+the plugin stays and the CPU-drawn program remains the check. Closed 2026-10-03: `checks.real-cores`
+now boots a freely licensed program on all 12 RetroArch systems, none needing BIOS, keys or firmware,
+and passed 3 of 3 runs in the VM: genesis SGDK's image sample (MIT), snes nesdoug's SNES_09 (MIT),
+nds asie's DLDI benchmark built with BlocksDS (MIT, melonDS's FreeBIOS), psp thePratz's Blue
+Lightning demo (MIT, PPSSPP's HLE), n3ds mtheall's ftpd 3.2.1 (GPL-3.0-or-later, a `.3dsx` needs no
+keys), dreamcast Hunter Davis's Curse of the Herder ELF (MIT, Flycast's HLE BIOS) and psx filipalac's
+PS1 port of the 240p Test Suite (GPL-2.0-or-later). For psx, the raw track comes from the release zip,
+and Beetle PSX 82d8e051 falls back to the MIT OpenBIOS it embeds when no Sony image is present.
+The harness changed in three ways. ppsspp writes no state when SAVE_STATE follows SCREENSHOT at
+once, so there is a 1 s pause. Azahar takes about 4 s to save or load and writes to its log every
+frame, so the script waits until RetroArch answers again and dates files from a start marker
+instead of the log. psx waits 12 s, so the screenshot shows the suite's menu and not OpenBIOS's
+spinning-cube shell, which also passes the spread test. Watch: one earlier attempt had Flycast never
+answer on the command port once under Rosetta; it did not happen again in 16 runs since. Still open:
+nixpkgs on a release branch with the M4 pin refresh (a full rebuild of every emulator; FRACTAL-NORTH).
 
 ### macOS product target (2026-09-23)
 

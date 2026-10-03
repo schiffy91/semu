@@ -1,10 +1,11 @@
 #!/bin/sh
 # Real cores with real (freely licensed) test programs through `semu launch`: each boots, draws a
 # frame that is not blank, saves a state file, loads it back, and quits through RetroArch's QUIT.
-# Inputs: SEMU_CLI, RETROARCH, RENDERER (renderer lib dir), CASES (lines: system core rom-path core-path).
+# Inputs: SEMU_CLI, RETROARCH, RENDERER (renderer lib dir), CASES (lines: system core rom-path core-path boot-seconds).
 set -eu
 work="${TMPDIR:-/tmp}/semu-real-cores"
 command_port() { printf '%s' "$1" | socat -t 1 - UDP:127.0.0.1:55355 2>/dev/null | tr -d '\n'; }
+settle() { for _ in $(seq 1 20); do [ -n "$(command_port VERSION || true)" ] && return 0; done; true; }  # RetroArch answers again after a slow save or load
 config="$(dirname "$(readlink -f "$SEMU_CLI")")/../share/semu/config"
 rm -rf "$work"
 mkdir -p "$work/home" "$work/assets/bin" "$work/assets/lib/retroarch/cores"
@@ -14,25 +15,27 @@ ln -s "$RETROARCH" "$work/assets/bin/retroarch"
 ln -s "$RENDERER/libsemurenderer.so" "$work/assets/lib/libsemurenderer.so"
 settings="{\"paths\":{\"roms\":\"$work/roms\",\"state_root\":\"$work/state\",\"content_root\":\"$work/content\"}}"
 failures=0
-echo "$CASES" | while read -r system core rom corefile; do
+echo "$CASES" | while read -r system core rom corefile boot; do
   [ -n "$system" ] || continue
   ln -sf "$corefile" "$work/assets/lib/retroarch/cores/${core}_libretro.so"
   romDirectory="$work/roms/$(jq -r '.rom.dir' "$config/systems/$system/system.json")"
   mkdir -p "$romDirectory"
   cp "$rom" "$romDirectory/"
   name="$(basename "$rom")"
+  touch "$work/$system.started"  # a chatty core keeps the log newer than its files
   "$SEMU_CLI" launch retroarch --system "$system" --rom "$name" --asset-root "$work/assets" --settings-json "$settings" > "$work/$system.log" 2>&1 &
   launcher=$!
   version=""
   for _ in $(seq 1 80); do version="$(command_port VERSION || true)"; [ -n "$version" ] && break; sleep 0.5; done
-  sleep 4  # let the program reach its first screen
+  sleep "${boot:-4}"  # let the program reach its first screen
   command_port SCREENSHOT >/dev/null || true
+  sleep 1  # ppsspp writes no state when SAVE_STATE follows at once
   command_port SAVE_STATE >/dev/null || true
-  sleep 2
+  sleep 2; settle
   command_port LOAD_STATE >/dev/null || true
-  sleep 1
-  shot="$(find "$work/content/screenshots" -name '*.png' -newer "$work/$system.log" 2>/dev/null | head -1)"
-  state="$(find "$work/content/states" -name '*.state*' -newer "$work/$system.log" 2>/dev/null | head -1)"
+  sleep 1; settle
+  shot="$(find "$work/content/screenshots" -name '*.png' -newer "$work/$system.started" 2>/dev/null | head -1)"
+  state="$(find "$work/content/states" -name '*.state*' -newer "$work/$system.started" 2>/dev/null | head -1)"
   kill -TERM "$launcher" 2>/dev/null || true
   wait "$launcher" || true
   spread="$([ -n "$shot" ] && magick identify -format '%[fx:standard_deviation]' "$shot" || echo 0)"
