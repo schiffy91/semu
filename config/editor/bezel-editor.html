@@ -83,6 +83,9 @@
   #menu .head { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
   #menu .head:hover { background: transparent; color: var(--muted); }
   kbd { font: 11px ui-monospace, "SF Mono", Menlo, monospace; color: var(--text); background: rgba(255,255,255,.1); border-radius: 4px; padding: 1px 5px; }
+  body.capture { display: block; background: #000; overflow: hidden; }  /* ?capture=WxH: the canvas alone, framed like the renderer's screen */
+  body.capture header, body.capture aside, body.capture #hud, body.capture #menu, body.capture #help { display: none; }
+  body.capture main { position: fixed; left: 0; top: 0; background: #000; }
 </style>
 </head>
 <body>
@@ -142,6 +145,15 @@ const EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 const cards = {};
 const hud = document.getElementById("hud");
 const state = { packages: [], current: null, original: null, images: {}, thumbs: {}, zoom: 1, ox: 0, oy: 0, selected: null, hover: null, drag: null, space: false, dirty: false, cursor: null, showGame: true, cutoutAlpha: 1, past: [], future: [] };
+const pageQuery = new URLSearchParams(location.search);
+const CAPTURE = (() => {  // ?capture=WxH draws only the canvas, framed as the renderer frames a WxH screen; &canvas=x,y,w,h takes the rectangle the renderer reported instead
+  const size = /^(\d+)x(\d+)$/.exec(pageQuery.get("capture") || "");
+  if (!size) return null;
+  const placed = (pageQuery.get("canvas") || "").split(",").map(Number);
+  return { width: Number(size[1]), height: Number(size[2]), placed: placed.length === 4 && placed.every(Number.isFinite) && placed[2] > 0 ? placed : null };
+})();
+const FLAT_CARD = ["white", "black"].includes(pageQuery.get("card")) ? pageQuery.get("card") : null;  // ?card=white|black: the render host's flat card instead of the test card
+if (CAPTURE) document.body.classList.add("capture");
 
 function status(text) { document.getElementById("status").textContent = text; }
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
@@ -260,7 +272,7 @@ async function open(id) {
   buildLayers(); buildProps(); updateHistoryButtons();
   fit();
   const zoom = Number(new URLSearchParams(location.search).get("zoom")), at = (new URLSearchParams(location.search).get("at") || "").split(",").map(Number);  // ?zoom=4&at=176,105 opens zoomed on a canvas point
-  if (ZOOMS.includes(zoom) && at.length === 2 && at.every(Number.isFinite)) { state.pinnedView = true; state.zoom = zoom; state.ox = canvas.width / 2 - at[0] * zoom; state.oy = canvas.height / 2 - at[1] * zoom; draw(); }
+  if (!CAPTURE && ZOOMS.includes(zoom) && at.length === 2 && at.every(Number.isFinite)) { state.pinnedView = true; state.zoom = zoom; state.ox = canvas.width / 2 - at[0] * zoom; state.oy = canvas.height / 2 - at[1] * zoom; draw(); }
 }
 function thumbnail(id, image) {
   const t = document.createElement("canvas"); t.width = 88; t.height = 52;
@@ -498,7 +510,22 @@ function buildProps() {
 }
 
 // ---- view
+function captureFit() {  // the renderer's framing: contain, or cover when the canvas layer follows the viewport and every opening stays on screen
+  const plate = state.current.canvas, width = canvas.width, height = canvas.height;
+  let scale = Math.min(width / plate.w, height / plate.h);
+  const canvasLayer = layerById(state.current.canvas_layer);
+  if (canvasLayer && canvasLayer.follow === "viewport") {
+    const grow = Math.max(width / plate.w, height / plate.h), left = (width - plate.w * grow) / 2, top = (height - plate.h * grow) / 2;
+    const onScreen = tube => !tube || (left + tube.x * grow >= 0 && top + tube.y * grow >= 0 && left + (tube.x + tube.w) * grow <= width && top + (tube.y + tube.h) * grow <= height);
+    if (state.current.screens.every(screen => onScreen(screen.tube))) scale = grow;
+  }
+  state.zoom = scale; state.ox = (width - plate.w * scale) / 2; state.oy = (height - plate.h * scale) / 2;
+  if (CAPTURE.placed) { state.zoom = CAPTURE.placed[2] / plate.w; state.ox = CAPTURE.placed[0]; state.oy = CAPTURE.placed[1]; }  // an integer placement the page cannot derive
+  state.fitted = true;
+  draw();
+}
 function fit() {
+  if (CAPTURE) { captureFit(); return; }
   const c = state.current.canvas;
   const scale = Math.min(canvas.width / c.w, canvas.height / c.h);
   state.zoom = ZOOMS.filter(z => z <= scale).pop() || ZOOMS[0];
@@ -515,9 +542,10 @@ function zoomTo(next, sx, sy) {
   draw();
 }
 function resize() {
+  if (CAPTURE) { canvas.parentElement.style.width = `${CAPTURE.width / devicePixelRatio}px`; canvas.parentElement.style.height = `${CAPTURE.height / devicePixelRatio}px`; }
   const box = canvas.parentElement.getBoundingClientRect();
-  canvas.width = Math.floor(box.width * devicePixelRatio);
-  canvas.height = Math.floor(box.height * devicePixelRatio);
+  canvas.width = CAPTURE ? CAPTURE.width : Math.floor(box.width * devicePixelRatio);
+  canvas.height = CAPTURE ? CAPTURE.height : Math.floor(box.height * devicePixelRatio);
   if (state.fitted && state.current) fit(); else draw();  // a fitted view stays fitted as the window changes
 }
 function toScreen(x, y) { return [state.ox + x * state.zoom, state.oy + y * state.zoom]; }
@@ -555,6 +583,7 @@ function curvingHit(r, bulge, sx, sy) {  // near a knob sizes; just beyond it th
 }
 
 function drawTestCard(x, y, w, h, hue) {
+  if (FLAT_CARD) { ctx.fillStyle = FLAT_CARD === "white" ? "#fff" : "#000"; ctx.fillRect(x, y, w, h); return; }
   ctx.fillStyle = hue ? "#c84830" : "#3060e0"; ctx.fillRect(x, y, w, h * 2 / 3);
   ctx.fillStyle = hue ? "#e8b028" : "#30c840"; ctx.fillRect(x, y + h * 2 / 3, w, h / 3);
   ctx.strokeStyle = "#fff"; ctx.lineWidth = Math.max(1, state.zoom); ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
@@ -700,7 +729,7 @@ function drawPlaced(image, layer, c, cx0, cy0) {
 }
 function draw() {
   ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = "#111113";
+  ctx.fillStyle = CAPTURE ? "#000" : "#111113";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   if (!state.current) return;
   const c = state.current.canvas;
@@ -717,6 +746,7 @@ function draw() {
     ctx.restore();
     if (layer.id === "background" && state.images.__ambient) { ctx.save(); ctx.globalCompositeOperation = "multiply"; drawPlaced(state.images.__ambient, layer, c, cx0, cy0); ctx.restore(); }
   }
+  if (CAPTURE) return;  // the picture only: no canvas outline, grid, outlines, handles or HUD
   ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 1; ctx.setLineDash([6, 4]);
   ctx.strokeRect(cx0 + 0.5, cy0 + 0.5, c.w * state.zoom, c.h * state.zoom);
   ctx.setLineDash([]);
