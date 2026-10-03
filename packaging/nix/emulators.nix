@@ -21,8 +21,6 @@ let
     if id == "retroarch" then retroarchFlake.packages.${system}.default.passthru.withCores (map corePackage selectedCores)
     else (emulatorFlakes.${id} or (throw "emulators.nix: no emulator flake input for '${id}' (config/emulators/${id})")).packages.${system}.default;
 in {
-  ids = platformEmulators;
-  cores = selectedCores;
   packages = lib.genAttrs platformEmulators (id: builtOnlyHere id (emulatorPackage id));
   corePackages = if platform == "macos" && lib.elem "retroarch" platformEmulators then map corePackage selectedCores else [ ];  # lib/retroarch/cores/*.dylib
 }
