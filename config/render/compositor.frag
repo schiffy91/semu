@@ -19,11 +19,14 @@ uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uR
  float shapeMask(vec2 p,vec4 r,vec4 s){return shapeMaskB(p,r,s,vec2(0.0));}
  vec3 blurred(sampler2D t,vec2 q,float lod){vec3 s=vec3(0.0);float o=0.035;for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++)s+=textureLod(t,clamp(q+vec2(float(x),float(y))*o,0.0,1.0),lod).rgb;return s/9.0;}
  float lightLod(sampler2D shaded,sampler2D raw){vec2 cell=vec2(textureSize(shaded,0))/vec2(textureSize(raw,0));return log2(max(max(cell.x,cell.y),1.0));}  // one source pixel of the shaded picture, from its mip chain: the colour on screen without the mask, grid or scanlines
+ float glowLod(sampler2D t){return log2(max(0.035*float(max(textureSize(t,0).x,textureSize(t,0).y)),1.0));}  // the mip whose texel spans one of blurred()'s steps: the glow is the picture's light, never its mask point-sampled through the bend
+ vec3 bentPicture(sampler2D t,vec2 p,vec4 tube,vec4 rect,vec4 fx,float rot){vec2 o[4]=vec2[4](vec2(0.15625,0.46875),vec2(-0.46875,0.15625),vec2(-0.15625,-0.46875),vec2(0.46875,-0.15625));vec3 s=vec3(0.0);  // the bend's scale drifts across the tube, so one tap lands on a fine mask's texel centres here and between them there, and its contrast rises and falls in rings: four rotated-grid taps over a 1.25 px footprint, each through the bend, keep it even
+  for(int i=0;i<4;i++){vec2 g=uv(tube.xy+curved(uv(p+o[i],tube),fx.x)*tube.zw,rect);s+=textureLod(t,rotatedUv(clamp(g,0.0,1.0),rot),0.0).rgb;}return s*0.25;}
  vec3 screenColor(sampler2D t,sampler2D g,vec2 p,vec4 tube,vec4 rect,vec4 fx,vec4 surround,float rot,float reflect,float hasGlass,float edge){  // edge: how many pixels past the bent edge the picture still reaches, so a lip's antialiasing blends from it and never from the surround
   vec2 q0=uv(p,tube);vec2 q1=curved(q0,fx.x);bool on=q1.x>=0.0&&q1.x<=1.0&&q1.y>=0.0&&q1.y<=1.0;
   vec2 pc=tube.xy+q1*tube.zw;vec2 gq=uv(pc,rect);vec2 past=(gq-clamp(gq,0.0,1.0))*rect.zw;bool game=(on||edge>0.0)&&dot(past,past)<=edge*edge;
   vec3 c=surround.rgb;
-  if(game){vec2 q=rotatedUv(clamp(gq,0.0,1.0),rot);c=textureLod(t,q,0.0).rgb;if(fx.z>0.0){vec3 b=blurred(t,q,0.0);c+=fx.z*max(b-0.4,0.0)*1.3;}}  // the full-size picture, never its mips
+  if(game){vec2 q=rotatedUv(clamp(gq,0.0,1.0),rot);c=fx.x>0.0?bentPicture(t,p,tube,rect,fx,rot):textureLod(t,q,0.0).rgb;if(fx.z>0.0){vec3 b=blurred(t,q,glowLod(t));c+=fx.z*max(b-0.4,0.0)*1.3;}}  // the full-size picture, never its mips; a flat lane keeps its single tap on the texel centres
   else if(!on)c=vec3(0.0);
   vec2 cc=q1*2.0-1.0;c*=1.0-fx.y*smoothstep(0.45,1.7,dot(cc,cc));
   if(hasGlass>0.5){vec2 gu=q0;gu.y=1.0-gu.y;vec4 gl=textureGrad(g,gu,vec2(1.0/tube.z,0.0),vec2(0.0,-1.0/tube.w));c=1.0-(1.0-c)*(1.0-gl.rgb*gl.a*clamp(reflect,0.0,1.0));}
