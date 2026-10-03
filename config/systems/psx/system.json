@@ -40,22 +40,6 @@
       ]
     }
   ],
-  "bios": {
-    "required": true,
-    "match": "all",
-    "files": [
-      {
-        "name": "scph5500.bin"
-      },
-      {
-        "name": "scph5501.bin"
-      },
-      {
-        "name": "scph5502.bin"
-      }
-    ],
-    "dir": "bios"
-  },
   "display": {
     "scaling": {
       "mode": "integer_preferred",

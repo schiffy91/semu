@@ -24,19 +24,6 @@
       "emulator": "ryujinx"
     }
   ],
-  "bios": {
-    "required": true,
-    "match": "all",
-    "files": [
-      {
-        "name": "prod.keys"
-      },
-      {
-        "name": "title.keys"
-      }
-    ],
-    "dir": "bios/switch"
-  },
   "display": {
     "scaling": {
       "mode": "integer_preferred",

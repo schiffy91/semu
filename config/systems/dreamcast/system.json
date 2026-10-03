@@ -38,19 +38,6 @@
       ]
     }
   ],
-  "bios": {
-    "required": false,
-    "match": "all",
-    "files": [
-      {
-        "name": "dc_boot.bin"
-      },
-      {
-        "name": "dc_flash.bin"
-      }
-    ],
-    "dir": "bios/dc"
-  },
   "display": {
     "scaling": {
       "mode": "integer_preferred",
