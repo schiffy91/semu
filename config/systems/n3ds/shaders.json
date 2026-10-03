@@ -1,7 +1,6 @@
 {
   "schema_version": 3,
   "enabled": true,
-  "renderer": true,
   "screen": "assets/shaders/n3ds/screen.slangp",
   "doc": {
     "intent": "The production preset is a neutral two-panel LCD treatment without CRT scanlines.",
@@ -24,6 +23,5 @@
       "screen": "assets/shaders/n3ds/grid.slangp"
     }
   ],
-  "default_variant": "default",
-  "disabled_variant": "none"
+  "default_variant": "default"
 }
