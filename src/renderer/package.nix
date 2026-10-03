@@ -1,4 +1,5 @@
-# The shared renderer every hooked emulator links: shaders through librashader, bezels, the Semu overlay.
+# The shared renderer: shaders through librashader, bezels, the Semu overlay. Emulators reach it through
+# libsemurendererloader at run time; the preload, window shim and Vulkan layer and stand-in link it.
 { lib, stdenv, btrcpy, librashader, writeText, rendererRoot, vulkan-headers, libglvnd, moltenvk }:
 
 let

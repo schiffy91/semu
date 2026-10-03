@@ -1,7 +1,7 @@
 { writeText }:
 
-# Emulator-facing direct OpenGL renderer ABI. Emulators link this API and call
-# it at their two owned render boundaries; there is no runtime symbol lookup.
+# Emulator-facing direct OpenGL renderer ABI. Emulators link libsemurendererloader, which dlopens
+# libsemurenderer at run time and forwards these entry points; Semu's own shims link it directly.
 writeText "semu_renderer.h" ''
   #ifndef SEMU_RENDERER_H
   #define SEMU_RENDERER_H
