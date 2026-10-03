@@ -2,12 +2,12 @@
   "extends": "../linux-desktop/input.json",
   "device": "steam-deck",
   "device_identities": {
-    "azahar_controller_guid": "03000000de280000ff11000001000000",
+    "azahar_controller_guid": "030079f6de280000ff11000001000000",
     "dolphin_pad": "SDL/0/Steam Deck Controller",
     "dolphin_wiimote": "SteamDeck/0/Steam Deck",
     "cemu_display_name": "Steam Virtual Gamepad",
-    "cemu_uuid": "0_03000000de280000ff11000001000000",
+    "cemu_uuid": "0_030079f6de280000ff11000001000000",
     "cemu_profile": "SteamInput-P1",
-    "ryujinx_controller_id": "0-f7390003-28de-0000-ff11-000001000000"
+    "ryujinx_controller_id": "0-f6790003-28de-0000-ff11-000001000000"
   }
 }
