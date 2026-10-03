@@ -2,6 +2,7 @@
 // size, the largest the display holds, with both screens and their drawn frames on screen and apart, at
 // the Deck's 1280x800, 1080p and 4K. A fractional second screen gave its pixels uneven widths; a main
 // centred alone kept the second at 1x and squeezed the frames to 1 px where centring the pair cost nothing.
+// Whole steps whatever visual.integer_scaling says: that switch governs one screen without a bezel.
 
 import Library.JSON;
 import Library.Strings;
