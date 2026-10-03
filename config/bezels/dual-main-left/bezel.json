@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "dual-main-left",
-  "label": "Main screen centered, second screen left",
+  "label": "Large main screen, second screen left",
   "family": "dual",
   "layout": "main_left",
   "art": null,
@@ -44,6 +44,6 @@
     }
   ],
   "doc": {
-    "layout": "computed: the main screen takes the largest integer scale that still leaves the second screen at least 1x beside it; each screen gets a drawn frame"
+    "layout": "computed: the main screen at the largest integer scale that leaves the second screen at least 1x beside it, the second at its own largest whole step, no taller than the main; the main is centred on its own when that costs no step, otherwise the pair is centred; each screen gets a drawn frame that shrinks to the room the screens leave"
   }
 }

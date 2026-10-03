@@ -44,6 +44,6 @@
     }
   ],
   "doc": {
-    "layout": "computed: the main screen takes the largest integer scale that still leaves the second screen at least 1x beside it; each screen gets a drawn frame"
+    "layout": "computed: both screens at one uniform integer scale, the largest the screens and the gap allow, main above; each screen gets a drawn frame that shrinks to the room the screens leave"
   }
 }

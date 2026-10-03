@@ -11,12 +11,12 @@
     },
     {
       "id": "main_right",
-      "label": "Main centered, second right",
+      "label": "Large main, second right",
       "bezel": "dual-main-right"
     },
     {
       "id": "main_left",
-      "label": "Main centered, second left",
+      "label": "Large main, second left",
       "bezel": "dual-main-left"
     },
     {
