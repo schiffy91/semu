@@ -156,8 +156,6 @@ class SemuCli {
         return 0;
     }
 
-    class JSONValue withPath(JSONValue root, Vector<string> path, int index, JSONValue value) { return SemuSettingsStore.withPath(root, path, index, value); }
-
     public int settingsReset(SemuPlan plan) {  // drop the user file; defaults and target settings remain
         string file = PathTools.join(plan.semuHome, "semu.json");
         if (!SemuPaths.removeFile(file)) {
