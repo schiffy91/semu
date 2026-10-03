@@ -132,7 +132,10 @@ void retro_get_system_av_info(struct retro_system_av_info* info) {
 }
 
 void retro_set_controller_port_device(unsigned int port, unsigned int device) { (void)port; (void)device; }
-void retro_reset() { SyntheticFrame = 0ULL; }
+void retro_reset() {  // logged, so a test can tell RetroArch reset the core
+    SyntheticFrame = 0ULL;
+    fputs("synthetic: reset\n", stderr);
+}
 
 bool retro_load_game(const struct retro_game_info* game) {
     (void)game;

@@ -19,6 +19,7 @@ struct uinput_abs_setup { uint16_t code; struct input_absinfo absinfo; };
 #define BUS_VIRTUAL 0x06
 #define EVIOCGNAME(len) 0UL
 #define EVIOCGBIT(ev, len) 0UL
+#define EVIOCGID 0UL
 #define UI_DEV_CREATE 0UL
 #define UI_DEV_DESTROY 0UL
 #define UI_DEV_SETUP 0UL
@@ -79,6 +80,18 @@ struct uinput_abs_setup { uint16_t code; struct input_absinfo absinfo; };
 #define KEY_F10 68
 #define KEY_F11 87
 #define KEY_F12 88
+#define KEY_F13 183
+#define KEY_F14 184
+#define KEY_F15 185
+#define KEY_F16 186
+#define KEY_F17 187
+#define KEY_F18 188
+#define KEY_F19 189
+#define KEY_F20 190
+#define KEY_F21 191
+#define KEY_F22 192
+#define KEY_F23 193
+#define KEY_F24 194
 #define KEY_F2 60
 #define KEY_F3 61
 #define KEY_F4 62
@@ -91,6 +104,8 @@ struct uinput_abs_setup { uint16_t code; struct input_absinfo absinfo; };
 #define KEY_H 35
 #define KEY_I 23
 #define KEY_J 36
+#define KEY_KPMINUS 74
+#define KEY_KPPLUS 78
 #define KEY_K 37
 #define KEY_L 38
 #define KEY_LEFT 105

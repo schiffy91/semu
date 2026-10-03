@@ -42,6 +42,8 @@ import ./spec/bezel_emit.btrc;
 import ./spec/playlist.btrc;
 import ./spec/content.btrc;
 import ./spec/harness.btrc;
+import ./spec/input_delivery.btrc;
+import ./spec/retroarch_keyboard.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -125,14 +127,14 @@ class RetroArchProfileContract {
         contract.contains(cfg, "quit_press_twice = \"false\"", "a single QUIT command exits");
         contract.contains(cfg, "video_driver = \"glcore\"", "core-profile GL so hardware-rendered cores initialise");
         contract.contains(cfg, "system_directory = \"" + PathTools.join(fixture.plan.stateRoot(), "retroarch/system") + "\"", "BIOS and core assets come from a state-root copy of the library's system directory, which cores may write");
-        contract.contains(cfg, "input_save_state = \"s\"", "save state hotkey");
+        contract.contains(cfg, "input_save_state = \"nul\"", "Linux: RetroArch's own save key is off, the supervisor saves over the command port");
         contract.contains(cfg, "input_enable_hotkey_btn = \"nul\"", "RetroArch gamepad hotkeys are unbound: the supervisor owns Select chords");
         contract.contains(cfg, "input_save_state_btn = \"nul\"", "save state is not a RetroArch pad hotkey");
         contract.contains(cfg, "input_load_state_btn = \"nul\"", "load state is not a RetroArch pad hotkey");
         contract.contains(cfg, "input_menu_toggle_btn = \"nul\"", "menu toggle is not a RetroArch pad hotkey");
-        contract.contains(cfg, "input_load_state = \"a\"", "load state hotkey");
-        contract.contains(cfg, "input_pause_toggle = \"p\"", "pause hotkey");
-        contract.contains(cfg, "input_exit_emulator = \"escape\"", "escape hotkey");
+        contract.contains(cfg, "input_load_state = \"nul\"", "Linux: RetroArch's own load key is off");
+        contract.contains(cfg, "input_pause_toggle = \"nul\"", "Linux: RetroArch's own pause key is off, so a menu pause never toggles twice");
+        contract.contains(cfg, "input_exit_emulator = \"nul\"", "Linux: Esc no longer exits RetroArch behind the Semu menu");
         contract.contains(cfg, "savefile_directory = \"" + fixture.plan.path("content_root") + "/saves\"", "saves under the content root");
         contract.contains(cfg, "savestate_directory = \"" + fixture.plan.path("content_root") + "/states\"", "states under the content root");
         contract.contains(cfg, "joypad_autoconfig_dir = \"" + fixture.plan.assetRoot + "/share/libretro/autoconfig\"", "autoconfig from the bundle");
@@ -945,6 +947,8 @@ int main() {
     GameBoySpecContract.run(contract);
     TouchSpecContract.run(contract);
     LaunchSpecContract.run(contract);
+    InputDeliverySpecContract.run(contract);
+    RetroArchKeyboardSpecContract.run(contract);
     RenderEnvSpecContract.run(contract);
     DualLayoutSpecContract.run(contract);
     EditorSpecContract.run(contract);

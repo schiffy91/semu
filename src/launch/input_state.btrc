@@ -1,5 +1,6 @@
 #include <string.h>
 #include "semu_evdev.h"
+#include "semu_x11.h"
 
 import Library.Strings;
 import Library.Vector;
@@ -9,6 +10,17 @@ import Library.Vector;
 #define SEMU_SUPERVISOR_RESCAN_TICKS 200
 #define SEMU_BIT_WORDS 16
 #define SEMU_QUIT_CHORD_BUTTONS 4
+#define SEMU_SOURCE_GAMEPAD 0  // evdev pads and macOS GameController pads
+#define SEMU_SOURCE_KEYBOARD 1  // evdev keyboards the supervisor can open
+#define SEMU_SOURCE_X11 2  // raw keys from the emulator's own X display
+#define SEMU_KEY_SOURCE_XCB 1  // a libxcb connection drained with xcb_poll_for_event
+#define SEMU_KEY_SOURCE_WIRE 2  // raw X event bytes read from the descriptor
+#define SEMU_ECHO_CODES 16
+#define SEMU_ECHO_MS 750  // how long Semu's own typing may take to echo back
+#define SEMU_DEDUPE_ACTIONS 32
+#define SEMU_DEDUPE_ACTION_BYTES 64
+#define SEMU_DEDUPE_TABLE_BYTES 2048  // thirty-two action ids of sixty-four bytes each
+#define SEMU_DEDUPE_WINDOW_MS 250  // one chord through two sources inside this window
 
 struct SemuChordState {  // one device's view of the configured quit chord
     int buttons[SEMU_QUIT_CHORD_BUTTONS];
@@ -22,10 +34,21 @@ struct SemuInputDevice {
     int descriptor;
     int gamepad;
     int keyboard;
+    int source;  // SEMU_SOURCE_*, for deduplicating one chord across sources
+    int face_swapped;  // an xpad-ordered pad: BTN_WEST is its top button
     unsigned char down[SEMU_SUPERVISOR_KEYS];
     int hat_x;
     int hat_y;
     struct SemuChordState quit_chord;
+};
+
+struct SemuKeySource {  // keys beside evdev: one descriptor to poll and its drain
+    int descriptor;  // -1 while idle
+    int kind;  // SEMU_KEY_SOURCE_XCB or SEMU_KEY_SOURCE_WIRE
+    int opcode;  // the XInputExtension major opcode events must carry
+    void* connection;  // the xcb_connection_t of an XCB source
+    int buffered;
+    unsigned char buffer[SEMU_X11_BUFFER];
 };
 
 struct SemuSupervisorState {
@@ -38,6 +61,15 @@ struct SemuSupervisorState {
     int slot;
     int quit;
     struct SemuChordState quit_template;
+    struct SemuInputDevice x11_keyboard;  // the X display's keyboard as one pseudo-device
+    struct SemuKeySource key_source;
+    int echo_codes[SEMU_ECHO_CODES];
+    long long echo_deadlines[SEMU_ECHO_CODES];
+    int echo_count;
+    char dedupe_actions[SEMU_DEDUPE_TABLE_BYTES];
+    int dedupe_sources[SEMU_DEDUPE_ACTIONS];
+    long long dedupe_ms[SEMU_DEDUPE_ACTIONS];
+    int dedupe_count;
 };
 
 struct SemuSupervisorState SemuSupervisorRuntime;
@@ -67,9 +99,11 @@ class SemuKeyNames {  // "Ctrl+Shift+S" -> evdev codes; the same table types cho
                 int digits[10] = {KEY_0, KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9};
                 return digits[character - '0'];
             }
-            if (character == '+') { return KEY_EQUAL; }
+            if (character == '+') { return KEY_EQUAL; }  // also matches KEY_KPPLUS: Steam types KEYPAD_PLUS
             if (character == '-') { return KEY_MINUS; }
         }
+        if (lower.equals("kp_plus") || lower.equals("kpplus")) { return KEY_KPPLUS; }
+        if (lower.equals("kp_minus") || lower.equals("kpminus")) { return KEY_KPMINUS; }
         if (lower.equals("up")) { return KEY_UP; }
         if (lower.equals("down")) { return KEY_DOWN; }
         if (lower.equals("left")) { return KEY_LEFT; }
@@ -81,10 +115,20 @@ class SemuKeyNames {  // "Ctrl+Shift+S" -> evdev codes; the same table types cho
         if (lower.equals("tab")) { return KEY_TAB; }
         if (lower.startsWith("f") && lower.len() <= 3) {
             int number = Strings.toInt(lower.substring(1, lower.len() - 1));
-            int functions[12] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12};
-            if (number >= 1 && number <= 12) { return functions[number - 1]; }
+            int functions[24] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12,
+                KEY_F13, KEY_F14, KEY_F15, KEY_F16, KEY_F17, KEY_F18, KEY_F19, KEY_F20, KEY_F21, KEY_F22, KEY_F23, KEY_F24};
+            if (number >= 1 && number <= 24) { return functions[number - 1]; }
         }
         return 0;
+    }
+
+    class bool same(int chordKey, int code) {  // a chord's key and a pressed code; the keypad stands in for + and -
+        int equal = KEY_EQUAL;
+        int minus = KEY_MINUS;
+        int keypadPlus = KEY_KPPLUS;
+        int keypadMinus = KEY_KPMINUS;
+        if (chordKey == code) { return true; }
+        return (chordKey == equal && code == keypadPlus) || (chordKey == minus && code == keypadMinus);
     }
 
     class Vector<int> chord(string text) {  // modifiers first, the key last; empty when any part is unknown

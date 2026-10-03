@@ -1,5 +1,5 @@
 # Compile the BTRC program on its own; runtime data is a separate package.
-{ lib, stdenv, btrcpy }:
+{ lib, stdenv, btrcpy, libxcb }:
 
 let
   repositoryRoot = ../..;
@@ -7,6 +7,11 @@ let
     root = repositoryRoot;
     fileset = lib.fileset.fileFilter (file: file.hasExt "btrc" || file.hasExt "h") (repositoryRoot + "/src");
   };
+  # Linux: the supervisor's optional X key adapter dlopens libxcb from its store path, which also
+  # keeps it in the closure (the same libxcb Mesa already ships). macOS keeps the bare sonames,
+  # which do not load there, so the adapter stays idle.
+  xcbDefines = lib.optionalString stdenv.hostPlatform.isLinux
+    "-DSEMU_XCB_LIBRARY='\"${libxcb}/lib/libxcb.so.1\"' -DSEMU_XCB_INPUT_LIBRARY='\"${libxcb}/lib/libxcb-xinput.so.0\"'";
 in
 stdenv.mkDerivation {
   pname = "semu-program";
@@ -17,7 +22,7 @@ stdenv.mkDerivation {
 
   buildPhase = ''
     btrcpy src/semu.btrc -o semu.c --strict-imports --no-cache --no-stdlib
-    $CC semu.c -std=c11 -O2 -Isrc/launch -o semu-btrc -lm
+    $CC semu.c -std=c11 -O2 -Isrc/launch ${xcbDefines} -o semu-btrc -lm
   '';
 
   installPhase = ''

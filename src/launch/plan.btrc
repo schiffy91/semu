@@ -30,6 +30,8 @@ class SemuLaunchPlan {
     public Vector<string> chordButtons;
     public Vector<string> chordActions;
     public Vector<string> actionChords;  // "action=Ctrl+S" for every action with a keyboard chord
+    public Vector<string> emulatorActions;  // emulator.json input.actions: only these reach the emulator
+    public Vector<string> xpadLayoutIds;  // vendor:product pads whose top face button is BTN_WEST
     public int retroarchPort;
     public string stateDir;
     public string semuHome;
@@ -55,6 +57,8 @@ class SemuLaunchPlan {
         self.chordButtons = [];
         self.chordActions = [];
         self.actionChords = [];
+        self.emulatorActions = [];
+        self.xpadLayoutIds = [];
         self.retroarchPort = 0;
         self.stateDir = "";
         self.semuHome = "";
@@ -281,9 +285,10 @@ class SemuLauncher {
         return port > 0 && port <= 65535 ? port : 0;
     }
 
-    class void inputContracts(SemuLaunchPlan launch, SemuPlan plan, JSONValue platform, string stateRoot) {  // what the supervisor mirrors from config/input
+    class void inputContracts(SemuLaunchPlan launch, SemuPlan plan, JSONValue platform, string stateRoot, SemuEmulator emulator) {  // what the supervisor mirrors from config/input
         launch.stateDir = stateRoot;
         launch.semuHome = plan.semuHome;
+        launch.emulatorActions = emulator.actions;
         launch.bezelsOn = SemuJson.boolAt(plan.settings, "visual.bezels", true);
         launch.shadersOn = SemuJson.boolAt(plan.settings, "visual.crt_shaders", true);
         if (plan.input == null) { return; }
@@ -297,6 +302,7 @@ class SemuLauncher {
         }
         launch.pauseAction = SemuJson.textAt(definition, "menu.pause_action");
         launch.chordModifier = SemuJson.textAt(definition, "gamepad_chords.modifier");
+        launch.xpadLayoutIds = SemuJson.strings(SemuJson.get(definition, "gamepad_chords.xpad_layout_ids"));
         JSONValue bindings = SemuJson.get(definition, "gamepad_chords.bindings");
         if (bindings != null && bindings.isObject()) {
             for button in bindings.keys().sorted() {
@@ -446,7 +452,7 @@ class SemuLauncher {
         }
         launch.chordWindowMs = plan.input == null ? 250 : plan.input.chordWindowMs();
         if (plan.input != null) { launch.quitButtons = plan.input.quitChord(); }
-        SemuLauncher.inputContracts(launch, plan, platform, stateRoot);
+        SemuLauncher.inputContracts(launch, plan, platform, stateRoot, emulator);
         for argument in launch.argv {
             if (argument.contains("${")) { launch.error = "unresolved token in launch arguments: " + argument; }
         }

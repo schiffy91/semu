@@ -306,12 +306,25 @@ Semu executing the actions itself.
   `Ctrl+M` menu, `Ctrl+Q` quit, ...). The emulator profiles compile those
   chords into each emulator's own hotkey table; RetroArch is driven through
   its command port instead and its Select-button hotkeys are unbound so
-  nothing double-fires.
+  nothing double-fires. On Linux RetroArch's own keyboard rows are "nul"
+  too (the keymap Semu compiles, and every 69a4f0e default whose key a Semu
+  chord uses): the supervisor sends keyboard chords over the command port,
+  because RetroArch polls its keymap once a frame and can miss a short tap.
+  macOS keeps RetroArch's keymap, since its supervisor has no keyboard source.
 - Plain controllers: hold Select and press a button (`gamepad_chords`):
   Y opens the Semu menu, R1 saves, L1 loads, B screenshots, D-pad left and
-  right change the slot. Start+Select stays the quit chord. On the Deck the
-  trackpad radial emits the keyboard chords; the supervisor reads keyboards
-  too, so both paths produce the same actions.
+  right change the slot. Start+Select stays the quit chord. Button names are
+  positions: pads listed in `gamepad_chords.xpad_layout_ids` (Steam's virtual
+  pad 28de:11ff, Microsoft pads) report the top button as BTN_WEST, and the
+  supervisor swaps it back. On the Deck the trackpad radial emits the
+  keyboard chords, but in Game Mode Steam types them only as XTest into the
+  game's Xwayland, which evdev never sees. The supervisor therefore reads
+  keys from evdev and, where an X display is present, from XInput2 raw key
+  events on the emulator's own display (an optional adapter, see the
+  rulings). Both paths produce the same actions: a chord fires on its own
+  key with exactly its modifiers held, one action from two sources within
+  250 ms runs once, and Semu's own uinput typing is ignored when it comes
+  back through X.
 - The native menu (`menu.items`): RESUME, SAVE STATE, LOAD STATE,
   SCREENSHOT, BEZEL ON/OFF, SHADER ON/OFF, QUIT GAME. Opening it pauses the
   emulator through its own pause action and closes it on resume. The
@@ -575,6 +588,28 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   says, from the owner's rule that dual screens sit at the largest integer scale (2026-10-03).
   That switch governs one screen without a bezel (a bezel follows PLACEMENT), and its menu
   label, INTEGER SCALING (ONE SCREEN, NO BEZEL), says so.
+- Radial input delivery (2026-10-03), an exception to "agnostic of X11, Wayland, and gamescope
+  in production paths": in Game Mode Steam sends the radial's key_press and the trackpad mouse
+  only as XTest into the game's Xwayland (observed on the Deck: steamclient maps libXtst, Steam's
+  only uinput device is the X360 pad), so no agnostic path can see them. The supervisor gets an
+  optional X raw-key adapter beside evdev (`src/launch/x11_keys.btrc`): libxcb and libxcb-xinput
+  loaded with dlopen from the store paths Nix bakes in, never Xlib, idle when DISPLAY is unset or
+  the libraries are missing (macOS). evdev stays the contract; the adapter is an observed-
+  environment shim behind a key-source seam that the contracts drive with synthetic XI2 bytes.
+  Revisit if gamescope ever exposes Wayland to games or offers an input receiver.
+- RetroArch keyboard ownership (2026-10-03): on Linux targets every keyboard chord goes to
+  RetroArch over the command port, and RetroArch's keymap rows plus the player-1 defaults that
+  share a chord key are "nul" (`formats.linux`, `keyboard_player_defaults`). On every target the
+  hotkey defaults that share a chord key are cleared, plus RetroArch's three shader hotkeys
+  (comma, m, n) because Semu's renderer owns shaders. The 30 hotkey and 14 player-1 keyed defaults
+  of RetroArch 69a4f0e are vendored in `profile.json` `keyboard_defaults`, so a new chord that
+  takes one of their keys is cleared automatically. Keyboard play in RetroArch on Linux loses
+  those keys (x, s, a, q, Enter, Up, Down); pads are unaffected. macOS keeps them all.
+- Pads listed in `gamepad_chords.xpad_layout_ids` (28de:11ff, 045e:*) are xpad-ordered (BTN_WEST
+  is the top button), so Select+Y is Select+Y on Steam's virtual pad and on Xbox pads; a
+  positional pad (Semu's test pad, macOS GameController) is unchanged (2026-10-03).
+- An action an emulator does not declare in `input.actions` never reaches it: no route, no slot
+  change, no journal record (2026-10-03).
 
 ### G1. Build and tests run on one host only — done on the Mac
 
@@ -1188,6 +1223,22 @@ Update this block whenever a milestone criterion changes state.
   renders the Deck's Neptune templates (gamepad set, hotkey set, quick and
   menu trackpad radials with semantic icons, Wii controller layer) and
   copies the icons, covered by a contract test; not yet loaded on a Deck.
+  2026-10-03, radial input delivery (offline, Deck untouched): radial chords reach the
+  supervisor however Steam sends them and fire once (rulings: the X raw-key adapter, RetroArch
+  keyboard ownership, xpad layouts). Observed in the podman VM under Xvfb with
+  `tests/integration/input-x11.sh` (xdotool XTest into a real RetroArch 1.22.2 running the
+  synthetic core, through `semu launch retroarch --system gb`): the supervisor logged "listening
+  for keys on X display :91"; Ctrl+M, Ctrl+M, Ctrl+K, Ctrl+H and Ctrl+Shift+F9 each ran exactly
+  once; the journal read menu, back, state.next slot 1, shader switch; RetroArch answered
+  GET_STATUS PLAYING after Ctrl+K and Ctrl+H never reset the core. The same session with the
+  previous RetroArch profile (a3cb872) was PAUSED after Ctrl+K (frame advance on k) and reset the
+  core on Ctrl+H. A positional virtual pad and a replica of Steam's virtual pad each opened the
+  menu with Select+north and closed it with B, Select+west on the replica did nothing (its
+  BTN_WEST is the top button), and Start+Select quit. semu-btrc in that build loads
+  /nix/store/cdpwb5...-libxcb-1.17.0, the libxcb the Deck's Mesa already ships. Not observable
+  there: Semu's uinput typing never reaches a bare Xvfb, so the echo suppression rests on the
+  contracts (a socketpair through one real pollDevices tick, among others). Open for the Deck:
+  Steam's own XTest from :0 through gamescope's EI into the game's Xwayland, and the radial.
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a

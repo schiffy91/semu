@@ -111,7 +111,7 @@ class EmulatorRuntimeSpecProfiles {
         JSONValue parsed = JSONValue.parse(ryujinx);
         contract.expect(parsed != null && !parsed.isError() && ryujinx.equals(parsed.stringifyPretty(2) + "\n"), f"{targetId}: ryujinx Config.json is canonical JSON");
         string retroarch = fixture.profile("retroarch", "retroarch.cfg");
-        contract.contains(retroarch, "input_toggle_fast_forward = \"add\"", f"{targetId}: retroarch fast forward key");
+        contract.contains(retroarch, "input_toggle_fast_forward = \"nul\"", f"{targetId}: retroarch fast forward comes from the supervisor on Linux");
         contract.contains(retroarch, "joypad_autoconfig_dir = \"" + fixture.plan.assetRoot + "/share/libretro/autoconfig\"", f"{targetId}: retroarch autoconfig from the bundle");
         contract.contains(retroarch, "notification_show_autoconfig = \"false\"", f"{targetId}: no autoconfig toast");
         contract.contains(retroarch, "notification_show_autoconfig_fails = \"false\"", f"{targetId}: no autoconfig failure toast");
@@ -170,7 +170,7 @@ class EmulatorRuntimeSpecInput {
         for emulatorId in fixture.plan.emulators {
             SemuEmulator emulator = fixture.model.emulator(emulatorId);
             SemuLaunchPlan launch = SemuLaunchPlan();
-            SemuLauncher.inputContracts(launch, fixture.plan, emulator.platform(fixture.plan.platform), PathTools.join(fixture.plan.stateRoot(), emulatorId));
+            SemuLauncher.inputContracts(launch, fixture.plan, emulator.platform(fixture.plan.platform), PathTools.join(fixture.plan.stateRoot(), emulatorId), emulator);
             string label = f"{targetId} {emulatorId}";
             contract.expect(emulator.actions.contains("app.quit"), label + ": declares app.quit");
             contract.expect(!EmulatorRuntimeSpecTools.environment(launch.environment, "SEMU_MENU_ITEMS").isEmpty(), label + ": supervisor input is configured");
@@ -178,6 +178,8 @@ class EmulatorRuntimeSpecInput {
             contract.expect(quit.size() == 2 && quit.get(0).equals("select") && quit.get(1).equals("start"), label + ": quit chord is select and start");
             contract.expect(launch.actionChords.size() == declared, label + ": supervisor bindings are the declared chords");
             contract.expect(launch.actionChords.contains("state.save=Ctrl+S") && launch.actionChords.contains("state.load=Ctrl+A") && launch.actionChords.contains("app.quit=Ctrl+Q"), label + ": save, load and quit chords");
+            contract.expect(launch.emulatorActions.size() == emulator.actions.size() && launch.emulatorActions.contains("app.quit"), label + ": the supervisor knows what the emulator declares, so nothing else reaches it");
+            contract.expect(launch.xpadLayoutIds.contains("28de:11ff") && launch.xpadLayoutIds.contains("045e:*"), label + ": Steam's virtual pad and Microsoft pads are xpad-ordered");
         }
         JSONValue directories = SemuJson.get(fixture.model.emulator("retroarch").platform("linux"), "core_loader.directories");
         contract.expect(directories.isArray() && directories.size() == 1 && SemuJson.text(directories.at(0)).equals("${asset_root}/lib/retroarch/cores"), f"{targetId}: retroarch cores load only from the bundle");

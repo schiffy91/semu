@@ -62,9 +62,33 @@
       }
     },
     "line_groups": {
+      "keyboard_hotkey_defaults": {
+        "kind": "collisions",
+        "rows": "keyboard_defaults.hotkeys",
+        "format": "${setting} = \"nul\"",
+        "chord_encoding_of": "keymap_hotkeys",
+        "except_rows": "hotkeys.keymap",
+        "always": [
+          "input_shader_toggle",
+          "input_shader_next",
+          "input_shader_prev"
+        ]
+      },
+      "keyboard_player_defaults": {
+        "kind": "collisions",
+        "rows": "keyboard_defaults.player1",
+        "format": "${setting} = \"nul\"",
+        "chord_encoding_of": "keymap_hotkeys",
+        "platforms": [
+          "linux"
+        ]
+      },
       "keymap_hotkeys": {
         "rows": "hotkeys.keymap",
         "format": "${setting} = \"${chord}\"",
+        "formats": {
+          "linux": "${setting} = \"nul\""
+        },
         "chord_encoding": {
           "mode": "joined",
           "ignore_modifiers": true,
@@ -83,7 +107,191 @@
   },
   "doc": {
     "purpose": "RetroArch profile content (retroarch.cfg, golden line order) as data, substituted by RetroArchEmitter. The visual block emits fullscreen raw output with native shaders and smoothing disabled; session-specific driver and scaling pins are runtime upserts owned by RetroArchRendering.",
-    "variables": "${profile_name} contract name; ${input_driver}/${audio_driver} resolved by the emulator class (lines drop when empty); ${content_root} the shared runtime content root."
+    "variables": "${profile_name} contract name; ${input_driver}/${audio_driver} resolved by the emulator class (lines drop when empty); ${content_root} the shared runtime content root.",
+    "keyboard": "RetroArch polls its keymap once a frame (XQueryKeymap), so it can miss a short Steam tap and would act a second time beside the supervisor. On Linux targets the supervisor reads every keyboard chord (evdev, and the X raw-key adapter in Game Mode) and drives RetroArch over the command port, so the keymap rows Semu compiles are \"nul\" there (formats.linux) and so is every player-1 default whose key a Semu chord uses (keyboard_player_defaults). macOS has no keyboard source in its supervisor and keeps the keymap and the player keys. On every target the hotkey defaults that collide with a Semu chord are cleared, plus RetroArch's own shader hotkeys because Semu's renderer owns shaders (keyboard_hotkey_defaults). A collision is a default whose key equals a chord's key as keymap_hotkeys encodes it, modifiers ignored, as RetroArch ignores them."
+  },
+  "keyboard_defaults": {
+    "source": "RetroArch 69a4f0ea1e8aaf442ae4858f2e7f2b31a1776576 config.def.keybinds.h retro_keybinds_1, the #else (desktop, not Lakka) block at lines 1345-2015, every bind with a key; setting names from configuration.c input_config_bind_map (DECLARE_BIND/DECLARE_META_BIND, lines 299-414) and key names from input/input_keymaps.c input_config_key_map (lines 84-160). Vendored as data so a new Semu chord that takes one of these keys is cleared by the collision groups, never silently shared.",
+    "player1": [
+      {
+        "setting": "input_player1_b",
+        "key": "z"
+      },
+      {
+        "setting": "input_player1_y",
+        "key": "a"
+      },
+      {
+        "setting": "input_player1_select",
+        "key": "rshift"
+      },
+      {
+        "setting": "input_player1_start",
+        "key": "enter"
+      },
+      {
+        "setting": "input_player1_up",
+        "key": "up"
+      },
+      {
+        "setting": "input_player1_down",
+        "key": "down"
+      },
+      {
+        "setting": "input_player1_left",
+        "key": "left"
+      },
+      {
+        "setting": "input_player1_right",
+        "key": "right"
+      },
+      {
+        "setting": "input_player1_a",
+        "key": "x"
+      },
+      {
+        "setting": "input_player1_x",
+        "key": "s"
+      },
+      {
+        "setting": "input_player1_l",
+        "key": "q"
+      },
+      {
+        "setting": "input_player1_r",
+        "key": "w"
+      },
+      {
+        "setting": "input_player1_gun_start",
+        "key": "enter"
+      },
+      {
+        "setting": "input_player1_gun_select",
+        "key": "rshift"
+      }
+    ],
+    "hotkeys": [
+      {
+        "setting": "input_menu_toggle",
+        "key": "f1"
+      },
+      {
+        "setting": "input_exit_emulator",
+        "key": "escape"
+      },
+      {
+        "setting": "input_reset",
+        "key": "h"
+      },
+      {
+        "setting": "input_toggle_fast_forward",
+        "key": "space"
+      },
+      {
+        "setting": "input_hold_fast_forward",
+        "key": "l"
+      },
+      {
+        "setting": "input_hold_slowmotion",
+        "key": "e"
+      },
+      {
+        "setting": "input_rewind",
+        "key": "r"
+      },
+      {
+        "setting": "input_pause_toggle",
+        "key": "p"
+      },
+      {
+        "setting": "input_frame_advance",
+        "key": "k"
+      },
+      {
+        "setting": "input_audio_mute",
+        "key": "f9"
+      },
+      {
+        "setting": "input_volume_up",
+        "key": "add"
+      },
+      {
+        "setting": "input_volume_down",
+        "key": "subtract"
+      },
+      {
+        "setting": "input_load_state",
+        "key": "f4"
+      },
+      {
+        "setting": "input_save_state",
+        "key": "f2"
+      },
+      {
+        "setting": "input_state_slot_increase",
+        "key": "f7"
+      },
+      {
+        "setting": "input_state_slot_decrease",
+        "key": "f6"
+      },
+      {
+        "setting": "input_shader_toggle",
+        "key": "comma"
+      },
+      {
+        "setting": "input_shader_next",
+        "key": "m"
+      },
+      {
+        "setting": "input_shader_prev",
+        "key": "n"
+      },
+      {
+        "setting": "input_cheat_toggle",
+        "key": "u"
+      },
+      {
+        "setting": "input_cheat_index_plus",
+        "key": "y"
+      },
+      {
+        "setting": "input_cheat_index_minus",
+        "key": "t"
+      },
+      {
+        "setting": "input_screenshot",
+        "key": "f8"
+      },
+      {
+        "setting": "input_grab_mouse_toggle",
+        "key": "f11"
+      },
+      {
+        "setting": "input_game_focus_toggle",
+        "key": "scroll_lock"
+      },
+      {
+        "setting": "input_toggle_fullscreen",
+        "key": "f"
+      },
+      {
+        "setting": "input_desktop_menu_toggle",
+        "key": "f5"
+      },
+      {
+        "setting": "input_fps_toggle",
+        "key": "f3"
+      },
+      {
+        "setting": "input_netplay_game_watch",
+        "key": "i"
+      },
+      {
+        "setting": "input_netplay_player_chat",
+        "key": "tilde"
+      }
+    ]
   },
   "hotkeys": {
     "keymap": [
@@ -187,7 +395,9 @@
         "input_toggle_fast_forward_btn = \"${hotkey_toggle_fast_forward_btn}\"",
         "input_rewind_btn = \"${hotkey_rewind_btn}\"",
         "input_screenshot_btn = \"${hotkey_screenshot_btn}\"",
-        "@lines:keymap_hotkeys"
+        "@lines:keymap_hotkeys",
+        "@lines:keyboard_hotkey_defaults",
+        "@lines:keyboard_player_defaults"
       ]
     }
   ]
