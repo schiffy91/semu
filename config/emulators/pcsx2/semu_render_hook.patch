@@ -46,7 +46,36 @@
  static constexpr u32 g_vs_cb_index        = 1;
  static constexpr u32 g_ps_cb_index        = 0;
  
-@@ -948,6 +983,12 @@
+@@ -928,6 +963,28 @@
+ {
+ 	if (frame_skip || m_window_info.type == WindowInfo::Type::Surfaceless)
+ 		return PresentResult::FrameSkipped;
++
++#ifdef HAVE_SEMU_RENDERER
++	// Semu: the window's resize to fullscreen can arrive before this device exists and be dropped
++	// (seen under gamescope: a 1280x800 fullscreen window drawn into its first 640x480 corner, three
++	// launches in four). Follow the surface's real size; the EGL context queries it (ResizeSurface(0, 0)).
++	{
++		const u32 surface_width = m_window_info.surface_width;
++		const u32 surface_height = m_window_info.surface_height;
++		m_gl_context->ResizeSurface(0, 0);
++		const WindowInfo& queried = m_gl_context->GetWindowInfo();
++		if (queried.surface_width == 0 || queried.surface_height == 0)
++		{
++			m_gl_context->ResizeSurface(surface_width, surface_height); // the query failed: keep the known size
++		}
++		else if (queried.surface_width != surface_width || queried.surface_height != surface_height)
++		{
++			const float surface_scale = m_window_info.surface_scale;
++			m_window_info = queried;
++			m_window_info.surface_scale = surface_scale;
++		}
++	}
++#endif
+ 
+ 	OMSetFBO(0);
+ 	OMSetColorMaskState();
+@@ -948,6 +1005,12 @@
  {
  	RenderImGui();
  
@@ -59,7 +88,7 @@
  	if (m_gpu_timing_enabled)
  		PopTimestampQuery();
  
-@@ -1566,6 +1607,49 @@
+@@ -1566,6 +1629,49 @@
  	// Only flipping the backbuffer is transparent (I hope)...
  	const GSVector4 flip_sr(sRect.xwzy());
  	DrawStretchRect(flip_sr, dRect, ds);
