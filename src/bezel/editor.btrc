@@ -407,12 +407,7 @@ class BezelProductionRender {  // the real renderer on this machine (a checkout'
         return true;
     }
 
-    public HTTPResponse render(string body) {  // {package, system, variant, width, height, card, aspect} -> the frame as PPM
-        string build = SemuPaths.normalize(PathTools.join(PathTools.join(self.repository.configRoot, ".."), "build"));
-        string host = PathTools.join(build, "render-host");
-        string semu = PathTools.join(build, "semu");
-        if (!FileSystem.isFile(host) || !FileSystem.isFile(semu)) { return HTTPResponse.error(404, "the production render needs a checkout with build/render-host and build/semu (make build/semu build/render-host)"); }
-        if (self.assetRoot.isEmpty()) { return HTTPResponse.error(404, "the production render needs the bundle's data (nix build --out-link build/asset-root .#asset-root)"); }
+    public HTTPResponse render(string body) {  // {package, system, variant, width, height, card, aspect} -> the frame as PPM; the request is checked before the tools
         JSONValue request = JSONValue.parse(body);
         JSONValue package = request == null ? null : request.get("package");
         string id = SemuJson.textAt(package, "id");
@@ -423,6 +418,11 @@ class BezelProductionRender {  // the real renderer on this machine (a checkout'
         int height = SemuJson.intAt(request, "height", 0);
         if (!BezelProductionRender.plainName(id) || self.repository.package(id) == null || !BezelProductionRender.plainName(system) || !BezelProductionRender.plainName(variant)) { return HTTPResponse.error(400, "a known package, a system and a variant"); }
         if (width < 16 || height < 16 || width > 7680 || height > 4320) { return HTTPResponse.error(400, "a screen between 16x16 and 7680x4320"); }
+        string build = SemuPaths.normalize(PathTools.join(PathTools.join(self.repository.configRoot, ".."), "build"));
+        string host = PathTools.join(build, "render-host");
+        string semu = PathTools.join(build, "semu");
+        if (!FileSystem.isFile(host) || !FileSystem.isFile(semu)) { return HTTPResponse.error(404, "the production render needs a checkout with build/render-host and build/semu (make build/semu build/render-host)"); }
+        if (self.assetRoot.isEmpty()) { return HTTPResponse.error(404, "the production render needs the bundle's data (nix build --out-link build/asset-root .#asset-root)"); }
         if (self.scratch.isEmpty()) {
             ExecResult made = ChildProcess.run("mktemp", ["-d"]);
             if (!made.ok()) { return HTTPResponse.error(500, "no scratch directory: " + made.stderr()); }

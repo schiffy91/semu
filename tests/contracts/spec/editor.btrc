@@ -78,8 +78,17 @@ class EditorSpecContract {
         contract.expect(editor.compositor("compositor.vert").status == 200 && editor.compositor("../settings/defaults.json").status != 200, "the compositor route serves the two shader files and nothing beside them");
         contract.expect(editor.asset("tv-soqueroeu-nes/glass/../../../settings").status == 404 && editor.asset("no-such-package/background").status == 404 && editor.asset("gba-shell/elsewhere").status == 404,
             "the asset route serves only a package's own background plate and tube glass");
-        contract.expect(editor.production.render("{\"package\":{\"id\":\"../gba-shell\"},\"system\":\"gba\",\"variant\":\"shell\",\"width\":1280,\"height\":800}").status != 200,
-            "the production render refuses a package id that is not a plain name");
+        string bare = PathTools.join(fixture.scratch, "editor-without-tools/config");  // one package and no build/render-host beside it, so every answer below is the request check's
+        FileSystem.mkdirp(PathTools.join(bare, "bezels/gba-shell"));
+        FileSystem.writeText(PathTools.join(bare, "bezels/gba-shell/bezel.json"), FileSystem.readText(PathTools.join(configRoot, "bezels/gba-shell/bezel.json")));
+        BezelProductionRender production = BezelProductionRender(BezelRepository(bare), "");
+        HTTPResponse climbing = production.render("{\"package\":{\"id\":\"../gba-shell\"},\"system\":\"gba\",\"variant\":\"shell\",\"width\":1280,\"height\":800}");
+        HTTPResponse unknown = production.render("{\"package\":{\"id\":\"no-such-package\"},\"system\":\"gba\",\"variant\":\"shell\",\"width\":1280,\"height\":800}");
+        HTTPResponse huge = production.render("{\"package\":{\"id\":\"gba-shell\"},\"system\":\"gba\",\"variant\":\"shell\",\"width\":9000,\"height\":800}");
+        HTTPResponse plain = production.render("{\"package\":{\"id\":\"gba-shell\"},\"system\":\"gba\",\"variant\":\"shell\",\"width\":1280,\"height\":800}");
+        contract.expect(climbing.status == 400 && unknown.status == 400 && huge.status == 400,
+            f"the production render refuses, before it looks for build/render-host, a package id that is not a plain name ({climbing.status}), an unknown package ({unknown.status}) and a screen past 7680x4320 ({huge.status})");
+        contract.expect(plain.status == 404, f"a well-formed production request gets past the request check to the missing render host: {plain.status}");
     }
 
     class void run(Contract contract) {
