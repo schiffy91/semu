@@ -162,5 +162,16 @@ class FrameLayoutSpecContract {
                 platform + ": Azahar's pinned use_integer_scaling and render_frame_integer agree, so the compositor models the frame Azahar draws");
         }
         FrameLayoutSpecContract.dolphin(contract, fixture);
+
+        // PPSSPP letterboxes 480x272 in the Deck's 1280x800; the renderer then shows it at a whole 2x.
+        // The lane's width comes from the presentation aspect, which must be the declared one: the
+        // cut's rounded 1280x724 made the lane 962 wide and beat the LCD grid (seen on the Deck).
+        JSONValue display = fixture.model.system("psp").definition.get("display");
+        float pspAspect = (float)SemuJson.intAt(display, "aspect.w", 0) / (float)SemuJson.intAt(display, "aspect.h", 1);
+        struct SemuComposeRect picture;
+        SemuFrameLayout.letterboxed(1280, 800, pspAspect, &picture);
+        int laneWidth = (int)(544.0f * SemuFrameLayout.presentationAspect(pspAspect, &picture) + 0.5f);
+        int roundedWidth = (int)(544.0f * (float)picture.width / (float)picture.height + 0.5f);
+        contract.expect(laneWidth == 960, f"Deck 1280x800, PSP at 2x: the lane is {laneWidth} wide from the declared aspect (the cut " + FrameLayoutSpecContract.text(picture) + f" alone would give {roundedWidth})");
     }
 }
