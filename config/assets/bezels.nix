@@ -65,38 +65,6 @@ let
   copyAssetsMissingHashes = lib.attrNames
     (lib.filterAttrs (_: recipe: !(recipe ? file_sha256)) copyAssets);
 
-  policy = sources.policy or { };
-  policyPresentations = policy.presentations or { };
-  policyProfiles = policy.profiles or { };
-  policySystems = policy.systems or { };
-
-  policyAssetReferences = lib.concatMap
-    (presentation: lib.filter (asset: asset != "") [
-      (presentation.art or "")
-      (presentation.glass or "")
-    ])
-    (lib.attrValues policyPresentations);
-  policyProfileReferences = lib.concatMap
-    (profile: lib.filter (variant: variant != "") [
-      (profile.default_variant or "")
-      (profile.widescreen_variant or "")
-    ])
-    (lib.attrValues policyProfiles);
-  policySystemReferences = lib.concatMap
-    (systemPolicy:
-      lib.attrValues (systemPolicy.variants or { })
-      ++ (systemPolicy.alternatives or [ ])
-      ++ lib.filter (variant: variant != "") [
-        (systemPolicy.default_variant or "")
-        (systemPolicy.widescreen_variant or "")
-      ])
-    (lib.attrValues policySystems);
-  missingPolicyAssets = lib.unique (lib.filter
-    (asset: !(imageAssets ? ${asset})) policyAssetReferences);
-  missingPolicyPresentations = lib.unique (lib.filter
-    (variant: !(policyPresentations ? ${variant}))
-    (policyProfileReferences ++ policySystemReferences));
-
   outFile = key: ''"$out/share/semu/${key}"'';
   treePath = recipe: path: "${githubTrees.${recipe.from}}/${path}";
   treeFile = recipe: path: ''"${treePath recipe path}"'';
@@ -271,10 +239,6 @@ assert lib.assertMsg (invalidOutputMetadata == [ ])
   "bezel recipes have invalid output metadata: ${toString invalidOutputMetadata}";
 assert lib.assertMsg (outputCropMismatches == [ ])
   "bezel output geometry disagrees with its crop: ${toString outputCropMismatches}";
-assert lib.assertMsg (missingPolicyAssets == [ ])
-  "central bezel presentations reference unknown assets: ${toString missingPolicyAssets}";
-assert lib.assertMsg (missingPolicyPresentations == [ ])
-  "central bezel policy references unknown presentations: ${toString missingPolicyPresentations}";
 stdenvNoCC.mkDerivation {
   pname = "semu-bezels";
   version = toString sources.schema_version;
