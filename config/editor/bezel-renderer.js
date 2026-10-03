@@ -74,7 +74,7 @@ const BezelRenderer = (() => {
       return screens.find(screen => screen.id === id) || (screens.length === 1 && id === "main" ? screens[0] : null);
     }
     static screen(source, canvas) {  // loadScreen() over what variant() emits for one screen
-      const screen = { tube: Environment.hole(source.tube, canvas), image: Environment.hole(source.image, canvas), ringSet: false, lookSet: true };
+      const screen = { id: source.id, tube: Environment.hole(source.tube, canvas), image: Environment.hole(source.image, canvas), ringSet: false, lookSet: true };
       if (!screen.tube.set) screen.tube = Environment.hole(source.image, canvas);  // a calibrated image rectangle stands in for an unmeasured opening
       const ring = source.ring;
       if (ring && typeof ring === "object") {
@@ -257,5 +257,147 @@ const BezelRenderer = (() => {
     }
   }
 
-  return { CompositionContract, Environment, Geometry, TestCard };
+  class Compositor {  // config/render/compositor.{vert,frag} in WebGL2, drawn pass by pass as RendererCompositor.game draws them
+    constructor() {
+      this.canvas = document.createElement("canvas");
+      this.gl = this.canvas.getContext("webgl2", { alpha: false, antialias: false, depth: false, stencil: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
+      this.textures = new Map();
+      this.failure = this.gl ? "" : "this browser has no WebGL2";
+    }
+    async load() {  // the renderer's own shader text, served with the GLSL ES header
+      if (!this.gl) return false;
+      const gl = this.gl, [vertex, fragment] = await Promise.all(["vert", "frag"].map(name => fetch(`/render/compositor.${name}`).then(response => response.ok ? response.text() : Promise.reject(new Error(`compositor.${name}: HTTP ${response.status}`)))));
+      const compile = (type, source) => { const shader = gl.createShader(type); gl.shaderSource(shader, source); gl.compileShader(shader); if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader)); return shader; };
+      const program = gl.createProgram();
+      gl.attachShader(program, compile(gl.VERTEX_SHADER, vertex)); gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragment)); gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+      this.program = program; this.vertexArray = gl.createVertexArray(); this.uniforms = {};
+      gl.useProgram(program);
+      const units = { uGame: 0, uBezel: 1, uGlass: 2, uMenu: 3, uGame2: 4, uGlass2: 5, uBackground: 6, uRaw: 7, uRaw2: 8 };  // bindSamplers
+      for (const [name, unit] of Object.entries(units)) { const location = gl.getUniformLocation(program, name); if (location) gl.uniform1i(location, unit); }
+      this.black = this.upload(null, new Uint8Array([0, 0, 0, 255]), 1, 1, false);
+      return true;
+    }
+    uniform(name) { if (!(name in this.uniforms)) this.uniforms[name] = this.gl.getUniformLocation(this.program, name); return this.uniforms[name]; }
+    set4(name, a, b, c, d) { const location = this.uniform(name); if (location) this.gl.uniform4f(location, a, b, c, d); }
+    setRect(name, rect) { this.set4(name, rect.x, rect.y, rect.width, rect.height); }
+    upload(key, source, width, height, nearest) {  // configureTexture + mipmap: clamped, trilinear when minified; magnified linear for plates, point-sampled for a raw frame
+      const gl = this.gl, texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false); gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      if (source instanceof Uint8Array) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, nearest ? gl.NEAREST : gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      const entry = { texture, width: width || source.width, height: height || source.height };
+      if (key !== null) { if (this.textures.has(key)) gl.deleteTexture(this.textures.get(key).texture); this.textures.set(key, entry); }
+      return entry;
+    }
+    image(key, image) { return this.upload(key, image, image.naturalWidth || image.width, image.naturalHeight || image.height, false); }  // a plate: decoded here, in the same task
+    frame(key, pixels, width, height) { return this.textures.get(key) || this.upload(key, pixels, width, height, true); }  // a native frame, as extract() leaves it
+    forget(prefix) { for (const [key, entry] of [...this.textures]) if (key.startsWith(prefix)) { this.gl.deleteTexture(entry.texture); this.textures.delete(key); } }
+    magnify(nearest) {  // the editor's own choice above 1x: plates point-sampled for pixel work (the renderer never magnifies them)
+      const gl = this.gl;
+      for (const [key, entry] of this.textures) if (key.startsWith("layer:")) { gl.bindTexture(gl.TEXTURE_2D, entry.texture); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, nearest ? gl.NEAREST : gl.LINEAR); }
+    }
+    bind(unit, entry) { const gl = this.gl; gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, (entry || this.black).texture); }
+    laneUniforms(screen, lane, canvas, framed, index) {  // RendererCompositor.laneUniforms
+      const suffix = index === 0 ? "" : "2", look = !!screen && screen.lookSet;
+      let ring = look && screen.ringSet && canvas.width > 0, inner = CompositionContract.empty(), outer = CompositionContract.empty();
+      if (ring) { inner = CompositionContract.aperture(canvas, screen.ringInner); outer = CompositionContract.aperture(canvas, screen.ringOuter); if (outer.width <= 0 || outer.height <= 0) ring = false; }
+      const value = (name, fallback) => screen && typeof screen[name] === "number" ? screen[name] : fallback;
+      this.setRect("uRingIn" + suffix, inner); this.setRect("uRingOut" + suffix, outer);
+      this.set4("uRingLook" + suffix, value("ringInnerRadius", 0), value("ringOuterRadius", 0), ring ? 1 : 0, value("ringBevel", 0));
+      const color = screen && screen.ringColor ? screen.ringColor : [0, 0, 0];
+      this.set4("uRingColor" + suffix, color[0], color[1], color[2], value("ringOpacity", 0));
+      this.set4("uRingReflect" + suffix, ring || (look && framed === 1) ? value("reflect", 0) : 0, value("reflectBlur", 0), value("reflectFade", 0), 0);
+      this.setRect("uRect" + suffix, lane ? lane.output : CompositionContract.empty()); this.setRect("uTube" + suffix, lane ? lane.tube : CompositionContract.empty());
+      this.set4("uShape" + suffix, look ? screen.shape : 0, look ? screen.radius : 0, look ? screen.exponent : 2, 0);
+      this.set4("uFx" + suffix, look ? screen.curvature : 0, look ? screen.vignette : 0, look ? screen.bloom : 0, 0);
+      const surround = look ? screen.surround : [0, 0, 0];
+      this.set4("uSurround" + suffix, surround[0], surround[1], surround[2], 1);
+    }
+    pass(pass, blend) {  // drawPass
+      const gl = this.gl;
+      if (blend) { gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.blendEquation(gl.FUNC_ADD); }
+      else gl.disable(gl.BLEND);
+      gl.uniform1f(this.uniform("uPass"), pass);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    scissor(rect) {  // the target screen on the view: what the renderer draws over its whole framebuffer stays inside it
+      const gl = this.gl;
+      if (!rect) { gl.disable(gl.SCISSOR_TEST); return; }
+      const left = Math.max(0, Math.floor(rect.x)), bottom = Math.max(0, Math.floor(rect.y));
+      gl.enable(gl.SCISSOR_TEST); gl.scissor(left, bottom, Math.max(0, Math.ceil(rect.x + rect.width) - left), Math.max(0, Math.ceil(rect.y + rect.height) - bottom));
+    }
+    cover(screen, imageWidth, imageHeight) {  // RendererGeometry.background and drawLayers' cover branch, over the target screen
+      const horizontal = float(screen.width / imageWidth), vertical = float(screen.height / imageHeight), scale = horizontal > vertical ? horizontal : vertical;
+      const width = float(scale * imageWidth), height = float(scale * imageHeight);
+      return { x: float(screen.x + float(float(screen.width - width) * 0.5)), y: float(screen.y + float(float(screen.height - height) * 0.5)), width, height };
+    }
+    layers(variant, canvas, screen, above) {  // RendererCompositor.drawLayers
+      const gl = this.gl;
+      for (const layer of variant.layers) {
+        const entry = this.textures.get("layer:" + layer.id);
+        if (layer.above !== above || !entry || layer.opacity <= 0) continue;
+        const rect = layer.extent === "cover" ? this.cover(screen, entry.width, entry.height) : CompositionContract.aperture(canvas, layer.extent);
+        if (rect.width <= 0 || rect.height <= 0) continue;
+        this.scissor(layer.extent === "cover" ? screen : null);
+        this.bind(1, entry);
+        this.setRect("uBezelRect", rect);
+        this.set4("uLayer", layer.opacity, layer.blend, layer.lift, 0);
+        this.set4("uLayerTint", layer.tint[0], layer.tint[1], layer.tint[2], layer.tint[3]);
+        gl.enable(gl.BLEND);
+        if (layer.blend === 1) gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE, gl.ZERO, gl.ONE);  // add: black adds nothing
+        else if (layer.blend === 2) gl.blendFuncSeparate(gl.DST_COLOR, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);  // multiply
+        else gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.uniform1f(this.uniform("uPass"), 4);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+      this.scissor(null);
+      this.setRect("uBezelRect", canvas);
+    }
+    paintedLens(variant, count) { return variant.screens.slice(0, Math.min(count, 2)).some(screen => screen && screen.lookSet && screen.ringSet && screen.ringOpacity <= 0 && screen.reflect > 0); }
+    render(scene) {  // scene: width, height, clear, screen and canvas (bottom-up), variant, lanes, frames[] and glass[] texture keys, cutouts
+      const gl = this.gl, { variant, lanes, canvas, screen } = scene, count = lanes.length, second = count > 1 ? 1 : 0;
+      if (this.canvas.width !== scene.width || this.canvas.height !== scene.height) { this.canvas.width = scene.width; this.canvas.height = scene.height; }
+      gl.viewport(0, 0, scene.width, scene.height);
+      gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.disable(gl.STENCIL_TEST); gl.disable(gl.SCISSOR_TEST); gl.colorMask(true, true, true, true);
+      gl.clearColor(scene.clear[0], scene.clear[1], scene.clear[2], 1); gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.useProgram(this.program); gl.bindVertexArray(this.vertexArray);
+      const frames = scene.frames.map(key => this.textures.get(key)), glass = scene.glass.map(key => key && this.textures.get(key));
+      this.bind(0, frames[0]); this.bind(4, frames[second]); this.bind(1, null); this.bind(2, glass[0]); this.bind(5, glass[second]);
+      const background = scene.background ? this.textures.get(scene.background) : null;
+      this.bind(6, background); this.bind(7, frames[0]); this.bind(8, frames[second]); this.bind(3, null);
+      const framed = scene.framed || 0;
+      for (let index = 0; index < 2; index++) { const lane = index < count ? index : second; this.laneUniforms(variant.screens[lane], lanes[lane], canvas, framed, index); }
+      this.set4("uRotation", 0, 0, 0, 0);
+      const glass0 = !!glass[0] && !!variant.screens[0] && variant.screens[0].lookSet, glass1 = count > 1 && !!glass[1] && !!variant.screens[1] && variant.screens[1].lookSet;
+      this.set4("uReflect", glass0 ? variant.screens[0].glassReflect : 0, glass1 ? variant.screens[1].glassReflect : 0, glass0 ? 1 : 0, glass1 ? 1 : 0);
+      this.setRect("uBezelRect", canvas);
+      this.setRect("uBackgroundRect", background ? this.cover(screen, background.width, background.height) : CompositionContract.empty());
+      this.set4("uFlags", count > 1 ? 1 : 0, 0, background ? 1 : 0, variant.layered ? 1 : 0);
+      this.set4("uFrame", scene.frameWidth || 0, variant.frame.radius, framed, 0);
+      this.set4("uFrameColor", variant.frame.color[0], variant.frame.color[1], variant.frame.color[2], 1);
+      const bulge = index => variant.screens[index] ? [variant.screens[index].bulgeX, variant.screens[index].bulgeY] : [0, 0];
+      this.set4("uBulge", ...bulge(0), ...bulge(second));
+      gl.uniform1f(this.uniform("uMenuOn"), 0);
+      this.scissor(screen); this.pass(0, false); this.scissor(null);
+      if (variant.layered) this.layers(variant, canvas, screen, false);
+      if (variant.layered && this.paintedLens(variant, count) && scene.cutouts) {  // drawLensMirror: screen blend, the plate stays and the mirror lightens it
+        gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_COLOR, gl.ZERO, gl.ONE); gl.blendEquation(gl.FUNC_ADD);
+        gl.uniform1f(this.uniform("uPass"), 5); gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+      if (framed) this.pass(2, true);  // plate and frames first, so the screen edge blends over them
+      if (scene.cutouts) this.pass(1, true);  // alpha carries the screen shape mask
+      if (variant.layered) this.layers(variant, canvas, screen, true);
+      gl.disable(gl.BLEND);
+      return this.canvas;
+    }
+  }
+
+  return { CompositionContract, Environment, Geometry, TestCard, Compositor };
 })();
