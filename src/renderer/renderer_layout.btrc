@@ -1,0 +1,150 @@
+// Lane rectangles: the opening a lane fills and the computed layouts of two screens (a large main beside
+// a second, side by side, stacked). Pure arithmetic over renderer_abi's records, no GL, so the contracts
+// check it directly.
+
+import ./renderer_abi.btrc;
+
+int SEMU_LAYOUT_FIXED = 0;
+int SEMU_LAYOUT_MAIN_RIGHT = 1;
+int SEMU_LAYOUT_MAIN_LEFT = 2;
+int SEMU_LAYOUT_SIDE_BY_SIDE = 3;
+int SEMU_LAYOUT_STACKED = 4;
+
+class RendererLayout {
+    class void setTube(struct RendererLaneGeometry* lane, int x, int y, int width, int height) {
+        lane->tube_x = x;
+        lane->tube_y = y;
+        lane->tube_width = width;
+        lane->tube_height = height;
+    }
+
+    class void tubeFromOutput(struct RendererLaneGeometry* lane) {
+        RendererLayout.setTube(lane, lane->output_x, lane->output_y, lane->output_width, lane->output_height);
+    }
+
+    class int rotatedWidth(struct RendererLaneGeometry* lane) {
+        return lane->rotation == 90 || lane->rotation == 270 ? lane->native_height : lane->native_width;
+    }
+
+    class int rotatedHeight(struct RendererLaneGeometry* lane) {
+        return lane->rotation == 90 || lane->rotation == 270 ? lane->native_width : lane->native_height;
+    }
+
+    class void exact(struct RendererLaneGeometry* lane, int x, int y, int width, int height) {
+        lane->output_x = x;
+        lane->output_y = y;
+        lane->output_width = width;
+        lane->output_height = height;
+        RendererLayout.tubeFromOutput(lane);
+    }
+
+    class bool mainBeside(struct RendererCompositionGeometry* geometry, int areaWidth, int areaHeight,
+                          int frame, int gap, bool right) {  // the larger main wins: centered main with the second beside it, else the pair centered
+        struct RendererLaneGeometry* main = &geometry->lanes[0];
+        struct RendererLaneGeometry* second = &geometry->lanes[1];
+        int mainWidth = RendererLayout.rotatedWidth(main);
+        int mainHeight = RendererLayout.rotatedHeight(main);
+        int secondWidth = RendererLayout.rotatedWidth(second);
+        int secondHeight = RendererLayout.rotatedHeight(second);
+        int tallest = (areaHeight - 2 * frame) / mainHeight;
+        int centeredScale = tallest;
+        int centeredSide = 0;
+        while (centeredScale >= 1) {
+            centeredSide = (areaWidth - centeredScale * mainWidth) / 2 - 3 * frame - 2 * gap;
+            if (centeredSide >= secondWidth) { break; }
+            centeredScale--;
+        }
+        int pairScale = tallest;
+        int pairSide = 0;
+        while (pairScale >= 1) {
+            pairSide = areaWidth - pairScale * mainWidth - 4 * frame - 3 * gap;
+            if (pairSide >= secondWidth) { break; }
+            pairScale--;
+        }
+        bool centered = centeredScale >= 1 && centeredScale >= pairScale;
+        int scale = centered ? centeredScale : pairScale;
+        int side = centered ? centeredSide : pairSide;
+        if (scale < 1) { return false; }
+        float secondScale = (float)side / (float)secondWidth;
+        float tall = (float)(scale * mainHeight) / (float)secondHeight;
+        if (tall < secondScale) { secondScale = tall; }
+        if (secondScale >= 1.0f) { secondScale = (float)(int)secondScale; }  // whole steps like the main; below 1x the fractional fallback
+        int secondOutWidth = (int)((float)secondWidth * secondScale + 0.5f);
+        int secondOutHeight = (int)((float)secondHeight * secondScale + 0.5f);
+        int mainX = (areaWidth - scale * mainWidth) / 2;
+        int mainY = (areaHeight - scale * mainHeight) / 2;
+        if (!centered) {
+            int pairWidth = scale * mainWidth + 2 * frame + gap + secondOutWidth;  // the floored second, so the pair stays centred
+            mainX = right ? (areaWidth - pairWidth) / 2 : (areaWidth + pairWidth) / 2 - scale * mainWidth;
+        }
+        RendererLayout.exact(main, mainX, mainY, scale * mainWidth, scale * mainHeight);
+        int offset = centered ? (side - secondOutWidth) / 2 : 0;  // beside a centred main, centred in the room it had
+        int secondX = right ? mainX + scale * mainWidth + 2 * frame + gap + offset : mainX - 2 * frame - gap - secondOutWidth - offset;
+        int secondY = mainY + (scale * mainHeight - secondOutHeight) / 2;
+        RendererLayout.exact(second, secondX, secondY, secondOutWidth, secondOutHeight);
+        return true;
+    }
+
+    class void sideBySide(struct RendererCompositionGeometry* geometry, int areaWidth, int areaHeight,
+                          int frame, int gap, int integerScaling) {  // one uniform scale for both screens
+        struct RendererLaneGeometry* main = &geometry->lanes[0];
+        struct RendererLaneGeometry* second = &geometry->lanes[1];
+        int mainWidth = RendererLayout.rotatedWidth(main);
+        int mainHeight = RendererLayout.rotatedHeight(main);
+        int secondWidth = RendererLayout.rotatedWidth(second);
+        int secondHeight = RendererLayout.rotatedHeight(second);
+        int tallest = mainHeight > secondHeight ? mainHeight : secondHeight;
+        float scale = (float)(areaWidth - 4 * frame - gap) / (float)(mainWidth + secondWidth);
+        float vertical = (float)(areaHeight - 2 * frame) / (float)tallest;
+        if (vertical < scale) { scale = vertical; }
+        if (integerScaling != 0 && scale >= 1.0f) { scale = (float)(int)scale; }
+        if (scale <= 0.0f) { scale = 0.01f; }
+        int mainOutWidth = (int)((float)mainWidth * scale + 0.5f);
+        int mainOutHeight = (int)((float)mainHeight * scale + 0.5f);
+        int secondOutWidth = (int)((float)secondWidth * scale + 0.5f);
+        int secondOutHeight = (int)((float)secondHeight * scale + 0.5f);
+        int groupWidth = mainOutWidth + secondOutWidth + 2 * frame + gap;
+        int x = (areaWidth - groupWidth) / 2;
+        RendererLayout.exact(main, x, (areaHeight - mainOutHeight) / 2, mainOutWidth, mainOutHeight);
+        RendererLayout.exact(second, x + mainOutWidth + 2 * frame + gap, (areaHeight - secondOutHeight) / 2, secondOutWidth, secondOutHeight);
+    }
+
+    class void stacked(struct RendererCompositionGeometry* geometry, int areaWidth, int areaHeight,
+                       int frame, int gap, int integerScaling) {  // lane 0 above lane 1 in GL space
+        struct RendererLaneGeometry* main = &geometry->lanes[0];
+        struct RendererLaneGeometry* second = &geometry->lanes[1];
+        int mainWidth = RendererLayout.rotatedWidth(main);
+        int mainHeight = RendererLayout.rotatedHeight(main);
+        int secondWidth = RendererLayout.rotatedWidth(second);
+        int secondHeight = RendererLayout.rotatedHeight(second);
+        int widest = mainWidth > secondWidth ? mainWidth : secondWidth;
+        float scale = (float)(areaWidth - 2 * frame) / (float)widest;
+        float vertical = (float)(areaHeight - 4 * frame - gap) / (float)(mainHeight + secondHeight);
+        if (vertical < scale) { scale = vertical; }
+        if (integerScaling != 0 && scale >= 1.0f) { scale = (float)(int)scale; }
+        if (scale <= 0.0f) { scale = 0.01f; }
+        int mainOutWidth = (int)((float)mainWidth * scale + 0.5f);
+        int mainOutHeight = (int)((float)mainHeight * scale + 0.5f);
+        int secondOutWidth = (int)((float)secondWidth * scale + 0.5f);
+        int secondOutHeight = (int)((float)secondHeight * scale + 0.5f);
+        int groupHeight = mainOutHeight + secondOutHeight + 2 * frame + gap;
+        int y = (areaHeight - groupHeight) / 2;
+        RendererLayout.exact(second, (areaWidth - secondOutWidth) / 2, y, secondOutWidth, secondOutHeight);
+        RendererLayout.exact(main, (areaWidth - mainOutWidth) / 2, y + secondOutHeight + 2 * frame + gap, mainOutWidth, mainOutHeight);
+    }
+
+    class void computed(struct RendererCompositionGeometry* geometry, int layout, int areaWidth, int areaHeight,
+                        int frame, float gapFraction, int integerScaling) {
+        int gap = (int)(gapFraction * (float)areaWidth + 0.5f);  // visual.dual_screen_gap, a fraction of the width
+        if (layout == SEMU_LAYOUT_MAIN_RIGHT || layout == SEMU_LAYOUT_MAIN_LEFT) {
+            if (RendererLayout.mainBeside(geometry, areaWidth, areaHeight, frame, gap, layout == SEMU_LAYOUT_MAIN_RIGHT)) { return; }
+            RendererLayout.sideBySide(geometry, areaWidth, areaHeight, frame, gap, integerScaling);  // too small for the policy: the plain side-by-side keeps both screens whole
+            return;
+        }
+        if (layout == SEMU_LAYOUT_SIDE_BY_SIDE) {
+            RendererLayout.sideBySide(geometry, areaWidth, areaHeight, frame, gap, integerScaling);
+            return;
+        }
+        RendererLayout.stacked(geometry, areaWidth, areaHeight, frame, gap, integerScaling);
+    }
+}

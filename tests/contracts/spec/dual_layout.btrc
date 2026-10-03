@@ -1,0 +1,89 @@
+// Dual layout spec: the computed DS and 3DS layouts show each screen at a whole multiple of its native
+// size, the largest the display holds, with both screens and their drawn frames on screen and apart, at
+// the Deck's 1280x800, 1080p and 4K. A fractional second screen gave its pixels uneven widths.
+
+import Library.JSON;
+import Library.Strings;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/renderer/renderer_layout.btrc;
+
+class DualLayoutSpecContract {
+    class string text(struct RendererLaneGeometry* lane) { return f"{lane->output_x},{lane->output_y} {lane->output_width}x{lane->output_height}"; }
+
+    class int step(struct RendererLaneGeometry* lane) {  // the whole multiple of native the lane shows, else 0
+        if (lane->native_width < 1 || lane->native_height < 1) { return 0; }
+        int across = lane->output_width / lane->native_width;
+        bool whole = across >= 1 && lane->output_width == across * lane->native_width && lane->output_height == across * lane->native_height;
+        return whole ? across : 0;
+    }
+
+    class bool onScreen(struct RendererLaneGeometry* lane, int frame, int areaWidth, int areaHeight) {
+        return lane->output_x - frame >= 0 && lane->output_y - frame >= 0
+            && lane->output_x + lane->output_width + frame <= areaWidth && lane->output_y + lane->output_height + frame <= areaHeight;
+    }
+
+    class int frameWidth(Fixture fixture, string package, int areaHeight) {  // the package's frame.width, a fraction of the height, as the renderer rounds it
+        JSONValue bezel = JSONValue.readFile(PathTools.join(fixture.project, "config/bezels/" + package + "/bezel.json"));
+        double fraction = atof(SemuJson.textAt(bezel, "frame.width"));
+        return (int)(fraction * (double)areaHeight + 0.5);
+    }
+
+    class float gapFraction(Fixture fixture) {  // visual.dual_screen_gap, a fraction of the width
+        return (float)atof(SemuJson.textAt(SemuJson.get(fixture.plan.settings, "visual"), "dual_screen_gap"));
+    }
+
+    class void prepare(struct RendererCompositionGeometry* geometry, SemuSystem system) {  // two lanes at the system's native screen sizes
+        memset(geometry, 0, sizeof(struct RendererCompositionGeometry));
+        geometry->lane_count = 2;
+        JSONValue screens = SemuJson.get(system.definition, "display.screens");
+        for (int index = 0; index < 2; index++) {
+            geometry->lanes[index].native_width = SemuJson.intAt(screens.at(index), "native.w", 0);
+            geometry->lanes[index].native_height = SemuJson.intAt(screens.at(index), "native.h", 0);
+        }
+    }
+
+    class void mainBeside(Contract contract, Fixture fixture, string systemId, bool right, int areaWidth, int areaHeight) {
+        struct RendererCompositionGeometry geometry;
+        DualLayoutSpecContract.prepare(&geometry, fixture.model.system(systemId));
+        string package = right ? "dual-main-right" : "dual-main-left";
+        int frame = DualLayoutSpecContract.frameWidth(fixture, package, areaHeight);
+        float gapFraction = DualLayoutSpecContract.gapFraction(fixture);
+        int gap = (int)(gapFraction * (float)areaWidth + 0.5f);
+        RendererLayout.computed(&geometry, right ? SEMU_LAYOUT_MAIN_RIGHT : SEMU_LAYOUT_MAIN_LEFT, areaWidth, areaHeight, frame, gapFraction, 1);
+        struct RendererLaneGeometry* main = &geometry.lanes[0];
+        struct RendererLaneGeometry* second = &geometry.lanes[1];
+        int mainStep = DualLayoutSpecContract.step(main);
+        int secondStep = DualLayoutSpecContract.step(second);
+        string label = f"{systemId} {package} {areaWidth}x{areaHeight}: main " + DualLayoutSpecContract.text(main) + ", second " + DualLayoutSpecContract.text(second);
+        contract.expect(mainStep >= 1 && secondStep >= 1 && secondStep <= mainStep, label + ": both screens at whole steps, the second no larger than the main");
+        contract.expect(DualLayoutSpecContract.onScreen(main, frame, areaWidth, areaHeight) && DualLayoutSpecContract.onScreen(second, frame, areaWidth, areaHeight), label + ": both framed screens on screen");
+        int apart = right ? second->output_x - main->output_x - main->output_width : main->output_x - second->output_x - second->output_width;
+        contract.expect(apart >= 2 * frame + gap, label + f": the screens {apart} px apart, room for two frames and the gap");
+        int down = (areaHeight - 2 * frame) / main->native_height;
+        contract.expect(mainStep <= down, label + ": the main never beyond the height");
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        int widths[3] = {1280, 1920, 3840};
+        int heights[3] = {800, 1080, 2160};
+        for systemId in ["nds", "n3ds"] {
+            for (int size = 0; size < 3; size++) {
+                DualLayoutSpecContract.mainBeside(contract, fixture, systemId, true, widths[size], heights[size]);
+                DualLayoutSpecContract.mainBeside(contract, fixture, systemId, false, widths[size], heights[size]);
+            }
+        }
+        struct RendererCompositionGeometry geometry;  // the Deck cases the editor comparison measured at about 1.39x and 1.0125x
+        DualLayoutSpecContract.prepare(&geometry, fixture.model.system("nds"));
+        RendererLayout.computed(&geometry, SEMU_LAYOUT_MAIN_RIGHT, 1280, 800, 24, DualLayoutSpecContract.gapFraction(fixture), 1);
+        contract.expect(DualLayoutSpecContract.step(&geometry.lanes[0]) == 3 && DualLayoutSpecContract.step(&geometry.lanes[1]) == 1,
+            "nds main_right on the Deck: main 3x, second 1x, was 356x267: " + DualLayoutSpecContract.text(&geometry.lanes[1]));
+        DualLayoutSpecContract.prepare(&geometry, fixture.model.system("n3ds"));
+        RendererLayout.computed(&geometry, SEMU_LAYOUT_MAIN_LEFT, 1280, 800, 24, DualLayoutSpecContract.gapFraction(fixture), 1);
+        contract.expect(DualLayoutSpecContract.step(&geometry.lanes[0]) == 2 && DualLayoutSpecContract.step(&geometry.lanes[1]) == 1,
+            "n3ds main_left on the Deck: main 2x, the touch screen 1x, was 324x243: " + DualLayoutSpecContract.text(&geometry.lanes[1]));
+    }
+}
