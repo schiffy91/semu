@@ -36,7 +36,7 @@
         "sha256": "0196da73be03748301247b562a107ebcbdc5e5555426311c63ad02e4bdf86c64"
       },
       "doc": {
-        "provenance": "Semu-owned complete-console product render. The raster carries the continuous lens; systems/gb/bezels.json owns the game aperture."
+        "provenance": "Semu-owned complete-console product render. The raster carries the continuous lens; config/bezels/gb-studio/bezel.json owns the game aperture."
       }
     },
     "assets/fonts/menu-font.png": {
