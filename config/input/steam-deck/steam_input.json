@@ -323,32 +323,6 @@
       "semu-x8664appimage"
     ]
   },
-  "key_names": {
-    "ctrl": "LEFT_CONTROL",
-    "alt": "LEFT_ALT",
-    "shift": "LEFT_SHIFT",
-    "meta": "LEFT_GUI",
-    "enter": "RETURN",
-    "esc": "ESCAPE",
-    "tab": "TAB",
-    "up": "UP_ARROW",
-    "down": "DOWN_ARROW",
-    "backspace": "BACKSPACE",
-    "space": "SPACE",
-    "kp0": "KEYPAD_0",
-    "kp1": "KEYPAD_1",
-    "kp2": "KEYPAD_2",
-    "kp3": "KEYPAD_3",
-    "kp4": "KEYPAD_4",
-    "kp5": "KEYPAD_5",
-    "kp6": "KEYPAD_6",
-    "kp7": "KEYPAD_7",
-    "kp8": "KEYPAD_8",
-    "kp9": "KEYPAD_9",
-    "kpdecimal": "KEYPAD_PERIOD",
-    "+": "KEYPAD_PLUS",
-    "-": "KEYPAD_DASH"
-  },
   "platforms": {
     "linux": {
       "templates_dir": "${home}/.local/share/Steam/controller_base/templates",
@@ -362,7 +336,6 @@
     "quit_chord": "The physical View/Menu buttons emit XInput SELECT/START unchanged. window_ms is the maximum verifier interval for the pair; the process-group watcher terminates as soon as it observes both buttons held. Radial and HKB quit use the app.quit action chord instead.",
     "templates": "Exactly one template carries default:true. settings prepare stages and byte-verifies every declared template, binding icon, and default shortcut profile before atomically publishing them. Deprecated application IDs are transactionally quarantined only beneath the same exact Steam user config root.",
     "binding_icons": "Every action declares a non-keyboard Semu PNG. Legacy VDF bindings encode the icon filename and its two colors as comma-delimited metadata, matching Valve's radial-menu format. Physical Deck acceptance: after bootstrap and provision, restart Steam, apply Semu: Steam Deck - Neptune FULL, open all three left-trackpad radials, and assert all 15 slots show the declared Semu icons with no Ctrl/key glyphs; activate the quick and menu slots to complete their capture evidence, then verify each Wii mode reaches its Dolphin consumer.",
-    "key_names": "semu-keymap-v1 key token to Steam VDF key-name lookup (was steamInputKeyName); unlisted keys upper-case verbatim in the emitter.",
     "platforms": "All three destinations are exact children of the canonical current user's ${home}/.local/share/Steam root. Independent path overrides are forbidden; focused tests inject one separately owned Steam root and derive the same fixed layout beneath it. SEMU_STEAM_USER_ID may select one existing numeric userdata directory when local Steam state is otherwise ambiguous.",
     "actions": "The complete native input vocabulary. Each action declares its chord, alias for ${..._BINDINGS} tokens, semantic label, and manifest-backed Semu PNG. The parser compiles these entries and hotkey_bindings directly into the native keymap and supervisor environment consumed by profile and Steam Input generators. Which emulators honor each action is declared per emulator in config/emulators/<emu>/emulator.json input.actions; ui.menu.{up,down,confirm,back} are consumed by the renderer menu, Wii controller actions are consumed by Dolphin's in-process mode selector, and ui.escape is desktop-only."
   }
