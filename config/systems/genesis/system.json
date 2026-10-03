@@ -1,10 +1,6 @@
 {
   "schema_version": 1,
   "name": "Sega Genesis",
-  "aliases": [
-    "megadrive",
-    "megadrive-japan"
-  ],
   "es_de": {
     "platforms": [
       "genesis",

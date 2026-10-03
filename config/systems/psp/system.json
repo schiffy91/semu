@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "name": "Sony PlayStation Portable",
-  "aliases": [],
   "es_de": {
     "platforms": [
       "psp"

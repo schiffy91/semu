@@ -1,11 +1,6 @@
 {
   "schema_version": 1,
   "name": "Super Nintendo",
-  "aliases": [
-    "superfamicom",
-    "sfc",
-    "super_nintendo"
-  ],
   "es_de": {
     "platforms": [
       "snes"

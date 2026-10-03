@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "name": "Nintendo Wii",
-  "aliases": [],
   "es_de": {
     "platforms": [
       "wii"
@@ -35,7 +34,6 @@
       ]
     }
   ],
-  "controller_profile": "steam_deck",
   "controller_mode": {
     "emulator": "dolphin",
     "setting": "input.systems.wii.controller_mode",

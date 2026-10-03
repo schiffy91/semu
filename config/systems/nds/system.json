@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "name": "Nintendo DS",
-  "aliases": [],
   "es_de": {
     "platforms": [
       "nds"

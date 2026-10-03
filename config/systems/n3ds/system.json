@@ -1,9 +1,6 @@
 {
   "schema_version": 1,
   "name": "Nintendo 3DS",
-  "aliases": [
-    "3ds"
-  ],
   "es_de": {
     "platforms": [
       "n3ds"
@@ -53,7 +50,6 @@
       ]
     }
   ],
-  "controller_profile": "steam_deck",
   "display": {
     "scaling": {
       "mode": "integer_preferred",
