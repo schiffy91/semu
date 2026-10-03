@@ -108,11 +108,6 @@
     },
     "refresh_hz": 59.94
   },
-  "render": {
-    "style": "console",
-    "priority": "game",
-    "corner_radius": 0.045
-  },
   "doc": {
     "hardware": "consumer CRT, component CRT, or early flat panel",
     "intent": "Aspect should follow PCSX2/game widescreen state.",

@@ -69,17 +69,6 @@
     },
     "refresh_hz": 59.9227
   },
-  "render": {
-    "style": "console",
-    "asset_profile": "crt4x3",
-    "priority": "game",
-    "reflect": 0.18,
-    "corner_radius": 0.045,
-    "curvature": 0.04,
-    "glow": 0.18,
-    "bloom": 0.2,
-    "vignette": 0.22
-  },
   "doc": {
     "hardware": "consumer CRT over composite/RGB",
     "intent": "Composite blending matters for dithering-heavy art."

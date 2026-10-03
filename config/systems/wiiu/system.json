@@ -65,13 +65,6 @@
     },
     "refresh_hz": 59.94
   },
-  "render": {
-    "style": "handheld",
-    "priority": "game",
-    "kind": "pointer",
-    "corner_radius": 0.045,
-    "fill": true
-  },
   "doc": {
     "hardware": "HD TV plus optional gamepad screen",
     "intent": "No default CRT; only use TV/gamepad bezel when both regions are exposed.",

@@ -70,14 +70,6 @@
     },
     "refresh_hz": 59.94
   },
-  "render": {
-    "style": "handheld",
-    "asset_profile": "handheld",
-    "priority": "game",
-    "corner_radius": 0.045,
-    "lcd_grid": 0.15,
-    "lcd_subpixel": 0.2
-  },
   "doc": {
     "hardware": "480x272 PSP LCD",
     "intent": "Preserve the PSP LCD color response, pixel structure, and exact square-pixel panel ratio."

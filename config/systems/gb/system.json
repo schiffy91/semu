@@ -71,15 +71,8 @@
     },
     "refresh_hz": 59.7275
   },
-  "render": {
-    "style": "handheld",
-    "asset_profile": "handheld",
-    "priority": "bezel",
-    "fill": true,
-    "reflect": 0.04
-  },
   "doc": {
     "hardware": "DMG-01 reflective STN LCD",
-    "intent": "The default DMG screen preset controls the restrained olive palette, LCD matrix, and STN response. The default gray shell declares a real pinned reflection map, so the restrained reflection coefficient is consumed by the compositor rather than remaining inert."
+    "intent": "The default DMG screen preset controls the restrained olive palette, LCD matrix, and STN response. The default DMG shell has no glass map; the picture's reflection on its bezel band comes from the package's own screen reflection (config/bezels/gb-dmg-shell)."
   }
 }

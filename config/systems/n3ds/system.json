@@ -101,20 +101,6 @@
     },
     "refresh_hz": 59.8261
   },
-  "render": {
-    "style": "handheld",
-    "asset_profile": "dual",
-    "priority": "game",
-    "kind": "dual",
-    "corner_radius": 0.09,
-    "lcd_grid": 0.12,
-    "lcd_subpixel": 0.2,
-    "shell_tint": {
-      "r": 0.82,
-      "g": 0.82,
-      "b": 0.85
-    }
-  },
   "doc": {
     "hardware": "dual LCDs, 400x240 top and 320x240 bottom",
     "intent": "The n3ds system launches through RetroArch's Citra core by default (top/bottom layout, hardware shaders) with the standalone Azahar build as the alternate emulator. Semu owns the dual-screen presentation contract: the core stacks the 400x240 top and 320x240 bottom screens into one frame and the renderer partitions it by the declared native sizes.",

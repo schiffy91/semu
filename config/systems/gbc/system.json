@@ -61,16 +61,6 @@
     },
     "refresh_hz": 59.7275
   },
-  "render": {
-    "style": "handheld",
-    "asset_profile": "handheld",
-    "priority": "bezel",
-    "fill": true,
-    "reflect": 0.55,
-    "lcd_grid": 0.45,
-    "lcd_subpixel": 0.35,
-    "lcd_wash": 0.30
-  },
   "doc": {
     "hardware": "Game Boy Color TFT LCD",
     "intent": "GBC LCD color response with mild motion blur; frost purple shell is the desired bezel target."

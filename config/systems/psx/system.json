@@ -98,17 +98,6 @@
     },
     "refresh_hz": 59.94
   },
-  "render": {
-    "style": "console",
-    "asset_profile": "crt4x3",
-    "priority": "game",
-    "reflect": 0.18,
-    "corner_radius": 0.045,
-    "curvature": 0.04,
-    "glow": 0.18,
-    "bloom": 0.2,
-    "vignette": 0.22
-  },
   "doc": {
     "hardware": "consumer CRT over composite/S-Video",
     "intent": "Preserve wobble/softness instead of HD-cleaning the output.",

@@ -63,17 +63,6 @@
     },
     "refresh_hz": 60.0988
   },
-  "render": {
-    "style": "console",
-    "asset_profile": "crt4x3",
-    "priority": "game",
-    "reflect": 0.18,
-    "corner_radius": 0.045,
-    "curvature": 0.04,
-    "glow": 0.18,
-    "bloom": 0.2,
-    "vignette": 0.22
-  },
   "doc": {
     "hardware": "consumer CRT over composite",
     "intent": "Classic 240p TV path with composite artifacting, phosphor mask, and scanlines."

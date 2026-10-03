@@ -82,12 +82,6 @@
     },
     "refresh_hz": 59.94
   },
-  "render": {
-    "style": "console",
-    "priority": "game",
-    "kind": "pointer",
-    "corner_radius": 0.045
-  },
   "doc": {
     "hardware": "consumer CRT/component TV",
     "intent": "Dolphin is pinned to draw 4:3 (CustomStretch in GFX.ini, SYSCONF.IPL.AR=False) until it reports the aspect it draws; then Dolphin/game settings should drive 4:3 vs 16:9 presentation.",

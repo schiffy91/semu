@@ -91,21 +91,6 @@
     },
     "refresh_hz": 59.8261
   },
-  "render": {
-    "style": "handheld",
-    "asset_profile": "dual",
-    "priority": "bezel",
-    "kind": "dual",
-    "corner_radius": 0.05,
-    "lcd_grid": 0.2,
-    "lcd_subpixel": 0.25,
-    "lcd_wash": 0.1,
-    "shell_tint": {
-      "r": 0.82,
-      "g": 0.82,
-      "b": 0.85
-    }
-  },
   "doc": {
     "hardware": "dual 256x192 resistive LCDs",
     "intent": "Expose both screens with independent LCD processing; Semu owns the dual-screen presentation contract.",
