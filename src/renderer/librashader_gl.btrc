@@ -34,10 +34,6 @@ class SemuLibrashaderError {
         }
     }
 
-    public bool failed() {
-        return (void*)self.handle != (void*)0;
-    }
-
     public int code() {
         return (void*)self.handle != (void*)0
             ? (int)libra_error_errno(self.handle) : -1;
@@ -241,25 +237,6 @@ class SemuLibrashaderOpenGLChain {
         return SEMU_LIBRASHADER_RENDERED;
     }
 
-    // ABI 2 explicitly permits parameter updates from any thread/context.
-    public bool setParameter(const char* name, float value) {
-        self.beginCall();
-        if ((void*)self.handle == (void*)0) {
-            self.failure = SEMU_LIBRASHADER_FAILURE_NOT_ACTIVE;
-            return false;
-        }
-        if (name == (const char*)0) {
-            self.failure = SEMU_LIBRASHADER_FAILURE_INVALID_ARGUMENT;
-            return false;
-        }
-        if (!self.error.capture(
-                libra_gl_filter_chain_set_param(&self.handle, name, value))) {
-            self.failure = SEMU_LIBRASHADER_FAILURE_LIBRARY;
-            return false;
-        }
-        return true;
-    }
-
     // A wrong-context call is non-destructive: the owner can restore its GL
     // context and retry. The destructor obeys the same guard.
     public bool close(unsigned long long contextGeneration) {
@@ -291,20 +268,8 @@ class SemuLibrashaderOpenGLChain {
         self.failure = SEMU_LIBRASHADER_FAILURE_NONE;
     }
 
-    public bool active() {
-        return (void*)self.handle != (void*)0;
-    }
-
-    public bool ownsGeneration(unsigned long long contextGeneration) {
-        return self.onGeneration(contextGeneration);
-    }
-
     public int lastFailure() {
         return self.failure;
-    }
-
-    public bool hasLibraryError() {
-        return self.error.failed();
     }
 
     public int lastLibraryErrorCode() {
