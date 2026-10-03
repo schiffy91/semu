@@ -2,7 +2,8 @@
 // its Mega Bezel draw order, visibility and placement; one layer is the canvas (the addressable
 // pixel grid every rectangle is expressed in); the screens layer carries the picture, black edge,
 // bezel ring and opening per screen. Writes config/bezels/<id>/bezel.json and keeps what a
-// measurement or the editor already put there when the math agrees with it.
+// measurement or the editor already put there when the math agrees with it, and what the preset does not
+// decide: a ring's bevel and painted band, bowed tube edges, an edited reflection.
 import Library.Bytes;
 import Library.Console;
 import Library.Datetime;
@@ -267,10 +268,14 @@ class BezelGeometry {  // one package: its preset, screens, layers and the canva
 class BezelPackageWriter {
     public BezelRepository repository;
     public MegaBezelTree tree;
+    public Vector<string> written;  // what emitAll wrote, one line per package
+    public Vector<string> failed;   // what it could not, and why
 
     public BezelPackageWriter(BezelRepository repository, MegaBezelTree tree) {
         self.repository = repository;
         self.tree = tree;
+        self.written = [];
+        self.failed = [];
     }
 
     class JSONValue rectJson(BezelRect rect) { return rect.rounded(); }
@@ -310,12 +315,17 @@ class BezelPackageWriter {
         screen.set("image", BezelPackageWriter.rectJson(image));
         screen.set("tube", BezelPackageWriter.rectJson(tube));
         if (geometry.params.get("HSM_BZL_OPACITY") > 0.0) {
+            JSONValue previous = screen.get("ring");
+            bool kept = previous != null && previous.isObject();
             JSONValue ring = JSONValue.makeObject();
             ring.set("inner", BezelPackageWriter.rectJson(edge));
             ring.set("outer", BezelPackageWriter.rectJson(bezel));
             ring.set("inner_radius", JSONValue.makeFloat(geometry.plateRadius(placed.tubeRadius)));
             ring.set("outer_radius", JSONValue.makeFloat(geometry.plateRadius(placed.bezelRadius)));
-            ring.set("color", JSONValue.makeString(geometry.placement.bezelColor()));
+            bool painted = kept && SemuJson.textAt(previous, "color").equals("none");  // the art paints this bezel: a band for the reflection, no fill
+            ring.set("color", JSONValue.makeString(painted ? "none" : geometry.placement.bezelColor()));
+            JSONValue bevel = kept ? previous.get("bevel") : null;  // the lip's lit chamfer is the package's, never the preset's
+            ring.set("bevel", bevel != null && bevel.isNumber() ? bevel : JSONValue.makeFloat(BezelPackageWriter.bevel(geometry.package)));
             screen.set("ring", ring);
         } else if (screen.has("ring")) { screen.set("ring", JSONValue.makeNull()); }
         JSONValue reflection = screen.get("reflection");
@@ -332,11 +342,14 @@ class BezelPackageWriter {
         screen.set("aspect", JSONValue.makeFloat(placed.aspect));
         screen.set("fit", JSONValue.makeString("aspect"));
         if (opening.equals("bezel_outer") || screen.get("shape") == null || !screen.get("shape").isObject()) {
+            JSONValue previous = screen.get("shape");
             JSONValue shape = JSONValue.makeObject();
             shape.set("kind", JSONValue.makeString("rounded"));
             double side = tube.w < tube.h ? tube.w : tube.h;
             shape.set("radius", JSONValue.makeFloat(side > 0.0 ? geometry.plateRadius(placed.bezelRadius) / side : 0.0));
             shape.set("exponent", JSONValue.makeFloat(4.0));
+            JSONValue bulge = previous != null && previous.isObject() ? previous.get("bulge") : null;  // the editor's bowed tube edges outlive a new opening
+            if (bulge != null && bulge.isObject()) { shape.set("bulge", bulge); }
             screen.set("shape", shape);
         }
         if (SemuJson.textAt(screen, "surround").isEmpty()) { screen.set("surround", JSONValue.makeString("#000000")); }
@@ -357,7 +370,29 @@ class BezelPackageWriter {
         JSONValue parameters = JSONValue.makeObject();
         for name in geometry.params.used.keys().sorted() { parameters.set(name, JSONValue.makeString(geometry.params.used.get(name))); }
         provenance.set("parameters", parameters);
+        if (edited) { provenance.set("edited", saved.get("edited")); }  // the next emit still keeps the person's reflection
         screen.set("provenance", provenance);
+    }
+
+    class double bevel(JSONValue package) {  // a new ring's chamfer: Duimon's device lenses sit in a flat printed mask, a CRT bezel is chamfered
+        return SemuJson.textAt(package, "upstream.source").equals("duimon_mega_bezel") ? 0.0 : 1.0;
+    }
+
+    public void emitAll(Vector<string> wanted) {  // `semu bezel emit`: the wanted upstream packages, then every recolor and plain plate
+        for packageId in wanted {
+            string failure = self.emit(packageId);
+            if (failure.isEmpty()) { self.written.push(f"{packageId}: written"); } else { self.failed.push(f"{packageId}: {failure}"); }
+        }
+        for packageId in self.repository.packageIds() {
+            JSONValue package = self.repository.package(packageId);
+            if (package == null) { continue; }
+            string failure = "";
+            if (!SemuJson.textAt(package, "geometry_from").isEmpty()) {
+                failure = self.inherit(packageId);
+                if (failure.isEmpty()) { self.written.push(f"{packageId}: geometry inherited"); }
+            } else if (package.get("upstream") == null || !package.get("upstream").isObject()) { failure = self.plain(packageId); }
+            if (!failure.isEmpty()) { self.failed.push(f"{packageId}: {failure}"); }
+        }
     }
 
     public string inherit(string packageId) {  // recolors and re-cuts share their base's geometry

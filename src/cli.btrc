@@ -262,18 +262,10 @@ class SemuCli {
         }
         if (action.equals("emit")) {
             BezelPackageWriter writer = BezelPackageWriter(repository, tree);
-            int failures = 0;
-            for packageId in wanted {
-                string failure = writer.emit(packageId);
-                if (failure.isEmpty()) { Console.log(f"{packageId}: written"); } else { Console.error(f"{packageId}: {failure}"); failures++; }
-            }
-            for packageId in repository.packageIds() {
-                JSONValue package = repository.package(packageId);
-                if (package == null) { continue; }
-                if (!SemuJson.textAt(package, "geometry_from").isEmpty()) { string failure = writer.inherit(packageId); Console.log(failure.isEmpty() ? f"{packageId}: geometry inherited" : f"{packageId}: {failure}"); }
-                else if (package.get("upstream") == null || !package.get("upstream").isObject()) { string failure = writer.plain(packageId); if (!failure.isEmpty()) { Console.error(f"{packageId}: {failure}"); failures++; } }
-            }
-            return failures == 0 ? 0 : 1;
+            writer.emitAll(wanted);
+            for line in writer.written { Console.log(line); }
+            for line in writer.failed { Console.error(line); }
+            return writer.failed.isEmpty() ? 0 : 1;
         }
         return self.usage(64);
     }

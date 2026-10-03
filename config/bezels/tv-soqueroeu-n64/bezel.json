@@ -101,8 +101,6 @@
           "HSM_CRT_LAYER_ORDER": "5",
           "HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS": "0",
           "HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION": "0",
-          "HSM_FRM_THICKNESS": "100",
-          "HSM_FRM_THICKNESS_SCALE_X": "100",
           "HSM_GLOBAL_CORNER_RADIUS": "10",
           "HSM_LED_LAYER_ORDER": "2",
           "HSM_LED_OPACITY": "100",
@@ -116,7 +114,6 @@
           "HSM_REFLECT_FADE_AMOUNT": "100",
           "HSM_REFLECT_GLOBAL_AMOUNT": "20.000000",
           "HSM_ROTATE_CORE_IMAGE": "0",
-          "HSM_SCREEN_CORNER_RADIUS_SCALE": "100",
           "HSM_SCREEN_POSITION_X": "0",
           "HSM_SCREEN_POSITION_Y": "56.000000",
           "HSM_TUBE_BLACK_EDGE_THICKNESS": "240.000000",
@@ -197,6 +194,6 @@
   ],
   "ambient": {
     "file": "duimon_mega_bezel:Graphics/_Night/NightLighting_1920x1080.png",
-    "opacity": 0.8
+    "opacity": 0.80000000000000004
   }
 }
