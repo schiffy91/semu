@@ -9,6 +9,7 @@ import ../model.btrc;
 import ../resolve.btrc;
 import ../emit/profiles.btrc;
 import ../emit/rendering.btrc;
+import ./playlist.btrc;
 
 class SemuLaunchPlan {
     public Vector<string> argv;
@@ -18,6 +19,7 @@ class SemuLaunchPlan {
     public string system;
     public string core;
     public string rom;
+    public string playlist;  // the .m3u Semu opened for disc 1, else empty
     public int chordWindowMs;
     public Vector<string> quitButtons;  // config/input quit_chord.buttons, e.g. start and select
     public Vector<string> menuLabels;
@@ -41,6 +43,7 @@ class SemuLaunchPlan {
         self.system = "";
         self.core = "";
         self.rom = "";
+        self.playlist = "";
         self.chordWindowMs = 250;
         self.quitButtons = [];
         self.menuLabels = [];
@@ -71,6 +74,7 @@ class SemuLaunchPlan {
         result.set("system", JSONValue.makeString(self.system));
         result.set("core", JSONValue.makeString(self.core));
         result.set("rom", JSONValue.makeString(self.rom));
+        result.set("playlist", JSONValue.makeString(self.playlist));
         result.set("quit_chord_window_ms", JSONValue.makeInt(self.chordWindowMs));
         JSONValue quitButtons = JSONValue.makeArray();
         for button in self.quitButtons { quitButtons.push(JSONValue.makeString(button)); }
@@ -82,14 +86,13 @@ class SemuLaunchPlan {
 }
 
 class SemuLauncher {
+    class string romRoot(SemuPlan plan, SemuSystem system) { return PathTools.join(plan.romsRoot(), system.romDir); }
+
     class string romPath(SemuPlan plan, SemuSystem system, string rom) {  // ROM must live inside the system's ROM directory
-        string root = PathTools.join(plan.romsRoot(), system.romDir);
+        string root = SemuLauncher.romRoot(plan, system);
         string path = PathTools.isAbsolute(rom) ? rom : PathTools.join(root, rom);
         if (FileSystem.isDir(path)) { path = PathTools.join(path, PathTools.basename(path)); }  // an ES-DE directory-as-file: the same-named file inside is the game
-        string realRoot = UnixFileSystem.realPath(root);
-        string realPath = UnixFileSystem.realPath(path);
-        if (realRoot.isEmpty() || realPath.isEmpty() || !SemuPaths.inside(realRoot, realPath)) { return ""; }
-        return FileSystem.isFile(realPath) ? path : "";
+        return SemuPaths.fileInside(root, path) ? path : "";
     }
 
     class string coreFile(SemuPlan plan, JSONValue loader, string core) {
@@ -338,8 +341,19 @@ class SemuLauncher {
             launch.error = "ROM is not a file inside the system ROM directory: " + rom;
             return launch;
         }
-        launch.rom = selectedRom;
-        plan.tokens.put("rom", selectedRom);
+        SemuPlaylistLaunch content = SemuPlaylist.open(platform, SemuLauncher.romRoot(plan, system), selectedRom);
+        if (!content.error.isEmpty()) {
+            launch.error = content.error;
+            return launch;
+        }
+        launch.rom = content.rom;
+        launch.playlist = content.playlist;
+        plan.tokens.put("rom", content.rom);
+        for name in ["playlist", "playlist_dir"] { plan.tokens.remove(name); }  // set only for a playlist Semu opened
+        if (!content.playlist.isEmpty()) {
+            plan.tokens.put("playlist", content.playlist);
+            plan.tokens.put("playlist_dir", content.directory);
+        }
         JSONValue loader = platform.get("core_loader");
         string coreFile = "";
         if (loader != null && loader.isObject()) {
@@ -372,6 +386,7 @@ class SemuLauncher {
         launch.argv.push(executable);
         for argument in SemuJson.strings(SemuJson.get(platform, "state.extra_args")) { launch.argv.push(plan.tokens.resolve(argument)); }
         for argument in SemuJson.strings(platform.get("args")) { launch.argv.push(plan.tokens.resolve(argument)); }
+        for argument in content.arguments { launch.argv.push(plan.tokens.resolve(argument)); }  // only a playlist Semu opened carries these
         if (SemuJson.get(platform, "retroarch").isObject()) {
             string config = PathTools.join(stateRoot, "retroarch.cfg");
             for file in files {
@@ -395,7 +410,7 @@ class SemuLauncher {
         if (loader != null && loader.isObject()) {
             for argument in SemuJson.strings(loader.get("args")) { launch.argv.push(plan.tokens.resolve(argument)); }
         }
-        launch.argv.push(selectedRom);
+        launch.argv.push(content.rom);
         SemuLauncher.stateEnvironment(launch, plan, emulator, platform);
         bool preload = SemuJson.boolAt(platform, "render_preload", false);  // GL emulator hooked at its SDL swap by libsemupreload
         bool vulkan = SemuJson.boolAt(platform, "render_vulkan", false);  // Vulkan emulator composed at present by VK_LAYER_SEMU_compositor

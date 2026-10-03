@@ -17,6 +17,13 @@
         "-config",
         "window:fullscreen=yes"
       ],
+      "playlist": {
+        "open": "first_entry",
+        "args": [
+          "-config",
+          "config:Dreamcast.ContentPath=\"${playlist_dir}\""
+        ]
+      },
       "graphics": {
         "method": "config_file",
         "file": "${state_root}/config/flycast/emu.cfg",
@@ -85,10 +92,11 @@
     }
   },
   "doc": {
-    "launch": "The bundled source-built binary receives -config window:fullscreen=yes followed by one positional ROM. There is no host, Flatpak, or libretro launch route.",
+    "launch": "The bundled source-built binary receives -config window:fullscreen=yes followed by one positional ROM; a playlist launch adds the transient -config pair from playlist.args before disc 1. There is no host, Flatpak, or libretro launch route.",
     "state": "Flycast reads ${state_root}/config/flycast/emu.cfg and its generated SDL keyboard mapping through XDG_CONFIG_HOME. VMUs, native saves, save states, shader cache, logs, and writable flash remain below the isolated XDG data/cache roots.",
     "firmware": "Named Dreamcast boot/flash files are copied once into isolated state from read-only external roots. The shared Emulation, ROM, and project BIOS trees are never writable.",
     "input": "SDL GameController supplies gameplay. The generated version-4 SDL keyboard mapping consumes the shared Ctrl+Q/Ctrl+A/Ctrl+S/Ctrl+M actions for quit/load/save/menu; the target process watcher owns immediate physical Select+Start quit.",
-    "rendering": "RendererType 0 pins OpenGL. libsemupreload (render_preload) composes Semu's bezel and shader at the SDL/EGL swap: it reads the emulator's back buffer and writes the composed frame back before the real swap."
+    "rendering": "RendererType 0 pins OpenGL. libsemupreload (render_preload) composes Semu's bezel and shader at the SDL/EGL swap: it reads the emulator's back buffer and writes the composed frame back before the real swap.",
+    "playlist": "Flycast 2.7 opens no .m3u: OpenDisc knows only the chd, gdi, cdi and cue drivers, and a command-line start exits cleanly on \"Unknown disk format\". Semu therefore passes the playlist's first disc (playlist.open first_entry) and, for this run only (a -config value is transient and never saved to emu.cfg), points Dreamcast.ContentPath at the playlist's folder, so Commands > Eject Disk then Insert Disk lists that game's own discs. The value is double-quoted so commas and apostrophes in the folder name survive Flycast's -config parser; its vector option splits only on semicolons."
   }
 }

@@ -39,6 +39,7 @@ import ./spec/dual_layout.btrc;
 import ./spec/editor.btrc;
 import ./spec/core_colour.btrc;
 import ./spec/bezel_emit.btrc;
+import ./spec/playlist.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -933,6 +934,7 @@ int main() {
     RetroArchSpecContract.run(contract);
     EmulatorRuntimeSpecContract.run(contract);
     StandaloneSpecContract.run(contract);
+    PlaylistSpecContract.run(contract);
     CemuSpecContract.run(contract);
     SteamInputSpecContract.run(contract);
     EsDeSpecContract.run(contract);

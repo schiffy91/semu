@@ -23,6 +23,9 @@
       "args": [
         "-f"
       ],
+      "playlist": {
+        "open": "native"
+      },
       "state": {
         "data_home": "xdg",
         "seeds": [
@@ -391,6 +394,9 @@
       "args": [
         "-f"
       ],
+      "playlist": {
+        "open": "native"
+      },
       "state": {
         "data_home": "xdg",
         "seeds": [
@@ -755,6 +761,7 @@
     "runtime": "Linux executes the source-built RetroArch and the selected cores from the bundle asset root. No host RetroArch app or Flatpak runtime participates.",
     "input": "The declared action set is the exact RetroArch profile/watcher capability surface. Linux uses SDL2 port 1 (joypad index 0) with autodetection and the packaged 28de:11ff aliases; it deliberately has no name-based device reservation because Steam Game Mode exposes the same virtual pad under multiple SDL names. Only autoconfiguration notifications are suppressed.",
     "frame_output": "The forced Linux glcore GL3 package calls one shared geometry tap after the game renderchain draw and again after gameplay overlays, widgets, and OSD. The compiler selects semantic surfaces from each system declaration; live geometry validates and partitions them but never selects a system mode. A successful game composition publishes the touch map independently of post-UI evidence. RetroArch menus and settings bypass the tap. Native shaders and filtering stay disabled so Semu remains the only shader, bezel, and composition owner.",
-    "state": "data_home=xdg confines RetroArch config, data, and cache writes to its Semu-owned state root; saves, states, screenshots, and firmware use their separately declared paths."
+    "state": "data_home=xdg confines RetroArch config, data, and cache writes to its Semu-owned state root; saves, states, screenshots, and firmware use their separately declared paths.",
+    "playlist": "The cores bound to systems that list .m3u (mednafen_psx and flycast) read playlists through libretro and register disk control, so the .m3u passes through unchanged (playlist.open native)."
   }
 }

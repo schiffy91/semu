@@ -24,6 +24,9 @@
         "-fullscreen",
         "--"
       ],
+      "playlist": {
+        "open": "first_entry"
+      },
       "input": {
         "primary_device": "SDL-0",
         "selection": "first_sdl_gamepad"
@@ -80,6 +83,7 @@
     "graphics": "[EmuCore/GS] Renderer = 12 forces OpenGL in the generated profile. The source-built package carries semu_render_hook.patch: GSDeviceOGL publishes the presented frame to libsemurenderer (ABI 3) after the final upright present draw, then runs the post-UI pass after PCSX2's ImGui immediately before the emulator-owned swap.",
     "firmware": "The configured PS2 BIOS directory is read in place; Semu never writes ROM, BIOS or external emulation roots.",
     "input": "The packaged Game Mode process binds Pad1 to its first SDL gamepad, SDL-0. The profile compiler reads this Linux platform declaration directly; it does not inherit a stale host enumeration index.",
-    "platforms": "PCSX2 is intentionally Linux-only until a reproducible source-built Darwin slice exists. An upstream application archive is not a production fallback."
+    "platforms": "PCSX2 is intentionally Linux-only until a reproducible source-built Darwin slice exists. An upstream application archive is not a production fallback.",
+    "playlist": "PCSX2 2.6.3 has no .m3u reader: IsDiscFileName lists no m3u, so it takes a playlist for an ISO image, fails to identify it and quits in -batch. Semu passes the playlist's first disc after -- (playlist.open first_entry). The pause menu (OpenPauseMenu, Ctrl+M) has Change Disc, whose file selector opens in that disc's folder, where the other discs sit."
   }
 }

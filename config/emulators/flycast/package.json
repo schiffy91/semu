@@ -18,7 +18,7 @@
     "license": "gpl2Only"
   },
   "doc": {
-    "source": "The Steam Deck payload is the immutable Flycast v2.6 commit with the complete hash-pinned upstream submodule tree. Nix replaces the older nixpkgs source and carries no host, Flatpak, libretro, or binary fallback.",
+    "source": "The Steam Deck payload is the immutable Flycast v2.7 tag (rev 5aa091fd) with the complete hash-pinned upstream submodule tree. Nix replaces the older nixpkgs source and carries no host, Flatpak, libretro, or binary fallback.",
     "platforms": "Only x86_64-linux is an owned package target. Other hosts fail at Nix evaluation."
   },
   "flake": "flake.nix"
