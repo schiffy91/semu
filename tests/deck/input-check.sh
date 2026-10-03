@@ -26,7 +26,8 @@
 #   SYSTEM EMULATOR CORE|- FIRST BUTTON... -- ROM-GLOB
 # FIRST is the second after launch of the first press; buttons are virtual_pad names (south, east,
 # north, west, tl, tr, select, start, dpad_up, dpad_down, dpad_left, dpad_right), one every GAP
-# seconds (default 6, SEMU_INPUT_GAP). OUT/<case>/ gets before.png, after-<n>-<button>.png, run.log
+# seconds (default 6, SEMU_INPUT_GAP); a second case of one SYSTEM-EMULATOR[-CORE] gets a -2 suffix.
+# OUT/<case>/ gets before.png, after-<n>-<button>.png, cmdline (the emulator argv), run.log
 # and result; OUT/summary collects every result; OUT/done marks the end.
 set -u
 pad="$1"; cases="$2"; out="$3"
@@ -48,6 +49,7 @@ while IFS= read -r line; do
   head="${line%% -- *}"; pattern="${line#* -- }"
   read -r system emulator core first buttons <<< "$head"
   name="$system-$emulator"; [ "$core" = - ] || name="$name-$core"
+  base="$name"; suffix=2; while [ -e "$out/$name" ]; do name="$base-$suffix"; suffix=$((suffix + 1)); done  # a second case of one emulator keeps its own results
   dir="$out/$name"; mkdir -p "$dir"; : > "$dir/result"
   note() { echo "$*" >> "$dir/result"; }
   if [ "$(battery)" -lt 20 ] && ! charging; then note "skipped: battery $(battery)% and not charging"; { echo "== $name"; cat "$dir/result"; } >> "$out/summary"; continue; fi
@@ -106,6 +108,8 @@ while IFS= read -r line; do
     [ -n "$game" ] && kill -TERM "$game" 2>/dev/null
     { echo "== $name"; cat "$dir/result"; } >> "$out/summary"; date > "$out/done"; exit 1
   fi
+  leaf="$game"; while [ -n "$leaf" ] && child=$(pgrep -P "$leaf" | tail -1) && [ -n "$child" ]; do leaf=$child; done
+  [ -n "$leaf" ] && tr '\0' '\n' < "/proc/$leaf/cmdline" > "$dir/cmdline" 2>/dev/null && note "argv-last: $(tail -1 "$dir/cmdline")"  # the file the emulator was told to open
   capture before $(( first - 2 ))
   index=1; at=$(( first + gap - 1 ))
   for button in $buttons; do capture "after-$index-$button" "$at"; index=$(( index + 1 )); at=$(( at + gap )); done
