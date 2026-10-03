@@ -822,7 +822,8 @@ class RendererGeometry {
         }
         int layout = bezel ? variant->layout : (variant->layout == SEMU_LAYOUT_FIXED ? SEMU_LAYOUT_STACKED : variant->layout);
         if (layout == SEMU_LAYOUT_FIXED) { layout = SEMU_LAYOUT_STACKED; }
-        RendererLayout.computed(geometry, layout, areaWidth, areaHeight, bezel ? frameWidth : 0, config->dual_screen_gap, config->integer_scaling);
+        int drawn = RendererLayout.computed(geometry, layout, areaWidth, areaHeight, bezel ? frameWidth : 0, config->dual_screen_gap);  // whole steps whatever integer_scaling says
+        if (bezel && frameWidth > 0) { geometry->frame_width = (float)drawn; }  // the frame shrinks to the room the screens leave
         return true;
     }
 }
