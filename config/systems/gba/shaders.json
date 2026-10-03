@@ -2,13 +2,19 @@
   "schema_version": 3,
   "enabled": true,
   "doc": {
-    "intent": "Readable AGB-001 reflected color response, LCD persistence and the subpixel grid, one grid cell per game pixel"
+    "intent": "Readable AGB-001 reflected color response, LCD persistence and the subpixel grid, one grid cell per game pixel",
+    "core_options": "The default variant's NSO colour matrix pins mGBA's own colour correction off (mGBA's default too), so GBA colours pass one matrix; the AGB-001 variant has no matrix and, like shaders off, keeps mGBA's setting. The launcher writes these into the core options file each launch."
   },
   "variants": [
     {
       "id": "default",
       "label": "GBA color LCD",
-      "screen": "assets/shaders/gba/screen.slangp"
+      "screen": "assets/shaders/gba/screen.slangp",
+      "core_options": {
+        "mgba": {
+          "mgba_color_correction": "OFF"
+        }
+      }
     },
     {
       "id": "agb001",

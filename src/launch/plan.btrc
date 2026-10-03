@@ -124,8 +124,9 @@ class SemuLauncher {
         return f"{width * scale}x{height * scale}";
     }
 
-    class string coreOptions(SemuPlan plan, JSONValue platform, string core, SemuSystem system) {  // literal options, and render sizes from the display
-        Vector<string> lines = [];
+    class string coreOptions(SemuPlan plan, JSONValue platform, string core, SemuSystem system) {  // literals, display render sizes, then the drawn shader's own
+        Vector<string> keys = [];
+        Vector<string> values = [];
         JSONValue options = SemuJson.get(platform, "retroarch.core_options." + core);
         if (options != null && options.isArray()) {
             for (int index = 0; index < options.size(); index++) {
@@ -133,10 +134,26 @@ class SemuLauncher {
                 if (option.has("aspect") && !SemuJson.textAt(option, "aspect").equals("standard")) { continue; }
                 string kind = SemuJson.textAt(option, "source.kind");
                 string value = kind.equals("literal") ? SemuJson.textAt(option, "source.value") : (kind.equals("render_resolution") ? SemuLauncher.renderSize(plan, system, option.get("source")) : "");
-                if (!value.isEmpty()) { lines.push(f"{SemuJson.textAt(option, "key")} = \"{value}\""); }
+                if (!value.isEmpty()) { SemuLauncher.setOption(keys, values, SemuJson.textAt(option, "key"), value); }
             }
         }
+        JSONValue shader = SemuJson.get(SemuRenderEnvironment.drawnShaderVariant(plan, system), "core_options." + core);  // e.g. a colour-matrix pass turns the core's own correction off
+        if (shader.isObject()) {
+            for key in shader.keys().sorted() { SemuLauncher.setOption(keys, values, key, SemuJson.text(shader.get(key))); }
+        }
+        Vector<string> lines = [];
+        for (int index = 0; index < keys.size(); index++) { lines.push(f"{keys.get(index)} = \"{values.get(index)}\""); }
         return lines.join("\n") + "\n";
+    }
+
+    class void setOption(Vector<string> keys, Vector<string> values, string key, string value) {  // a later source replaces the value in place
+        int found = keys.indexOf(key);
+        if (found >= 0) {
+            values.set(found, value);
+            return;
+        }
+        keys.push(key);
+        values.push(value);
     }
 
     class string coreOverrides(SemuPlan plan, JSONValue platform, string core) {

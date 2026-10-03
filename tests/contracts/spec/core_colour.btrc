@@ -1,0 +1,141 @@
+// Core colour correction: a shader variant with a colour-matrix pass turns the core's own correction off, so colours pass one matrix, and the launch writes it.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Map;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/rendering.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/bezel/preset.btrc;
+
+class CoreColourSpecCorrections {  // RetroArch cores that correct colour themselves, from their libretro_core_options.h
+    class string key(string core) {
+        if (core.equals("gambatte")) { return "gambatte_gbc_color_correction"; }  // default "GBC only", Pokefan531's accurate matrix
+        if (core.equals("mgba")) { return "mgba_color_correction"; }  // default "OFF"
+        return "";
+    }
+
+    class string off(string core) { return core.equals("mgba") ? "OFF" : "disabled"; }
+}
+
+class CoreColourSpecPipeline {  // the passes a Semu screen preset runs, as paths inside the pinned slang tree
+    class bool shaderKey(string key) { return key.startsWith("shader") && key.len() > 6 && Strings.isDigitStr(key.substring(6, key.len() - 6)); }
+
+    class void add(JSONValue manifest, string slang, string logical, Vector<string> into) {  // a pipeline's own passes, or a wrapper's upstream preset and its #reference chain
+        JSONValue assets = manifest.get("assets");
+        JSONValue recipe = assets == null ? null : assets.get(logical);
+        if (recipe == null || !recipe.isObject()) { return; }
+        JSONValue passes = recipe.get("passes");
+        if (passes != null && passes.isArray()) {
+            for (int index = 0; index < passes.size(); index++) { into.push(SemuJson.textAt(passes.at(index), "path")); }
+            return;
+        }
+        Vector<string> files = [];
+        MegaBezelPreset.gather(PathTools.join(slang, SemuJson.textAt(recipe, "reference.path")), 0, files);
+        for file in files {
+            Map<string, string> values = MegaBezelPreset.fileValues(file);
+            for key in values.keys() {
+                string path = BezelPaths.resolve(file, values.get(key));
+                if (CoreColourSpecPipeline.shaderKey(key) && path.startsWith(slang + "/")) { into.push(path.substring(slang.len() + 1, path.len() - slang.len() - 1)); }
+            }
+        }
+    }
+
+    class Vector<string> passes(JSONValue manifest, string slang, JSONValue variant) {  // the screen preset and any per-screen presets
+        Vector<string> found = [];
+        CoreColourSpecPipeline.add(manifest, slang, SemuJson.textAt(variant, "screen"), found);
+        JSONValue screens = variant.get("screens");
+        if (screens != null && screens.isObject()) {
+            for name in screens.keys().sorted() { CoreColourSpecPipeline.add(manifest, slang, SemuJson.text(screens.get(name)), found); }
+        }
+        return found;
+    }
+
+    class bool colourMatrix(Vector<string> passes) {  // handheld/shaders/color holds the per-device colour matrices (gbc-color, NSO-gba-color, psp-color, ...)
+        for pass in passes { if (pass.startsWith("handheld/shaders/color/")) { return true; } }
+        return false;
+    }
+}
+
+class CoreColourSpecContract {
+    class string options(Fixture fixture, string systemId, string core, string overlay) {
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuPlan plan = SemuResolver.plan(fixture.model, fixture.plan.target.id, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
+        return SemuLauncher.coreOptions(plan, fixture.model.emulator("retroarch").platform("linux"), core, fixture.model.system(systemId));
+    }
+
+    class void bundle(Fixture fixture, string logical) {  // a stand-in preset, so the variant counts as drawn
+        string path = PathTools.join(fixture.plan.assetRoot, "share/libretro/shaders/semu/" + logical);
+        FileSystem.mkdirp(PathTools.dirname(path));
+        FileSystem.writeText(path, "#reference x\n");
+    }
+
+    class void variants(Contract contract, Fixture fixture, string slang) {  // every variant: a colour matrix turns the core's correction off, no matrix leaves it alone
+        JSONValue manifest = SemuJson.readFile(PathTools.join(fixture.project, "config/assets/shaders.json"));
+        int matrices = 0;
+        for systemId in fixture.model.systemIds() {
+            SemuSystem system = fixture.model.system(systemId);
+            JSONValue variants = system.shaders.get("variants");
+            for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
+                JSONValue variant = variants.at(index);
+                string label = systemId + "/" + SemuJson.textAt(variant, "id");
+                Vector<string> passes = CoreColourSpecPipeline.passes(manifest, slang, variant);
+                contract.expect(!passes.isEmpty(), label + ": its presets resolve to passes in the pinned slang tree");
+                bool matrix = CoreColourSpecPipeline.colourMatrix(passes);
+                JSONValue declared = variant.get("core_options");
+                for binding in system.bindings {
+                    string key = CoreColourSpecCorrections.key(binding.core);
+                    if (!binding.emulator.equals("retroarch") || key.isEmpty()) { continue; }
+                    string value = SemuJson.textAt(declared, binding.core + "." + key);
+                    string off = CoreColourSpecCorrections.off(binding.core);
+                    if (matrix) {
+                        matrices++;
+                        contract.expect(value.equals(off), label + f": its colour-matrix pass sets {key} = {off}, so colours pass one matrix");
+                    } else {
+                        contract.expect(value.isEmpty(), label + f": without a colour matrix {binding.core} keeps its own {key}");
+                    }
+                }
+                if (declared == null || !declared.isObject()) { continue; }
+                for core in declared.keys() {
+                    contract.expect(system.bindingFor("linux", "retroarch", core) != null || system.bindingFor("macos", "retroarch", core) != null, label + ": core_options names a core the system binds: " + core);
+                }
+            }
+        }
+        contract.expect(matrices >= 2, f"the colour-matrix variants of the self-correcting cores were checked: {matrices}");
+    }
+
+    class void launch(Contract contract) {  // the drawn variant's options reach the core options file; anything else leaves the core's own
+        Fixture fixture = Fixture("linux-desktop");
+        string none = "{\"visual\":{\"systems\":{\"gbc\":{\"shader_variant\":\"none\"}}}}";
+        contract.lacks(CoreColourSpecContract.options(fixture, "gbc", "gambatte", "{}"), "gambatte_gbc_color_correction", "a preset the bundle lacks draws nothing, so Gambatte keeps its correction");
+        for logical in ["gbc/screen.slangp", "gbc/authentic.slangp", "gba/screen.slangp", "gba/agb001.slangp", "gb/screen.slangp"] { CoreColourSpecContract.bundle(fixture, logical); }
+        contract.contains(CoreColourSpecContract.options(fixture, "gbc", "gambatte", "{}"), "gambatte_gbc_color_correction = \"disabled\"", "the default GBC preset's colour pass turns Gambatte's correction off");
+        contract.lacks(CoreColourSpecContract.options(fixture, "gbc", "gambatte", "{\"visual\":{\"systems\":{\"gbc\":{\"shader_variant\":\"authentic\"}}}}"), "gambatte_gbc_color_correction", "the authentic GBC preset has no colour matrix, so Gambatte keeps its correction");
+        contract.lacks(CoreColourSpecContract.options(fixture, "gbc", "gambatte", "{\"visual\":{\"crt_shaders\":false}}"), "gambatte_gbc_color_correction", "with shaders off Gambatte keeps its correction");
+        contract.lacks(CoreColourSpecContract.options(fixture, "gbc", "gambatte", none), "gambatte_gbc_color_correction", "the per-system shader \"none\" keeps Gambatte's correction");
+        contract.lacks(CoreColourSpecContract.options(fixture, "gb", "gambatte", "{}"), "gambatte_gbc_color_correction", "Game Boy launches share the core but not the GBC option");
+        contract.contains(CoreColourSpecContract.options(fixture, "gba", "mgba", "{}"), "mgba_color_correction = \"OFF\"", "the default GBA preset's NSO matrix pins mGBA's correction off");
+        contract.lacks(CoreColourSpecContract.options(fixture, "gba", "mgba", "{\"visual\":{\"systems\":{\"gba\":{\"shader_variant\":\"agb001\"}}}}"), "mgba_color_correction", "the AGB-001 preset has no colour matrix, so mGBA keeps its own setting");
+        JSONValue platform = JSONValue.parse("{\"retroarch\":{\"core_options\":{\"gambatte\":[{\"key\":\"gambatte_gbc_color_correction\",\"source\":{\"kind\":\"literal\",\"value\":\"GBC only\"}},{\"key\":\"gambatte_gb_colorization\",\"source\":{\"kind\":\"literal\",\"value\":\"auto\"}}]}}}");
+        string merged = SemuLauncher.coreOptions(fixture.plan, platform, "gambatte", fixture.model.system("gbc"));
+        contract.expect(merged.equals("gambatte_gbc_color_correction = \"disabled\"\ngambatte_gb_colorization = \"auto\"\n"), "the drawn variant's value replaces an emulator literal for the same key in place: " + merged);
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string root = MegaBezelTree.locate(fixture.plan.configRoot, "");
+        string slang = SemuPaths.normalize(PathTools.join(root, "shaders_slang"));
+        if (root.isEmpty() || !FileSystem.isDir(PathTools.join(slang, "handheld/shaders/color"))) {
+            contract.skip("core colour correction", "no pinned slang tree (build it with `make bezel-tree` or set SEMU_BEZEL_TREE)");
+        } else {
+            CoreColourSpecContract.variants(contract, fixture, slang);
+        }
+        CoreColourSpecContract.launch(contract);
+    }
+}

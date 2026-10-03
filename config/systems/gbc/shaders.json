@@ -2,13 +2,19 @@
   "schema_version": 3,
   "enabled": true,
   "doc": {
-    "intent": "GBC color response, panel persistence and the LCD subpixel grid, one grid cell per game pixel"
+    "intent": "GBC color response, panel persistence and the LCD subpixel grid, one grid cell per game pixel",
+    "core_options": "A variant whose pipeline has a colour-matrix pass turns Gambatte's own GBC colour correction off, so GBC colours pass the Pokefan531 matrix once; the authentic variant has no matrix and, like shaders off, keeps Gambatte's correction. The launcher writes these into the core options file each launch."
   },
   "variants": [
     {
       "id": "default",
       "label": "GBC color LCD",
-      "screen": "assets/shaders/gbc/screen.slangp"
+      "screen": "assets/shaders/gbc/screen.slangp",
+      "core_options": {
+        "gambatte": {
+          "gambatte_gbc_color_correction": "disabled"
+        }
+      }
     },
     {
       "id": "authentic",
