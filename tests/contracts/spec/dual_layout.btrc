@@ -4,6 +4,7 @@
 
 import Library.JSON;
 import Library.Strings;
+import Library.Vector;
 import ../support.btrc;
 import ../../../src/lib/json.btrc;
 import ../../../src/lib/paths.btrc;
@@ -45,44 +46,76 @@ class DualLayoutSpecContract {
         }
     }
 
-    class void mainBeside(Contract contract, Fixture fixture, string systemId, bool right, int areaWidth, int areaHeight) {
+    class int largest(int layout, int areaWidth, int areaHeight, int gap, struct RendererCompositionGeometry* geometry) {  // the main's step from the screens and the gap alone, as the owner's rule says
+        int mainWidth = geometry->lanes[0].native_width;
+        int mainHeight = geometry->lanes[0].native_height;
+        int secondWidth = geometry->lanes[1].native_width;
+        int secondHeight = geometry->lanes[1].native_height;
+        int widest = mainWidth > secondWidth ? mainWidth : secondWidth;
+        int tallest = mainHeight > secondHeight ? mainHeight : secondHeight;
+        if (layout == SEMU_LAYOUT_STACKED) {
+            int across = areaWidth / widest;
+            int down = (areaHeight - gap) / (mainHeight + secondHeight);
+            return across < down ? across : down;
+        }
+        if (layout == SEMU_LAYOUT_SIDE_BY_SIDE) {
+            int across = (areaWidth - gap) / (mainWidth + secondWidth);
+            int down = areaHeight / tallest;
+            return across < down ? across : down;
+        }
+        int scale = areaHeight / mainHeight;  // a main beside the second: the largest that still leaves the second 1x beside it
+        while (scale > 1 && areaWidth - scale * mainWidth - 3 * gap < secondWidth) { scale--; }
+        return scale;
+    }
+
+    class void check(Contract contract, Fixture fixture, string systemId, int layout, string package, int areaWidth, int areaHeight) {
         struct RendererCompositionGeometry geometry;
         DualLayoutSpecContract.prepare(&geometry, fixture.model.system(systemId));
-        string package = right ? "dual-main-right" : "dual-main-left";
         int frame = DualLayoutSpecContract.frameWidth(fixture, package, areaHeight);
         float gapFraction = DualLayoutSpecContract.gapFraction(fixture);
         int gap = (int)(gapFraction * (float)areaWidth + 0.5f);
-        RendererLayout.computed(&geometry, right ? SEMU_LAYOUT_MAIN_RIGHT : SEMU_LAYOUT_MAIN_LEFT, areaWidth, areaHeight, frame, gapFraction, 1);
+        int drawn = RendererLayout.computed(&geometry, layout, areaWidth, areaHeight, frame, gapFraction);
         struct RendererLaneGeometry* main = &geometry.lanes[0];
         struct RendererLaneGeometry* second = &geometry.lanes[1];
         int mainStep = DualLayoutSpecContract.step(main);
         int secondStep = DualLayoutSpecContract.step(second);
-        string label = f"{systemId} {package} {areaWidth}x{areaHeight}: main " + DualLayoutSpecContract.text(main) + ", second " + DualLayoutSpecContract.text(second);
-        contract.expect(mainStep >= 1 && secondStep >= 1 && secondStep <= mainStep, label + ": both screens at whole steps, the second no larger than the main");
-        contract.expect(DualLayoutSpecContract.onScreen(main, frame, areaWidth, areaHeight) && DualLayoutSpecContract.onScreen(second, frame, areaWidth, areaHeight), label + ": both framed screens on screen");
-        int apart = right ? second->output_x - main->output_x - main->output_width : main->output_x - second->output_x - second->output_width;
-        contract.expect(apart >= 2 * frame + gap, label + f": the screens {apart} px apart, room for two frames and the gap");
-        int down = (areaHeight - 2 * frame) / main->native_height;
-        contract.expect(mainStep <= down, label + ": the main never beyond the height");
+        int want = DualLayoutSpecContract.largest(layout, areaWidth, areaHeight, gap, &geometry);
+        string label = f"{systemId} {package} {areaWidth}x{areaHeight}: main " + DualLayoutSpecContract.text(main) + ", second " + DualLayoutSpecContract.text(second) + f", frame {drawn} of {frame}";
+        bool uniform = layout == SEMU_LAYOUT_STACKED || layout == SEMU_LAYOUT_SIDE_BY_SIDE;
+        bool paired = secondStep <= mainStep;
+        if (uniform) { paired = secondStep == mainStep; }
+        contract.expect(mainStep >= 1 && secondStep >= 1 && paired, label + ": both screens at whole steps" + (uniform ? ", one step for both" : ", the second no larger than the main"));
+        contract.expect(mainStep == want, label + f": the main at {want}x, the largest the screens and the gap allow; the frames never cost a step");
+        contract.expect(drawn >= 0 && drawn <= frame && DualLayoutSpecContract.onScreen(main, drawn, areaWidth, areaHeight) && DualLayoutSpecContract.onScreen(second, drawn, areaWidth, areaHeight), label + ": both framed screens on screen");
+        int apart = 0;
+        if (layout == SEMU_LAYOUT_STACKED) { apart = main->output_y - second->output_y - second->output_height; }  // lane 0 above lane 1, GL rows up
+        else if (layout == SEMU_LAYOUT_MAIN_LEFT) { apart = main->output_x - second->output_x - second->output_width; }
+        else { apart = second->output_x - main->output_x - main->output_width; }
+        contract.expect(apart >= 2 * drawn + gap, label + f": the screens {apart} px apart, room for two frames and the gap");
     }
 
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
         int widths[3] = {1280, 1920, 3840};
         int heights[3] = {800, 1080, 2160};
+        int layouts[4] = {SEMU_LAYOUT_MAIN_RIGHT, SEMU_LAYOUT_MAIN_LEFT, SEMU_LAYOUT_SIDE_BY_SIDE, SEMU_LAYOUT_STACKED};
+        Vector<string> packages = ["dual-main-right", "dual-main-left", "dual-side-by-side", "dual-stacked"];
         for systemId in ["nds", "n3ds"] {
             for (int size = 0; size < 3; size++) {
-                DualLayoutSpecContract.mainBeside(contract, fixture, systemId, true, widths[size], heights[size]);
-                DualLayoutSpecContract.mainBeside(contract, fixture, systemId, false, widths[size], heights[size]);
+                for (int layout = 0; layout < 4; layout++) { DualLayoutSpecContract.check(contract, fixture, systemId, layouts[layout], packages[layout], widths[size], heights[size]); }
             }
         }
-        struct RendererCompositionGeometry geometry;  // the Deck cases the editor comparison measured at about 1.39x and 1.0125x
+        struct RendererCompositionGeometry geometry;  // the Deck cases the editor comparison measured: 1x stacked, a 1.39x and a 1.0125x second screen
+        float gapFraction = DualLayoutSpecContract.gapFraction(fixture);
         DualLayoutSpecContract.prepare(&geometry, fixture.model.system("nds"));
-        RendererLayout.computed(&geometry, SEMU_LAYOUT_MAIN_RIGHT, 1280, 800, 24, DualLayoutSpecContract.gapFraction(fixture), 1);
+        int drawn = RendererLayout.computed(&geometry, SEMU_LAYOUT_STACKED, 1280, 800, 24, gapFraction);
+        contract.expect(DualLayoutSpecContract.step(&geometry.lanes[0]) == 2 && DualLayoutSpecContract.step(&geometry.lanes[1]) == 2 && drawn == 3,
+            f"nds stacked on the Deck: both screens 2x (768 px and the 20 px gap) with a {drawn} px frame, was 1x with 24: " + DualLayoutSpecContract.text(&geometry.lanes[0]));
+        RendererLayout.computed(&geometry, SEMU_LAYOUT_MAIN_RIGHT, 1280, 800, 24, gapFraction);
         contract.expect(DualLayoutSpecContract.step(&geometry.lanes[0]) == 3 && DualLayoutSpecContract.step(&geometry.lanes[1]) == 1,
             "nds main_right on the Deck: main 3x, second 1x, was 356x267: " + DualLayoutSpecContract.text(&geometry.lanes[1]));
         DualLayoutSpecContract.prepare(&geometry, fixture.model.system("n3ds"));
-        RendererLayout.computed(&geometry, SEMU_LAYOUT_MAIN_LEFT, 1280, 800, 24, DualLayoutSpecContract.gapFraction(fixture), 1);
+        RendererLayout.computed(&geometry, SEMU_LAYOUT_MAIN_LEFT, 1280, 800, 24, gapFraction);
         contract.expect(DualLayoutSpecContract.step(&geometry.lanes[0]) == 2 && DualLayoutSpecContract.step(&geometry.lanes[1]) == 1,
             "n3ds main_left on the Deck: main 2x, the touch screen 1x, was 324x243: " + DualLayoutSpecContract.text(&geometry.lanes[1]));
     }
