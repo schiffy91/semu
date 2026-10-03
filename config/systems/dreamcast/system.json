@@ -90,17 +90,6 @@
     },
     "refresh_hz": 59.94
   },
-  "render": {
-    "style": "console",
-    "asset_profile": "crt4x3",
-    "priority": "game",
-    "corner_radius": 0.045,
-    "curvature": 0.04,
-    "reflect": 0.18,
-    "glow": 0.18,
-    "bloom": 0.2,
-    "vignette": 0.22
-  },
   "doc": {
     "hardware": "consumer CRT or VGA monitor",
     "intent": "Prefer 4:3 CRT; swap to 16:9/flat only when config or game profile proves widescreen. Linux and Steam Deck use the source-built standalone Flycast slice; macOS retains the libretro fallback.",

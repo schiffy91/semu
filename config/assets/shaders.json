@@ -349,7 +349,7 @@
       },
       "doc": {
         "why": "PSP colour profile, then the lcd3x grid. lcd1x_psp's -0.25 phase puts both samples of a 2x pixel on sine zeros, so the Deck's 2x lane showed no grid at all; lcd3x's one-sided phase draws the gap at every integer scale from 2x up.",
-        "params": "brighten_scanlines 12.5 is the 15% row gap of system.json lcd_grid; brighten_lcd 7.7 is the 20% subpixel swing of lcd_subpixel at 2x."
+        "params": "brighten_scanlines 12.5 gives a 15% row gap; brighten_lcd 7.7 gives a 20% subpixel swing at 2x."
       },
       "output": {
         "sha256": "64d49dd29a0e02fda7a02f1ae62d934e6b4f7e60a80cfd904d778b42c413b8cf"
