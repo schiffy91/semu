@@ -244,6 +244,12 @@ class StandaloneSpecContract {
         contract.contains(main, "ConfirmShutdown = false", target + " pcsx2 quits without a prompt");
         contract.expect(StandaloneSpecText.occurrences(input, " = SDL-0/") == 24, target + " pcsx2 binds all 24 Pad1 controls to SDL-0");
         contract.lacks(input, "SDL-1", target + " pcsx2 never binds a second SDL index");
+        // Seen on the Deck: Start did nothing in PCSX2, whose log said "Invalid binding: 'SDL-0/Start |
+        // Keyboard/Enter'". PCSX2 reads a repeated key as a list of alternatives and has no " | ".
+        for file in [main, input] {
+            contract.lacks(file, " | ", target + " pcsx2 writes no ' | ' binding, which it rejects whole");
+            contract.contains(file, "Start = SDL-0/Start\nStart = Keyboard/Enter\n", target + " pcsx2 keeps the keyboard alternative as the same key on its own line");
+        }
         contract.contains(input, "SaveStateToSlot = Keyboard/Control & Keyboard/S", target + " pcsx2 save chord");
         contract.contains(input, "LoadStateFromSlot = Keyboard/Control & Keyboard/A", target + " pcsx2 load chord");
         contract.contains(input, "OpenPauseMenu = Keyboard/Control & Keyboard/M", target + " pcsx2 menu chord");
