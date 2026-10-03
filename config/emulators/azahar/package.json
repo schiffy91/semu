@@ -2,10 +2,11 @@
   "schema_version": 1,
   "id": "azahar",
   "platforms": [
-    "x86_64-linux"
+    "x86_64-linux",
+    "aarch64-darwin"
   ],
   "graphics_apis": [
-    "opengl"
+    "vulkan"
   ],
   "outputs": {
     "main_program": "bin/azahar",
@@ -19,7 +20,7 @@
   },
   "doc": {
     "source": "The immutable upstream 2126.0 tag with its submodules. The flake writes GIT-TAG and GIT-COMMIT because the input carries no .git.",
-    "platforms": "Only the Steam Deck's x86_64-linux closure is declared. Other hosts fail during Nix evaluation."
+    "platforms": "The Steam Deck's x86_64-linux closure and the macOS aarch64-darwin build, the systems the flake builds (checks.platform-matrix compares them)."
   },
   "flake": "flake.nix"
 }

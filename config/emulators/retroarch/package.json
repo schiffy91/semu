@@ -11,7 +11,8 @@
     "sha256": "sha256-+3jgoh6OVbPzW5/nCvpB1CRgkMTBxLkYMm6UV16/cfU="
   },
   "platforms": [
-    "x86_64-linux"
+    "x86_64-linux",
+    "aarch64-darwin"
   ],
   "outputs": {
     "linux_main_program": "bin/retroarch",
