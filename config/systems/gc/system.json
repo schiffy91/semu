@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "name": "Nintendo GameCube",
-  "aliases": [],
   "es_de": {
     "platforms": [
       "gc"
@@ -36,7 +35,6 @@
       ]
     }
   ],
-  "controller_profile": "steam_deck",
   "display": {
     "scaling": {
       "mode": "integer_preferred",

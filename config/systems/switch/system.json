@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "name": "Nintendo Switch",
-  "aliases": [],
   "es_de": {
     "platforms": [
       "switch"

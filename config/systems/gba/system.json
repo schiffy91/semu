@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "name": "Nintendo Game Boy Advance",
-  "aliases": [],
   "es_de": {
     "platforms": [
       "gba"

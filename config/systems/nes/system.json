@@ -1,9 +1,6 @@
 {
   "schema_version": 1,
   "name": "Nintendo Entertainment System",
-  "aliases": [
-    "famicom"
-  ],
   "es_de": {
     "platforms": [
       "nes"

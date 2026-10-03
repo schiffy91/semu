@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "name": "Nintendo Wii U",
-  "aliases": [],
   "es_de": {
     "platforms": [
       "wiiu"
@@ -35,7 +34,6 @@
     ],
     "dir": "generated/packaging/emulators/profiles/Cemu/data"
   },
-  "controller_profile": "steam_deck",
   "display": {
     "scaling": {
       "mode": "integer_preferred",
