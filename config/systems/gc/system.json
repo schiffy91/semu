@@ -71,7 +71,6 @@
   },
   "doc": {
     "hardware": "consumer CRT or component CRT",
-    "intent": "Dolphin is pinned to draw 4:3 (CustomStretch in GFX.ini) until it reports the aspect it draws; then its aspect setting can drive 4:3 vs 16:9 presentation.",
-    "native_note": "256x240 carried over from RenderOptionCatalog (the tap's integer-scale base today), not true GC output res. Change deliberately, not as a migration side effect."
+    "intent": "Dolphin is pinned to draw 4:3 (CustomStretch in GFX.ini) until it reports the aspect it draws; then its aspect setting can drive 4:3 vs 16:9 presentation."
   }
 }

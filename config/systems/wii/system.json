@@ -75,7 +75,6 @@
   },
   "doc": {
     "hardware": "consumer CRT/component TV",
-    "intent": "Dolphin is pinned to draw 4:3 (CustomStretch in GFX.ini, SYSCONF.IPL.AR=False) until it reports the aspect it draws; then Dolphin/game settings should drive 4:3 vs 16:9 presentation.",
-    "native_note": "256x240 carried over from RenderOptionCatalog (the tap's integer-scale base today), not true Wii output res. Change deliberately, not as a migration side effect."
+    "intent": "Dolphin is pinned to draw 4:3 (CustomStretch in GFX.ini, SYSCONF.IPL.AR=False) until it reports the aspect it draws; then Dolphin/game settings should drive 4:3 vs 16:9 presentation."
   }
 }
