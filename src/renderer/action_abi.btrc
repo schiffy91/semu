@@ -116,10 +116,6 @@ class SemuActions {
         return SemuActions.extensionIdentity(action);
     }
 
-    class bool valid(int action) {
-        return !SemuActions.id(action).isEmpty();
-    }
-
     class bool controllerMode(int action) {
         return action >= SemuActions.extensionBase()
             && action < SemuActions.extensionBase() + SemuActionExtensionCount;
@@ -149,8 +145,6 @@ class SemuActions {
 class RendererActionJournal {
     class int abi() { return 1; }
     class string fileName() { return "semu-render-actions.bin"; }
-    class string sequenceFileName() { return "semu-input-sequence.bin"; }
-    class string sessionLockFileName() { return "semu-input-session.lock"; }
     class string evidenceFileName() { return "semu-input-evidence.log"; }
     class int direct() { return 0; }
     class int quickRadial() { return 1; }
