@@ -34,6 +34,7 @@ import ./spec/gameboy.btrc;
 import ./spec/touch.btrc;
 import ./spec/launch.btrc;
 import ./spec/render_env.btrc;
+import ./spec/dual_layout.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -924,6 +925,7 @@ int main() {
     TouchSpecContract.run(contract);
     LaunchSpecContract.run(contract);
     RenderEnvSpecContract.run(contract);
+    DualLayoutSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);
