@@ -10,7 +10,8 @@
 # of the largest connected differing region; the canvas share counts only the canvas on screen (the renderer paints its
 # background plate around a letterboxed canvas, the editor paints black). Framing: production's canvas rectangle comes
 # from its debug line and the editor's from its console (it frames the canvas itself, integer placements included, for
-# the system and variant named in ?preview=); the framing column says whether they agree within 1 px.
+# the system and variant named in ?preview=); the framing column says whether they agree within 1 px. A computed DS/3DS
+# layout is the whole screen on both sides.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 card=white; placement=""; size=1280x800
@@ -132,7 +133,7 @@ for cell in "${cells[@]}"; do
       echo "$name: production render FAILED (see $work/$name-production.log)"; failures=$((failures + 1)); continue
     fi
     layout="$(jq -r '.layout // "fixed"' "$root/config/bezels/$package/bezel.json")"
-    if [ "$layout" != fixed ] || [ "$(jq --arg id "$package" 'any(.[]; .id == $id)' "$work/packages.json")" != true ]; then
+    if [ "$(jq --arg id "$package" 'any(.[]; .id == $id)' "$work/packages.json")" != true ]; then
       framing="no editor view (layout $layout)"
       panel "$productionImage" "production · $name" "$work/production-panel.miff"
       magick -size "$((width / 2))x$((height / 2 + 26))" xc:'#16171a' -font DejaVu-Sans -pointsize 15 -fill '#9aa0aa' -gravity center -annotate +0+0 "the editor does not list $package (layout $layout)" "$work/missing-panel.miff" 2>>"$work/magick.log"
@@ -156,6 +157,7 @@ for cell in "${cells[@]}"; do
       for delta in $((renderedX - framedX)) $((renderedY - framedY)) $((renderedWidth - framedWidth)) $((renderedHeight - framedHeight)); do delta="${delta#-}"; [ "$delta" -gt "$worst" ] && worst="$delta"; done
       [ "$worst" -le 1 ] && framing="editor framing matches production ($rendered)" || framing="FRAMING DIFFERS by $worst px: editor $framed, production $rendered"
     fi
+    [ "$layout" = fixed ] || { placed="0 0 $width $height"; framing="computed layout $layout: the whole screen, lanes from RendererLayout.computed"; }
     metrics="$(compare "$editorImage" "$productionImage" "$diffImage" "$placed")" || { echo "$name: comparison FAILED"; failures=$((failures + 1)); continue; }
     read -r share subtle inside mae region area <<<"$metrics"
     panel "$editorImage" "editor · $name" "$work/editor-panel.miff"
