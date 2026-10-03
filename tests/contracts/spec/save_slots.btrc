@@ -1,0 +1,190 @@
+// Save slot and menu pause spec: Semu's slot is the emulator's slot and wraps the way it wraps,
+// RetroArch saves name it, and the menu pauses only emulators seen to keep drawing while paused.
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/launch/actions.btrc;
+import ../../../src/launch/input_filters.btrc;
+import ../../../src/launch/supervisor.btrc;
+import ../../../src/renderer/action_abi.btrc;
+import ./input_delivery.btrc;
+import ./launch.btrc;
+import ./standalone.btrc;
+
+class SaveSlotPort {  // a loopback UDP socket standing in for RetroArch's command port
+    class int open(int* port) {
+        int handle = socket(AF_INET, SOCK_DGRAM, 0);
+        if (handle < 0) { return -1; }
+        struct sockaddr_in address;
+        memset(&address, 0, sizeof(address));
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        socklen_t length = (socklen_t)sizeof(address);
+        if (bind(handle, (struct sockaddr*)&address, length) != 0 || getsockname(handle, (struct sockaddr*)&address, &length) != 0) {
+            close(handle);
+            return -1;
+        }
+        *port = (int)ntohs(address.sin_port);
+        struct timeval wait;
+        wait.tv_sec = 0;
+        wait.tv_usec = 300000;
+        setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, &wait, (socklen_t)sizeof(wait));
+        return handle;
+    }
+
+    class bool received(int handle, string expected) {  // the next datagram is EXPECTED; "" means none arrives in 300 ms
+        char buffer[128];
+        memset(buffer, 0, sizeof(buffer));
+        size_t capacity = sizeof(buffer) - (size_t)1;
+        ssize_t got = recv(handle, buffer, capacity, 0);
+        if (expected.isEmpty()) { return got <= (ssize_t)0; }
+        return got > (ssize_t)0 && strcmp(buffer, expected) == 0;
+    }
+}
+
+class SaveSlotDeclarations {  // each emulator's slots, as its pinned source cycles them
+    class void run(Contract contract, Fixture fixture) {
+        Vector<string> expected = ["retroarch=10/0", "dolphin=10/1", "pcsx2=10/1", "ppsspp=5/1", "flycast=10/1", "melonds=1/1", "azahar=1/0", "cemu=0/0", "ryujinx=0/0"];
+        for entry in expected {
+            string emulatorId = entry.substring(0, entry.indexOf("="));
+            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            int slots = SemuJson.intAt(emulator.definition, "save_states.slots", -1);
+            int first = SemuJson.intAt(emulator.definition, "save_states.first_slot", -1);
+            contract.expect(entry.equals(f"{emulatorId}={slots}/{first}") && !SemuJson.textAt(emulator.definition, "save_states.doc").isEmpty(), emulatorId + " declares its slots with the source behind them: " + entry);
+            contract.expect((slots >= 1) == emulator.actions.contains("state.save") && emulator.actions.contains("state.save") == emulator.actions.contains("state.load"), emulatorId + " saves and loads exactly when it has a slot");
+            bool choose = slots >= 2;
+            contract.expect(choose == emulator.actions.contains("state.next") && choose == emulator.actions.contains("state.prev"), emulatorId + " steps the slot both ways exactly when it has slots to choose");
+            JSONValue rows = SemuJson.get(emulator.profile, "hotkeys.keymap");
+            for (int index = 0; choose && rows.isArray() && index < rows.size(); index++) {
+                string action = SemuJson.textAt(rows.at(index), "action");
+                if (!action.equals("state.save") && !action.equals("state.load")) { continue; }
+                contract.expect(SemuJson.textAt(rows.at(index), "slot").equals("selected"), emulatorId + " " + action + " binds the selected slot, the one Semu shows");
+            }
+        }
+        string hotkeys = fixture.profile("dolphin", "dolphin-user/Config/Hotkeys.ini");
+        contract.contains(hotkeys, "Load State/Load from Selected Slot = @(Ctrl+A)\n", "dolphin loads the selected slot");
+        contract.lacks(hotkeys, "State Slot 1 = @(", "dolphin binds no fixed slot");
+        contract.contains(fixture.profile("dolphin", "dolphin-user/Config/Qt.ini"), "[Emulation]\nStateSlot=1\n", "dolphin starts each launch on slot 1, where Semu's counter starts");
+        string ppsspp = fixture.profile("ppsspp", "config/ppsspp/PSP/SYSTEM/ppsspp.ini");
+        contract.contains(ppsspp, "StateSlot = 0\nSaveStateSlotCount = 5\n", "ppsspp starts on slot 0 of 5, as Semu declares");
+        contract.contains(fixture.profile("flycast", "config/flycast/emu.cfg"), "[Dreamcast]\nAutoLoadState = no\nAutoSaveState = no\nSavestateSlot = 0\n", "flycast starts each launch on its first slot");
+        SemuLaunchPlan launch = LaunchSpecTools.retroarchPlan(fixture);
+        contract.expect(launch.stateSlots == 10 && launch.firstSlot == 0 && launch.environment.contains("SEMU_MENU_SLOTS=10") && launch.environment.contains("SEMU_MENU_FIRST_SLOT=0"), "the launch carries RetroArch's slots to the supervisor and the renderer");
+    }
+}
+
+class SaveSlotCounter {  // Semu's counter wraps both ways; RetroArch saves and loads name its slot
+    class void run(Contract contract, Fixture fixture) {
+        contract.expect(SemuSlotCounter.step(9, 10, 1) == 0 && SemuSlotCounter.step(0, 10, -1) == 9 && SemuSlotCounter.step(4, 5, 1) == 0, "the slot wraps past either end");
+        contract.expect(SemuSlotCounter.step(0, 1, 1) == 0 && SemuSlotCounter.step(0, 0, -1) == 0, "one fixed slot or none never moves");
+        string wraps = PathTools.join(fixture.scratch, "slots/wrap");
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan launch = InputDeliveryTools.launch(wraps, InputDeliveryTools.none(), ["state.next", "state.prev"]);
+        launch.stateSlots = 3;
+        for (int press = 0; press < 3; press++) { SemuActionExecutor.execute(launch, "state.next", SEMU_SOURCE_GAMEPAD); }
+        SemuActionExecutor.execute(launch, "state.prev", SEMU_SOURCE_GAMEPAD);
+        contract.expect(InputDeliveryTools.records(wraps) == 4 && InputDeliveryTools.record(wraps, 0, SemuActions.stateNext(), 1) && InputDeliveryTools.record(wraps, 2, SemuActions.stateNext(), 0)
+            && InputDeliveryTools.record(wraps, 3, SemuActions.statePrev(), 2), "three slots: next, next, next wraps to 0, previous wraps back to 2");
+        contract.expect(SemuActionRouter.retroarchMessage("SAVE_STATE_SLOT", 3).equals("SAVE_STATE_SLOT 3") && SemuActionRouter.retroarchMessage("SCREENSHOT", 3).equals("SCREENSHOT"), "only slot commands carry the slot");
+        contract.expect(SemuActionRouter.route("state.next", true, false).equals("none") && SemuActionRouter.route("state.load", true, false).equals("udp:LOAD_STATE_SLOT"), "RetroArch's own slot counter is never moved; loads name the slot");
+        int port = 0;
+        int handle = SaveSlotPort.open(&port);
+        contract.expect(handle >= 0 && port > 0, "a loopback UDP port for the command-port check");
+        if (handle < 0) { return; }
+        string saves = PathTools.join(fixture.scratch, "slots/retroarch");
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan retroarch = InputDeliveryTools.launch(saves, InputDeliveryTools.none(), ["state.save", "state.load", "state.next", "state.prev"]);
+        retroarch.retroarchPort = port;
+        retroarch.stateSlots = 10;
+        SemuActionExecutor.execute(retroarch, "state.prev", SEMU_SOURCE_GAMEPAD);
+        contract.expect(SaveSlotPort.received(handle, "") && SemuSupervisorRuntime.slot == 9, "previous from slot 0 wraps to 9 and sends RetroArch nothing");
+        SemuActionExecutor.execute(retroarch, "state.save", SEMU_SOURCE_GAMEPAD);
+        contract.expect(SaveSlotPort.received(handle, "SAVE_STATE_SLOT 9"), "a save tells RetroArch the slot Semu shows");
+        SemuActionExecutor.execute(retroarch, "state.load", SEMU_SOURCE_KEYBOARD);
+        contract.expect(SaveSlotPort.received(handle, "LOAD_STATE_SLOT 9"), "a keyboard load goes over the command port with the slot too");
+        close(handle);
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
+class SaveSlotNative {  // an emulator listening for its own key gets that key typed, whoever sent the chord
+    class void run(Contract contract) {
+        contract.expect(SemuActionRouter.routeFor("state.save", false, true, true).equals("inject") && SemuActionRouter.routeFor("state.save", false, true, false).equals("none"), "a keyboard save is typed again only where the emulator's key differs");
+        contract.expect(SemuActionRouter.routeFor("state.save", true, true, true).equals("udp:SAVE_STATE_SLOT") && SemuActionRouter.routeFor("ui.menu", false, true, true).equals("semu"), "RetroArch and Semu's own actions ignore native keys");
+        StandaloneSpecBed bed = StandaloneSpecBed();
+        SemuLaunchPlan melonds = bed.launch("melonds", "nds", "Kirby.nds");
+        contract.expect(melonds.ok() && SemuActionExecutor.nativeChordFor(melonds, "state.save").equals("Shift+F1") && SemuActionExecutor.nativeChordFor(melonds, "state.load").equals("F1"), "melonDS saves and loads slot 1 with its own Shift+F1 and F1");
+        contract.expect(SemuActionExecutor.nativeChordFor(melonds, "ui.pause").isEmpty(), "melonDS binds Semu's pause chord itself");
+    }
+}
+
+class SaveSlotMenu {  // never an invisible menu
+    class void run(Contract contract, Fixture fixture) {
+        for emulatorId in ["retroarch", "dolphin", "pcsx2", "ppsspp", "flycast", "melonds", "azahar", "cemu", "ryujinx"] {
+            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            string pause = SemuJson.textAt(emulator.definition, "menu.pause");
+            string doc = SemuJson.textAt(emulator.definition, "menu.doc");
+            contract.expect((pause.equals("emulator") || pause.equals("none")) && !doc.isEmpty() && !doc.contains("pending"), emulatorId + " declares whether the menu pauses it, from an observation: " + pause);
+            if (!pause.equals("emulator")) { continue; }
+            contract.expect(emulator.actions.contains("ui.pause"), emulatorId + " pauses through its own declared pause action");
+            for platformName in emulator.definition.get("platforms").keys() {
+                JSONValue platform = emulator.platform(platformName);
+                bool composed = SemuJson.boolAt(platform, "render_hook", false) || SemuJson.boolAt(platform, "render_preload", false) || SemuJson.boolAt(platform, "render_vulkan", false);
+                contract.expect(composed, emulatorId + " " + platformName + " has a compositor to draw the menu it pauses for");
+            }
+        }
+        SemuLaunchPlan retroarch = LaunchSpecTools.retroarchPlan(fixture);
+        contract.expect(retroarch.pauseAction.equals("ui.pause") && retroarch.menuDrawn, "RetroArch pauses under the drawn menu");
+        StandaloneSpecBed bed = StandaloneSpecBed();
+        SemuLaunchPlan melonds = bed.launch("melonds", "nds", "Kirby.nds");
+        contract.expect(melonds.ok() && !melonds.menuDrawn, "standalone melonDS has no compositor, so no menu");
+        SemuLaunchPlan azahar = bed.launch("azahar", "n3ds", "Zelda.3ds");
+        contract.expect(azahar.ok() && azahar.menuDrawn && azahar.pauseAction.isEmpty(), "Azahar stops presenting while paused, so its menu opens over the running game");
+        string unseen = PathTools.join(fixture.scratch, "slots/unseen");
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan hidden = InputDeliveryTools.launch(unseen, InputDeliveryTools.none(), ["ui.pause"]);
+        hidden.menuDrawn = false;
+        hidden.pauseAction = "ui.pause";
+        SemuActionExecutor.execute(hidden, "ui.menu", SEMU_SOURCE_GAMEPAD);
+        contract.expect(SemuSupervisorRuntime.menu_visible == 0 && InputDeliveryTools.records(unseen) == 0, "Select+Y over an emulator with no compositor opens nothing and pauses nothing");
+        hidden.menuDrawn = true;
+        SemuActionExecutor.execute(hidden, "ui.menu", SEMU_SOURCE_GAMEPAD);
+        contract.expect(SemuSupervisorRuntime.menu_visible == 1 && InputDeliveryTools.record(unseen, 0, SemuActions.menuToggle(), 0), "with a compositor the same press opens the menu");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
+class SaveSlotLabel {  // the renderer shows Semu's slot index as the emulator numbers it
+    class void run(Contract contract) {
+        char buffer[16];
+        contract.expect(SemuSlotLabel.text(buffer, 16, 1, 10, 9) && strcmp(buffer, "SLOT 10") == 0, "Dolphin's last slot reads SLOT 10");
+        contract.expect(SemuSlotLabel.text(buffer, 16, 0, 10, 0) && strcmp(buffer, "SLOT 0") == 0, "RetroArch's first slot reads SLOT 0");
+        contract.expect(!SemuSlotLabel.text(buffer, 16, 1, 1, 0) && buffer[0] == 0, "one fixed slot shows no slot line");
+        contract.expect(!SemuSlotLabel.text(buffer, 16, 1, 5, 5) && buffer[0] == 0, "an index past the emulator's slots shows nothing");
+    }
+}
+
+class SaveSlotSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        SaveSlotDeclarations.run(contract, fixture);
+        SaveSlotCounter.run(contract, fixture);
+        SaveSlotNative.run(contract);
+        SaveSlotMenu.run(contract, fixture);
+        SaveSlotLabel.run(contract);
+    }
+}

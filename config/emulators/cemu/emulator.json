@@ -88,5 +88,14 @@
     "rendering": "Vulkan is forced through settings.xml (api 1). VK_LAYER_SEMU_compositor (render_vulkan) composes Semu's bezel and shader into the swapchain image at present.",
     "display": "Cemu's wx/GTK window is blank under GDK's Wayland backend; GDK_BACKEND=x11 runs it on XWayland, where it renders.",
     "content": "The title formats Cemu a6fb0a48 detects (src/Cafe/TitleList/TitleInfo.cpp:186-252: .rpx, .wud/.wux/.iso discs, .wua archives, .wuhb bundles); a loose .rpx also boots as a standalone title (src/Cafe/CafeSystem.cpp:798)."
+  },
+  "save_states": {
+    "slots": 0,
+    "first_slot": 0,
+    "doc": "Cemu 2.6 has no save states (profile.json actions.unsupported)."
+  },
+  "menu": {
+    "pause": "none",
+    "doc": "Cemu declares no pause action, so the Semu menu draws over the running game."
   }
 }

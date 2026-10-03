@@ -24,22 +24,14 @@
   "hotkeys": {
     "keymap": [
       {
-        "action": "app.quit",
-        "chord": "Ctrl+Q",
-        "native": "btn_escape",
-        "scancodes": [
-          224,
-          20
-        ]
-      },
-      {
         "action": "state.load",
         "chord": "Ctrl+A",
         "native": "btn_jump_state",
         "scancodes": [
           224,
           4
-        ]
+        ],
+        "slot": "selected"
       },
       {
         "action": "state.save",
@@ -48,15 +40,25 @@
         "scancodes": [
           224,
           22
+        ],
+        "slot": "selected"
+      },
+      {
+        "action": "state.prev",
+        "chord": "Ctrl+J",
+        "native": "btn_prev_slot",
+        "scancodes": [
+          224,
+          13
         ]
       },
       {
-        "action": "ui.menu",
-        "chord": "Ctrl+M",
-        "native": "btn_menu",
+        "action": "state.next",
+        "chord": "Ctrl+K",
+        "native": "btn_next_slot",
         "scancodes": [
           224,
-          16
+          14
         ]
       },
       {
@@ -82,6 +84,7 @@
         "[Dreamcast]",
         "AutoLoadState = no",
         "AutoSaveState = no",
+        "SavestateSlot = 0",
         "",
         "[input]",
         "enable_x11_keyboard = no",
@@ -124,8 +127,29 @@
   "doc": {
     "ownership": "Every emitted Flycast config line, native action name, and SDL scancode lives in this declaration. The emitter only validates the rows against emulator.json, steam_input.json, and steamdeck.skm before rendering them.",
     "gameplay": "The generated keyboard mapping is action-only. Flycast's upstream SDL GameController mapping remains responsible for Dreamcast gameplay, analog triggers, Start, D-pad, and rumble.",
-    "hotkeys": "Flycast version-4 combo rows use simultaneous SDL scancodes (sequential=0): Left Ctrl is 224; Q/A/S/M/X are 20/4/22/16/27. They invoke Flycast's native exit/load/save/menu/screenshot actions.",
+    "hotkeys": "Flycast version-4 combo rows use simultaneous SDL scancodes (sequential=0): Left Ctrl is 224; A/S/J/K/X are 4/22/13/14/27. They invoke Flycast's native load/save/slot/screenshot actions (core/input/mapping.cpp:50-72). Its own menu (btn_menu) and exit (btn_escape) are not bound: ui.menu and app.quit are Semu's, or Ctrl+M would open Flycast's settings over Semu's menu.",
     "state": "No external save path is configured. Flycast therefore stores per-game VMUs and save states in the isolated XDG_DATA_HOME/flycast tree declared by emulator.json.",
-    "disc_picker": "emu.cfg [config] BoxartDisplayMode = no and FetchBoxart = no: in box-art mode the Insert Disk picker shows every disc of a game as the same cover and title, so the discs of a playlist could not be told apart. List mode shows the (Disc N).chd file names, and nothing is fetched from TheGamesDB."
+    "disc_picker": "emu.cfg [config] BoxartDisplayMode = no and FetchBoxart = no: in box-art mode the Insert Disk picker shows every disc of a game as the same cover and title, so the discs of a playlist could not be told apart. List mode shows the (Disc N).chd file names, and nothing is fetched from TheGamesDB.",
+    "save_states": "Flycast cycles ten slots and wraps (cycleSaveStateSlot, core/ui/gui.cpp:518-522), shows slot + 1 (gui.cpp:1620-1624) and saves the choice to emu.cfg [Dreamcast] SavestateSlot; Semu pins it to 0 each launch, where its own counter starts."
+  },
+  "actions": {
+    "external": [
+      {
+        "action": "app.quit",
+        "chord": "Ctrl+Q",
+        "consumer": "semu-input-supervisor",
+        "semantics": "immediate process-group termination"
+      }
+    ]
+  },
+  "native_shortcuts": {
+    "source": "flycast 5aa091f core/input/gamepad_device.cpp:610-650 and core/input/keyboard_device.h:42-70",
+    "fallback": false,
+    "replaced_by": {
+      "file": "config/flycast/mappings/SDL_Keyboard.cfg",
+      "section": "[combo]"
+    },
+    "why": "GamepadDevice::find_mapping uses mappings/SDL_Keyboard.cfg whenever it exists; KeyboardInputMapping's defaults (bare X, C, S, D as Dreamcast buttons, Tab for the menu, Space for fast forward) apply only without the file. Semu writes the whole file with empty [digital] and [analog] sections, so a chord like Ctrl+S presses no Dreamcast button. A per-game SDL_Keyboard_<id>.cfg the owner makes would still win.",
+    "fixed": []
   }
 }

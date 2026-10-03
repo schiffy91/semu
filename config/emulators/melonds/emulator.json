@@ -122,5 +122,14 @@
     "input": "SDL raw joystick zero is the Steam Virtual Gamepad lane. The profile maps every DS control explicitly; pinned Qt actions consume Ctrl+S and Ctrl+A for slot-1 save/load, while Semu's process-group watcher owns Ctrl+Q and immediate physical Select+Start termination.",
     "rendering": "The managed TOML pins both melonDS OpenGL selectors. The flake applies no Semu render hook, so no Semu bezel or shader reaches this emulator yet.",
     "content": "melonDS 906e9ebb opens NDS and DSi ROMs (src/frontend/qt_sdl/Window.cpp:88) and, through libarchive (required by its CMakeLists.txt:87, ARCHIVE_SUPPORT_ENABLED), the ROM inside an archive (Window.cpp:117-130 lists .zip, .7z, .rar, .tar and compressed tars; the two ES-DE offers are declared)."
+  },
+  "save_states": {
+    "slots": 1,
+    "first_slot": 1,
+    "doc": "Semu saves and loads melonDS slot 1 (Shift+F1 and F1, profile.json native_shortcuts); there is no slot to choose."
+  },
+  "menu": {
+    "pause": "none",
+    "doc": "melonDS has no Semu compositor on any platform (no render_hook, render_preload or render_vulkan), so the supervisor never opens the Semu menu there: it would be invisible."
   }
 }

@@ -9,8 +9,7 @@
       "ui.fullscreen",
       "app.quit",
       "state.load",
-      "state.save",
-      "screen.swap"
+      "state.save"
     ]
   },
   "content": {
@@ -229,5 +228,14 @@
     "rendering": "Vulkan on both platforms (Apple builds have no OpenGL renderer). render_vulkan composes Semu's bezel and shader into the swapchain image at present: on Linux through VK_LAYER_SEMU_compositor, on macOS through Semu's stand-in for MoltenVK (lib/semu-vulkan). The semu-touch patch maps a click on the composed picture back to Azahar's own layout.",
     "display": "Azahar's Qt window refuses shared OpenGL contexts on the Wayland platform plugin; QT_QPA_PLATFORM=xcb runs it on XWayland.",
     "content": "What Azahar boots at its pinned fbd3fb02, by extension (src/core/loader/loader.cpp:51-61: ELF, CCI and CXI, 3DSX, and their z-compressed forms). A .cia is installed into the NAND, not booted, so it is not listed."
+  },
+  "save_states": {
+    "slots": 1,
+    "first_slot": 0,
+    "doc": "Quick Save and Quick Load use Azahar's one quick-save slot; there is no slot to choose."
+  },
+  "menu": {
+    "pause": "none",
+    "doc": "Seen 2026-10-03 in the podman VM (tests/integration/menu-pause.sh, Pushmo on lavapipe through VK_LAYER_SEMU_compositor): paused with its own pause key, Azahar presents nothing (async_presentation=false presents from the emulation thread), so a menu record written while paused stayed invisible until it resumed. The Semu menu therefore opens over the running game; while it is open the pad still reaches the game."
   }
 }

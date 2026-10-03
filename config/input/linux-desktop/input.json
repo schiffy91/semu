@@ -159,7 +159,7 @@
       }
     ],
     "pause_action": "ui.pause",
-    "doc": "The native Semu menu the renderer draws over any emulator. The supervisor mirrors this list: the same journal drives the drawn selection and the executed action."
+    "doc": "The native Semu menu the renderer draws over any emulator with a compositor. The supervisor mirrors this list: the same journal drives the drawn selection and the executed action. pause_action reaches only emulators whose emulator.json menu.pause is emulator (seen to keep presenting while paused); the others keep running under the menu, and an emulator without a compositor gets no menu."
   },
   "gamepad_chords": {
     "modifier": "select",

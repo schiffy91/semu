@@ -177,7 +177,7 @@
     },
     {
       "button": "R3",
-      "action": "ui.escape"
+      "action": "ui.menu.back"
     }
   ],
   "binding_icons": {
@@ -210,10 +210,11 @@
     "quick_slots": [
       "state.save",
       "state.load",
-      "app.quit",
+      "state.prev",
+      "state.next",
       "ui.menu",
       "ui.screenshot",
-      "ui.escape"
+      "app.quit"
     ],
     "menu_slots": [
       "ui.menu",
@@ -279,10 +280,10 @@
     }
   },
   "doc": {
-    "radial": "show_labels=false makes every radial icon-only so Steam never substitutes modifier glyphs such as Ctrl. The default preset maps group 20 to quick_slots, preserving Save/Load/Quit/Menu/Screenshot/Escape. Holding View or either upper grip activates the hotkey preset and maps group 21 to menu_slots. Declarative system_layers allocate additional left-trackpad radial presets; their ordered slots generate stable extension codes beginning at the generic native ABI extension base. The Wii layer is held with either lower grip and declares Wiimote, Nunchuk, Classic, and GameCube as slots 0 through 3. Its Ctrl+Shift+F9 through F12 chords stay inside the held layer and are supported by the Deck command facet.",
+    "radial": "show_labels=false makes every radial icon-only so Steam never substitutes modifier glyphs such as Ctrl. The default preset maps group 20 to quick_slots: Save, Load, Previous Slot, Next Slot, Menu, Screenshot and Quit. No binding sends Esc (ui.escape): Esc quits RetroArch on macOS and leaves fullscreen in Cemu, so the hotkey set's R3 is Menu Back instead. Holding View or either upper grip activates the hotkey preset and maps group 21 to menu_slots. Declarative system_layers allocate additional left-trackpad radial presets; their ordered slots generate stable extension codes beginning at the generic native ABI extension base. The Wii layer is held with either lower grip and declares Wiimote, Nunchuk, Classic, and GameCube as slots 0 through 3. Its Ctrl+Shift+F9 through F12 chords stay inside the held layer and are supported by the Deck command facet.",
     "quit_chord": "The physical View/Menu buttons emit XInput SELECT/START unchanged. window_ms is the maximum verifier interval for the pair; the process-group watcher terminates as soon as it observes both buttons held. Radial and HKB quit use the app.quit action chord instead.",
     "templates": "Exactly one template carries default:true. semu steam input writes every template into templates_dir and the icons into binding_icons_dir, then the default template as each Steam user's controller_file; each file is written beside its destination and renamed over it, and symlinked destinations are refused. Under each deprecated_config_ids folder only that controller_file is removed.",
-    "binding_icons": "Every action declares a non-keyboard Semu PNG. Legacy VDF bindings encode the icon filename and its two colors as comma-delimited metadata, matching Valve's radial-menu format. Physical Deck acceptance: after bootstrap and provision, restart Steam, apply Semu: Steam Deck - Neptune FULL, open all three left-trackpad radials, and assert all 15 slots show the declared Semu icons with no Ctrl/key glyphs; activate the quick and menu slots to complete their capture evidence, then verify each Wii mode reaches its Dolphin consumer.",
+    "binding_icons": "Every action declares a non-keyboard Semu PNG. Legacy VDF bindings encode the icon filename and its two colors as comma-delimited metadata, matching Valve's radial-menu format. Physical Deck acceptance: after bootstrap and provision, restart Steam, apply Semu: Steam Deck - Neptune FULL, open all three left-trackpad radials, and assert all 16 slots show the declared Semu icons with no Ctrl/key glyphs; activate the quick and menu slots to complete their capture evidence, then verify each Wii mode reaches its Dolphin consumer.",
     "platforms": "All three destinations lie under ${home}/.local/share/Steam. semu steam input --steam-root DIR puts the same layout under DIR instead (the tests use a scratch root) and refuses any path that leaves it. ${steam_user} is every userdata directory except 0 and anonymous, so every Steam user gets the default profile.",
     "actions": "The complete native input vocabulary. Each action declares its chord, semantic label, and manifest-backed Semu PNG. These entries and hotkey_bindings render only the Steam Input templates; the native keymap and the supervisor read config/input/<target>/input.json, and a contract keeps both chord tables identical. Which emulators honor each action is declared per emulator in config/emulators/<emu>/emulator.json input.actions; ui.menu.{up,down,confirm,back} are consumed by the renderer menu, Wii controller actions are consumed by Dolphin's in-process mode selector, and ui.escape is desktop-only."
   }

@@ -98,3 +98,10 @@ class SemuActionDedupe {  // one chord seen by evdev and X at once executes once
         return true;
     }
 }
+
+class SemuSlotCounter {  // Semu's save slot wraps both ways like the emulator's
+    class int step(int slot, int count, int delta) {  // one slot fixed or none: nothing to move
+        if (count < 2) { return 0; }
+        return ((slot + delta) % count + count) % count;
+    }
+}

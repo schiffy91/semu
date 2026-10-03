@@ -83,14 +83,6 @@
         "action": "ui.fullscreen"
       },
       {
-        "setting": "Pause",
-        "action": "ui.menu"
-      },
-      {
-        "setting": "Exit App",
-        "action": "app.quit"
-      },
-      {
         "setting": "Previous Slot",
         "action": "state.prev"
       },
@@ -100,11 +92,13 @@
       },
       {
         "setting": "Load State",
-        "action": "state.load"
+        "action": "state.load",
+        "slot": "selected"
       },
       {
         "setting": "Save State",
-        "action": "state.save"
+        "action": "state.save",
+        "slot": "selected"
       },
       {
         "setting": "Fast-forward",
@@ -122,6 +116,8 @@
         "AutoRun = True",
         "CheckForNewVersion = False",
         "DiscordRichPresence = False",
+        "StateSlot = 0",
+        "SaveStateSlotCount = 5",
         "",
         "[Graphics]",
         "GraphicsBackend = OPENGL",
@@ -182,9 +178,30 @@
   ],
   "doc": {
     "controller": "The numeric mappings are PPSSPP 1.19.3's SDL GameController translation: Steam/Xbox A/B/X/Y become button codes 189/190/191/188, shoulders 193/192, View/Menu 196/197, and the left stick uses axis key codes 4000-4003.",
-    "quit": "Select and Start remain independent PSP inputs. Semu's target-owned evdev watcher observes the physical pair and terminates the emulator process group immediately; app.quit also maps Ctrl+Q to PPSSPP Exit App.",
-    "actions": "Pause without UI, PPSSPP menu, screenshot, fullscreen, quit, previous/next state slot, explicit load/save, and fast-forward are compiled from the shared Semu keymap into PPSSPP MultiInputMapping chords.",
+    "quit": "Select and Start remain independent PSP inputs. Semu's supervisor quits the process group on Start+Select and on Ctrl+Q (actions.external), so PPSSPP's Exit App is not bound.",
+    "actions": "Pause without UI, screenshot, fullscreen, previous/next state slot, explicit load/save, and fast-forward are compiled from the shared Semu keymap into PPSSPP MultiInputMapping chords. PPSSPP's own Pause (its menu) is not bound: ui.menu is Semu's alone, or Ctrl+M would open both menus.",
     "rendering": "OpenGL, horizontal output, non-VR presentation, no stretch/crop/integer scaling, and an empty post-shader chain keep the managed presentation contract deterministic while PPSSPP's live rectangle still adapts to framebuffer size and aspect.",
-    "storage": "Both generated INI files are deployed into the isolated XDG memstick. PPSSPP creates SAVEDATA, PPSSPP_STATE, screenshots, cache, and other writable content below that same Semu-owned root."
+    "storage": "Both generated INI files are deployed into the isolated XDG memstick. PPSSPP creates SAVEDATA, PPSSPP_STATE, screenshots, cache, and other writable content below that same Semu-owned root.",
+    "save_states": "ppsspp.ini pins StateSlot = 0 and SaveStateSlotCount = 5 (Core/Config.cpp:268,274, the defaults), so each launch starts on the slot Semu's counter starts on; Next/Previous Slot wrap over those five (Core/SaveState.cpp:353-359) and PPSSPP shows slot + 1 (SaveState.cpp:822)."
+  },
+  "actions": {
+    "external": [
+      {
+        "action": "app.quit",
+        "chord": "Ctrl+Q",
+        "consumer": "semu-input-supervisor",
+        "semantics": "immediate process-group termination"
+      }
+    ]
+  },
+  "native_shortcuts": {
+    "source": "ppsspp fa50bb1 Core/KeyMap.cpp:818-848",
+    "fallback": false,
+    "replaced_by": {
+      "file": "config/ppsspp/PSP/SYSTEM/controls.ini",
+      "section": "[ControlMapping]"
+    },
+    "why": "KeyMap::LoadFromIni erases the default mapping of every known name when controls.ini has a [ControlMapping] section and binds only what the file holds, so PPSSPP's keyboard defaults (KeyMapDefaults.cpp, among them Pause on Escape) never apply.",
+    "fixed": []
   }
 }

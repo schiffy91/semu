@@ -3,6 +3,7 @@
 // Steam Deck target data and do not belong in this wire contract.
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 struct SemuActionRecord {
@@ -150,4 +151,22 @@ class RendererActionJournal {
     class int quickRadial() { return 1; }
     class int menuRadial() { return 2; }
     class int systemRadial() { return 3; }
+}
+
+class SemuSlotLabel {  // records carry Semu's index; emulators show first_slot + index
+    class int configured(char* name, int fallback, int largest) {  // SEMU_MENU_SLOTS or SEMU_MENU_FIRST_SLOT, the launcher's numbers
+        char* value = getenv(name);
+        if (value == null || value[0] == 0) { return fallback; }
+        char* end = null;
+        long number = strtol(value, &end, 10);
+        return end != null && *end == 0 && number >= 0L && number <= (long)largest ? (int)number : fallback;
+    }
+
+    class bool text(char* buffer, int capacity, int firstSlot, int slotCount, int index) {  // "SLOT 10"; empty and false without a slot to choose
+        if (buffer == null || capacity < 1) { return false; }
+        buffer[0] = 0;
+        if (slotCount < 2 || index < 0 || index >= slotCount || capacity < 12) { return false; }
+        snprintf(buffer, (size_t)capacity, "SLOT %d", firstSlot + index);
+        return true;
+    }
 }

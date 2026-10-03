@@ -125,5 +125,14 @@
     "aspect": "--config SYSCONF.IPL.AR=False keeps Wii titles at 4:3: the Wii's default widescreen answer renders them anamorphic 16:9, which the profile's CustomStretch 4:3 pin in GFX.ini would squash. SYSCONF lives in the seeded NAND, not an INI, so the command-line layer is the only route; it outranks game INIs, Dolphin writes it into the session's SYSCONF at boot (BootManager), and GameCube boots ignore it.",
     "playlist": "Dolphin 2606a reads .m3u and .m3u8 itself (Boot.cpp ReadM3UFile), resolving entries against the playlist's folder, so it receives the .m3u unchanged (playlist.open native). Core.AutoDiscChange in the profile lets it insert the next entry when the game asks for another disc.",
     "content": "What Dolphin c77bbaa0 boots, by its last suffix (Source/Core/Core/Boot/Boot.cpp:212 playlists, 238-240 disc images and executables, 268 .dff, 271 .wad, 278 .json mod descriptors). No archive: a .zip or .7z ends in \"Could not recognize file\". The .m3u here is what lets its playlist.open stay native."
+  },
+  "save_states": {
+    "slots": 10,
+    "first_slot": 1,
+    "doc": "Dolphin's selected slot runs 1-10 and wraps both ways (DolphinQt/MainWindow.cpp:1582-1596 at c77bbaa); Qt.ini starts each launch on slot 1 (profile.json doc.save_states)."
+  },
+  "menu": {
+    "pause": "none",
+    "doc": "Seen 2026-10-03 in the podman VM (tests/integration/menu-pause.sh with openbox, Animal Crossing through libsemupreload on llvmpipe): Ctrl+P (Toggle Pause) froze the title screen, and a menu record written while paused stayed invisible until Ctrl+P resumed it, so a paused Dolphin presents nothing. The Semu menu therefore opens over the running game; while it is open the pad still reaches the game. Without a window manager Dolphin took no hotkey at all (HotkeysRequireFocus), which gamescope never causes."
   }
 }

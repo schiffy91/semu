@@ -19,17 +19,19 @@ import ./process.btrc;
 import ./plan.btrc;
 
 class SemuActionRouter {  // where an action goes: the renderer, the emulator, or the process group
-    class string retroarchCommand(string action) {
-        if (action.equals("state.save")) { return "SAVE_STATE"; }
-        if (action.equals("state.load")) { return "LOAD_STATE"; }
-        if (action.equals("state.next")) { return "STATE_SLOT_PLUS"; }
-        if (action.equals("state.prev")) { return "STATE_SLOT_MINUS"; }
+    class string retroarchCommand(string action) {  // saves and loads name Semu's slot; RetroArch's counter stays
+        if (action.equals("state.save")) { return "SAVE_STATE_SLOT"; }
+        if (action.equals("state.load")) { return "LOAD_STATE_SLOT"; }
         if (action.equals("ui.screenshot")) { return "SCREENSHOT"; }
         if (action.equals("ui.pause")) { return "PAUSE_TOGGLE"; }
         if (action.equals("ui.fullscreen")) { return "FULLSCREEN_TOGGLE"; }
         if (action.equals("speed.fast")) { return "FAST_FORWARD"; }
         if (action.equals("speed.rewind")) { return "REWIND"; }
         return "";
+    }
+
+    class string retroarchMessage(string command, int slotNumber) {  // slot commands carry the slot as RetroArch numbers it
+        return command.endsWith("_SLOT") ? command + " " + Strings.fromInt(slotNumber) : command;
     }
 
     class bool semuOwned(string action) {
@@ -43,6 +45,11 @@ class SemuActionRouter {  // where an action goes: the renderer, the emulator, o
             return command.isEmpty() ? "none" : "udp:" + command;
         }
         return fromKeyboard ? "none" : "inject";  // a keyboard chord already reached the emulator's own hotkey table
+    }
+
+    class string routeFor(string action, bool retroarch, bool fromKeyboard, bool nativeKey) {  // nativeKey: Semu types the emulator's own key, any source
+        if (nativeKey && !retroarch && !SemuActionRouter.semuOwned(action)) { return "inject"; }
+        return SemuActionRouter.route(action, retroarch, fromKeyboard);
     }
 
     class int journalCode(string action) {  // each action journals as itself; none when the ABI lacks it
@@ -164,28 +171,41 @@ class SemuActionExecutor {  // execution of one action id (SemuActions is the re
         return "";
     }
 
+    class string nativeChordFor(SemuLaunchPlan launch, string action) {  // the emulator's own key, empty when it binds Semu's
+        for entry in launch.nativeChords {
+            if (entry.startsWith(action + "=")) { return entry.substring(action.len() + 1, entry.len() - action.len() - 1); }
+        }
+        return "";
+    }
+
     class void toEmulator(SemuLaunchPlan launch, string action, bool fromKeyboard) {  // only what the emulator declares moves a slot or journals
         if (!launch.emulatorActions.contains(action)) {
             if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: " + launch.emulator + " does not declare " + action); }
             return;
         }
-        string route = SemuActionRouter.route(action, launch.retroarchPort > 0, fromKeyboard);
+        string native = SemuActionExecutor.nativeChordFor(launch, action);
+        string route = SemuActionRouter.routeFor(action, launch.retroarchPort > 0, fromKeyboard, !native.isEmpty());
         if (route.startsWith("udp:")) {
-            SemuCommandPort.send(launch.retroarchPort, route.substring(4, route.len() - 4));
+            string command = route.substring(4, route.len() - 4);
+            SemuCommandPort.send(launch.retroarchPort, SemuActionRouter.retroarchMessage(command, launch.firstSlot + SemuSupervisorRuntime.slot));
         } else if (route.equals("inject")) {
-            Vector<int> codes = SemuKeyNames.chord(SemuActionExecutor.chordFor(launch, action));
+            Vector<int> codes = SemuKeyNames.chord(native.isEmpty() ? SemuActionExecutor.chordFor(launch, action) : native);
             if (!SemuVirtualKeyboard.type(codes) && getenv("SEMU_RENDER_DEBUG") != null) {
                 Console.error("semu: could not type the chord for " + action + " (no /dev/uinput access?)");
             }
         }
-        if (action.equals("state.next") && SemuSupervisorRuntime.slot < 9) { SemuSupervisorRuntime.slot++; }
-        if (action.equals("state.prev") && SemuSupervisorRuntime.slot > 0) { SemuSupervisorRuntime.slot--; }
+        if (action.equals("state.next")) { SemuSupervisorRuntime.slot = SemuSlotCounter.step(SemuSupervisorRuntime.slot, launch.stateSlots, 1); }  // wraps as the emulator does
+        if (action.equals("state.prev")) { SemuSupervisorRuntime.slot = SemuSlotCounter.step(SemuSupervisorRuntime.slot, launch.stateSlots, -1); }
         int journal = SemuActionRouter.journalCode(action);
         SemuActionJournal.append(launch, journal, action.startsWith("state.") ? SemuSupervisorRuntime.slot : 0);
     }
 
     class void openMenu(SemuLaunchPlan launch) {
         if (SemuSupervisorRuntime.menu_visible != 0) { return; }
+        if (!launch.menuDrawn) {  // no compositor here: an unseen menu would freeze the game
+            if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: no Semu menu over " + launch.emulator + " on this platform"); }
+            return;
+        }
         SemuSupervisorRuntime.menu_visible = 1;
         SemuSupervisorRuntime.menu_selected = 0;
         SemuActionJournal.append(launch, SemuActions.menuToggle(), 0);

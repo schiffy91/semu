@@ -6,11 +6,20 @@ import Library.Vector;
 import ../lib/json.btrc;
 
 class SemuKeyCollisions {
-    class Vector<string> settings(JSONValue rows) {  // the setting of every row, e.g. Semu's own keymap rows
+    class bool rendered(JSONValue row, string platform, Vector<string> actions) {  // renders on this platform, for a declared action
+        if (row == null) { return false; }
+        if (!row.isObject()) { return true; }  // a bare value row has neither
+        if (row.has("platforms") && !SemuJson.strings(row.get("platforms")).contains(platform)) { return false; }
+        string action = SemuJson.textAt(row, "action");
+        return action.isEmpty() || actions.contains(action);
+    }
+
+    class Vector<string> settings(JSONValue rows, string platform, Vector<string> actions) {  // settings of the rows rendered here, e.g. Semu's keymap
         Vector<string> result = [];
         for (int index = 0; rows != null && rows.isArray() && index < rows.size(); index++) {
-            string setting = SemuJson.textAt(rows.at(index), "setting");
-            if (!setting.isEmpty()) { result.push(setting); }
+            JSONValue row = rows.at(index);
+            string setting = SemuJson.textAt(row, "setting");
+            if (!setting.isEmpty() && SemuKeyCollisions.rendered(row, platform, actions)) { result.push(setting); }
         }
         return result;
     }

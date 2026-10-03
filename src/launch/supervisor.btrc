@@ -354,7 +354,7 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
     class void begin(SemuLaunchPlan launch) {  // fresh runtime, configured chord, first device scan
         memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
         memset(SemuDevicePaths, 0, sizeof(SemuDevicePaths));
-        SemuSupervisorRuntime.slot = 0;  // RetroArch numbers slots from 0
+        SemuSupervisorRuntime.slot = 0;  // the first of the emulator's slots, shown as save_states.first_slot
         bool chord = SemuQuitChord.configure(&SemuSupervisorRuntime.quit_template, launch.quitButtons, launch.chordWindowMs);
         if (!chord) { Console.error("semu: the quit chord is not usable: " + SemuQuitChord.describe(launch.quitButtons)); }
         SemuActionJournal.reset(launch);

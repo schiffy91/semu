@@ -6,7 +6,6 @@
       "ui.pause",
       "ui.screenshot",
       "ui.fullscreen",
-      "ui.menu",
       "ui.escape",
       "app.quit",
       "state.prev",
@@ -921,5 +920,14 @@
     "state": "data_home=xdg confines RetroArch config, data, and cache writes to its Semu-owned state root; saves, states, screenshots, and firmware use their separately declared paths.",
     "playlist": "The cores bound to systems that list .m3u (mednafen_psx and flycast) read playlists through libretro and register disk control, so the .m3u passes through unchanged (playlist.open native). Each declares .m3u among its content extensions; the checker refuses a native playlist binding whose core does not.",
     "content": "archives: RetroArch 69a4f0e unpacks a .zip (zlib) or .7z (HAVE_7ZIP=yes, qb/config.params.sh:144) and hands the core the first inner file it takes (tasks/task_content.c:803-866, extracted to a temporary file for a full-path core at 985-996), unless the core blocks extraction. cores.<core>.extensions: the core's own valid_extensions at its pinned revision (each core's doc names the line). RetroArch passes any file to a core, but these are what each core declares it opens, and an .m3u among them is how a core says it reads playlists, which a native playlist binding needs."
+  },
+  "save_states": {
+    "slots": 10,
+    "first_slot": 0,
+    "doc": "Semu cycles RetroArch slots 0-9 and wraps both ways. Saves and loads name the slot over the command port (SAVE_STATE_SLOT and LOAD_STATE_SLOT, retroarch_commands.patch), so RetroArch's own counter, which runs 0-999 and then the auto slot (runloop.c:6888-6917 at 69a4f0e), never decides where a state goes."
+  },
+  "menu": {
+    "pause": "emulator",
+    "doc": "RetroArch keeps presenting while paused: the Semu menu over a paused Game Boy was captured headlessly (PLAN M8, tests/visual/menu-e2e.sh)."
   }
 }

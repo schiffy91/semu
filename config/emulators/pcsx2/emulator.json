@@ -6,7 +6,6 @@
       "ui.pause",
       "ui.screenshot",
       "ui.fullscreen",
-      "ui.menu",
       "app.quit",
       "state.prev",
       "state.next",
@@ -101,5 +100,14 @@
     "platforms": "PCSX2 is intentionally Linux-only until a reproducible source-built Darwin slice exists. An upstream application archive is not a production fallback.",
     "playlist": "PCSX2 2.6.3 has no .m3u reader: IsDiscFileName lists no m3u, so it takes a playlist for an ISO image, fails to identify it and quits in -batch. Semu passes the playlist's first disc after -- (playlist.open first_entry). The pause menu (OpenPauseMenu, Ctrl+M) has Change Disc, whose file selector opens in that disc's folder, where the other discs sit.",
     "content": "What PCSX2 bc8151d2 boots: its disc names (pcsx2/VMManager.cpp:2382), .elf (2361) and block dumps (2366); any other file is read as a flat ISO (1236), which is how a Nero .nrg boots (pcsx2/CDVD/InputIsoFile.cpp:296-301 detects Nero offsets). No .m3u and no archive: Semu opens playlists for it (playlist.open first_entry)."
+  },
+  "save_states": {
+    "slots": 10,
+    "first_slot": 1,
+    "doc": "PCSX2 cycles ten slots shown as 1-10 and wraps both ways (pcsx2/ImGui/ImGuiOverlays.cpp:1162-1186 at bc8151d, VMManager.h:69); every VM start selects slot 1 (ImGuiOverlays.cpp:1125, 1377)."
+  },
+  "menu": {
+    "pause": "none",
+    "doc": "Seen 2026-10-03 in the podman VM (tests/integration/menu-pause.sh with openbox, Marvel vs. Capcom 2 through the render hook on llvmpipe): Ctrl+P (TogglePause) froze the game under PCSX2's own Paused notice, and a menu record written while paused stayed invisible until Ctrl+P resumed it, so a paused PCSX2 stops presenting. The Semu menu therefore opens over the running game; while it is open the pad still reaches the game."
   }
 }

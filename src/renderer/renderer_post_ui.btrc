@@ -27,6 +27,8 @@ struct RendererPostUiState {
     int visible;
     int selected;
     int slot;
+    int slot_count;  // SEMU_MENU_SLOTS: under two, no slot to choose
+    int first_slot;  // SEMU_MENU_FIRST_SLOT: how the emulator numbers Semu's first slot
     int screenshot_requested;
     int capture_count;
     int capture_target;
@@ -256,6 +258,8 @@ class RendererMenuModel {
         state->visible = 0;
         state->selected = 0;
         state->slot = 0;
+        state->slot_count = SemuSlotLabel.configured("SEMU_MENU_SLOTS", 10, 99);
+        state->first_slot = SemuSlotLabel.configured("SEMU_MENU_FIRST_SLOT", 0, 99);
         state->capture_target = RendererEvidencePolicy.configuredFrame();
         state->next_action_frame = 0ULL;
         state->journal_offset = 0;
@@ -266,8 +270,8 @@ class RendererMenuModel {
 
     class void observeSavestate(struct RendererPostUiState* state,
                                 int requestedSlot) {
-        int slot = requestedSlot >= 0 && requestedSlot <= 9
-            ? requestedSlot : state->slot;  // RetroArch numbers slots from 0
+        int slot = requestedSlot >= 0 && requestedSlot < state->slot_count
+            ? requestedSlot : state->slot;  // Semu's index; the emulator shows first_slot + index
         state->slot = slot;
     }
 
@@ -465,10 +469,11 @@ class RendererMenuRaster {
             RendererMenuRaster.text(state->menu_pixels, state->labels + item * 24,
                 30, y + 8, 2, 238, 242, 244);
         }
-        char slotText[7] = {'S', 'L', 'O', 'T', ' ',
-            (char)('0' + state->slot), 0};
-        RendererMenuRaster.text(state->menu_pixels, slotText, 268, 72 + count * 43 + 10, 2,
-            164, 180, 184);
+        char slotText[16];
+        if (SemuSlotLabel.text(slotText, (int)sizeof(slotText), state->first_slot, state->slot_count, state->slot)) {  // no line without a slot to choose
+            RendererMenuRaster.text(state->menu_pixels, slotText, 268, 72 + count * 43 + 10, 2,
+                164, 180, 184);
+        }
         return true;
     }
 }

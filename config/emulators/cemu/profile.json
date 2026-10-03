@@ -283,5 +283,40 @@
     "display": "open_pad=false leaves one primary game window. Ctrl+Tab changes whether that main window presents TV or GamePad output; the separate pad window remains closed. Notification Position 0 is ScreenPosition::kDisabled, so Cemu draws no notification box (shader compiles, friends, controllers, warnings) over the game.",
     "storage": "The profile pins only input and UI settings. emulator.json owns the XDG and -m paths that keep normal Wii U title saves inside the isolated MLC root.",
     "actions": "Native rows are fail-closed invariants checked against steamdeck.skm before emission. Unsupported rows document shared Semu actions that this exact upstream release cannot consume."
+  },
+  "native_shortcuts": {
+    "source": "cemu a6fb0a4 src/gui/MainWindow.cpp:1425-1453",
+    "fallback": true,
+    "why": "Cemu 2.6 has no configurable hotkeys; its window handles a few keys itself, listed under fixed.",
+    "defaults": [],
+    "fixed": [
+      {
+        "key": "Esc",
+        "consumer": "MainWindow::OnKeyUp leaves fullscreen",
+        "accepted": "Cemu cannot unbind it. No Steam Input binding sends Esc (the radial and the hotkey set use Semu chords only), so only a desktop keyboard's own Esc reaches it, as in any Cemu."
+      },
+      {
+        "key": "Alt+Enter",
+        "consumer": "MainWindow::OnKeyUp toggles fullscreen"
+      },
+      {
+        "key": "F11",
+        "consumer": "MainWindow::OnKeyUp toggles fullscreen"
+      },
+      {
+        "key": "F12",
+        "consumer": "MainWindow::OnKeyUp takes a screenshot"
+      },
+      {
+        "key": "Alt+F4",
+        "action": "app.quit",
+        "consumer": "MainWindow::OnKeyDown closes Cemu"
+      },
+      {
+        "key": "Ctrl+Q",
+        "action": "app.quit",
+        "consumer": "MainWindow::OnKeyDown closes Cemu (CmdDown is Ctrl outside macOS)"
+      }
+    ]
   }
 }
