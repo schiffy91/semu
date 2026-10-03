@@ -181,7 +181,7 @@
         "ia_black_level": 0,
         "ia_bright_boost": 0,
         "ia_luminance": 1.0,
-        "ia_saturation": 1.3,
+        "ia_saturation": 1.15,
         "ia_target_gamma": 2.2,
         "mode": 1,
         "response_time": 0.222,
@@ -206,7 +206,7 @@
         "params": "The same grid as gbc/screen.slangp, tuned on settled frames, with mGBA's own correction pinned off (config/systems/gba/shaders.json). Image-adjustment only lifts saturation: target gamma 2.2 equals its monitor gamma, so no per-channel gamma lift washes colours out (1.2 did, and saturation 2.6 then pushed HSV saturation past 1 so 224,64,64 and 224,96,96 drew alike), and black level 0 keeps every base of its pow() at or above 0. Saturation 1.3 keeps every colour of the clip and bars cards under HSV saturation 1 after the NSO matrix (the bars card's blue, the most saturated, at 0.84). Subpixels leaking 0.45 with gain 1.38 give a white of about 226 with the row gaps and stripes still drawn; red and green subpixels 0.96 and blue 0.88 keep it slightly warm. blacklevel and ambient 0 take the lift off black (54 before)."
       },
       "output": {
-        "sha256": "62aeb949f21102a9b989811b42063ffd8dd1c7640c04c63941b972993a998131"
+        "sha256": "131bc05c67077b4fb4e835f59a8f3d0a3c56ab233354412e62e334d3d63d8cff"
       }
     },
     "assets/shaders/nes/screen.slangp": {
