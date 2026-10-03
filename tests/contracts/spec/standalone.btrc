@@ -285,7 +285,7 @@ class StandaloneSpecContract {
         string main = fixture.profile("azahar", "config/azahar-emu/qt-config.ini");
         string guid = StandaloneSpecContract.identity(fixture, "azahar_controller_guid");
         contract.expect(StandaloneSpecText.lowerHex(guid, 32), target + " azahar pad GUID is 32 lowercase hex digits");
-        contract.contains(main, "profiles\\1\\button_a=engine:sdl,api:controller,maptype:all,guid:" + guid + ",port:0,button:1", target + " azahar binds the target pad");
+        contract.contains(main, "profiles\\1\\button_a=\"engine:sdl,api:controller,maptype:all,guid:" + guid + ",port:0,button:1\"", target + " azahar binds the target pad");
         // Seen on the Deck: no button worked in Azahar. The binding named a GUID without the name CRC SDL
         // puts in bytes 2-3 since 2.26, read controller-mapping numbers as raw joystick indices (no
         // api:controller), and had no \default=false, so Azahar kept its keyboard defaults anyway.
@@ -297,10 +297,23 @@ class StandaloneSpecContract {
             bindings++;
             string key = line.substring(0, line.indexOf("="));
             if (main.contains("\n" + key + "\\default=false\n")) { guarded++; }
-            if (!line.contains("engine:sdl") || line.contains("engine:sdl,api:controller,maptype:all,")) { controllerApi++; }
+            if (!line.contains("engine:sdl") || line.contains("=\"engine:sdl,api:controller,maptype:all,")) { controllerApi++; }
         }
         contract.expect(bindings >= 20 && guarded == bindings, f"{target} azahar keeps every controller key with \\default=false, or its own saved defaults win: {guarded} of {bindings}");
         contract.expect(bindings >= 20 && controllerApi == bindings, f"{target} azahar reads every SDL binding through the game-controller API from whichever pad is present (api:controller, maptype:all): {controllerApi} of {bindings}");
+        // Seen on the Deck after that fix: still no button. Azahar reads this file with QSettings, which
+        // takes an unquoted value with a comma for a string list; toString() of that list is empty, and
+        // an empty binding falls back to the keyboard default. Azahar itself writes such values quoted.
+        int commaValues = 0;
+        int quotedValues = 0;
+        for line in Strings.split(main, "\n") {
+            if (line.startsWith("[") || !line.contains("=")) { continue; }
+            string value = line.substring(line.indexOf("=") + 1, line.len() - line.indexOf("=") - 1);
+            if (!value.contains(",")) { continue; }
+            commaValues++;
+            if (value.len() >= 2 && value.startsWith("\"") && value.endsWith("\"")) { quotedValues++; }
+        }
+        contract.expect(commaValues >= 18 && quotedValues == commaValues, f"{target} azahar quotes every value with a comma, or QSettings reads it as an empty list: {quotedValues} of {commaValues}");
         contract.contains(main, "graphics_api=2", target + " azahar runs Vulkan for VK_LAYER_SEMU_compositor");
         contract.contains(main, "fullscreen=true", target + " azahar fullscreen");
         // Azahar's UI keys are camelCase (GenerateSettingKeys.cmake); a snake_case key is ignored. A
