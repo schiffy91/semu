@@ -1,4 +1,4 @@
-// Playlist spec: each emulator gets an .m3u in a form it opens, and ES-DE offers only formats one opens.
+// Playlist spec: each emulator gets an .m3u in a form it opens, and its playlist arguments survive any folder name.
 
 import Library.FileSystem;
 import Library.JSON;
@@ -6,12 +6,12 @@ import Library.Strings;
 import Library.Vector;
 import ../support.btrc;
 import ./standalone.btrc;
+import ./flycast_config.btrc;
 import ../../../src/lib/json.btrc;
 import ../../../src/lib/paths.btrc;
 import ../../../src/model.btrc;
 import ../../../src/resolve.btrc;
 import ../../../src/check.btrc;
-import ../../../src/emit/esde.btrc;
 import ../../../src/launch/plan.btrc;
 import ../../../src/launch/playlist.btrc;
 
@@ -20,13 +20,15 @@ class PlaylistSpecParse {  // line handling over the library's real byte shapes
         Vector<string> dreamcast = SemuPlaylist.entries("Resident Evil - Code - Veronica (USA) (Disc 1).chd\nResident Evil - Code - Veronica (USA) (Disc 2).chd");
         contract.expect(dreamcast.join("|").equals("Resident Evil - Code - Veronica (USA) (Disc 1).chd|Resident Evil - Code - Veronica (USA) (Disc 2).chd"),
             "an LF playlist with no final newline lists both discs in order: " + dreamcast.join("|"));
-        Vector<string> crlf = SemuPlaylist.entries("Ace (Disc 1).chd\r\nAce (Disc 2).chd\r\n");
-        contract.expect(crlf.size() == 2 && crlf.get(0).equals("Ace (Disc 1).chd") && !crlf.join("|").contains("\r"), "a CRLF playlist lists two discs with no carriage return: " + crlf.join("|"));
+        Vector<string> carriageReturns = SemuPlaylist.entries("Ace (Disc 1).chd\r\nAce (Disc 2).chd\r\n");
+        contract.expect(carriageReturns.size() == 2 && carriageReturns.get(0).equals("Ace (Disc 1).chd") && !carriageReturns.join("|").contains("\r"), "a CRLF playlist lists two discs with no carriage return: " + carriageReturns.join("|"));
         Vector<string> marked = SemuPlaylist.entries("\xEF\xBB\xBF#EXTM3U\n\n  Game (Disc 1).iso  \n# note\nGame (Disc 2).iso\n");
         contract.expect(marked.join("|").equals("Game (Disc 1).iso|Game (Disc 2).iso"), "a BOM, comments, blank lines and surrounding spaces are dropped: " + marked.join("|"));
         contract.expect(SemuPlaylist.entries("").isEmpty() && SemuPlaylist.entries("#EXTM3U\n\n").isEmpty(), "an empty or comment-only playlist lists no disc");
         contract.expect(SemuPlaylist.isPlaylist("X.m3u") && SemuPlaylist.isPlaylist("X.M3U"), "a playlist is an .m3u in any case");
         contract.expect(!SemuPlaylist.isPlaylist("X.chd") && !SemuPlaylist.isPlaylist("/roms/psx/Games"), "a disc image or a plain directory is no playlist");
+        contract.expect(SemuPlaylist.mode(JSONValue.makeObject()).equals("native") && SemuPlaylist.mode(JSONValue.parse("{\"playlist\":{}}")).equals("native"),
+            "a platform that declares no playlist.open passes playlists on (native is the default)");
     }
 }
 
@@ -59,9 +61,14 @@ class PlaylistSpecLaunch {  // exact argv per emulator over scratch multi-disc f
         contract.expect(!joined.contains("(Disc 1)") && !joined.contains("Dreamcast.ContentPath"), label + " argv names no disc and no playlist folder: " + joined);
     }
 
-    class void flycast(Contract contract) {
+    class StandaloneSpecBed dreamcastBed() {
         StandaloneSpecBed bed = StandaloneSpecBed();
         bed.write(PathTools.join(bed.bios, "dc/dc_boot.bin"), "boot");
+        return bed;
+    }
+
+    class void flycast(Contract contract) {
+        StandaloneSpecBed bed = PlaylistSpecLaunch.dreamcastBed();
         string name = PlaylistSpecLaunch.veronica();
         string discOne = name + " (USA) (Disc 1).chd";
         string discTwo = name + " (USA) (Disc 2).chd";
@@ -75,13 +82,13 @@ class PlaylistSpecLaunch {  // exact argv per emulator over scratch multi-disc f
         contract.expect(SemuJson.textAt(printed, "playlist").equals(playlist) && SemuJson.textAt(printed, "rom").equals(PathTools.join(folder, discOne)), "--print-plan shows the opened playlist and disc 1: " + byFolder.json());
         SemuLaunchPlan byFile = PlaylistSpecLaunch.launch(bed, "flycast", "dreamcast", "", playlist);
         PlaylistSpecLaunch.expectArgv(contract, "flycast RE:CV by ES-DE's absolute inner-file %ROM%", bed, byFile, flags, PathTools.join(folder, discOne));
-        string quotedName = "JoJo's Disc, Set";
-        string quotedFolder = PlaylistSpecLaunch.writeFolder(bed, "dreamcast", quotedName, "JoJo (Disc 1).chd\n", ["JoJo (Disc 1).chd"]);
-        SemuLaunchPlan quoted = PlaylistSpecLaunch.launch(bed, "flycast", "dreamcast", "", quotedName + ".m3u");
-        contract.expect(quoted.ok() && quoted.argv.contains("config:Dreamcast.ContentPath=\"" + quotedFolder + "\""), "a folder with a comma and an apostrophe stays one quoted -config value: " + quoted.argv.join(" | "));
         string half = PlaylistSpecLaunch.writeFolder(bed, "dreamcast", "Half", "Half (Disc 1).chd\nHalf (Disc 2).chd\n", ["Half (Disc 1).chd"]);
         SemuLaunchPlan halfLaunch = PlaylistSpecLaunch.launch(bed, "flycast", "dreamcast", "", "Half.m3u");
         contract.expect(halfLaunch.ok() && halfLaunch.argv.last().equals(PathTools.join(half, "Half (Disc 1).chd")), "a missing disc 2 does not block disc 1: " + halfLaunch.error);
+        string kept = bed.romPath("dreamcast", "Kept.m3u");  // an absolute entry that stays inside the ROM directory is kept as written
+        PlaylistSpecLaunch.writeFolder(bed, "dreamcast", "Kept", PathTools.join(kept, "Kept (Disc 1).chd") + "\n", ["Kept (Disc 1).chd"]);
+        SemuLaunchPlan keptLaunch = PlaylistSpecLaunch.launch(bed, "flycast", "dreamcast", "", "Kept.m3u");
+        contract.expect(keptLaunch.ok() && keptLaunch.argv.last().equals(PathTools.join(kept, "Kept (Disc 1).chd")), "an absolute first disc inside the system ROM directory launches as written: " + keptLaunch.error);
         bed.write(bed.romPath("dreamcast", "Taxi.chd"), "");
         SemuLaunchPlan taxi = PlaylistSpecLaunch.launch(bed, "flycast", "dreamcast", "", "Taxi.chd");
         PlaylistSpecLaunch.expectArgv(contract, "flycast single disc after a playlist", bed, taxi, ["-config", "window:fullscreen=yes"], bed.romPath("dreamcast", "Taxi.chd"));
@@ -118,6 +125,39 @@ class PlaylistSpecLaunch {  // exact argv per emulator over scratch multi-disc f
         string nested = PlaylistSpecLaunch.writeFolder(bed, "dreamcast", "Nested", "Other.m3u\n", ["Nested (Disc 1).chd"]);
         bed.write(PathTools.join(nested, "Other.m3u"), "Nested (Disc 1).chd\n");
         PlaylistSpecLaunch.refuse(contract, bed, "Nested.m3u", "Other.m3u", "a playlist naming another playlist is refused");
+        string folder = PlaylistSpecLaunch.writeFolder(bed, "dreamcast", "Folder", "Sub\n", ["Sub/inner.chd"]);  // the first entry is a directory
+        contract.expect(!SemuPaths.fileInside(bed.roms, PathTools.join(folder, "Sub")) && SemuPaths.fileInside(bed.roms, PathTools.join(folder, "Sub/inner.chd")), "fileInside takes a regular file under the root, never a directory");
+        PlaylistSpecLaunch.refuse(contract, bed, "Folder.m3u", "directory: Sub", "a first entry naming a folder is refused, not handed to the emulator");
+    }
+
+    class void expectFolder(Contract contract, string label, SemuLaunchPlan launch, string folder) {  // read back through Flycast's own grammar
+        Vector<string> seen = FlycastConfigGrammar.contentPath(launch.argv);
+        contract.expect(launch.ok() && seen.size() == 1 && seen.get(0).equals(folder), label + " reaches Flycast as exactly its folder: [" + seen.join("] [") + "] from " + launch.argv.join(" | "));
+        contract.expect(launch.notice.isEmpty(), label + " needs no notice: " + launch.notice);
+    }
+
+    class void quoting(Contract contract) {  // every folder name either reaches Flycast intact or is left out, and disc 1 always boots
+        StandaloneSpecBed bed = PlaylistSpecLaunch.dreamcastBed();
+        for name in ["JoJo's Venture, Set", "Colon: Eq=1", "Say \"Hi\""] {
+            string folder = PlaylistSpecLaunch.writeFolder(bed, "dreamcast", name, name + " (Disc 1).chd\n", [name + " (Disc 1).chd"]);
+            PlaylistSpecLaunch.expectFolder(contract, "a folder named " + name, PlaylistSpecLaunch.launch(bed, "flycast", "dreamcast", "", name + ".m3u"), folder);
+        }
+        SemuLaunchPlan single = PlaylistSpecLaunch.launch(bed, "flycast", "dreamcast", "", "Say \"Hi\".m3u");
+        contract.expect(single.argv.contains("config:Dreamcast.ContentPath='" + bed.romPath("dreamcast", "Say \"Hi\".m3u") + "'"), "a folder holding a double quote is single-quoted: " + single.argv.join(" | "));
+        for name in ["Semi;colon", "It's \"Both\""] {
+            string folder = PlaylistSpecLaunch.writeFolder(bed, "dreamcast", name, name + " (Disc 1).chd\n", [name + " (Disc 1).chd"]);
+            SemuLaunchPlan launch = PlaylistSpecLaunch.launch(bed, "flycast", "dreamcast", "", name + ".m3u");
+            contract.expect(launch.ok() && launch.argv.last().equals(PathTools.join(folder, name + " (Disc 1).chd")), "a folder named " + name + " still boots disc 1: " + launch.error);
+            contract.lacks(launch.argv.join(" | "), "ContentPath", "a folder named " + name + " cannot be expressed, so the picker argument is left out");
+            contract.expect(launch.notice.contains("cannot be quoted") && launch.json().contains("cannot be quoted"), "a folder named " + name + " says why in the plan: " + launch.notice);
+        }
+        Vector<string> cut = FlycastConfigGrammar.contentPath(["-config", "config:Dreamcast.ContentPath=\"/roms/dreamcast/Say \"Hi\".m3u\""]);
+        Vector<string> split = FlycastConfigGrammar.contentPath(["-config", "config:Dreamcast.ContentPath=\"/roms/dreamcast/Semi;colon.m3u\""]);
+        contract.expect(cut.join("|").equals("/roms/dreamcast/Say ") && split.join("|").equals("/roms/dreamcast/Semi|colon.m3u"), "the port reproduces the reviewed breakage of the always-double-quoted form: " + cut.join("|") + " / " + split.join("|"));
+        contract.expect(FlycastConfigGrammar.paths("\"a;b\";c").join("|").equals("a;b|c") && FlycastConfigGrammar.paths("\"say \"\"hi\"\"\"").join("|").equals("say \"hi\""), "the port reads the list loader's quoted entries");
+        JSONValue quote = JSONValue.parse("{\"marks\":[\"\\\"\",\"'\"],\"unquotable\":[\";\"]}");
+        contract.expect(SemuPlaylist.quoted(quote, "/a/b").equals("\"/a/b\"") && SemuPlaylist.quoted(quote, "/a\"b").equals("'/a\"b'") && SemuPlaylist.quoted(quote, "/a\"'b").isEmpty() && SemuPlaylist.quoted(quote, "/a;b").isEmpty(),
+            "quoted takes the first mark the value lacks, and none for both marks or a semicolon");
     }
 
     class void pcsx2(Contract contract) {
@@ -134,26 +174,27 @@ class PlaylistSpecLaunch {  // exact argv per emulator over scratch multi-disc f
     class void passthrough(Contract contract) {
         StandaloneSpecBed bed = StandaloneSpecBed();
         for core in ["mednafen_psx", "flycast"] { bed.write(PathTools.join(bed.fixture.plan.assetRoot, "lib/retroarch/cores/" + core + "_libretro.so"), ""); }
-        string gcName = "Resident Evil (USA)";
-        string gc = PlaylistSpecLaunch.writeFolder(bed, "gc", gcName, gcName + " (Disc 1).rvz\n" + gcName + " (Disc 2).rvz\n", [gcName + " (Disc 1).rvz", gcName + " (Disc 2).rvz"]);
-        PlaylistSpecLaunch.expectPassed(contract, "dolphin gc", PlaylistSpecLaunch.launch(bed, "dolphin", "gc", "", gcName + ".m3u"), PathTools.join(gc, gcName + ".m3u"));
-        string psxName = "Ace Combat 3 (USA)";
-        string psx = PlaylistSpecLaunch.writeFolder(bed, "psx", psxName, psxName + " (Disc 1).chd\r\n" + psxName + " (Disc 2).chd\r\n", [psxName + " (Disc 1).chd", psxName + " (Disc 2).chd"]);
-        PlaylistSpecLaunch.expectPassed(contract, "retroarch psx mednafen_psx", PlaylistSpecLaunch.launch(bed, "retroarch", "psx", "mednafen_psx", psxName + ".m3u"), PathTools.join(psx, psxName + ".m3u"));
-        string dcName = PlaylistSpecLaunch.veronica();
-        string dc = PlaylistSpecLaunch.writeFolder(bed, "dreamcast", dcName, dcName + " (USA) (Disc 1).chd\n" + dcName + " (USA) (Disc 2).chd", [dcName + " (USA) (Disc 1).chd", dcName + " (USA) (Disc 2).chd"]);
-        string dcPlaylist = PathTools.join(dc, dcName + ".m3u");
-        PlaylistSpecLaunch.expectPassed(contract, "retroarch dreamcast flycast core", PlaylistSpecLaunch.launch(bed, "retroarch", "dreamcast", "flycast", dcPlaylist), dcPlaylist);
+        string gameCubeName = "Resident Evil (USA)";
+        string gameCubeFolder = PlaylistSpecLaunch.writeFolder(bed, "gc", gameCubeName, gameCubeName + " (Disc 1).rvz\n" + gameCubeName + " (Disc 2).rvz\n", [gameCubeName + " (Disc 1).rvz", gameCubeName + " (Disc 2).rvz"]);
+        PlaylistSpecLaunch.expectPassed(contract, "dolphin gc", PlaylistSpecLaunch.launch(bed, "dolphin", "gc", "", gameCubeName + ".m3u"), PathTools.join(gameCubeFolder, gameCubeName + ".m3u"));
+        string playStationName = "Ace Combat 3 (USA)";
+        string playStationFolder = PlaylistSpecLaunch.writeFolder(bed, "psx", playStationName, playStationName + " (Disc 1).chd\r\n" + playStationName + " (Disc 2).chd\r\n", [playStationName + " (Disc 1).chd", playStationName + " (Disc 2).chd"]);
+        PlaylistSpecLaunch.expectPassed(contract, "retroarch psx mednafen_psx", PlaylistSpecLaunch.launch(bed, "retroarch", "psx", "mednafen_psx", playStationName + ".m3u"), PathTools.join(playStationFolder, playStationName + ".m3u"));
+        string dreamcastName = PlaylistSpecLaunch.veronica();
+        string dreamcastFolder = PlaylistSpecLaunch.writeFolder(bed, "dreamcast", dreamcastName, dreamcastName + " (USA) (Disc 1).chd\n" + dreamcastName + " (USA) (Disc 2).chd", [dreamcastName + " (USA) (Disc 1).chd", dreamcastName + " (USA) (Disc 2).chd"]);
+        string dreamcastPlaylist = PathTools.join(dreamcastFolder, dreamcastName + ".m3u");
+        PlaylistSpecLaunch.expectPassed(contract, "retroarch dreamcast flycast core", PlaylistSpecLaunch.launch(bed, "retroarch", "dreamcast", "flycast", dreamcastPlaylist), dreamcastPlaylist);
     }
 
     class void run(Contract contract) {
         PlaylistSpecLaunch.flycast(contract);
+        PlaylistSpecLaunch.quoting(contract);
         PlaylistSpecLaunch.pcsx2(contract);
         PlaylistSpecLaunch.passthrough(contract);
     }
 }
 
-class PlaylistSpecDeclarations {  // every .m3u binding states how its emulator opens one
+class PlaylistSpecDeclarations {  // every .m3u binding states how its emulator, or its core, opens one
     class void table(Contract contract) {
         for target in ["linux-desktop", "steam-deck", "macos"] {
             Fixture fixture = Fixture(target);
@@ -163,8 +204,10 @@ class PlaylistSpecDeclarations {  // every .m3u binding states how its emulator 
                 if (!SemuChecker.listsPlaylists(system)) { continue; }
                 for binding in system.bindingsFor(fixture.plan.platform) {
                     bindings++;
-                    JSONValue platform = fixture.model.emulator(binding.emulator).platform(fixture.plan.platform);
+                    SemuEmulator emulator = fixture.model.emulator(binding.emulator);
+                    JSONValue platform = emulator.platform(fixture.plan.platform);
                     contract.expect(SemuChecker.playlistDeclared(platform), f"{target} {binding.emulator} declares how it opens {systemId} playlists");
+                    contract.expect(SemuContent.opens(emulator, platform, binding.core, ".m3u"), f"{target} {SemuContent.label(binding)} opens {systemId} playlists, itself or through Semu");
                 }
             }
             contract.expect(bindings > 0, target + " binds emulators to systems that list .m3u");
@@ -182,11 +225,15 @@ class PlaylistSpecDeclarations {  // every .m3u binding states how its emulator 
         contract.expect(SemuJson.strings(SemuJson.get(fixture.model.emulator("pcsx2").platform("linux"), "playlist.args")).isEmpty(), "pcsx2 needs no playlist arguments");
     }
 
-    class string mutated(string emulatorId, string playlist) {  // checker diagnostics after one in-memory declaration change
-        Fixture fixture = Fixture("linux-desktop");
-        fixture.model.emulator(emulatorId).platform("linux").set("playlist", JSONValue.parse(playlist));
+    class string diagnose(Fixture fixture) {  // checker diagnostics after an in-memory change
         SemuDiagnostics diagnostics = SemuDiagnostics();
         return SemuChecker.check(fixture.model, fixture.plan, diagnostics) ? "" : diagnostics.render();
+    }
+
+    class string mutated(string emulatorId, string playlist) {  // one platform's playlist block replaced
+        Fixture fixture = Fixture("linux-desktop");
+        fixture.model.emulator(emulatorId).platform("linux").set("playlist", JSONValue.parse(playlist));
+        return PlaylistSpecDeclarations.diagnose(fixture);
     }
 
     class void mutations(Contract contract) {
@@ -196,21 +243,33 @@ class PlaylistSpecDeclarations {  // every .m3u binding states how its emulator 
         contract.contains(PlaylistSpecDeclarations.mutated("dolphin", "{\"open\":\"native\",\"args\":[\"-x\"]}"), "only a first_entry playlist takes arguments", "playlist.args on a native playlist fails the checker");
         contract.contains(PlaylistSpecDeclarations.mutated("flycast", "{\"open\":\"first_entry\",\"args\":[\"-config\",1]}"), "must be an array of strings", "a non-string playlist argument fails the checker");
         contract.contains(PlaylistSpecDeclarations.mutated("pcsx2", "\"first_entry\""), "platforms.linux.playlist: must be an object", "a playlist block that is not an object fails the checker");
+        contract.contains(PlaylistSpecDeclarations.mutated("flycast", "{\"open\":\"first_entry\",\"quote\":{\"marks\":[\"''\"]}}"), "playlist.quote: needs marks", "a quote mark longer than one character fails the checker");
+        Fixture n64 = Fixture("linux-desktop");  // the reviewed gap: a native core that reads no playlist
+        n64.model.system("n64").extensions.push(".m3u");
+        contract.contains(PlaylistSpecDeclarations.diagnose(n64), "retroarch/mupen64plus_next passes .m3u on (playlist.open native) but declares no .m3u", "n64 listing .m3u fails: Mupen64Plus-Next reads no playlist");
+        Fixture core = Fixture("steam-deck");
+        SemuContent.core(core.model.emulator("retroarch"), "flycast").set("extensions", JSONValue.parse("[\".cdi\",\".chd\",\".cue\",\".gdi\"]"));
+        contract.contains(PlaylistSpecDeclarations.diagnose(core), "retroarch/flycast passes .m3u on", "the flycast core without .m3u fails dreamcast, though RetroArch itself says native");
+        Fixture standalone = Fixture("macos");
+        SemuJson.get(standalone.model.emulator("dolphin").definition, "content").set("extensions", JSONValue.parse("[\".iso\",\".rvz\"]"));
+        contract.contains(PlaylistSpecDeclarations.diagnose(standalone), "dolphin passes .m3u on", "a native standalone emulator that declares no .m3u fails gc");
     }
 
-    class void declarationDrives(Contract contract) {  // flip the declaration, not the emulator, and argv follows
-        StandaloneSpecBed bed = StandaloneSpecBed();
-        SemuJson.get(bed.fixture.model.emulator("flycast").platform("linux"), "playlist").set("open", JSONValue.makeString("native"));
-        string name = PlaylistSpecLaunch.veronica();
-        string folder = PlaylistSpecLaunch.writeFolder(bed, "dreamcast", name, name + " (USA) (Disc 1).chd\n", [name + " (USA) (Disc 1).chd"]);
-        PlaylistSpecLaunch.expectPassed(contract, "flycast declared native", PlaylistSpecLaunch.launch(bed, "flycast", "dreamcast", "", name + ".m3u"), PathTools.join(folder, name + ".m3u"));
+    class void declarationDrives(Contract contract) {  // flip or empty the declaration, not the emulator, and argv follows
+        for playlist in ["{\"open\":\"native\"}", "{}"] {
+            StandaloneSpecBed bed = StandaloneSpecBed();
+            bed.fixture.model.emulator("flycast").platform("linux").set("playlist", JSONValue.parse(playlist));
+            string name = PlaylistSpecLaunch.veronica();
+            string folder = PlaylistSpecLaunch.writeFolder(bed, "dreamcast", name, name + " (USA) (Disc 1).chd\n", [name + " (USA) (Disc 1).chd"]);
+            PlaylistSpecLaunch.expectPassed(contract, "flycast with playlist " + playlist, PlaylistSpecLaunch.launch(bed, "flycast", "dreamcast", "", name + ".m3u"), PathTools.join(folder, name + ".m3u"));
+        }
     }
 
     class void sourceGuards(Contract contract, string project) {  // shared code names no emulator and holds only classes
         string source = FileSystem.readText(PathTools.join(project, "src/launch/playlist.btrc"));
         string lowered = source.toLower();
         contract.expect(!source.isEmpty(), "src/launch/playlist.btrc exists");
-        for name in ["flycast", "pcsx2", "dolphin", "retroarch", "dreamcast", "ps2"] { contract.lacks(lowered, name, "src/launch/playlist.btrc stays emulator- and system-generic"); }
+        for name in ["flycast", "pcsx2", "dolphin", "retroarch", "dreamcast", "ps2", "contentpath"] { contract.lacks(lowered, name, "src/launch/playlist.btrc stays emulator- and system-generic"); }
         int declarations = 0;
         int strays = 0;
         for line in Strings.split(source, "\n") {
@@ -229,34 +288,10 @@ class PlaylistSpecDeclarations {  // every .m3u binding states how its emulator 
     }
 }
 
-class PlaylistSpecExtensions {  // ES-DE offers only what a bound emulator opens
-    class void expectExtensions(Contract contract, Fixture fixture, string systemId, Vector<string> kept, Vector<string> dropped) {
-        Vector<string> extensions = fixture.model.system(systemId).extensions;
-        for extension in kept { contract.expect(extensions.contains(extension), f"{systemId} still offers {extension}"); }
-        for extension in dropped { contract.expect(!extensions.contains(extension), f"{systemId} no longer offers {extension}, which no bound emulator opens"); }
-    }
-
-    class void run(Contract contract) {
-        Fixture fixture = Fixture("steam-deck");
-        PlaylistSpecExtensions.expectExtensions(contract, fixture, "dreamcast", [".m3u", ".chd", ".7z", ".zip", ".lst"], [".iso"]);
-        PlaylistSpecExtensions.expectExtensions(contract, fixture, "ps2", [".m3u", ".iso", ".chd"], [".7z", ".zip"]);
-        PlaylistSpecExtensions.expectExtensions(contract, fixture, "gc", [".m3u", ".rvz", ".wad", ".wbfs"], [".7z", ".zip"]);
-        PlaylistSpecExtensions.expectExtensions(contract, fixture, "psx", [".m3u", ".chd", ".7z", ".zip"], [".ecm"]);
-        PlaylistSpecExtensions.expectExtensions(contract, fixture, "genesis", [".md", ".7z", ".zip"], [".32x"]);
-        string systems = SemuEsDeDocuments.systems(fixture.model, fixture.plan, fixture.diagnostics);
-        int start = systems.indexOf("<name>dreamcast</name>");
-        string entry = start < 0 ? "" : systems.substring(start, systems.len() - start);
-        entry = entry.contains("</system>") ? entry.substring(0, entry.indexOf("</system>")) : "";
-        contract.contains(entry, ".m3u .M3U", "es_systems.xml offers Dreamcast playlists in both cases");
-        contract.lacks(entry, ".iso", "es_systems.xml offers no Dreamcast .iso");
-    }
-}
-
 class PlaylistSpecContract {
     class void run(Contract contract) {
         PlaylistSpecParse.run(contract);
         PlaylistSpecLaunch.run(contract);
         PlaylistSpecDeclarations.run(contract);
-        PlaylistSpecExtensions.run(contract);
     }
 }

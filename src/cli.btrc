@@ -134,6 +134,7 @@ class SemuCli {
             Console.error("semu: " + launch.error);
             return 1;
         }
+        if (!launch.notice.isEmpty()) { Console.error("semu: " + launch.notice); }  // the game still starts
         int child = SemuProcessGroup.start(launch.argv, launch.environment);
         if (child < 0) {
             Console.error("semu: could not start " + launch.argv.get(0));

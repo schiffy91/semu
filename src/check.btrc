@@ -5,11 +5,68 @@ import ./lib/json.btrc;
 import ./model.btrc;
 import ./resolve.btrc;
 
+// What one binding opens, from emulator.json "content": a standalone emulator lists its own
+// extensions; a core-loading emulator lists each core's, plus the archives it unpacks for a core
+// that does not block extraction (that core then opens the archive itself, if at all).
+class SemuContent {
+    class JSONValue core(SemuEmulator emulator, string core) { return SemuJson.get(emulator.definition, "content.cores." + core); }
+
+    class Vector<string> opened(SemuEmulator emulator, string core) {
+        Vector<string> result = SemuJson.strings(SemuJson.get(emulator.definition, "content.extensions"));
+        if (core.isEmpty()) { return result; }
+        JSONValue declared = SemuContent.core(emulator, core);
+        for extension in SemuJson.strings(SemuJson.get(declared, "extensions")) { result.push(extension); }
+        if (!SemuJson.boolAt(declared, "block_extract", false)) {
+            for archive in SemuJson.strings(SemuJson.get(emulator.definition, "content.archives")) { result.push(archive); }
+        }
+        return result;
+    }
+
+    // Loaders read the last suffix, so a declared .iso also opens a system's .nkit.iso. A
+    // first_entry playlist is opened by Semu, which hands the emulator disc 1.
+    class bool opens(SemuEmulator emulator, JSONValue platform, string core, string extension) {
+        string lowered = extension.toLower();
+        if (lowered.equals(".m3u") && SemuJson.textAt(platform, "playlist.open").equals("first_entry")) { return true; }
+        for declared in SemuContent.opened(emulator, core) { if (lowered.endsWith(declared)) { return true; } }
+        return false;
+    }
+
+    class string label(SemuSystemBinding binding) { return binding.core.isEmpty() ? binding.emulator : binding.emulator + "/" + binding.core; }
+
+    class void checkList(string file, string field, JSONValue list, SemuDiagnostics diagnostics) {  // lowercase extensions with their dot
+        bool valid = list != null && list.isArray();
+        for (int index = 0; valid && index < list.size(); index++) {
+            JSONValue item = list.at(index);
+            valid = item.isString() && item.asString().startsWith(".") && item.asString().equals(item.asString().toLower());
+        }
+        if (!valid) { diagnostics.add(file, field, "must be an array of lowercase extensions starting with a dot"); }
+    }
+
+    class void check(string file, SemuEmulator emulator, JSONValue platform, SemuDiagnostics diagnostics) {
+        JSONValue content = SemuJson.get(emulator.definition, "content");
+        if (!content.isObject()) {
+            diagnostics.add(file, "content", "must declare what the emulator opens");
+            return;
+        }
+        if (content.has("extensions")) { SemuContent.checkList(file, "content.extensions", content.get("extensions"), diagnostics); }
+        if (content.has("archives")) { SemuContent.checkList(file, "content.archives", content.get("archives"), diagnostics); }
+        bool loadsCores = SemuJson.get(platform, "core_loader").isObject();
+        if (!loadsCores && !content.has("extensions")) { diagnostics.add(file, "content.extensions", "missing"); }
+        if (!loadsCores) { return; }
+        JSONValue cores = content.get("cores");
+        if (cores == null || !cores.isObject()) {
+            diagnostics.add(file, "content.cores", "a core-loading emulator declares each core's extensions");
+            return;
+        }
+        for core in cores.keys() { SemuContent.checkList(file, f"content.cores.{core}.extensions", SemuJson.get(cores.get(core), "extensions"), diagnostics); }
+    }
+}
+
 class SemuChecker {
-    class bool validId(string id) {
-        if (id.isEmpty()) { return false; }
-        for (int index = 0; index < id.len(); index++) {
-            int value = id.charAt(index);
+    class bool validId(string identifier) {
+        if (identifier.isEmpty()) { return false; }
+        for (int index = 0; index < identifier.len(); index++) {
+            int value = identifier.charAt(index);
             bool lower = value >= 97 && value <= 122;
             bool digit = value >= 48 && value <= 57;
             if (!lower && !digit && value != 45 && value != 95) { return false; }
@@ -33,13 +90,32 @@ class SemuChecker {
             if (!emulator.supports(plan.platform)) {
                 diagnostics.add(system.file, "emulators", f"{binding.emulator} has no {plan.platform} platform slice");
             }
-            JSONValue loader = SemuJson.get(emulator.platform(plan.platform), "core_loader");
+            JSONValue platform = emulator.platform(plan.platform);
+            JSONValue loader = SemuJson.get(platform, "core_loader");
             if (loader.isObject() && binding.core.isEmpty()) {
                 diagnostics.add(system.file, "emulators", f"{binding.emulator} binding needs a core");
             }
-            if (SemuChecker.listsPlaylists(system) && !SemuChecker.playlistDeclared(emulator.platform(plan.platform))) {  // ES-DE will hand it an .m3u
-                diagnostics.add(system.file, "emulators", f"{binding.emulator} must declare platforms.{plan.platform}.playlist.open (native or first_entry): {system.id} lists .m3u");
+            if (loader.isObject() && !binding.core.isEmpty() && !SemuContent.core(emulator, binding.core).isObject()) {
+                diagnostics.add(system.file, "emulators", f"{binding.emulator} must declare content.cores.{binding.core}.extensions");
             }
+            if (!SemuChecker.listsPlaylists(system)) { continue; }  // below, ES-DE will hand it an .m3u
+            if (!SemuChecker.playlistDeclared(platform)) {
+                diagnostics.add(system.file, "emulators", f"{binding.emulator} must declare platforms.{plan.platform}.playlist.open (native or first_entry): {system.id} lists .m3u");
+            } else if (!SemuContent.opens(emulator, platform, binding.core, ".m3u")) {  // native: the emulator, or its core, must read it
+                diagnostics.add(system.file, "emulators", f"{SemuContent.label(binding)} passes .m3u on (playlist.open native) but declares no .m3u in its content extensions: {system.id} lists .m3u");
+            }
+        }
+        SemuChecker.checkExtensions(model, plan, system, diagnostics);
+    }
+
+    class void checkExtensions(SemuModel model, SemuPlan plan, SemuSystem system, SemuDiagnostics diagnostics) {  // ES-DE offers only what a bound emulator opens
+        for extension in system.extensions {
+            bool opened = false;
+            for binding in system.bindingsFor(plan.platform) {
+                SemuEmulator emulator = model.emulator(binding.emulator);
+                if (emulator != null && SemuContent.opens(emulator, emulator.platform(plan.platform), binding.core, extension)) { opened = true; }
+            }
+            if (!opened) { diagnostics.add(system.file, "rom.extensions", f"{extension}: no emulator bound on {plan.platform} declares that it opens it"); }
         }
     }
 
@@ -62,12 +138,21 @@ class SemuChecker {
             return;
         }
         if (!SemuChecker.playlistDeclared(platform)) { diagnostics.add(file, field + ".open", "must be native or first_entry"); }
+        if (playlist.has("quote")) { SemuChecker.checkQuote(file, field + ".quote", playlist.get("quote"), diagnostics); }
         if (!playlist.has("args")) { return; }
         JSONValue arguments = playlist.get("args");
         bool allStrings = arguments.isArray();
         for (int index = 0; allStrings && index < arguments.size(); index++) { allStrings = arguments.at(index).isString(); }
         if (!allStrings) { diagnostics.add(file, field + ".args", "must be an array of strings"); }
         if (!SemuJson.textAt(playlist, "open").equals("first_entry")) { diagnostics.add(file, field + ".args", "only a first_entry playlist takes arguments"); }
+    }
+
+    class void checkQuote(string file, string field, JSONValue quote, SemuDiagnostics diagnostics) {  // single-character marks and refusals
+        bool valid = quote.isObject() && SemuJson.get(quote, "marks").isArray() && SemuJson.strings(quote.get("marks")).size() > 0;
+        for name in ["marks", "unquotable"] {
+            for character in SemuJson.strings(SemuJson.get(quote, name)) { if (character.len() != 1) { valid = false; } }
+        }
+        if (!valid) { diagnostics.add(file, field, "needs marks (and may name unquotable), each one character"); }
     }
 
     class void checkEmulator(SemuPlan plan, SemuEmulator emulator, SemuDiagnostics diagnostics) {
@@ -81,6 +166,7 @@ class SemuChecker {
         string executable = SemuJson.textAt(platform, "executable");
         if (executable.isEmpty()) { diagnostics.add(file, "platforms." + plan.platform + ".executable", "missing"); }
         SemuChecker.checkPlaylist(file, plan.platform, platform, diagnostics);
+        SemuContent.check(file, emulator, platform, diagnostics);
         JSONValue files = emulator.profile.get("files");
         if (files == null || !files.isArray()) { diagnostics.add(emulator.profileFile, "files", "must be an array"); }
         JSONValue compiler = emulator.profile.get("compiler");

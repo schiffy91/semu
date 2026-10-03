@@ -27,8 +27,8 @@
 # FIRST is the second after launch of the first press; buttons are virtual_pad names (south, east,
 # north, west, tl, tr, select, start, dpad_up, dpad_down, dpad_left, dpad_right), one every GAP
 # seconds (default 6, SEMU_INPUT_GAP); a second case of one SYSTEM-EMULATOR[-CORE] gets a -2 suffix.
-# OUT/<case>/ gets before.png, after-<n>-<button>.png, cmdline (the emulator argv), run.log
-# and result; OUT/summary collects every result; OUT/done marks the end.
+# OUT/<case>/ gets before.png, after-<n>-<button>.png, cmdline (the emulator argv, read the moment
+# it is first seen), run.log and result; OUT/summary collects every result; OUT/done marks the end.
 set -u
 pad="$1"; cases="$2"; out="$3"
 gap="${SEMU_INPUT_GAP:-6}"
@@ -43,6 +43,14 @@ printf "[slot 0]\nVID=0x28de\nPID=0x1205\ntype=steamdeck\nname=Steam Deck Contro
 descendants() { local child; for child in $(pgrep -P "$1"); do echo "$child"; descendants "$child"; done; }
 battery() { cat /sys/class/power_supply/BAT1/capacity 2>/dev/null || echo 100; }
 charging() { grep -q -E 'Charging|Full' /sys/class/power_supply/BAT1/status 2>/dev/null; }
+leaf_of() { local leaf="$1" child; while [ -n "$leaf" ] && child=$(pgrep -P "$leaf" | tail -1) && [ -n "$child" ]; do leaf=$child; done; echo "$leaf"; }
+record_argv() {  # $1 the emulator: its argv once it has exec'd, silently nothing if it is already gone
+  local leaf="$1"
+  if [ -s "$dir/cmdline" ] || [ -z "$leaf" ] || [ "$leaf" = "$game" ] || [ "$(cat "/proc/$leaf/comm" 2>/dev/null)" = semu-btrc ]; then return 0; fi
+  { tr '\0' '\n' < "/proc/$leaf/cmdline"; } > "$dir/cmdline" 2>/dev/null
+  [ -s "$dir/cmdline" ] && note "argv-last: $(tail -1 "$dir/cmdline")"  # the file the emulator was told to open
+  return 0
+}
 
 while IFS= read -r line; do
   case "$line" in ''|'#'*) continue ;; esac
@@ -82,16 +90,24 @@ while IFS= read -r line; do
     bwrap --dev-bind / / --tmpfs /tmp/.X11-unix $cover -- gamescope --backend headless -W 1280 -H 800 -w 1280 -h 800 -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
   headless=$!
   game=""; display=""
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 300); do  # every 0.2 s for 60 s: an emulator that exits within a second is still seen
     for pid in $(descendants "$headless"); do
       [ -z "$display" ] && display="$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | sed -n 's/^GAMESCOPE_WAYLAND_DISPLAY=//p')"
       [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = semu-btrc ] && game=$pid
     done
+    record_argv "$(leaf_of "$game")"
     [ -n "$game" ] && [ -n "$display" ] && break
     kill -0 "$headless" 2>/dev/null || break
-    sleep 1
+    sleep 0.2
   done
   [ -n "$game" ] && note "semu-btrc: pid $game after $(( $(date +%s) - start )) s" || note "semu-btrc: never started"
+  for _ in $(seq 1 100); do  # the emulator's argv the moment it appears, before any press
+    [ -n "$game" ] || break
+    record_argv "$(leaf_of "$game")"
+    [ -s "$dir/cmdline" ] && break
+    kill -0 "$game" 2>/dev/null || break
+    sleep 0.1
+  done
 
   capture() {  # capture NAME AT: waits until AT seconds after launch, then screenshots
     while [ $(( $(date +%s) - start )) -lt "$2" ]; do sleep 1; done
@@ -108,8 +124,8 @@ while IFS= read -r line; do
     [ -n "$game" ] && kill -TERM "$game" 2>/dev/null
     { echo "== $name"; cat "$dir/result"; } >> "$out/summary"; date > "$out/done"; exit 1
   fi
-  leaf="$game"; while [ -n "$leaf" ] && child=$(pgrep -P "$leaf" | tail -1) && [ -n "$child" ]; do leaf=$child; done
-  [ -n "$leaf" ] && tr '\0' '\n' < "/proc/$leaf/cmdline" > "$dir/cmdline" 2>/dev/null && note "argv-last: $(tail -1 "$dir/cmdline")"  # the file the emulator was told to open
+  record_argv "$(leaf_of "$game")"
+  [ -s "$dir/cmdline" ] || note "argv: the emulator was never seen"
   capture before $(( first - 2 ))
   index=1; at=$(( first + gap - 1 ))
   for button in $buttons; do capture "after-$index-$button" "$at"; index=$(( index + 1 )); at=$(( at + gap )); done

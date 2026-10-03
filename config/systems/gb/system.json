@@ -10,10 +10,8 @@
   "rom": {
     "dir": "gb",
     "extensions": [
-      ".bin",
       ".dmg",
       ".gb",
-      ".gbs",
       ".7z",
       ".zip"
     ]
@@ -54,6 +52,7 @@
   },
   "doc": {
     "hardware": "DMG-01 reflective STN LCD",
-    "intent": "The default DMG screen preset controls the restrained olive palette, LCD matrix, and STN response. The default DMG shell has no glass map; the picture's reflection on its bezel band comes from the package's own screen reflection (config/bezels/gb-dmg-shell)."
+    "intent": "The default DMG screen preset controls the restrained olive palette, LCD matrix, and STN response. The default DMG shell has no glass map; the picture's reflection on its bezel band comes from the package's own screen reflection (config/bezels/gb-dmg-shell).",
+    "extensions": "Only what Gambatte declares it opens (gb, gbc, dmg) plus the archives RetroArch unpacks; SemuChecker holds every system to its bound emulators' content extensions. .bin and .gbs (a sound-file format Gambatte cannot play) were dropped; neither occurs in the library."
   }
 }

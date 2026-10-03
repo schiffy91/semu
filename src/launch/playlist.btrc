@@ -9,7 +9,8 @@ class SemuPlaylistLaunch {  // what one picked game puts on argv
     public string rom;  // the file that goes last on argv
     public string playlist;  // the playlist Semu opened, or empty
     public string directory;  // the opened playlist's own folder
-    public Vector<string> arguments;  // the platform's playlist.args, tokens not yet resolved
+    public Vector<string> arguments;  // the platform's playlist.args, playlist tokens quoted as declared
+    public string notice;  // why playlist.args were left out, else empty
     public string error;
 
     public SemuPlaylistLaunch(string rom) {
@@ -17,6 +18,7 @@ class SemuPlaylistLaunch {  // what one picked game puts on argv
         self.playlist = "";
         self.directory = "";
         self.arguments = [];
+        self.notice = "";
         self.error = "";
     }
 }
@@ -38,6 +40,35 @@ class SemuPlaylist {  // an .m3u ES-DE picked, for emulators that open none
             if (!entry.isEmpty() && !entry.startsWith("#")) { result.push(entry); }
         }
         return result;
+    }
+
+    // The value inside the first declared mark it does not contain. A value holding every mark,
+    // or a character the emulator's parser splits on, cannot be expressed: "".
+    class string quoted(JSONValue quote, string value) {
+        for character in SemuJson.strings(SemuJson.get(quote, "unquotable")) { if (value.contains(character)) { return ""; } }
+        for mark in SemuJson.strings(SemuJson.get(quote, "marks")) { if (!value.contains(mark)) { return mark + value + mark; } }
+        return "";
+    }
+
+    // playlist.args, with ${playlist_dir} and ${playlist} quoted when the platform declares a
+    // quote. One that cannot be quoted leaves all of them out: disc 1 boots, only the extra is lost.
+    class void arguments(JSONValue playlist, SemuPlaylistLaunch content) {
+        Vector<string> templates = SemuJson.strings(SemuJson.get(playlist, "args"));
+        JSONValue quote = SemuJson.get(playlist, "quote");
+        if (!quote.isObject()) {
+            content.arguments = templates;
+            return;
+        }
+        string folder = SemuPlaylist.quoted(quote, content.directory);
+        string file = SemuPlaylist.quoted(quote, content.playlist);
+        for argument in templates {
+            if ((argument.contains("${playlist_dir}") && folder.isEmpty()) || (argument.contains("${playlist}") && file.isEmpty())) {
+                content.arguments = [];
+                content.notice = "playlist arguments left out, the path cannot be quoted for this emulator: " + content.playlist;
+                return;
+            }
+            content.arguments.push(argument.replace("${playlist_dir}", folder).replace("${playlist}", file));
+        }
     }
 
     // first_entry: the emulator gets disc 1, which must pass the ROM rule
@@ -64,7 +95,7 @@ class SemuPlaylist {  // an .m3u ES-DE picked, for emulators that open none
         content.rom = disc;
         content.playlist = rom;
         content.directory = PathTools.dirname(rom);
-        content.arguments = SemuJson.strings(SemuJson.get(platform, "playlist.args"));
+        SemuPlaylist.arguments(SemuJson.get(platform, "playlist"), content);
         return content;
     }
 }

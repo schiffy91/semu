@@ -21,9 +21,7 @@
       ".tgc",
       ".wad",
       ".wbfs",
-      ".wia",
-      ".7z",
-      ".zip"
+      ".wia"
     ]
   },
   "emulators": [
@@ -75,6 +73,7 @@
   },
   "doc": {
     "hardware": "consumer CRT/component TV",
-    "intent": "Dolphin is pinned to draw 4:3 (CustomStretch in GFX.ini, SYSCONF.IPL.AR=False) until it reports the aspect it draws; then Dolphin/game settings should drive 4:3 vs 16:9 presentation."
+    "intent": "Dolphin is pinned to draw 4:3 (CustomStretch in GFX.ini, SYSCONF.IPL.AR=False) until it reports the aspect it draws; then Dolphin/game settings should drive 4:3 vs 16:9 presentation.",
+    "extensions": "Only formats Dolphin opens: a .7z or .zip ends in \"Could not recognize file\" and a modal \"Failed to init core\", so neither is offered (as for gc). None occurs in the library."
   }
 }

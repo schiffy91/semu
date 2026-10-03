@@ -11,9 +11,7 @@
     "dir": "n64",
     "extensions": [
       ".bin",
-      ".d64",
       ".n64",
-      ".ndd",
       ".u1",
       ".v64",
       ".z64",
@@ -67,6 +65,7 @@
     "hardware": "consumer CRT over composite/S-Video",
     "intent": "Do not sharpen away the hardware VI softness.",
     "orientation": "The RetroArch frame_output contract requires an upright bottom-left-origin game frame in GL space; the N64 acceptance test composes this system binding with that platform contract.",
-    "shader": "Mupen renders high-res; the compositor applies the declared soft 240p preset when shaders are enabled."
+    "shader": "Mupen renders high-res; the compositor applies the declared soft 240p preset when shaders are enabled.",
+    "extensions": "Only what Mupen64Plus-Next declares it opens plus the archives RetroArch unpacks. A 64DD .ndd or .d64 is no game on its own (the core finds a .ndd beside the ROM), so both were dropped; neither occurs in the library."
   }
 }

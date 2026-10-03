@@ -14,9 +14,7 @@
       ".nro",
       ".nso",
       ".nsp",
-      ".xci",
-      ".7z",
-      ".zip"
+      ".xci"
     ]
   },
   "emulators": [
@@ -49,6 +47,7 @@
   "doc": {
     "hardware": "modern 16:9 handheld/docked display",
     "intent": "Modern system: fullscreen first, optional cosmetic frame only when explicitly enabled.",
-    "bios": "Ryujinx needs dumped Switch keys and firmware from the user's console."
+    "bios": "Ryujinx needs dumped Switch keys and firmware from the user's console.",
+    "extensions": "Only what Ryujinx 1.3.3 loads (.xci, .nsp, .nca, .nro, .nso): it opens no archive, a .zip fails as unsupported homebrew, so neither is offered. None occurs in the library."
   }
 }

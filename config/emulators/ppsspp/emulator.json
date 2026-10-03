@@ -15,6 +15,18 @@
       "speed.fast"
     ]
   },
+  "content": {
+    "extensions": [
+      ".chd",
+      ".cso",
+      ".elf",
+      ".iso",
+      ".pbp",
+      ".plf",
+      ".prx",
+      ".zip"
+    ]
+  },
   "platforms": {
     "linux": {
       "executable": "${asset_root}/bin/ppsspp",
@@ -61,6 +73,7 @@
     "launch": "The bundled source-built SDL frontend receives --fullscreen and exactly one positional ROM appended by the launcher. No host executable, Flatpak, libretro core, or prebuilt binary is permitted.",
     "state": "PPSSPP maps $XDG_CONFIG_HOME/ppsspp to isolated Semu state. Generated settings live in PSP/SYSTEM, game saves in PSP/SAVEDATA, save states in PSP/PPSSPP_STATE, and cache/screenshots remain below the same isolated root.",
     "input": "Pad zero is PPSSPP's SDL GameController lane for the Steam Virtual Gamepad. PSP controls are explicit, Semu keymap actions compile to PPSSPP chords, and the target process-group watcher owns immediate physical Start+Select termination.",
-    "rendering": "The managed profile pins OpenGL. libsemupreload (render_preload) composes Semu's bezel and shader at the SDL/EGL swap: it reads the emulator's back buffer and writes the composed frame back before the real swap."
+    "rendering": "The managed profile pins OpenGL. libsemupreload (render_preload) composes Semu's bezel and shader at the SDL/EGL swap: it reads the emulator's back buffer and writes the composed frame back before the real swap.",
+    "content": "What PPSSPP fa50bb19 boots (Core/Loaders.cpp:110 disc images, 227-228 executables, 264 .pbp) and a .zip holding an ISO (269, 294-307). A .7z is identified only to be refused."
   }
 }

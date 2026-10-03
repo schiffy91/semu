@@ -1,0 +1,63 @@
+// Harness spec: the Deck scripts keep the argv of an emulator that dies early, and the multi-disc code keeps the naming contract.
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+
+class HarnessSpecDeckScripts {  // read as text: these run only on the Deck, never under make test
+    class void run(Contract contract) {
+        string project = Fixture("linux-desktop").project;
+        Vector<string> scripts = ["tests/deck/system-matrix.sh", "tests/deck/input-check.sh"];
+        Vector<string> firstWaits = ["for wait in $waits", "-lt $(( first - 4 ))"];  // where each script first sleeps toward a capture
+        for (int index = 0; index < scripts.size(); index++) {
+            string name = scripts.get(index);
+            string source = FileSystem.readText(PathTools.join(project, name));
+            contract.contains(source, "record_argv() {", name + " records the emulator argv in one place");
+            contract.contains(source, "{ tr '\\0' '\\n' < \"/proc/$leaf/cmdline\"; } > \"$dir/cmdline\" 2>/dev/null", name + " reads /proc/<leaf>/cmdline with every error silenced, the < redirect included");
+            contract.lacks(source, "\"/proc/$leaf/cmdline\" > \"$dir/cmdline\"", name + " keeps no unsilenced cmdline read");
+            int early = source.indexOf("record_argv \"$(leaf_of \"$game\")\"");
+            int look = source.indexOf(firstWaits.get(index));
+            contract.expect(early > 0 && look > 0 && early < look, f"{name} records the argv as soon as the emulator appears, before its first wait ({early} < {look})");
+            contract.contains(source, "argv: the emulator was never seen", name + " says so when the emulator never appeared");
+        }
+    }
+}
+
+class HarnessSpecStyle {  // no one- or two-letter names in the multi-disc and checker code
+    class bool typeWord(string word) {
+        string bare = word.startsWith("(") ? word.substring(1, word.len() - 1) : word;
+        if (bare.equals("string") || bare.equals("int") || bare.equals("bool")) { return true; }
+        return bare.len() > 0 && bare.charAt(0) >= 65 && bare.charAt(0) <= 90;
+    }
+
+    class Vector<string> shortNames(string source) {  // names bound by "Type name =" or "for name in"
+        Vector<string> found = [];
+        for line in Strings.split(source, "\n") {
+            Vector<string> words = Strings.split(line.trim(), " ");
+            for (int index = 0; index + 2 < words.size(); index++) {
+                bool declared = HarnessSpecStyle.typeWord(words.get(index)) && words.get(index + 2).equals("=");
+                bool looped = words.get(index).equals("for") && words.get(index + 2).equals("in");
+                string name = words.get(index + 1);
+                if ((declared || looped) && name.len() <= 2) { found.push(name); }
+            }
+        }
+        return found;
+    }
+
+    class void run(Contract contract) {
+        string project = Fixture("linux-desktop").project;
+        for name in ["src/check.btrc", "src/launch/playlist.btrc", "tests/contracts/spec/playlist.btrc", "tests/contracts/spec/content.btrc", "tests/contracts/spec/flycast_config.btrc"] {
+            Vector<string> found = HarnessSpecStyle.shortNames(FileSystem.readText(PathTools.join(project, name)));
+            contract.expect(found.isEmpty(), name + " binds no one- or two-letter name: " + found.join(" "));
+        }
+        contract.expect(HarnessSpecStyle.shortNames("        string gc = PlaylistSpecLaunch.writeFolder(bed);\n        for (int ix = 0; ix < 2; ix++) {\n        for dc in names {").join(" ").equals("gc ix dc"), "the style scan finds a two-letter declaration, loop index and loop variable");
+    }
+}
+
+class HarnessSpecContract {
+    class void run(Contract contract) {
+        HarnessSpecDeckScripts.run(contract);
+        HarnessSpecStyle.run(contract);
+    }
+}

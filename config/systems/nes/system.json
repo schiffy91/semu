@@ -10,8 +10,6 @@
   "rom": {
     "dir": "nes",
     "extensions": [
-      ".3dsen",
-      ".bin",
       ".fds",
       ".nes",
       ".unf",
@@ -55,6 +53,7 @@
   },
   "doc": {
     "hardware": "consumer CRT over composite",
-    "intent": "Classic 240p TV path with composite artifacting, phosphor mask, and scanlines."
+    "intent": "Classic 240p TV path with composite artifacting, phosphor mask, and scanlines.",
+    "extensions": "Only what Mesen declares it opens (nes, fds, unf, unif) plus the archives RetroArch unpacks. .3dsen and .bin were dropped; neither occurs in the library."
   }
 }

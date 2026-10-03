@@ -18,6 +18,27 @@
       "wii.controller.gamecube"
     ]
   },
+  "content": {
+    "extensions": [
+      ".bin",
+      ".ciso",
+      ".dff",
+      ".dol",
+      ".elf",
+      ".gcm",
+      ".gcz",
+      ".iso",
+      ".json",
+      ".m3u",
+      ".m3u8",
+      ".nfs",
+      ".rvz",
+      ".tgc",
+      ".wad",
+      ".wbfs",
+      ".wia"
+    ]
+  },
   "platforms": {
     "linux": {
       "executable": "${asset_root}/bin/dolphin-emu",
@@ -102,6 +123,7 @@
     "rendering": "OpenGL is forced in the managed profile. render_preload composes Semu's bezel and shader at the swap, reading the emulator's back buffer and writing the composed frame back: on Linux libsemupreload at the SDL/EGL swap, on macOS the window shim at -[NSOpenGLContext flushBuffer].",
     "user_directory": "The explicit -u path keeps Dolphin's live Config tree under Semu's per-emulator state root on every platform.",
     "aspect": "--config SYSCONF.IPL.AR=False keeps Wii titles at 4:3: the Wii's default widescreen answer renders them anamorphic 16:9, which the profile's CustomStretch 4:3 pin in GFX.ini would squash. SYSCONF lives in the seeded NAND, not an INI, so the command-line layer is the only route; it outranks game INIs, Dolphin writes it into the session's SYSCONF at boot (BootManager), and GameCube boots ignore it.",
-    "playlist": "Dolphin 2606a reads .m3u and .m3u8 itself (Boot.cpp ReadM3UFile), resolving entries against the playlist's folder, so it receives the .m3u unchanged (playlist.open native). Core.AutoDiscChange in the profile lets it insert the next entry when the game asks for another disc."
+    "playlist": "Dolphin 2606a reads .m3u and .m3u8 itself (Boot.cpp ReadM3UFile), resolving entries against the playlist's folder, so it receives the .m3u unchanged (playlist.open native). Core.AutoDiscChange in the profile lets it insert the next entry when the game asks for another disc.",
+    "content": "What Dolphin c77bbaa0 boots, by its last suffix (Source/Core/Core/Boot/Boot.cpp:212 playlists, 238-240 disc images and executables, 268 .dff, 271 .wad, 278 .json mod descriptors). No archive: a .zip or .7z ends in \"Could not recognize file\". The .m3u here is what lets its playlist.open stay native."
   }
 }
