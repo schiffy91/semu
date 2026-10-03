@@ -23,6 +23,7 @@ int RGL_ONE = 1;
 int RGL_SRC_ALPHA = 0x0302;
 int RGL_ONE_MINUS_SRC_ALPHA = 0x0303;
 int RGL_DST_COLOR = 0x0306;
+int RGL_ONE_MINUS_SRC_COLOR = 0x0301;
 int RGL_FUNC_ADD = 0x8006;
 
 int SEMU_SHAPE_NONE = 0;
@@ -1533,6 +1534,22 @@ class RendererCompositor {
         }
     }
 
+    class bool paintedLens(struct RendererVariantConfig* variant, struct RendererCompositionGeometry* geometry) {  // a screen whose ring only marks a painted lens and reflects
+        for (int index = 0; index < geometry->lane_count && index < 2; index++) {
+            struct RendererScreenConfig* screen = &variant->screens[index];
+            if (screen->look_set != 0 && screen->ring_set != 0 && screen->ring_opacity <= 0.0f && screen->ring_reflect > 0.0f) { return true; }
+        }
+        return false;
+    }
+
+    class void drawLensMirror(struct RendererGlApi* gl, struct RendererGlResources* resources) {  // screen blend: the plate stays, the mirror lightens it
+        gl->enable((unsigned int)RGL_BLEND);
+        gl->blend_function_separate((unsigned int)RGL_ONE, (unsigned int)RGL_ONE_MINUS_SRC_COLOR, (unsigned int)RGL_ZERO, (unsigned int)RGL_ONE);
+        gl->blend_equation_separate((unsigned int)RGL_FUNC_ADD, (unsigned int)RGL_FUNC_ADD);
+        if (resources->uniform_pass >= 0) { gl->uniform_1f(resources->uniform_pass, (float)SEMU_RENDER_PASS_LENS); }
+        gl->draw_arrays((unsigned int)RGL_TRIANGLES, 0, 3);
+    }
+
     class void drawPass(struct RendererGlApi* gl,
                         struct RendererGlResources* resources,
                         int pass, bool blend) {
@@ -1720,6 +1737,7 @@ class RendererCompositor {
         RendererCompositor.drawPass(gl, resources,
             SEMU_RENDER_PASS_BACKGROUND, false);
         if (layered) { RendererCompositor.drawLayers(gl, resources, variant, geometry, variantIndex, frame, false); }  // the stack under the screens, in its own order
+        if (layered && RendererCompositor.paintedLens(variant, geometry)) { RendererCompositor.drawLensMirror(gl, resources); }  // an unfilled ring marks a lens painted on the plate
         if (art || framed) {
             RendererCompositor.drawPass(gl, resources,
                 SEMU_RENDER_PASS_CHROME, true);  // plate and frames first, so the screen edge blends over them

@@ -51,10 +51,13 @@ uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uR
   vec2 h=outer.zw*0.5;vec2 d=abs(p-(outer.xy+h))/h;float edge=max(d.x,d.y);
   float shade=0.7+0.4*smoothstep(0.82,1.0,edge);float bevel=smoothstep(0.985,1.0,edge)*0.22;
   return vec4(color.rgb*shade+bevel,ring);}
+ vec3 lensMirror(sampler2D t,sampler2D raw,vec2 p,vec4 tube,vec4 rect,vec4 outer,vec4 look,vec4 color,vec4 reflection,vec4 fx,float rot,vec2 b){if(look.z<0.5||color.a>0.0||reflection.x<=0.0)return vec3(0.0);  // an unfilled ring marks a painted lens: the mirror alone, from the bent picture edge out
+  float band=shapeMaskB(p,outer,vec4(1.0,look.y,2.0,0.0),b)*clamp(edgeDistance(bentUv(p,tube,rect,fx),rect)+0.5,0.0,1.0);return band>0.0?reflectAt(t,raw,p,tube,rect,outer,fx,rot,reflection)*band:vec3(0.0);}
  vec4 framePaint(sampler2D t,sampler2D raw,vec2 p,vec4 tube,vec4 rect,vec4 shape,vec4 fx,float rot,vec4 look){vec4 f=frameRing(p,tube,shape);if(f.a<=0.0)return f;vec4 outer=vec4(tube.xy-uFrame.x,tube.zw+2.0*uFrame.x);  // a drawn frame mirrors the picture like a lip: sharp at the edge, never its edge pixels smeared outward
   return vec4(1.0-(1.0-f.rgb)*(1.0-reflectAt(t,raw,p,tube,rect,outer,fx,rot,look)),f.a);}
 void main(){
  vec2 p=gl_FragCoord.xy;float dual=uFlags.x;float hasArt=uFlags.y;float hasBg=uFlags.z;float layered=uFlags.w;
+ if(uPass>4.5){vec3 f=lensMirror(uGame,uRaw,p,uTube,uRect,uRingOut,uRingLook,uRingColor,uRingReflect,uFx,uRotation.x,uBulge.xy);if(dual>0.5)f=max(f,lensMirror(uGame2,uRaw2,p,uTube2,uRect2,uRingOut2,uRingLook2,uRingColor2,uRingReflect2,uFx2,uRotation.y,uBulge.zw));if(max(f.r,max(f.g,f.b))<=0.0)discard;frag=vec4(f,1.0);return;}  // screened onto the plate
  if(uPass>3.5){if(!inside(p,uBezelRect))discard;vec4 t=plate(uBezel,p,uBezelRect);if(uLayerTint.w>0.0){float l=clamp((max(max(t.r,t.g),t.b)+min(min(t.r,t.g),t.b))*0.5*uLayerTint.w,0.0,1.0);t.rgb=l*uLayerTint.rgb;}t.rgb=mix(t.rgb,vec3(1.0),uLayer.z);float a=t.a*uLayer.x;if(uLayer.y>1.5)t.rgb*=a;frag=vec4(t.rgb,a);return;}
  if(uPass<0.5){vec3 c=vec3(0.0);if(hasBg>0.5&&inside(p,uBackgroundRect))c=plate(uBackground,p,uBackgroundRect).rgb;frag=vec4(c,1.0);return;}
  if(uPass<1.5){float m0=shapeMaskB(p,uTube,uShape,uBulge.xy);float m1=dual>0.5?shapeMaskB(p,uTube2,uShape2,uBulge.zw):0.0;
