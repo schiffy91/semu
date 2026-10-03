@@ -82,7 +82,7 @@ class SemuInputDevices {  // evdev gamepads and keyboards, opened into reusable 
         SemuDevicePaths[slot * 64] = 0;
     }
 
-    class void scan(bool watchPads) {  // opens every gamepad and keyboard; safe to call repeatedly for hotplug
+    class void scan() {  // opens every gamepad and keyboard; safe to call repeatedly for hotplug
         DIR* directory = opendir("/dev/input");
         if (directory == null) { return; }
         struct dirent* entry = readdir(directory);
@@ -98,7 +98,7 @@ class SemuInputDevices {  // evdev gamepads and keyboards, opened into reusable 
                     if (handle >= 0) {
                         int gamepad = 0;
                         int keyboard = 0;
-                        if (SemuInputDevices.classify(handle, &gamepad, &keyboard) && (watchPads || keyboard != 0)) {
+                        if (SemuInputDevices.classify(handle, &gamepad, &keyboard)) {
                             SemuInputDevices.adopt(SemuInputDevices.freeSlot(), handle, gamepad, keyboard, path);
                         } else {
                             close(handle);
@@ -333,11 +333,11 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
         bool chord = SemuQuitChord.configure(&SemuSupervisorRuntime.quit_template, launch.quitButtons, launch.chordWindowMs);
         if (!chord) { Console.error("semu: the quit chord is not usable: " + SemuQuitChord.describe(launch.quitButtons)); }
         SemuActionJournal.reset(launch);
-        SemuInputDevices.scan(launch.watchPads);
+        SemuInputDevices.scan();
         SemuGameControllers.reset();
-        bool anyPad = launch.watchPads && SemuGameControllers.poll(launch) > 0;
+        bool anyPad = SemuGameControllers.poll(launch) > 0;
         for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) { if (SemuSupervisorRuntime.devices[index].gamepad != 0) { anyPad = true; } }
-        if (launch.watchPads && !anyPad) { Console.error("semu: no gamepad found for the " + SemuQuitChord.describe(launch.quitButtons) + " quit chord"); }
+        if (!anyPad) { Console.error("semu: no gamepad found for the " + SemuQuitChord.describe(launch.quitButtons) + " quit chord"); }
     }
 
     class void pollDevices(SemuLaunchPlan launch) {  // one bounded wait for input, then drain it
@@ -390,9 +390,9 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
             }
             ticks++;
             int rescanTicks = SEMU_SUPERVISOR_RESCAN_TICKS;
-            if (ticks % rescanTicks == 0) { SemuInputDevices.scan(launch.watchPads); }
+            if (ticks % rescanTicks == 0) { SemuInputDevices.scan(); }
             SemuSupervisor.pollDevices(launch);
-            if (launch.watchPads && SemuSupervisorRuntime.quit == 0) { SemuGameControllers.poll(launch); }
+            if (SemuSupervisorRuntime.quit == 0) { SemuGameControllers.poll(launch); }
             if (SemuSupervisorRuntime.quit != 0) {
                 bool honoured = SemuProcessGroup.stop(child, launch.retroarchPort);
                 Console.error(honoured ? "semu: quit; the emulator honoured QUIT" : "semu: quit");

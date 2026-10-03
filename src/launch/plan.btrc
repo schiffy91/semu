@@ -18,7 +18,6 @@ class SemuLaunchPlan {
     public string system;
     public string core;
     public string rom;
-    public bool watchPads;
     public int chordWindowMs;
     public Vector<string> quitButtons;  // config/input quit_chord.buttons, e.g. start and select
     public Vector<string> menuLabels;
@@ -42,7 +41,6 @@ class SemuLaunchPlan {
         self.system = "";
         self.core = "";
         self.rom = "";
-        self.watchPads = true;
         self.chordWindowMs = 250;
         self.quitButtons = [];
         self.menuLabels = [];
