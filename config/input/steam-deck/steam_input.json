@@ -1,156 +1,126 @@
 {
   "schema_version": 2,
-  "modifiers": [
-    "ctrl",
-    "alt",
-    "shift",
-    "meta"
-  ],
   "actions": {
     "ui.open": {
-      "alias": "open",
       "label": "Open",
       "icon": "semu-open.png",
       "chord": "Ctrl+O"
     },
     "ui.pause": {
-      "alias": "pause",
       "label": "Pause / Resume",
       "icon": "semu-pause.png",
       "chord": "Ctrl+P"
     },
     "ui.screenshot": {
-      "alias": "screenshot",
       "label": "Take Screenshot",
       "icon": "semu-screenshot.png",
       "chord": "Ctrl+X"
     },
     "ui.fullscreen": {
-      "alias": "fullscreen",
       "label": "Toggle Fullscreen",
       "icon": "semu-fullscreen.png",
       "chord": "Ctrl+Enter"
     },
     "ui.menu": {
-      "alias": "menu",
       "label": "Open Menu",
       "icon": "semu-menu.png",
       "chord": "Ctrl+M"
     },
     "ui.menu.up": {
-      "alias": "menu_up",
       "label": "Menu Up",
       "icon": "semu-up.png",
       "chord": "Ctrl+Up"
     },
     "ui.menu.down": {
-      "alias": "menu_down",
       "label": "Menu Down",
       "icon": "semu-down.png",
       "chord": "Ctrl+Down"
     },
     "ui.menu.confirm": {
-      "alias": "menu_confirm",
       "label": "Menu Confirm",
       "icon": "semu-confirm.png",
       "chord": "Ctrl+Space"
     },
     "ui.menu.back": {
-      "alias": "menu_back",
       "label": "Menu Back",
       "icon": "semu-back.png",
       "chord": "Ctrl+Backspace"
     },
     "app.quit": {
-      "alias": "quit",
       "label": "Quit Emulator",
       "icon": "semu-quit.png",
       "chord": "Ctrl+Q"
     },
     "state.prev": {
-      "alias": "previous_state_slot",
       "label": "Previous State Slot",
       "icon": "semu-previous.png",
       "chord": "Ctrl+J"
     },
     "state.next": {
-      "alias": "next_state_slot",
       "label": "Next State Slot",
       "icon": "semu-next.png",
       "chord": "Ctrl+K"
     },
     "state.load": {
-      "alias": "load_state",
       "label": "Load State",
       "icon": "semu-load.png",
       "chord": "Ctrl+A"
     },
     "state.save": {
-      "alias": "save_state",
       "label": "Save State",
       "icon": "semu-save.png",
       "chord": "Ctrl+S"
     },
     "speed.rewind": {
-      "alias": "rewind",
       "label": "Rewind",
       "icon": "semu-rewind.png",
       "chord": "Ctrl+-"
     },
     "speed.fast": {
-      "alias": "fast_forward",
       "label": "Fast Forward",
       "icon": "semu-fast-forward.png",
       "chord": "Ctrl++"
     },
     "screen.swap": {
-      "alias": "swap_screens",
       "label": "Swap Screens",
       "icon": "semu-swap.png",
       "chord": "Ctrl+Tab"
     },
     "wii.controller.wiimote": {
-      "alias": "wii_wiimote",
       "label": "Wiimote",
       "icon": "semu-wiimote.png",
       "chord": "Ctrl+Shift+F9",
       "supervisor_chord": "Ctrl+Shift+F9"
     },
     "wii.controller.nunchuk": {
-      "alias": "wii_nunchuk",
       "label": "Wiimote + Nunchuk",
       "icon": "semu-wiimote-nunchuk.png",
       "chord": "Ctrl+Shift+F10",
       "supervisor_chord": "Ctrl+Shift+F10"
     },
     "wii.controller.classic": {
-      "alias": "wii_classic",
       "label": "Classic Controller",
       "icon": "semu-classic-controller.png",
       "chord": "Ctrl+Shift+F11",
       "supervisor_chord": "Ctrl+Shift+F11"
     },
     "wii.controller.gamecube": {
-      "alias": "wii_gamecube",
       "label": "GameCube Controller",
       "icon": "semu-gamecube-controller.png",
       "chord": "Ctrl+Shift+F12",
       "supervisor_chord": "Ctrl+Shift+F12"
     },
     "ui.escape": {
-      "alias": "escape",
       "label": "Escape",
       "icon": "semu-back.png",
       "chord": "Esc"
     },
     "visual.bezels.toggle": {
-      "alias": "bezels_toggle",
       "label": "Bezel On/Off",
       "icon": "semu-menu.png",
       "chord": "Ctrl+B"
     },
     "visual.shaders.toggle": {
-      "alias": "shaders_toggle",
       "label": "Shader On/Off",
       "icon": "semu-menu.png",
       "chord": "Ctrl+H"
@@ -211,9 +181,6 @@
     }
   ],
   "binding_icons": {
-    "source_dir": "icons",
-    "output_dir": "binding-icons",
-    "colors": "#232323 #FFFFFF",
     "files": [
       "semu-back.png",
       "semu-classic-controller.png",
@@ -237,15 +204,6 @@
       "semu-wiimote-nunchuk.png",
       "semu-wiimote.png"
     ]
-  },
-  "controller": {
-    "model": "steam_deck",
-    "gyro": false,
-    "trackpads": {
-      "left": "radial_hotkeys",
-      "right": "mouse"
-    },
-    "hotkey_button": "view_long_press"
   },
   "radial": {
     "show_labels": false,
@@ -281,15 +239,6 @@
       }
     ]
   },
-  "capabilities": {
-    "savestate_actions": [
-      "state.save",
-      "state.load"
-    ],
-    "controller_mode_layers": [
-      "wii_controller"
-    ]
-  },
   "quit_chord": {
     "buttons": [
       "select",
@@ -315,7 +264,6 @@
     }
   ],
   "application": {
-    "shortcut_name": "Semu",
     "config_id": "semu",
     "controller_file": "controller_neptune.vdf",
     "deprecated_config_ids": [
@@ -331,12 +279,11 @@
     }
   },
   "doc": {
-    "controller": "Deck policy the doctor asserts: no gyro, both trackpads active, hotkeys entered via View long-press; the generated VDF also maps the L4/R4 back grips to the same preset switch.",
     "radial": "show_labels=false makes every radial icon-only so Steam never substitutes modifier glyphs such as Ctrl. The default preset maps group 20 to quick_slots, preserving Save/Load/Quit/Menu/Screenshot/Escape. Holding View or either upper grip activates the hotkey preset and maps group 21 to menu_slots. Declarative system_layers allocate additional left-trackpad radial presets; their ordered slots generate stable extension codes beginning at the generic native ABI extension base. The Wii layer is held with either lower grip and declares Wiimote, Nunchuk, Classic, and GameCube as slots 0 through 3. Its Ctrl+Shift+F9 through F12 chords stay inside the held layer and are supported by the Deck command facet.",
     "quit_chord": "The physical View/Menu buttons emit XInput SELECT/START unchanged. window_ms is the maximum verifier interval for the pair; the process-group watcher terminates as soon as it observes both buttons held. Radial and HKB quit use the app.quit action chord instead.",
     "templates": "Exactly one template carries default:true. settings prepare stages and byte-verifies every declared template, binding icon, and default shortcut profile before atomically publishing them. Deprecated application IDs are transactionally quarantined only beneath the same exact Steam user config root.",
     "binding_icons": "Every action declares a non-keyboard Semu PNG. Legacy VDF bindings encode the icon filename and its two colors as comma-delimited metadata, matching Valve's radial-menu format. Physical Deck acceptance: after bootstrap and provision, restart Steam, apply Semu: Steam Deck - Neptune FULL, open all three left-trackpad radials, and assert all 15 slots show the declared Semu icons with no Ctrl/key glyphs; activate the quick and menu slots to complete their capture evidence, then verify each Wii mode reaches its Dolphin consumer.",
     "platforms": "All three destinations are exact children of the canonical current user's ${home}/.local/share/Steam root. Independent path overrides are forbidden; focused tests inject one separately owned Steam root and derive the same fixed layout beneath it. SEMU_STEAM_USER_ID may select one existing numeric userdata directory when local Steam state is otherwise ambiguous.",
-    "actions": "The complete native input vocabulary. Each action declares its chord, alias for ${..._BINDINGS} tokens, semantic label, and manifest-backed Semu PNG. The parser compiles these entries and hotkey_bindings directly into the native keymap and supervisor environment consumed by profile and Steam Input generators. Which emulators honor each action is declared per emulator in config/emulators/<emu>/emulator.json input.actions; ui.menu.{up,down,confirm,back} are consumed by the renderer menu, Wii controller actions are consumed by Dolphin's in-process mode selector, and ui.escape is desktop-only."
+    "actions": "The complete native input vocabulary. Each action declares its chord, semantic label, and manifest-backed Semu PNG. The parser compiles these entries and hotkey_bindings directly into the native keymap and supervisor environment consumed by profile and Steam Input generators. Which emulators honor each action is declared per emulator in config/emulators/<emu>/emulator.json input.actions; ui.menu.{up,down,confirm,back} are consumed by the renderer menu, Wii controller actions are consumed by Dolphin's in-process mode selector, and ui.escape is desktop-only."
   }
 }
