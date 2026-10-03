@@ -61,18 +61,27 @@ class BezelEditor {
         if (path.equals("/")) { return FileSystem.isFile(self.pagePath) ? HTTPResponse.html(FileSystem.readText(self.pagePath)) : HTTPResponse.error(500, "no editor page at " + self.pagePath); }
         if (path.equals("/api/packages")) { return HTTPResponse.json(self.packages().stringify()); }
         if (path.startsWith("/layer/")) { return self.layer(path.substring(7, path.len() - 7)); }
+        if (path.equals("/bezel-renderer.js")) { return self.script("bezel-renderer.js"); }
         return HTTPResponse.notFound();
+    }
+
+    public HTTPResponse script(string name) {  // the page's own scripts beside it in config/editor
+        string file = PathTools.join(PathTools.join(self.repository.configRoot, "editor"), name);
+        return FileSystem.isFile(file) ? HTTPResponse.js(FileSystem.readText(file)) : HTTPResponse.error(500, "no editor script at " + file);
     }
 
     public JSONValue packages() {
         Map<string, Vector<string>> bindings = self.repository.bindings();
+        JSONValue settings = SemuJson.readFile(PathTools.join(self.repository.configRoot, "settings/defaults.json"));
         JSONValue result = JSONValue.makeArray();
         for id in self.repository.packageIds() {
             JSONValue package = self.repository.package(id);
             if (package == null || package.get("canvas") == null || !package.get("canvas").isObject()) { continue; }
             JSONValue systems = JSONValue.makeArray();
-            if (bindings.has(id)) { for system in bindings.get(id) { systems.push(JSONValue.makeString(system)); } }
+            Vector<string> bound = [];
+            if (bindings.has(id)) { for system in bindings.get(id) { systems.push(JSONValue.makeString(system)); bound.push(system); } }
             package.set("systems", systems);
+            package.set("previews", BezelPreview.all(self.repository, id, bound, settings));
             result.push(package);
         }
         return result;
@@ -199,5 +208,74 @@ class BezelEditor {
         JSONValue result = JSONValue.makeObject();
         result.set("saved", saved);
         return HTTPResponse.json(result.stringify());
+    }
+}
+
+class BezelPreview {  // what the launcher gives the renderer when a system shows a package: native screens, aspect, placement, default shader, dual gap
+    class JSONValue all(BezelRepository repository, string packageId, Vector<string> systems, JSONValue settings) {
+        JSONValue previews = JSONValue.makeArray();
+        Vector<string> seen = [];
+        for system in systems {  // a system binding the package in two variants is listed twice
+            if (seen.contains(system)) { continue; }
+            seen.push(system);
+            string folder = PathTools.join(PathTools.join(repository.configRoot, "systems"), system);
+            JSONValue definition = repository.system(system);
+            JSONValue bezels = SemuJson.readFile(PathTools.join(folder, "bezels.json"));
+            JSONValue shaders = SemuJson.readFile(PathTools.join(folder, "shaders.json"));
+            JSONValue variants = bezels.get("variants");
+            if (definition == null || variants == null || !variants.isArray()) { continue; }
+            for (int index = 0; index < variants.size(); index++) {
+                if (SemuJson.textAt(variants.at(index), "bezel").equals(packageId)) { previews.push(BezelPreview.one(system, definition, bezels, shaders, variants.at(index), settings)); }
+            }
+        }
+        return previews;
+    }
+
+    class JSONValue one(string system, JSONValue definition, JSONValue bezels, JSONValue shaders, JSONValue variant, JSONValue settings) {
+        JSONValue preview = JSONValue.makeObject();
+        string variantId = SemuJson.textAt(variant, "id");
+        preview.set("system", JSONValue.makeString(system));
+        preview.set("variant", JSONValue.makeString(variantId));
+        preview.set("label", JSONValue.makeString(SemuJson.textAt(definition, "name") + " · " + SemuJson.textAt(variant, "label")));
+        JSONValue screens = JSONValue.makeArray();
+        JSONValue declared = SemuJson.get(definition, "display.screens");
+        for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) {  // SEMU_RENDER_SURFACE_<n>_NATIVE
+            JSONValue screen = JSONValue.makeObject();
+            screen.set("id", JSONValue.makeString(SemuJson.textAt(declared.at(index), "id")));
+            screen.set("w", JSONValue.makeInt(SemuJson.intAt(declared.at(index), "native.w", 0)));
+            screen.set("h", JSONValue.makeInt(SemuJson.intAt(declared.at(index), "native.h", 0)));
+            screens.push(screen);
+        }
+        preview.set("screens", screens);
+        JSONValue aspect = JSONValue.makeObject();  // SEMU_RENDER_ASPECT=W:H
+        aspect.set("w", JSONValue.makeInt(SemuJson.intAt(definition, "display.aspect.w", 0)));
+        aspect.set("h", JSONValue.makeInt(SemuJson.intAt(definition, "display.aspect.h", 0)));
+        preview.set("aspect", aspect);
+        string widescreen = SemuJson.textAt(bezels, "widescreen_variant");
+        preview.set("presentation", JSONValue.makeFloat(!widescreen.isEmpty() && widescreen.equals(variantId) ? 1.777778 : 0.0));  // the wide variant shows a 16:9 title, as gallery.sh renders it
+        string placement = SemuJson.textAt(bezels, "placement");  // the system's own default, else the setting
+        if (placement.isEmpty()) { placement = SemuJson.textAt(settings, "visual.placement"); }
+        preview.set("placement", JSONValue.makeString(placement.equals("game") || placement.equals("bezel") ? placement : "fit"));
+        preview.set("gap", JSONValue.makeFloat(BezelNumber.of(SemuJson.get(settings, "visual.dual_screen_gap"))));  // SEMU_RENDER_DUAL_GAP, a fraction of the width
+        preview.set("frame_width", JSONValue.makeFloat(BezelNumber.of(SemuJson.get(settings, "visual.frame_width"))));  // a drawn frame's width when its package names none
+        preview.set("shader", BezelPreview.shader(shaders, settings));
+        return preview;
+    }
+
+    class JSONValue shader(JSONValue shaders, JSONValue settings) {  // the default shader variant's preset (per screen when it names one each); null when the system has none
+        if (shaders.isError() || !SemuJson.boolAt(shaders, "enabled", false) || !SemuJson.boolAt(settings, "visual.crt_shaders", true)) { return JSONValue.makeNull(); }
+        string id = SemuJson.textAt(shaders, "default_variant");
+        JSONValue chosen = JSONValue.makeNull();
+        JSONValue variants = shaders.get("variants");
+        for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) { if (SemuJson.textAt(variants.at(index), "id").equals(id)) { chosen = variants.at(index); } }
+        string preset = chosen.isObject() ? SemuJson.textAt(chosen, "screen") : SemuJson.textAt(shaders, "screen");
+        if (id.equals("none") || preset.isEmpty()) { return JSONValue.makeNull(); }
+        JSONValue result = JSONValue.makeObject();
+        result.set("variant", JSONValue.makeString(id));
+        result.set("label", JSONValue.makeString(chosen.isObject() ? SemuJson.textAt(chosen, "label") : id));
+        result.set("preset", JSONValue.makeString(preset));
+        JSONValue screens = chosen.isObject() ? chosen.get("screens") : null;
+        result.set("screens", screens != null && screens.isObject() ? screens : JSONValue.makeObject());
+        return result;
     }
 }

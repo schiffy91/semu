@@ -92,6 +92,8 @@
 <header>
   <span class="title">Semu Bezels</span>
   <select id="package"></select>
+  <select id="preview" title="Preview as: the system whose native screens, aspect and placement the preview uses"></select>
+  <select id="target" title="The screen the renderer frames the package on"></select>
   <span class="spacer"></span>
   <div class="seg"><button id="undo" title="Undo (⌘Z)">↶</button><button id="redo" title="Redo (⇧⌘Z)">↷</button></div>
   <div class="seg"><button id="fit" title="Fit (F)">Fit</button><button id="zoom-out" title="Zoom out">−</button><button id="zoom-label" title="100% (1)" style="min-width:56px">100%</button><button id="zoom-in" title="Zoom in">+</button></div>
@@ -131,6 +133,7 @@
     <tr><td><span style="color:#ff9f0a">◆</span> beyond an edge</td><td>drag outward to bow it</td></tr>
   </table>
 </div>
+<script src="/bezel-renderer.js"></script>
 <script>
 const ZOOMS = [0.03125, 0.0625, 0.125, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
 const COLORS = { tube: "#ff2d92", image: "#30d158", inner: "#64d2ff", outer: "#ffd60a", layer: "#0a84ff" };
@@ -146,14 +149,53 @@ const cards = {};
 const hud = document.getElementById("hud");
 const state = { packages: [], current: null, original: null, images: {}, thumbs: {}, zoom: 1, ox: 0, oy: 0, selected: null, hover: null, drag: null, space: false, dirty: false, cursor: null, showGame: true, cutoutAlpha: 1, past: [], future: [] };
 const pageQuery = new URLSearchParams(location.search);
-const CAPTURE = (() => {  // ?capture=WxH draws only the canvas, framed as the renderer frames a WxH screen; &canvas=x,y,w,h takes the rectangle the renderer reported instead
+const CAPTURE = (() => {  // ?capture=WxH draws only the canvas, framed as the renderer frames a WxH screen (&preview=system:variant picks whose screens)
   const size = /^(\d+)x(\d+)$/.exec(pageQuery.get("capture") || "");
-  if (!size) return null;
-  const placed = (pageQuery.get("canvas") || "").split(",").map(Number);
-  return { width: Number(size[1]), height: Number(size[2]), placed: placed.length === 4 && placed.every(Number.isFinite) && placed[2] > 0 ? placed : null };
+  return size ? { width: Number(size[1]), height: Number(size[2]) } : null;
 })();
+const TARGETS = [[1280, 800, "Deck · 1280×800"], [1920, 1080, "1080p · 1920×1080"], [3840, 2160, "4K · 3840×2160"]];  // the screens the preview frames a package on
 const FLAT_CARD = ["white", "black"].includes(pageQuery.get("card")) ? pageQuery.get("card") : null;  // ?card=white|black: the render host's flat card instead of the test card
 if (CAPTURE) document.body.classList.add("capture");
+state.target = CAPTURE ? { width: CAPTURE.width, height: CAPTURE.height } : (() => { try { const saved = (localStorage.getItem("semu-bezel-target") || "").split("x").map(Number); if (TARGETS.some(([w, h]) => w === saved[0] && h === saved[1])) return { width: saved[0], height: saved[1] }; } catch (error) {} return { width: TARGETS[0][0], height: TARGETS[0][1] }; })();
+
+function previewsOf(pkg) {  // the systems that show this package, else one made from its own screens (native height 240 at their aspect)
+  if (pkg.previews && pkg.previews.length) return pkg.previews;
+  const screens = (pkg.screens || []).map(screen => ({ id: screen.id, h: 240, w: Math.round(240 * (screen.aspect || 4 / 3)) }));
+  return [{ system: "", variant: "", label: "no system binds it", screens: screens.length ? screens : [{ id: "main", w: 320, h: 240 }], aspect: { w: 0, h: 0 }, presentation: 0, placement: "fit", gap: 0, frame_width: 0, shader: null }];
+}
+function choosePreview(wanted) {  // ?preview=system:variant, else the one already chosen for this system, else the first
+  const previews = previewsOf(state.current), key = preview => `${preview.system}:${preview.variant}`;
+  state.preview = previews.find(preview => key(preview) === wanted) || previews.find(preview => state.preview && preview.system === state.preview.system) || previews[0];
+  if (["fit", "game", "bezel"].includes(pageQuery.get("placement"))) state.preview = { ...state.preview, placement: pageQuery.get("placement") };  // ?placement= overrides the system's, as a setting would
+  const select = document.getElementById("preview");
+  select.innerHTML = previews.map(preview => `<option value="${key(preview)}">${preview.label}</option>`).join("");
+  select.value = key(state.preview);
+  select.disabled = previews.length < 2;
+  cards.native = {};
+}
+function nativeCard(index) {  // the picture the renderer gets: the test card at the screen's native size (RENDER_HOST_CARD=editor), or a flat one
+  const native = state.preview.screens[index] || state.preview.screens[0], kind = FLAT_CARD || (state.showGame ? "test" : "black"), key = `${index}/${native.w}x${native.h}/${kind}`;
+  cards.native = cards.native || {};
+  if (!cards.native[key]) cards.native[key] = BezelRenderer.TestCard.canvas(native.w, native.h, index, kind);
+  return cards.native[key];
+}
+function viewCanvasRect() {  // the canvas on the view, bottom-up like a GL framebuffer: the renderer's own placement in capture mode
+  if (CAPTURE && state.productionCanvas) return state.productionCanvas;
+  const c = state.current.canvas, float = Math.fround;
+  return { x: float(state.ox), y: float(canvas.height - state.oy - c.h * state.zoom), width: float(c.w * state.zoom), height: float(c.h * state.zoom) };
+}
+function previewVariant() { return BezelRenderer.Environment.variant(state.current, state.preview, id => id === "ambient" ? !!(state.current.ambient && state.current.ambient.file) : !!(layerById(id) && layerById(id).file)); }
+function targetScreenRect() {  // the target screen on the view, top-down: where the renderer's framing puts it around the canvas
+  const onTarget = BezelRenderer.Geometry.canvasOn(previewVariant(), state.preview, state.target.width, state.target.height), view = viewCanvasRect();
+  if (!(onTarget.width > 0)) return null;
+  const scale = view.width / onTarget.width, width = state.target.width * scale, height = state.target.height * scale;
+  return { x: view.x - onTarget.x * scale, y: canvas.height - (view.y - onTarget.y * scale) - height, w: width, h: height };
+}
+function previewLanes() {  // each screen's opening and fitted picture on the view, as the renderer places them; rows counted from the top
+  const lanes = BezelRenderer.Geometry.lanes(previewVariant(), state.preview, viewCanvasRect());
+  return lanes.map(lane => lane && { native: lane.native, tube: topDown(lane.tube), output: topDown(lane.output) });
+}
+function topDown(rect) { return { x: rect.x, y: canvas.height - rect.y - rect.height, w: rect.width, h: rect.height }; }
 
 function status(text) { document.getElementById("status").textContent = text; }
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
@@ -255,6 +297,7 @@ async function open(id) {
   state.original = clone(state.current);
   state.selected = null; state.dirty = false; state.images = {}; state.thumbs = {}; state.past = []; state.future = [];
   location.hash = id;
+  choosePreview(pageQuery.get("preview"));
   let pending = 0;
   for (const layer of state.current.layers) {
     if (!layer.file) continue;
@@ -510,17 +553,11 @@ function buildProps() {
 }
 
 // ---- view
-function captureFit() {  // the renderer's framing: contain, or cover when the canvas layer follows the viewport and every opening stays on screen
-  const plate = state.current.canvas, width = canvas.width, height = canvas.height;
-  let scale = Math.min(width / plate.w, height / plate.h);
-  const canvasLayer = layerById(state.current.canvas_layer);
-  if (canvasLayer && canvasLayer.follow === "viewport") {
-    const grow = Math.max(width / plate.w, height / plate.h), left = (width - plate.w * grow) / 2, top = (height - plate.h * grow) / 2;
-    const onScreen = tube => !tube || (left + tube.x * grow >= 0 && top + tube.y * grow >= 0 && left + (tube.x + tube.w) * grow <= width && top + (tube.y + tube.h) * grow <= height);
-    if (state.current.screens.every(screen => onScreen(screen.tube))) scale = grow;
-  }
-  state.zoom = scale; state.ox = (width - plate.w * scale) / 2; state.oy = (height - plate.h * scale) / 2;
-  if (CAPTURE.placed) { state.zoom = CAPTURE.placed[2] / plate.w; state.ox = CAPTURE.placed[0]; state.oy = CAPTURE.placed[1]; }  // an integer placement the page cannot derive
+function captureFit() {  // the renderer's framing of the capture screen: contain, cover keeping every opening, or the integer placement
+  const plate = state.current.canvas, placed = BezelRenderer.Geometry.canvasOn(previewVariant(), state.preview, canvas.width, canvas.height);
+  state.productionCanvas = placed;
+  state.zoom = placed.width / plate.w; state.ox = placed.x; state.oy = canvas.height - placed.y - placed.height;
+  console.log(`semu-capture canvas ${Math.round(placed.x)},${Math.round(state.oy)},${Math.round(placed.width)},${Math.round(placed.height)}`);  // tests/visual/editor-sync.sh compares it with the renderer's
   state.fitted = true;
   draw();
 }
@@ -582,42 +619,13 @@ function curvingHit(r, bulge, sx, sy) {  // near a knob sizes; just beyond it th
   return null;
 }
 
-function drawTestCard(x, y, w, h, hue) {
-  if (FLAT_CARD) { ctx.fillStyle = FLAT_CARD === "white" ? "#fff" : "#000"; ctx.fillRect(x, y, w, h); return; }
-  ctx.fillStyle = hue ? "#c84830" : "#3060e0"; ctx.fillRect(x, y, w, h * 2 / 3);
-  ctx.fillStyle = hue ? "#e8b028" : "#30c840"; ctx.fillRect(x, y + h * 2 / 3, w, h / 3);
-  ctx.strokeStyle = "#fff"; ctx.lineWidth = Math.max(1, state.zoom); ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-  ctx.beginPath(); ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w / 2, y + h); ctx.moveTo(x, y + h / 2); ctx.lineTo(x + w, y + h / 2); ctx.stroke();
-  const cell = Math.max(2, w / 32);
-  for (const [cx, cy] of [[x, y], [x + w - cell * 4, y], [x, y + h - cell * 4], [x + w - cell * 4, y + h - cell * 4]])
-    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { ctx.fillStyle = (i + j) % 2 ? "#101010" : "#ffffff"; ctx.fillRect(cx + i * cell, cy + j * cell, cell, cell); }
-}
-function testCard(w, h, hue) {  // an offscreen test card, cached, for the reflection
-  const key = `${w}x${h}${hue ? "b" : "a"}`;
-  if (cards[key]) return cards[key];
-  const off = document.createElement("canvas"); off.width = w; off.height = h;
-  const saved = ctx; ctx = off.getContext("2d"); drawTestCard(0, 0, w, h, hue); ctx = saved;
-  cards[key] = off;
-  return off;
-}
 function rgba(hex, alpha) { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`; }
 const reflectCanvas = document.createElement("canvas"), reflectBlurCanvas = document.createElement("canvas");
-const innerCanvas = document.createElement("canvas");
-function innerContents(screen) {  // the picture, small: the thing the glass and the lip reflect
-  const t = pictureRect(screen), picture = pictureRect(screen), w = 256, h = Math.max(8, Math.round(256 * t.h / t.w)), k = w / t.w;
-  innerCanvas.width = w; innerCanvas.height = h;
-  const saved = ctx; ctx = innerCanvas.getContext("2d");
-  ctx.fillStyle = screen.ring.color === "none" ? (screen.surround || "#000") : "#000"; ctx.fillRect(0, 0, w, h);
-  drawTestCard((picture.x - t.x) * k, (picture.y - t.y) * k, picture.w * k, picture.h * k, screen.id === "bottom");
-  ctx = saved;
-  return innerCanvas;
-}
-function drawReflection(screen, baseAlpha) {  // the picture mirrored across its own edge onto the glass and the lip: sharp at the edge, blurrier and fainter further out (reflectAt in config/render/compositor.frag)
-  const look = screen.reflection, image = pictureRect(screen), band = screen.ring.outer;
-  const { x: ix, y: iy, w: iw, h: ih } = snapped(image);
+function drawReflection(screen, baseAlpha, lane, card) {  // the picture mirrored across its own edge onto the glass and the lip: sharp at the edge, blurrier and fainter further out (reflectAt in config/render/compositor.frag)
+  const look = screen.reflection, band = screen.ring.outer;
+  const { x: ix, y: iy, w: iw, h: ih } = lane.output;  // the picture where the renderer fits it, mirrored from its native frame
   const { x: bx, y: by, w: bw, h: bh } = snapped(band);
   if (bw < 2 || bh < 2 || bw * bh > 16000000) return;
-  const card = innerContents(screen);
   const ox = bx, oy = by, ow = bw, oh = bh;
   const mirrors = (o, blur) => {  // left, right, top, bottom, four corners
     o.save(); o.translate(-ox, -oy); o.filter = blur > 0.5 ? `blur(${blur}px)` : "none"; o.imageSmoothingEnabled = true;
@@ -670,28 +678,22 @@ function lipPaint(screen) {  // lipColor in config/render/compositor.frag: the r
   }
   return { canvas: lipCache.get(key), x: s.x, y: s.y };
 }
-function pictureRect(screen) {  // the picture rectangle, or the aspect-fitted picture inside the opening when the package has none
-  if (screen.image) return screen.image;
-  const t = screen.tube, aspect = screen.aspect;
-  if (!aspect) return t;
-  const w = Math.min(t.w, Math.round(t.h * aspect)), h = Math.min(t.h, Math.round(t.w / aspect));
-  return { x: t.x + Math.round((t.w - w) / 2), y: t.y + Math.round((t.h - h) / 2), w, h };
-}
 function drawCutouts(layer) {  // like Mega Bezel: the ring, the black edge inside it, the picture clipped to the opening; the plate shows through everywhere else
   ctx.save();
   ctx.globalAlpha = (layer.opacity === undefined ? 1 : layer.opacity) * state.cutoutAlpha;  // view-only transparency, never saved
+  const lanes = previewLanes();
   for (const screen of state.current.screens) {
-    const ring = screen.ring, image = screen.image, reflecting = screen.reflection && screen.reflection.strength > 0 && state.showGame && screen.tube;
+    const index = state.preview.screens.length === 1 ? 0 : state.preview.screens.findIndex(native => native.id === screen.id), lane = lanes[index];
+    const ring = screen.ring, image = screen.image, reflecting = screen.reflection && screen.reflection.strength > 0 && state.showGame && screen.tube && lane;
     const filled = ring && ring.color !== "none";  // a ring without fill only marks a painted bezel
     if (ring && ring.outer && ring.inner) {
       if (filled) { const lip = lipPaint(screen); ctx.save(); rectPath(screen, "outer"); ctx.clip(); if (lip) ctx.drawImage(lip.canvas, lip.x, lip.y); else { ctx.fillStyle = ring.color || "#202020"; ctx.fill(); } ctx.restore(); }  // the lip as the renderer paints it
       else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
-      if (reflecting) drawReflection(screen, ctx.globalAlpha);  // the lip runs to the picture edge: no black inner rectangle, no second outline
+      if (reflecting) drawReflection(screen, ctx.globalAlpha, lane, nativeCard(index));  // the lip runs to the picture edge: no black inner rectangle, no second outline
     } else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
-    if (screen.tube && state.showGame) {
-      const picture = pictureRect(screen);
-      ctx.save(); rectPath(screen, "tube"); ctx.clip();
-      const card = snapped(picture); drawTestCard(card.x, card.y, card.w, card.h, screen.id === "bottom");
+    if (screen.tube && state.showGame && lane) {  // the native frame, point-sampled into the rectangle the renderer fits it to
+      ctx.save(); rectPath(screen, "tube"); ctx.clip(); ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(nativeCard(index), lane.output.x, lane.output.y, lane.output.w, lane.output.h);
       ctx.restore();
     }
   }
@@ -749,6 +751,13 @@ function draw() {
   if (CAPTURE) return;  // the picture only: no canvas outline, grid, outlines, handles or HUD
   ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 1; ctx.setLineDash([6, 4]);
   ctx.strokeRect(cx0 + 0.5, cy0 + 0.5, c.w * state.zoom, c.h * state.zoom);
+  const screenOnView = targetScreenRect();
+  if (screenOnView) {  // the target screen as the renderer frames the canvas on it
+    ctx.strokeStyle = "rgba(100,210,255,0.55)"; ctx.setLineDash([2, 5]);
+    ctx.strokeRect(Math.round(screenOnView.x) + 0.5, Math.round(screenOnView.y) + 0.5, Math.round(screenOnView.w) - 1, Math.round(screenOnView.h) - 1);
+    ctx.font = "600 11px -apple-system, system-ui, sans-serif"; ctx.fillStyle = "rgba(100,210,255,0.8)";
+    ctx.fillText(`${state.target.width}×${state.target.height} · ${state.preview.placement}`, Math.round(screenOnView.x) + 2, Math.round(screenOnView.y + screenOnView.h) + 14);
+  }
   ctx.setLineDash([]);
   if (state.zoom >= 8) {
     ctx.strokeStyle = "rgba(255,255,255,0.08)";
@@ -1004,6 +1013,11 @@ function toggleXray() { setCutoutAlpha(state.cutoutAlpha < 1 ? 1 : 0.35); }
 document.getElementById("help-btn").addEventListener("click", event => { event.stopPropagation(); const help = document.getElementById("help"); help.style.display = help.style.display === "block" ? "none" : "block"; });
 window.addEventListener("click", () => { document.getElementById("help").style.display = "none"; });
 document.getElementById("package").addEventListener("change", event => open(event.target.value));
+document.getElementById("preview").addEventListener("change", event => { choosePreview(event.target.value); if (state.fitted) fit(); else draw(); buildProps(); });
+const targetSelect = document.getElementById("target");
+targetSelect.innerHTML = TARGETS.map(([width, height, label]) => `<option value="${width}x${height}">${label}</option>`).join("");
+targetSelect.value = `${state.target.width}x${state.target.height}`;
+targetSelect.addEventListener("change", () => { const [width, height] = targetSelect.value.split("x").map(Number); state.target = { width, height }; try { localStorage.setItem("semu-bezel-target", targetSelect.value); } catch (error) {} if (state.fitted) fit(); else draw(); });
 document.getElementById("fit").addEventListener("click", fit);
 document.getElementById("zoom-in").addEventListener("click", () => zoomTo(ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(state.zoom) + 1)], canvas.width / 2, canvas.height / 2));
 document.getElementById("zoom-out").addEventListener("click", () => zoomTo(ZOOMS[Math.max(0, ZOOMS.indexOf(state.zoom) - 1)], canvas.width / 2, canvas.height / 2));
