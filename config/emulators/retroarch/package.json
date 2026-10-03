@@ -59,7 +59,7 @@
     }
   },
   "doc": {
-    "rendering": "The Linux glcore driver links libsemurenderer directly (retroarch.patch) and calls it after the game draw and again before present. RetroArch menus bypass the renderer."
+    "rendering": "The glcore driver links the renderer loader (libsemurendererloader), never libsemurenderer itself; the loader opens libsemurenderer at run time, and the hooks retroarch.patch adds call it after the game draw and again before present. RetroArch menus bypass the renderer."
   },
   "nixpkgs_recipe": "retroarch-bare"
 }
