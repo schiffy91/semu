@@ -321,7 +321,7 @@ class BezelPackageWriter {
         JSONValue reflection = screen.get("reflection");
         JSONValue saved = screen.get("provenance");
         bool edited = saved != null && saved.isObject() && saved.get("edited") != null && saved.get("edited").isObject();  // saved from the editor: keep the person's values
-        if (!edited || reflection == null || !reflection.isObject()) {  // Mega Bezel's reflection: the global amount times its direct and diffused amounts (reflection.inc)
+        if (!edited || reflection == null || !reflection.isObject()) {  // Mega Bezel's global reflection amount, blur max and fade
             reflection = JSONValue.makeObject();
             double amount = geometry.params.get("HSM_REFLECT_GLOBAL_AMOUNT") / 100.0;  // Mega Bezel's global reflection amount
             reflection.set("strength", JSONValue.makeFloat(BezelNumber.clamp(amount, 0.0, 1.0)));
