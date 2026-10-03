@@ -43,6 +43,6 @@
     }
   ],
   "doc": {
-    "layout": "computed: the main screen at the largest integer scale that leaves the second screen at least 1x beside it, the second at its own largest whole step, no taller than the main; the main is centred on its own when that costs no step, otherwise the pair is centred; each screen gets a drawn frame that shrinks to the room the screens leave"
+    "layout": "computed: the main screen at the largest integer scale that leaves the second screen at least 1x beside it, the second at its own largest whole step, no taller than the main; the main is centred on its own unless centring the pair gives a larger main, then a larger second screen, then a wider frame; each screen gets a drawn frame that shrinks to the room the screens leave"
   }
 }
