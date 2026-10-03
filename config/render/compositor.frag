@@ -27,7 +27,7 @@ uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uR
   vec2 q0=uv(p,tube);vec2 q1=curved(q0,fx.x);bool on=q1.x>=0.0&&q1.x<=1.0&&q1.y>=0.0&&q1.y<=1.0;
   vec2 pc=tube.xy+q1*tube.zw;vec2 gq=uv(pc,rect);vec2 past=(gq-clamp(gq,0.0,1.0))*rect.zw;bool game=(on&&gq.x>=0.0&&gq.x<=1.0&&gq.y>=0.0&&gq.y<=1.0)||(edge>0.0&&dot(past,past)<=edge*edge);  // inside by comparison, never by a zero residue: compilers fuse (gq-clamp(gq))*size into multiply-adds that leave one, and every screen without a lip (computed layouts, bezels off) went black
   vec3 c=surround.rgb;
-  if(game){vec2 q=rotatedUv(clamp(gq,0.0,1.0),rot);float lod=pictureLod(t,rect,rot);c=fx.x>0.0?bentPicture(t,p,tube,rect,fx,rot,lod):textureLod(t,q,lod).rgb;if(fx.z>0.0){vec3 b=blurred(t,q,glowLod(t));c+=fx.z*max(b-0.4,0.0)*1.3;}}  // the full-size picture; a flat lane keeps its single tap on the texel centres
+  if(game){vec2 q=rotatedUv(clamp(gq,0.0,1.0),rot);float lod=pictureLod(t,rect,rot);c=fx.x>0.0?bentPicture(t,p,tube,rect,fx,rot,lod):textureLod(t,q,lod).rgb;if(fx.z>0.0){vec3 b=blurred(t,q,glowLod(t));c=mix(c,max(c,b),min(fx.z*1.3,1.0));}}  // the full-size picture; a flat lane keeps its single tap on the texel centres
   else if(!on)c=vec3(0.0);
   vec2 cc=q1*2.0-1.0;c*=1.0-fx.y*smoothstep(0.45,1.7,dot(cc,cc));
   return c;}
