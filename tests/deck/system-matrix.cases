@@ -1,5 +1,6 @@
 # Every launch command ES-DE offers on the Deck (es_systems.xml), with a game that reaches a title
 # or attract screen without input. SYSTEM EMULATOR CORE|- WAIT... -- ROM-GLOB; see system-matrix.sh.
+# Multi-disc cases name the playlist inside its folder, the file ES-DE passes as %ROM%.
 gb retroarch gambatte 20 40 -- Tetris (World) (Rev 1).zip
 gbc retroarch gambatte 20 40 -- Tetris DX*.zip
 gba retroarch mgba 20 40 -- Legend of Zelda, The - The Minish Cap (USA).zip
@@ -23,3 +24,7 @@ wii dolphin - 45 90 -- New Super Mario Bros. Wii*.wbfs
 ps2 pcsx2 - 45 90 -- Devil May Cry (USA).iso
 switch ryujinx - 60 120 -- Animal Crossing New Horizons*.nsp
 wiiu cemu - 60 120 -- MARIO KART 8 (US).wua
+dreamcast flycast - 30 60 -- Resident Evil - Code - Veronica.m3u/Resident Evil - Code - Veronica.m3u
+dreamcast retroarch flycast 30 60 -- Resident Evil - Code - Veronica.m3u/Resident Evil - Code - Veronica.m3u
+ps2 pcsx2 - 45 90 -- Devil May Cry 2 (USA).m3u/Devil May Cry 2 (USA).m3u
+gc dolphin - 45 90 -- Resident Evil (USA).m3u/Resident Evil (USA).m3u

@@ -1053,6 +1053,28 @@ Update this block whenever a milestone criterion changes state.
   Open: the Deck's charger cannot keep up with Steam's idle UI (it discharged about 5 W net while
   plugged in), so the final release waits for the Deck to come back charged; GBC/GBA mid-greys
   are darker after removing the gamma lift that forced the clipping (owner's call on the Deck).
+  2026-10-03, the owner's "Dreamcast crashed when opening": ES-DE launched Resident Evil Code:
+  Veronica at 09:19:43 with its folder's .m3u, play time 1 s. Standalone Flycast 2.7 opens no
+  .m3u (OpenDisc knows chd, gdi, cdi, cue) and a command-line start exits with code 0 on "Unknown
+  disk format"; PCSX2 2.6.3 has no .m3u reader either (Devil May Cry 2). Read from the pinned
+  sources and the Deck's logs, not run there (SSH stayed read-only). Fixed offline, no emulator
+  rebuilt (abd75a8, deaa703, d3b7318):
+  - Each emulator.json platform declares `playlist.open`: `first_entry` for flycast and pcsx2
+    (Semu passes the playlist's first disc, held to the ROM-directory rule, with
+    `playlist.args`), `native` for dolphin and retroarch (byte-identical argv). Flycast also gets
+    a transient `-config config:Dreamcast.ContentPath="<the game's folder>"`, so Commands >
+    Eject Disk, Insert Disk lists that game's discs. SemuChecker fails any binding of a system
+    listing .m3u whose emulator declares nothing.
+  - Dolphin.ini `AutoDiscChange = True` (it loaded GC playlists but waited at the swap prompt);
+    Flycast's disc picker in list mode, no box-art fetch.
+  - Extensions no bound emulator opens are no longer offered: dreamcast .iso, ps2 and gc
+    .7z/.zip, psx .ecm, genesis .32x (none in the library).
+  `--print-plan` over the Mac library gives disc 1 plus the ContentPath pair for all 7 Dreamcast
+  playlists and DMC2's disc 1, and keeps the .m3u for the 8 GC playlists. Awaits observation on
+  the Deck once launches are allowed: a `--delta` release, the four multi-disc cases at the end
+  of `tests/deck/system-matrix.cases` (the script now gives repeated cases their own directory
+  and records the emulator's argv), and a manual disc swap in each emulator. Left for the owner:
+  gc `Baten Kaitos Origins (USA).m3u` lists Disc 1 twice and no Disc 2.
 - M6 renderer: done on the desktop 2026-09-19, Deck pending. `libsemurenderer`
   (librashader GL) is linked into RetroArch's gl3 driver by the Semu build;
   the launcher passes `SEMU_RENDER_*` from `config/systems/<id>/{shaders,bezels}.json`.

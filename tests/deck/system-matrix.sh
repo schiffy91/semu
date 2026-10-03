@@ -12,7 +12,9 @@
 # CASES has one case per line: SYSTEM EMULATOR CORE|- WAIT... -- ROM-GLOB (relative to the ROM
 # folder of SYSTEM; the first match is played). OUT/<case>/ gets at-<wait>.png for each wait,
 # run.log (everything Semu and the emulator printed), render-env (the SEMU_RENDER_* the emulator
-# saw) and result (one line per check). OUT/summary collects every result; OUT/done marks the end.
+# saw), cmdline (its argv, one argument per line) and result (one line per check); a second case of
+# the same SYSTEM-EMULATOR[-CORE] gets a -2, -3 suffix. OUT/summary collects every result; OUT/done
+# marks the end.
 set -u
 cases="$1"; out="$2"
 roms=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs
@@ -33,6 +35,7 @@ while IFS= read -r line; do
   head="${line%% -- *}"; pattern="${line#* -- }"
   read -r system emulator core waits <<< "$head"
   name="$system-$emulator"; [ "$core" = - ] || name="$name-$core"
+  base="$name"; suffix=2; while [ -e "$out/$name" ]; do name="$base-$suffix"; suffix=$((suffix + 1)); done  # a second case of one emulator keeps its own results
   dir="$out/$name"; mkdir -p "$dir"; : > "$dir/result"
   note() { echo "$*" >> "$dir/result"; }
   if [ "$(battery)" -lt 20 ] && ! charging; then note "skipped: battery $(battery)% and not charging"; continue; fi
@@ -75,6 +78,7 @@ while IFS= read -r line; do
   done
   leaf="$game"; while [ -n "$leaf" ] && child=$(pgrep -P "$leaf" | tail -1) && [ -n "$child" ]; do leaf=$child; done
   [ -n "$leaf" ] && tr '\0' '\n' < "/proc/$leaf/environ" 2>/dev/null | grep '^SEMU_RENDER_' | sort > "$dir/render-env"
+  [ -n "$leaf" ] && tr '\0' '\n' < "/proc/$leaf/cmdline" > "$dir/cmdline" 2>/dev/null && note "argv-last: $(tail -1 "$dir/cmdline")"  # the file the emulator was told to open
   [ -n "$leaf" ] && note "emulator: $(cat "/proc/$leaf/comm" 2>/dev/null) pid $leaf, $(ps -o pcpu=,rss= -p "$leaf" 2>/dev/null | awk '{printf "%s%% cpu, %d MB", $1, $2/1024}')"
 
   if [ -n "$game" ] && kill -0 "$game" 2>/dev/null; then
