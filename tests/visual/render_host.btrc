@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 import Library.Console;
+import Library.Platform;
 import Library.Strings;
 import ../../src/renderer/libsemurenderer.btrc;
 
@@ -188,9 +189,11 @@ class RenderHostTarget {  // the emulator's backbuffer: an FBO with the game dra
 }
 
 class RenderHost {
-    class int frames() {  // frames drawn before the capture: RENDER_HOST_FRAMES, else 12
-        char* text = getenv("RENDER_HOST_FRAMES");  // response-time reads seven frames of history: settle it
-        int count = text == null || text[0] == 0 ? 12 : atoi(text);
+    class int frames() {  // frames drawn before the capture: RENDER_HOST_FRAMES, else 12; -1 unless all digits
+        string text = Environment.get("RENDER_HOST_FRAMES", "");  // response-time reads seven frames of history: settle it
+        if (text.isEmpty()) { return 12; }
+        if (!Strings.isDigitStr(text)) { return -1; }  // "12x" or "-3" is a typo, not a frame count
+        int count = Strings.toInt(text);
         return count < 1 ? 1 : count;
     }
 
@@ -288,6 +291,7 @@ int main(int argc, char** argv) {  // render_host WIDTH HEIGHT OUT.ppm [--reload
     RenderHostTarget target = RenderHostTarget(width, height);
     if (!target.complete()) { Console.error("render-host: the framebuffer is incomplete"); return 1; }
     int frames = RenderHost.frames();
+    if (frames < 0) { Console.error("render-host: RENDER_HOST_FRAMES must be a whole number of frames, not '" + Environment.get("RENDER_HOST_FRAMES", "") + "'"); return 64; }
     int result = RenderHost.settle(target, frames);
     if (result != 0) { return result; }
     if (!target.writePortablePixmap(argv[3])) { return 1; }
