@@ -1,14 +1,28 @@
 {
-  "doc": "Freely licensed test programs that real cores boot in the real-cores check: pinobatch's 240p Test Suite ports (GPL-2.0-or-later) and PeterLemon's bare-metal N64 programs (Unlicense, public domain), pinned by release or commit and hash.",
+  "doc": "Freely licensed test programs that real cores boot in the real-cores check, pinned by release or commit and hash: pinobatch's 240p Test Suite ports (GPL-2.0-or-later), PeterLemon's bare-metal N64 programs (Unlicense, public domain), SGDK's image sample (MIT), nesdoug's SNES_09 (MIT), asie's DLDI benchmark built with BlocksDS (MIT), thePratz's Blue Lightning PSP demo (MIT), mtheall's ftpd for 3DS (GPL-3.0-or-later), Hunter Davis's Curse of the Herder for Dreamcast (MIT) and filipalac's PS1 port of the 240p Test Suite (GPL-2.0-or-later). An entry with archive zip names a file inside that release zip, and its hash is the unpacked tree's; boot_seconds replaces the default 4 s wait before the screenshot.",
   "sources": [
     { "url": "https://github.com/pinobatch/240p-test-mini/releases/tag/v0.23", "licence": "GPL-2.0-or-later" },
-    { "url": "https://github.com/PeterLemon/N64/tree/7085543e4a19d8c539fc9e0a4d2869e788b4ed4b", "licence": "Unlicense" }
+    { "url": "https://github.com/PeterLemon/N64/tree/7085543e4a19d8c539fc9e0a4d2869e788b4ed4b", "licence": "Unlicense" },
+    { "url": "https://github.com/Stephane-D/SGDK/tree/ee6870a6010b1e341ca36078f581a68a26c9a543/sample/basics/image", "licence": "MIT" },
+    { "url": "https://github.com/nesdoug/SNES_09/tree/50257bd197ba5b3a3b1b3be6fcc3f741c5a72994", "licence": "MIT" },
+    { "url": "https://github.com/asiekierka/dldi-driver-benchmark/releases/tag/v0.4.3", "licence": "MIT" },
+    { "url": "https://github.com/pratzerich/thepratz-blue-lightning/releases/tag/0.0.1", "licence": "MIT" },
+    { "url": "https://github.com/mtheall/ftpd/releases/tag/v3.2.1", "licence": "GPL-3.0-or-later" },
+    { "url": "https://github.com/huntergdavis/curse-of-the-herder-dreamcast/releases/tag/v1.0.0", "licence": "MIT" },
+    { "url": "https://github.com/filipalac/240pTestSuite-PS1/releases/tag/19122020", "licence": "GPL-2.0-or-later" }
   ],
   "roms": [
     { "system": "gb", "core": "gambatte", "file": "gb240p.gb", "url": "https://github.com/pinobatch/240p-test-mini/releases/download/v0.23/gb240p.gb", "hash": "sha256-cz625+wHGXUt3V/NpOcVwvLiD0rEvJccS9HUknL5uwQ=" },
     { "system": "gbc", "core": "gambatte", "file": "gb240p.gb", "url": "https://github.com/pinobatch/240p-test-mini/releases/download/v0.23/gb240p.gb", "hash": "sha256-cz625+wHGXUt3V/NpOcVwvLiD0rEvJccS9HUknL5uwQ=" },
     { "system": "gba", "core": "mgba", "file": "240pee_mb.gba", "url": "https://github.com/pinobatch/240p-test-mini/releases/download/v0.23/240pee_mb.gba", "hash": "sha256-R4RPcUBzigb487wJeA2jqwlVOaJQuHD2FP7tVh2dbzQ=" },
     { "system": "nes", "core": "mesen", "file": "240pee.nes", "url": "https://github.com/pinobatch/240p-test-mini/releases/download/v0.23/240pee.nes", "hash": "sha256-BPAdc3L2bqK+/jJbm9ZVqfzDlaMfpG2UZihruPnS5i4=" },
-    { "system": "n64", "core": "mupen64plus_next", "file": "HelloWorldCPU32BPP320X240.N64", "url": "https://raw.githubusercontent.com/PeterLemon/N64/7085543e4a19d8c539fc9e0a4d2869e788b4ed4b/HelloWorld/32BPP/HelloWorldCPU320x240/HelloWorldCPU32BPP320X240.N64", "hash": "sha256-WXNxw5J4Sev7yRL4FBgR2VL2wPUKmECV/Bxhzo4MdbM=" }
+    { "system": "n64", "core": "mupen64plus_next", "file": "HelloWorldCPU32BPP320X240.N64", "url": "https://raw.githubusercontent.com/PeterLemon/N64/7085543e4a19d8c539fc9e0a4d2869e788b4ed4b/HelloWorld/32BPP/HelloWorldCPU320x240/HelloWorldCPU32BPP320X240.N64", "hash": "sha256-WXNxw5J4Sev7yRL4FBgR2VL2wPUKmECV/Bxhzo4MdbM=" },
+    { "system": "genesis", "core": "genesis_plus_gx", "file": "sgdk-image.bin", "url": "https://raw.githubusercontent.com/Stephane-D/SGDK/ee6870a6010b1e341ca36078f581a68a26c9a543/sample/basics/image/out/release/rom.bin", "hash": "sha256-YC/guJ7b06xlF+zKUgNo/oSCc+WewtlhT9juLeESBPA=" },
+    { "system": "snes", "core": "snes9x", "file": "SNES_09.sfc", "url": "https://raw.githubusercontent.com/nesdoug/SNES_09/50257bd197ba5b3a3b1b3be6fcc3f741c5a72994/SNES_09.sfc", "hash": "sha256-YL/Yu0iKKXOLX2SlEhDXFZqdR8KhG6ySTCI30pz2UEQ=" },
+    { "system": "nds", "core": "melonds", "file": "dldi_benchmark_blocksds.nds", "url": "https://github.com/asiekierka/dldi-driver-benchmark/releases/download/v0.4.3/dldi_benchmark_blocksds.nds", "hash": "sha256-1LsM1rKr2SUIWVxH3AnZv7VcL4EtUnGltwicwPdAdjY=" },
+    { "system": "psp", "core": "ppsspp", "file": "thepratz-blue-lightning.pbp", "url": "https://github.com/pratzerich/thepratz-blue-lightning/releases/download/0.0.1/EBOOT.PBP", "hash": "sha256-Ep/aBMt2GyI7XM2uQ37NcM4tP+1jGasESqHjrDnmRE4=" },
+    { "system": "n3ds", "core": "azahar", "file": "ftpd.3dsx", "url": "https://github.com/mtheall/ftpd/releases/download/v3.2.1/ftpd.3dsx", "hash": "sha256-6iPSagE2POfi9T5B/bVRvaCAFMVu5SqwwBmXTQJIC9o=" },
+    { "system": "dreamcast", "core": "flycast", "file": "herder-1.0.elf", "url": "https://github.com/huntergdavis/curse-of-the-herder-dreamcast/releases/download/v1.0.0/herder-1.0.elf", "hash": "sha256-DXvrmoHOr/2FC8X95SusyYHfw8MFhciW/tno3nyy/R8=" },
+    { "system": "psx", "core": "mednafen_psx", "file": "240pTestSuitePS1-EMU.bin", "archive": "zip", "boot_seconds": 12, "url": "https://github.com/filipalac/240pTestSuite-PS1/releases/download/19122020/240pTestSuitePS1-EMU.zip", "hash": "sha256-QNIuoeHoqpQmzXLFtRBeK1OOCZK/1HFM/BUO2kGGL6o=" }
   ]
 }

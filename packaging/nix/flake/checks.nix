@@ -89,7 +89,10 @@ forAllSystems (system:
     realCores = let  # real cores booting freely licensed test programs (tests/integration/test_roms.json)
       manifest = lib.importJSON (repositoryRoot + "/tests/integration/test_roms.json");
       coreFile = core: "${coreFlakes.${core}.packages.${system}.default}/lib/retroarch/cores/${core}_libretro.so";
-      cases = lib.concatMapStringsSep "\n" (rom: "${rom.system} ${rom.core} ${pkgs.fetchurl { inherit (rom) url hash; name = rom.file; }} ${coreFile rom.core}") manifest.roms;
+      romFile = rom: if (rom.archive or null) == "zip"
+        then "${pkgs.fetchzip { inherit (rom) url hash; stripRoot = false; }}/${rom.file}"  # the named file inside a release zip
+        else pkgs.fetchurl { inherit (rom) url hash; name = rom.file; };
+      cases = lib.concatMapStringsSep "\n" (rom: "${rom.system} ${rom.core} ${romFile rom} ${coreFile rom.core} ${toString (rom.boot_seconds or 4)}") manifest.roms;
     in pkgs.stdenv.mkDerivation {
       name = "semu-real-cores";
       src = lib.fileset.toSource { root = repositoryRoot; fileset = ../../../tests/integration/real-cores.sh; };
