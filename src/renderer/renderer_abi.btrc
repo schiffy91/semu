@@ -241,6 +241,11 @@ class RendererFrameContract {
 class RendererCompositionContract {
     class int rounded(float value) { return (int)(value + 0.5f); }
 
+    class int edge(float value) {  // the nearest pixel edge, below zero too: a canvas cropped off screen keeps its edges
+        int truncated = (int)(value + 0.5f);
+        return (float)truncated > value + 0.5f ? truncated - 1 : truncated;
+    }
+
     class bool valid(struct RendererPixelRect* rectangle) {
         return rectangle != null && rectangle->width > 0
             && rectangle->height > 0;
@@ -336,14 +341,10 @@ class RendererCompositionContract {
                 || canvas->height <= 0.0f || x < 0.0f || y < 0.0f
                 || width <= 0.0f || height <= 0.0f
                 || x + width > 1.0001f || y + height > 1.0001f) { return; }
-        output->x = RendererCompositionContract.rounded(
-            canvas->x + x * canvas->width);
-        output->y = RendererCompositionContract.rounded(
-            canvas->y + (1.0f - y - height) * canvas->height);
-        output->width = RendererCompositionContract.rounded(
-            width * canvas->width);
-        output->height = RendererCompositionContract.rounded(
-            height * canvas->height);
+        output->x = RendererCompositionContract.edge(canvas->x + x * canvas->width);  // each edge rounded, never origin and size: rectangles that share an edge in the canvas share it on screen
+        output->y = RendererCompositionContract.edge(canvas->y + (1.0f - y - height) * canvas->height);
+        output->width = RendererCompositionContract.edge(canvas->x + (x + width) * canvas->width) - output->x;
+        output->height = RendererCompositionContract.edge(canvas->y + (1.0f - y) * canvas->height) - output->y;
     }
 
     class void fit(struct RendererPixelRect* area,
