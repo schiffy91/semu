@@ -50,13 +50,13 @@
           "h": 535
         },
         "outer": {
-          "x": 221,
-          "y": 223,
-          "w": 668,
-          "h": 609
+          "x": 197,
+          "y": 206,
+          "w": 670,
+          "h": 680
         },
         "inner_radius": 18.0,
-        "outer_radius": 40.2,
+        "outer_radius": 21.0,
         "color": "none"
       }
     }
