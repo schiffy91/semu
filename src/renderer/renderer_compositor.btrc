@@ -140,6 +140,7 @@ struct RendererScreenConfig {
     float ring_g;
     float ring_b;
     float ring_opacity;  // 0: the band only marks the painted bezel, nothing is filled
+    float ring_bevel;  // the lit chamfer on the lip's outer edge, 0..1
     float bulge_x;  // edge middles bowed outward, fractions of the opening's half width and half height
     float bulge_y;
     float ring_reflect;  // the picture mirrored onto the drawn bezel: strength, blur growth, fade with distance
@@ -346,9 +347,10 @@ class RendererConfiguration {
         RendererConfiguration.parseHole(&screen->image, name);
         snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_RING%s", index, suffix);
         char* ring = getenv(name);
-        float ringValues[14];
+        float ringValues[15];
         ringValues[13] = 1.0f;
-        int ringCount = ring == null ? 0 : sscanf(ring, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", &ringValues[0], &ringValues[1], &ringValues[2], &ringValues[3], &ringValues[4], &ringValues[5], &ringValues[6], &ringValues[7], &ringValues[8], &ringValues[9], &ringValues[10], &ringValues[11], &ringValues[12], &ringValues[13]);
+        ringValues[14] = 1.0f;  // an older CLI: the lit chamfer every lip had
+        int ringCount = ring == null ? 0 : sscanf(ring, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", &ringValues[0], &ringValues[1], &ringValues[2], &ringValues[3], &ringValues[4], &ringValues[5], &ringValues[6], &ringValues[7], &ringValues[8], &ringValues[9], &ringValues[10], &ringValues[11], &ringValues[12], &ringValues[13], &ringValues[14]);
         if (ringCount >= 13 && ringValues[2] > 0.0f && ringValues[3] > 0.0f && ringValues[6] > 0.0f && ringValues[7] > 0.0f) {  // 13 values: a filled ring from an older CLI
             screen->ring_set = 1;
             screen->ring_inner.set = 1;
@@ -367,6 +369,7 @@ class RendererConfiguration {
             screen->ring_g = RendererConfiguration.clamp01(ringValues[11]);
             screen->ring_b = RendererConfiguration.clamp01(ringValues[12]);
             screen->ring_opacity = RendererConfiguration.clamp01(ringValues[13]);
+            screen->ring_bevel = RendererConfiguration.clamp01(ringValues[14]);
         }
         snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_BULGE%s", index, suffix);
         char* bulge = getenv(name);
@@ -1593,7 +1596,7 @@ class RendererCompositor {
         RendererCompositor.setRect(gl, index == 0 ? resources->uniform_ring_inner : resources->uniform_ring_inner2, inner.x, inner.y, inner.width, inner.height);
         RendererCompositor.setRect(gl, index == 0 ? resources->uniform_ring_outer : resources->uniform_ring_outer2, outer.x, outer.y, outer.width, outer.height);
         RendererCompositor.set4(gl, index == 0 ? resources->uniform_ring_look : resources->uniform_ring_look2,
-            screen->ring_inner_radius, screen->ring_outer_radius, ring ? 1.0f : 0.0f, 0.0f);
+            screen->ring_inner_radius, screen->ring_outer_radius, ring ? 1.0f : 0.0f, screen->ring_bevel);
         RendererCompositor.set4(gl, index == 0 ? resources->uniform_ring_color : resources->uniform_ring_color2,
             screen->ring_r, screen->ring_g, screen->ring_b, screen->ring_opacity);
         RendererCompositor.set4(gl, index == 0 ? resources->uniform_ring_reflect : resources->uniform_ring_reflect2,

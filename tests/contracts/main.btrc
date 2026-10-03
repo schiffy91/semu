@@ -273,7 +273,7 @@ class RenderingContract {
         for entry in nesTv {
             if (entry.equals("SEMU_RENDER_SCREEN_0_REFLECT=0.5,0.95,1")) { nesReflect = true; }  // HSM_REFLECT_GLOBAL_AMOUNT 50, BLUR_MAX 95, FADE_AMOUNT 100
             if (entry.startsWith("SEMU_RENDER_SCREEN_0_IMAGE=0.275781,0.123148,0.448437,0.597685")) { nesImage = true; }  // 1059,266,1722,1291: HSM_NON_INTEGER_SCALE 59.77 at 4:3, POSITION_Y 78
-            if (entry.startsWith("SEMU_RENDER_SCREEN_0_RING=0.273698,0.119444,0.452604,0.605093,0.246354,0.099537,0.507292,0.644907,") && entry.endsWith(",0.0901961,0.0941176,0.0980392,1")) { nesRing = true; }  // black edge to bezel edge, bezel color #171819
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0_RING=0.273698,0.119444,0.452604,0.605093,0.246354,0.099537,0.507292,0.644907,") && entry.endsWith(",0.0901961,0.0941176,0.0980392,1,1")) { nesRing = true; }  // black edge to bezel edge, bezel color #171819, a lit chamfer
         }
         contract.expect(nesImage && nesRing, "the NES picture and bezel ring follow Soqueroeu's preset");
         contract.expect(nesReflect, "the NES ring reflection strength, blur and fade come from the preset");
@@ -304,7 +304,7 @@ class RenderingContract {
         bool dmgRing = false;
         for entry in full {
             if (entry.startsWith("SEMU_RENDER_SCREEN_0_IMAGE=0.294186,0.247261,0.411628,0.208504")) { dmgImage = true; }  // 1012,1512,1416,1275 of 3440x6115: Duimon's 1.11 LCD placement
-            if (entry.startsWith("SEMU_RENDER_SCREEN_0_RING=0.294186,0.247261,0.411628,0.208504,0.28314,0.240883,0.433721,0.221259,")) { dmgRing = true; }  // black edge 0: the ring starts at the picture
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0_RING=0.294186,0.247261,0.411628,0.208504,0.28314,0.240883,0.433721,0.221259,") && entry.endsWith(",1,0")) { dmgRing = true; }  // black edge 0: the ring starts at the picture; a flat printed mask, no chamfer
         }
         contract.expect(dmgImage && dmgRing, "the DMG picture and its drawn bezel come from the upstream preset");
         SemuDiagnostics diagnostics = SemuDiagnostics();
