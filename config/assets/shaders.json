@@ -694,6 +694,14 @@
           "tree": "shaders_slang",
           "path": "misc/shaders/image-adjustment.slang",
           "sha256": "e608b1dd71d660d2ce8a77ee3e3a62ad5047d50a75adc8db7b4a1b7c1be83e2d",
+          "filter_linear": false,
+          "scale_type": "source",
+          "scale": 1
+        },
+        {
+          "tree": "shaders_slang",
+          "path": "pixel-art-scaling/shaders/sharp-bilinear-simple.slang",
+          "sha256": "d97d47b9f7b399d5bdb9c6d67d11393b80e3e2f4fbec7db4e364f0ccbb5907ae",
           "filter_linear": true,
           "scale_type": "viewport",
           "scale": 1
@@ -707,11 +715,11 @@
       },
       "doc": {
         "why": "3DS touch screen: the panel's light without a drawn pixel grid. The shell's bottom opening holds 320x240 at a fractional scale on every display (0.95x on the Deck, 1.4x at 1080p, 2.8x at 4K), where lcd1x's one-sine-per-game-pixel grid beats against the screen's pixels: top.slangp drew 18-px vertical and horizontal bands there (column profile 146..238 on a white card). Below one screen pixel per game pixel no grid can be resolved anyway.",
-        "passes": "The one pass resamples 320x240 to the opening's fractional size, so it filters linearly: nearest sampling at 0.95x dropped 4 of 80 one-pixel columns and 2 of 30 rows of a line card, and at 1.42x and 2.84x drew each line 1 or 2 (2 or 3) pixels wide. Bilinear keeps every line, each with the same light.",
+        "passes": "Image-adjustment runs at the native 320x240 and sharp-bilinear-simple resamples it to the screen: it samples each game pixel at its texel centre and filters only a band 1/max(floor(scale), 1) texel wide where two pixels meet. At a whole multiple, which the computed dual layouts use (1x to 5x), that is pixel exact; at the shell's 0.95x and 1.42x the band is the whole texel, plain bilinear, so no one-pixel line drops out (nearest sampling dropped 4 of 80 columns and 2 of 30 rows at 0.95x); at 2.84x it is half a texel, so a line card has half as many in-between pixels. Bilinear at viewport scale blurred every pixel of the computed layouts: a one-pixel line drew 4 px wide at 2x, peak 143 of 191.",
         "params": "ia_luminance 0.75 is the mean of top.slangp's grid ((4/5) x (16/17)), so both screens keep the same brightness"
       },
       "output": {
-        "sha256": "50cb253c4ce33ee87f3804bb5aa05a010f7841935043ca43364b4bf8017accd0"
+        "sha256": "9916159242361b6f0b1767bf1710c860210f3a3384379a9a8d9f89dfc783721a"
       }
     },
     "assets/shaders/nds/top.slangp": {
