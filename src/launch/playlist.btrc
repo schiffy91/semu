@@ -1,0 +1,70 @@
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+
+class SemuPlaylistLaunch {  // what one picked game puts on argv
+    public string rom;  // the file that goes last on argv
+    public string playlist;  // the playlist Semu opened, or empty
+    public string directory;  // the opened playlist's own folder
+    public Vector<string> arguments;  // the platform's playlist.args, tokens not yet resolved
+    public string error;
+
+    public SemuPlaylistLaunch(string rom) {
+        self.rom = rom;
+        self.playlist = "";
+        self.directory = "";
+        self.arguments = [];
+        self.error = "";
+    }
+}
+
+class SemuPlaylist {  // an .m3u ES-DE picked, for emulators that open none
+    class bool isPlaylist(string path) { return path.toLower().endsWith(".m3u"); }
+
+    class string mode(JSONValue platform) {  // native passes the playlist on unchanged
+        string declared = SemuJson.textAt(platform, "playlist.open");
+        return declared.isEmpty() ? "native" : declared;
+    }
+
+    class Vector<string> entries(string text) {  // one disc per line: BOM, CR, blanks, comments dropped
+        string marker = "\xEF\xBB\xBF";
+        string body = text.startsWith(marker) ? text.substring(marker.len(), text.len() - marker.len()) : text;
+        Vector<string> result = [];
+        for line in Strings.split(body, "\n") {
+            string entry = line.trim();
+            if (!entry.isEmpty() && !entry.startsWith("#")) { result.push(entry); }
+        }
+        return result;
+    }
+
+    // first_entry: the emulator gets disc 1, which must pass the ROM rule
+    // romPath applies. Later discs are never opened here: the emulator's own
+    // disc change reports a missing one, and it must not block disc 1.
+    class SemuPlaylistLaunch open(JSONValue platform, string romRoot, string rom) {
+        SemuPlaylistLaunch content = SemuPlaylistLaunch(rom);
+        if (!SemuPlaylist.mode(platform).equals("first_entry") || !SemuPlaylist.isPlaylist(rom)) { return content; }
+        Vector<string> discs = SemuPlaylist.entries(FileSystem.readText(rom));
+        if (discs.isEmpty()) {
+            content.error = "playlist lists no disc: " + rom;
+            return content;
+        }
+        string entry = discs.get(0);
+        string disc = PathTools.join(PathTools.dirname(rom), entry);  // an absolute entry replaces the folder
+        if (SemuPlaylist.isPlaylist(disc)) {
+            content.error = "playlist names another playlist: " + entry;
+            return content;
+        }
+        if (!SemuPaths.fileInside(romRoot, disc)) {  // lines are untrusted: no escape by .. or symlink
+            content.error = "playlist disc is not a file inside the system ROM directory: " + entry;
+            return content;
+        }
+        content.rom = disc;
+        content.playlist = rom;
+        content.directory = PathTools.dirname(rom);
+        content.arguments = SemuJson.strings(SemuJson.get(platform, "playlist.args"));
+        return content;
+    }
+}

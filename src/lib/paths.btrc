@@ -32,6 +32,13 @@ class SemuPaths {
         return normalPath.equals(normalRoot) || normalPath.startsWith(base);
     }
 
+    class bool fileInside(string root, string path) {  // a real file under root's real path
+        string realRoot = UnixFileSystem.realPath(root);
+        string realPath = UnixFileSystem.realPath(path);
+        if (realRoot.isEmpty() || realPath.isEmpty() || !SemuPaths.inside(realRoot, realPath)) { return false; }
+        return FileSystem.isFile(realPath);
+    }
+
     class bool ancestorsAreRealDirectories(string root, string path) {  // no symlink may sit between root and path
         string current = PathTools.dirname(SemuPaths.normalize(path));
         string normalRoot = SemuPaths.normalize(root);
