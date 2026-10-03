@@ -32,6 +32,10 @@ class SemuLaunchPlan {
     public Vector<string> actionChords;  // "action=Ctrl+S" for every action with a keyboard chord
     public Vector<string> emulatorActions;  // emulator.json input.actions: only these reach the emulator
     public Vector<string> xpadLayoutIds;  // vendor:product pads whose top face button is BTN_WEST
+    public Vector<string> nativeChords;  // "action=Shift+F1": the emulator's own key, not Semu's chord
+    public int stateSlots;  // save_states.slots: 0 none, 1 fixed, more wrap
+    public int firstSlot;  // the number the emulator shows for Semu's first slot
+    public bool menuDrawn;  // a compositor draws the Semu menu over this emulator
     public int retroarchPort;
     public string stateDir;
     public string semuHome;
@@ -59,6 +63,10 @@ class SemuLaunchPlan {
         self.actionChords = [];
         self.emulatorActions = [];
         self.xpadLayoutIds = [];
+        self.nativeChords = [];
+        self.stateSlots = 0;
+        self.firstSlot = 0;
+        self.menuDrawn = true;
         self.retroarchPort = 0;
         self.stateDir = "";
         self.semuHome = "";
@@ -285,10 +293,28 @@ class SemuLauncher {
         return port > 0 && port <= 65535 ? port : 0;
     }
 
+    class Vector<string> nativeChords(SemuEmulator emulator) {  // declared rows where the emulator listens for its own key
+        Vector<string> result = [];
+        for group in ["hotkeys.keymap", "actions.native", "actions.external"] {
+            JSONValue rows = SemuJson.get(emulator.profile, group);
+            for (int index = 0; rows.isArray() && index < rows.size(); index++) {
+                string action = SemuJson.textAt(rows.at(index), "action");
+                string chord = SemuJson.textAt(rows.at(index), "native_chord");
+                if (!action.isEmpty() && !chord.isEmpty() && emulator.actions.contains(action)) { result.push(action + "=" + chord); }
+            }
+        }
+        return result;
+    }
+
     class void inputContracts(SemuLaunchPlan launch, SemuPlan plan, JSONValue platform, string stateRoot, SemuEmulator emulator) {  // what the supervisor mirrors from config/input
         launch.stateDir = stateRoot;
         launch.semuHome = plan.semuHome;
         launch.emulatorActions = emulator.actions;
+        launch.nativeChords = SemuLauncher.nativeChords(emulator);
+        launch.stateSlots = SemuJson.intAt(emulator.definition, "save_states.slots", 0);
+        launch.firstSlot = SemuJson.intAt(emulator.definition, "save_states.first_slot", 0);
+        launch.environment.push(f"SEMU_MENU_SLOTS={launch.stateSlots}");  // the renderer shows the slot as the emulator numbers it
+        launch.environment.push(f"SEMU_MENU_FIRST_SLOT={launch.firstSlot}");
         launch.bezelsOn = SemuJson.boolAt(plan.settings, "visual.bezels", true);
         launch.shadersOn = SemuJson.boolAt(plan.settings, "visual.crt_shaders", true);
         if (plan.input == null) { return; }
@@ -300,7 +326,8 @@ class SemuLauncher {
                 launch.menuActions.push(SemuJson.textAt(items.at(index), "action"));
             }
         }
-        launch.pauseAction = SemuJson.textAt(definition, "menu.pause_action");
+        bool pauses = SemuJson.textAt(emulator.definition, "menu.pause").equals("emulator");  // pausing one that stops presenting would hide the menu
+        launch.pauseAction = pauses ? SemuJson.textAt(definition, "menu.pause_action") : "";
         launch.chordModifier = SemuJson.textAt(definition, "gamepad_chords.modifier");
         launch.xpadLayoutIds = SemuJson.strings(SemuJson.get(definition, "gamepad_chords.xpad_layout_ids"));
         JSONValue bindings = SemuJson.get(definition, "gamepad_chords.bindings");
@@ -450,6 +477,7 @@ class SemuLauncher {
             string windowShim = PathTools.join(plan.assetRoot, "lib/libsemuwindow.dylib");
             if (FileSystem.isFile(windowShim)) { launch.environment.push("DYLD_INSERT_LIBRARIES=" + windowShim); }
         }
+        launch.menuDrawn = SemuJson.boolAt(platform, "render_hook", false) || preload || vulkan;  // no compositor here: the menu could never be seen
         launch.chordWindowMs = plan.input == null ? 250 : plan.input.chordWindowMs();
         if (plan.input != null) { launch.quitButtons = plan.input.quitChord(); }
         SemuLauncher.inputContracts(launch, plan, platform, stateRoot, emulator);

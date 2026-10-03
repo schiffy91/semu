@@ -4,8 +4,9 @@
   "input": {
     "actions": [
       "ui.screenshot",
-      "ui.menu",
       "app.quit",
+      "state.prev",
+      "state.next",
       "state.load",
       "state.save"
     ]
@@ -122,5 +123,14 @@
     "rendering": "RendererType 0 pins OpenGL. libsemupreload (render_preload) composes Semu's bezel and shader at the SDL/EGL swap: it reads the emulator's back buffer and writes the composed frame back before the real swap.",
     "playlist": "Flycast 2.7 opens no .m3u: OpenDisc knows only the chd, gdi, cdi and cue drivers, and a command-line start exits cleanly on \"Unknown disk format\". Semu therefore passes the playlist's first disc (playlist.open first_entry) and, for this run only (a -config value is transient and never saved to emu.cfg), points Dreamcast.ContentPath at the playlist's folder, so Commands > Eject Disk then Insert Disk lists that game's own discs. Flycast's -config parser (core/cfg/cl.cpp:36-168) ends a quoted value at the next matching quote, and the ContentPath list splits on semicolons (core/cfg/option.h:210-262), so playlist.quote wraps the folder in double quotes, or in single quotes when it holds a double quote; commas, colons, equals signs and spaces survive either. A folder holding both quotes or a semicolon cannot be expressed: Semu then leaves the pair out and says so, and disc 1 boots as before.",
     "content": "What Flycast 5aa091fd opens: the chd, gdi, cdi and cue disc drivers (core/imgread/common.cpp:19-26), .elf through the HLE BIOS (core/emulator.cpp:609), and .zip/.7z/.bin/.dat/.lst as NAOMI or Atomiswave carts (core/emulator.cpp:554-557). No .m3u: Semu opens playlists for it (playlist.open first_entry)."
+  },
+  "save_states": {
+    "slots": 10,
+    "first_slot": 1,
+    "doc": "Flycast cycles ten slots and wraps both ways, showing slot + 1 (core/ui/gui.cpp:518-522, 1620-1624 at 5aa091f); emu.cfg starts each launch on slot 0."
+  },
+  "menu": {
+    "pause": "none",
+    "doc": "Flycast declares no pause action (its btn_pause opens its own pause screen), so the Semu menu draws over the running game."
   }
 }

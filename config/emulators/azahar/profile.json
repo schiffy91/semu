@@ -16,7 +16,27 @@
     "line_groups": {
       "keymap_hotkeys": {
         "rows": "hotkeys.keymap",
-        "format": "${setting}=${chord}"
+        "format": "Shortcuts\\${setting}\\KeySeq=${chord}\nShortcuts\\${setting}\\KeySeq\\default=false",
+        "chord_encoding": {
+          "mode": "joined",
+          "separator": "+",
+          "keys": {
+            "Enter": "Return"
+          },
+          "quote_commas": true
+        }
+      },
+      "native_default_blanks": {
+        "kind": "collisions",
+        "rows": "native_shortcuts.defaults",
+        "format": "Shortcuts\\${setting}\\KeySeq=\nShortcuts\\${setting}\\KeySeq\\default=false",
+        "chord_encoding_of": "keymap_hotkeys",
+        "except_rows": "hotkeys.keymap",
+        "always": [
+          "Main%20Window\\Rotate%20Screens%20Upright",
+          "Main%20Window\\Swap%20Screens",
+          "Main%20Window\\Toggle%20Screen%20Layout"
+        ]
       }
     }
   },
@@ -24,36 +44,35 @@
   "hotkeys": {
     "keymap": [
       {
-        "setting": "Main%20Window\\Load%20File\\KeySeq",
+        "setting": "Main%20Window\\Load%20File",
         "action": "ui.open"
       },
       {
-        "setting": "Main%20Window\\Continue%2FPause%20Emulation\\KeySeq",
+        "setting": "Main%20Window\\Continue\\Pause%20Emulation",
         "action": "ui.pause"
       },
       {
-        "setting": "Main%20Window\\Capture%20Screenshot\\KeySeq",
+        "setting": "Main%20Window\\Capture%20Screenshot",
         "action": "ui.screenshot"
       },
       {
-        "setting": "Main%20Window\\Fullscreen\\KeySeq",
+        "setting": "Main%20Window\\Fullscreen",
         "action": "ui.fullscreen"
       },
       {
-        "setting": "Main%20Window\\Exit%20Azahar\\KeySeq",
-        "action": "app.quit"
+        "setting": "Main%20Window\\Exit%20Azahar",
+        "action": "app.quit",
+        "platforms": [
+          "macos"
+        ]
       },
       {
-        "setting": "Main%20Window\\Quick%20Load\\KeySeq",
+        "setting": "Main%20Window\\Quick%20Load",
         "action": "state.load"
       },
       {
-        "setting": "Main%20Window\\Quick%20Save\\KeySeq",
+        "setting": "Main%20Window\\Quick%20Save",
         "action": "state.save"
-      },
-      {
-        "setting": "Main%20Window\\Swap%20Screens\\KeySeq",
-        "action": "screen.swap"
       }
     ]
   },
@@ -143,11 +162,8 @@
         "fullscreen\\default=false",
         "singleWindowMode=true",
         "singleWindowMode\\default=false",
-        "",
-        "[Shortcuts]",
-        "Main%20Window\\Toggle%20Frame%20Advancing\\KeySeq=",
-        "Main%20Window\\Toggle%20Status%20Bar\\KeySeq=",
-        "@lines:keymap_hotkeys"
+        "@lines:keymap_hotkeys",
+        "@lines:native_default_blanks"
       ]
     }
   ],
@@ -156,6 +172,186 @@
     "identity": "${controller_guid} comes from the target's input.json device_identities.azahar_controller_guid and is kept in each binding for reference; with maptype:all Azahar does not match it. It is the SDL GUID string as SDL 2.26+ prints it, with the name CRC in bytes 2-3 (Steam's virtual pad, Microsoft X-Box 360 pad 0, is 030079f6de280000ff11000001000000, as ES-DE logs it on the Deck). AzaharEmitter validates the 32-hex GUID and emits nothing when it is absent or malformed.",
     "touch": "Azahar's emu_window touch device consumes ABI-native bottom-screen coordinates from Semu surface 1. The source patch captures only successful presses and clamps captured movement; Steam Input routes the Deck's right trackpad as the pointer source. Motion remains Azahar's explicit motion emulator until the target declares and verifies a DSU motion source.",
     "storage": "Custom storage is disabled so NAND, SDMC saves, and save states remain below the isolated XDG data root. External aes_keys.txt and seeddb.bin sources are copied once into that root by emulator.json seeds.",
-    "hotkeys": "The keymap table compiles Semu actions into Azahar QKeySequence values. Conflicting Azahar defaults for Ctrl+A and Ctrl+S are cleared before those chords are assigned to Quick Load and Quick Save."
+    "hotkeys": "Azahar reads its hotkeys only from [UI] as Shortcuts\\<group>\\<name>\\KeySeq (config.cpp:747-768, inside ReadUIValues), so the keymap rows and the blanks live in [UI]; each carries KeySeq\\default=false, or a default Azahar saved earlier wins. Chords are Qt portable text, the main Enter key spelled Return (Qt's Enter is the keypad key); a value with a comma is quoted (quote_commas), or QSettings reads it as an empty list. native_default_blanks writes every Azahar default whose key sequence is a Semu chord empty unless it is one of Semu's rows here: Audio Mute (Ctrl+M, the Semu menu), the 3D factor (Ctrl+- and Ctrl++), Multiplayer Browse Public Rooms (Ctrl+B), Toggle Frame Advancing (Ctrl+A), Toggle Status Bar (Ctrl+S), Exit Fullscreen (Esc) and, on Linux where the supervisor quits, Exit Azahar (Ctrl+Q). Qt fires neither of two shortcuts that share a sequence, so a leftover default would also silence Semu's own row. Swap Screens, Toggle Screen Layout and Rotate Screens Upright are always empty: SemuCompose re-derives Azahar's layout (semu_compose.btrc), so any of them would break the composed picture and touch. Quit is Semu's on Linux (the supervisor stops the process group), so Exit Azahar is bound only on macOS, whose supervisor reads no keyboard."
+  },
+  "native_shortcuts": {
+    "source": "azahar fbd3fb0 src/citra_qt/configuration/config.cpp:59-102 (QtConfig::default_hotkeys, all in Main Window)",
+    "fallback": true,
+    "why": "ReadShortcutValues (config.cpp:747-768) reads [UI] Shortcuts\\<group>\\<name>\\KeySeq with ReadSetting(name, default): a shortcut the file leaves out keeps its default, so every default that shares a Semu chord is written empty. The settings are spelled as Azahar writes them, a / in a name becoming a group separator (Continue\\Pause%20Emulation).",
+    "defaults": [
+      {
+        "setting": "Main%20Window\\Advance%20Frame",
+        "key": ""
+      },
+      {
+        "setting": "Main%20Window\\Audio%20Mute\\Unmute",
+        "key": "Ctrl+M"
+      },
+      {
+        "setting": "Main%20Window\\Audio%20Volume%20Down",
+        "key": ""
+      },
+      {
+        "setting": "Main%20Window\\Audio%20Volume%20Up",
+        "key": ""
+      },
+      {
+        "setting": "Main%20Window\\Capture%20Screenshot",
+        "key": "Ctrl+P"
+      },
+      {
+        "setting": "Main%20Window\\Continue\\Pause%20Emulation",
+        "key": "F4"
+      },
+      {
+        "setting": "Main%20Window\\Debug%20Pause",
+        "key": ""
+      },
+      {
+        "setting": "Main%20Window\\Debug%20Resume",
+        "key": ""
+      },
+      {
+        "setting": "Main%20Window\\Debug%20Step",
+        "key": ""
+      },
+      {
+        "setting": "Main%20Window\\Debug%20Unschedule%20All",
+        "key": ""
+      },
+      {
+        "setting": "Main%20Window\\Debug%20Schedule%20All",
+        "key": ""
+      },
+      {
+        "setting": "Main%20Window\\Decrease%203D%20Factor",
+        "key": "Ctrl+-"
+      },
+      {
+        "setting": "Main%20Window\\Decrease%20Speed%20Limit",
+        "key": "-"
+      },
+      {
+        "setting": "Main%20Window\\Exit%20Azahar",
+        "key": "Ctrl+Q"
+      },
+      {
+        "setting": "Main%20Window\\Exit%20Fullscreen",
+        "key": "Esc"
+      },
+      {
+        "setting": "Main%20Window\\Fullscreen",
+        "key": "F11"
+      },
+      {
+        "setting": "Main%20Window\\Increase%203D%20Factor",
+        "key": "Ctrl++"
+      },
+      {
+        "setting": "Main%20Window\\Increase%20Speed%20Limit",
+        "key": "+"
+      },
+      {
+        "setting": "Main%20Window\\Load%20Amiibo",
+        "key": "F2"
+      },
+      {
+        "setting": "Main%20Window\\Load%20File",
+        "key": "Ctrl+O"
+      },
+      {
+        "setting": "Main%20Window\\Load%20from%20Newest%20Non-Quicksave%20Slot",
+        "key": "Ctrl+V"
+      },
+      {
+        "setting": "Main%20Window\\Multiplayer%20Browse%20Public%20Rooms",
+        "key": "Ctrl+B"
+      },
+      {
+        "setting": "Main%20Window\\Multiplayer%20Create%20Room",
+        "key": "Ctrl+N"
+      },
+      {
+        "setting": "Main%20Window\\Multiplayer%20Direct%20Connect%20to%20Room",
+        "key": "Ctrl+Shift"
+      },
+      {
+        "setting": "Main%20Window\\Multiplayer%20Leave%20Room",
+        "key": "Ctrl+L"
+      },
+      {
+        "setting": "Main%20Window\\Multiplayer%20Show%20Current%20Room",
+        "key": "Ctrl+R"
+      },
+      {
+        "setting": "Main%20Window\\Quick%20Save",
+        "key": ""
+      },
+      {
+        "setting": "Main%20Window\\Quick%20Load",
+        "key": ""
+      },
+      {
+        "setting": "Main%20Window\\Remove%20Amiibo",
+        "key": "F3"
+      },
+      {
+        "setting": "Main%20Window\\Restart%20Emulation",
+        "key": "F6"
+      },
+      {
+        "setting": "Main%20Window\\Rotate%20Screens%20Upright",
+        "key": "F8"
+      },
+      {
+        "setting": "Main%20Window\\Save%20to%20Oldest%20Non-Quicksave%20Slot",
+        "key": "Ctrl+C"
+      },
+      {
+        "setting": "Main%20Window\\Stop%20Emulation",
+        "key": "F5"
+      },
+      {
+        "setting": "Main%20Window\\Swap%20Screens",
+        "key": "F9"
+      },
+      {
+        "setting": "Main%20Window\\Toggle%203D",
+        "key": "Ctrl+3"
+      },
+      {
+        "setting": "Main%20Window\\Toggle%20Custom%20Textures",
+        "key": "F7"
+      },
+      {
+        "setting": "Main%20Window\\Toggle%20Filter%20Bar",
+        "key": "Ctrl+F"
+      },
+      {
+        "setting": "Main%20Window\\Toggle%20Frame%20Advancing",
+        "key": "Ctrl+A"
+      },
+      {
+        "setting": "Main%20Window\\Toggle%20Per-Application%20Speed",
+        "key": "Ctrl+Z"
+      },
+      {
+        "setting": "Main%20Window\\Toggle%20Screen%20Layout",
+        "key": "F10"
+      },
+      {
+        "setting": "Main%20Window\\Toggle%20Status%20Bar",
+        "key": "Ctrl+S"
+      },
+      {
+        "setting": "Main%20Window\\Toggle%20Texture%20Dumping",
+        "key": ""
+      },
+      {
+        "setting": "Main%20Window\\Toggle%20Turbo%20Mode",
+        "key": ""
+      }
+    ],
+    "fixed": []
   }
 }

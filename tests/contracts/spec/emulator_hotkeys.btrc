@@ -1,0 +1,204 @@
+// Emulator hotkey spec: Semu-owned actions never reach an emulator's own keymap, and no native
+// shortcut an emulator keeps shares a Semu chord unless it does the same thing.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/emit/profiles.btrc;
+import ../../../src/emit/key_collisions.btrc;
+import ../../../src/launch/actions.btrc;
+import ../../../src/steam/input_template.btrc;
+
+class EmulatorHotkeyTools {
+    class Vector<string> emulators() { return ["retroarch", "dolphin", "pcsx2", "ppsspp", "flycast", "melonds", "azahar", "cemu", "ryujinx"]; }
+
+    class JSONValue compiled(SemuEmulator emulator) {  // every row a line group writes into the emulator's own files
+        JSONValue result = JSONValue.makeArray();
+        JSONValue groups = SemuJson.get(emulator.profile, "compiler.line_groups");
+        if (!groups.isObject()) { return result; }
+        for name in groups.keys() {
+            JSONValue spec = groups.get(name);
+            if (SemuJson.textAt(spec, "kind").equals("collisions")) { continue; }
+            JSONValue rows = SemuJson.get(emulator.profile, SemuJson.textAt(spec, "rows"));
+            for (int index = 0; rows.isArray() && index < rows.size(); index++) { result.push(rows.at(index)); }
+        }
+        return result;
+    }
+
+    class string actionFor(SemuInput input, string chord) {  // the Semu action bound to CHORD, "" when none is
+        JSONValue actions = input.definition.get("actions");
+        for action in actions.keys() {
+            if (SemuJson.textAt(actions.get(action), "chord").equals(chord)) { return action; }
+        }
+        return "";
+    }
+
+    class Vector<string> steamChords(Fixture fixture) {  // every chord a Steam Input binding of the Deck sends
+        JSONValue root = SemuJson.readFile(PathTools.join(fixture.project, "config/input/steam-deck/steam_input.json"));
+        Vector<string> actions = [];
+        JSONValue bindings = root.get("hotkey_bindings");
+        for (int index = 0; index < bindings.size(); index++) { actions.push(SemuJson.textAt(bindings.at(index), "action")); }
+        for slot in SemuJson.strings(SemuJson.get(root, "radial.quick_slots")) { actions.push(slot); }
+        for slot in SemuJson.strings(SemuJson.get(root, "radial.menu_slots")) { actions.push(slot); }
+        JSONValue layers = SemuJson.get(root, "radial.system_layers");
+        for (int index = 0; layers.isArray() && index < layers.size(); index++) {
+            for slot in SemuJson.strings(layers.at(index).get("slots")) { actions.push(slot); }
+        }
+        Vector<string> chords = [];
+        for action in actions { chords.push(fixture.plan.input.chord(action)); }
+        return chords;
+    }
+}
+
+class EmulatorHotkeyOwnership {  // ui.menu*, visual.* and (where the supervisor quits) app.quit are Semu's
+    class void run(Contract contract, Fixture fixture) {
+        for emulatorId in EmulatorHotkeyTools.emulators() {
+            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            for action in emulator.actions {
+                contract.expect(!SemuActionRouter.semuOwned(action) || action.equals("app.quit"), emulatorId + " declares no Semu-owned action but quit: " + action);
+            }
+            JSONValue rows = EmulatorHotkeyTools.compiled(emulator);
+            for (int index = 0; index < rows.size(); index++) {
+                string action = SemuJson.textAt(rows.at(index), "action");
+                if (!SemuActionRouter.semuOwned(action)) { continue; }
+                Vector<string> platforms = SemuJson.strings(rows.at(index).get("platforms"));
+                contract.expect(action.equals("app.quit") && platforms.size() == 1 && platforms.contains("macos"), emulatorId + " compiles " + action + " into its own keymap only on macOS, whose supervisor reads no keyboard");
+            }
+        }
+        Fixture mac = Fixture("macos");
+        contract.contains(mac.profile("azahar", "config/azahar-emu/qt-config.ini"), "Shortcuts\\Main%20Window\\Exit%20Azahar\\KeySeq=Ctrl+Q\n", "macos azahar keeps its own quit chord");
+        contract.contains(mac.profile("dolphin", "dolphin-user/Config/Hotkeys.ini"), "General/Stop = @(Ctrl+Q)", "macos dolphin keeps its own quit chord");
+    }
+}
+
+class EmulatorHotkeyDefaults {  // a native default that shares a Semu chord is blanked, or never applies
+    class void azahar(Contract contract, Fixture fixture, string target) {  // no [UI] shortcut but Semu's binds a Semu chord, and every colliding default is written empty
+        SemuEmulator emulator = fixture.model.emulator("azahar");
+        string main = fixture.profile("azahar", "config/azahar-emu/qt-config.ini");
+        Vector<string> own = SemuKeyCollisions.settings(SemuJson.get(emulator.profile, "hotkeys.keymap"), fixture.plan.platform, emulator.actions);
+        Vector<string> chords = SemuChords.keys(fixture.plan.input.definition, SemuJson.get(emulator.profile, "compiler.line_groups.keymap_hotkeys.chord_encoding"));
+        int bound = 0;
+        for line in Strings.split(main, "\n") {
+            int separator = line.indexOf("\\KeySeq=");
+            if (!line.startsWith("Shortcuts\\") || separator < 0) { continue; }
+            string setting = line.substring(10, separator - 10);
+            string value = line.substring(separator + 8, line.len() - separator - 8);
+            if (value.isEmpty() || value.equals("false")) { continue; }
+            bound++;
+            contract.expect(!chords.contains(value) || own.contains(setting), target + " azahar binds the Semu chord " + value + " only to Semu's own row, not " + setting);
+        }
+        contract.expect(bound == own.size(), f"{target} azahar binds exactly Semu's {own.size()} rows: {bound}");
+        contract.lacks(main, "[Shortcuts]", target + " azahar writes no [Shortcuts] group, which it never reads");
+        JSONValue defaults = SemuJson.get(emulator.profile, "native_shortcuts.defaults");
+        contract.expect(defaults.isArray() && defaults.size() == 43, target + " azahar vendors all 43 default_hotkeys rows");
+        int blanked = 0;
+        for (int index = 0; defaults.isArray() && index < defaults.size(); index++) {
+            string setting = SemuJson.textAt(defaults.at(index), "setting");
+            if (!chords.contains(SemuJson.textAt(defaults.at(index), "key")) || own.contains(setting)) { continue; }
+            blanked++;
+            contract.contains(main, "Shortcuts\\" + setting + "\\KeySeq=\nShortcuts\\" + setting + "\\KeySeq\\default=false\n", target + " azahar writes its colliding default empty");
+        }
+        contract.expect(blanked >= 7, f"{target} azahar blanks Audio Mute, both 3D factors, Browse Rooms, Frame Advancing, Status Bar and Exit Fullscreen at least: {blanked}");
+        for layout in ["Swap%20Screens", "Toggle%20Screen%20Layout", "Rotate%20Screens%20Upright"] {
+            contract.contains(main, "Shortcuts\\Main%20Window\\" + layout + "\\KeySeq=\n", target + " azahar never changes the screen layout SemuCompose re-derives");
+        }
+    }
+
+    class void run(Contract contract) {
+        for target in ["linux-desktop", "steam-deck"] {
+            Fixture fixture = Fixture(target);
+            EmulatorHotkeyDefaults.azahar(contract, fixture, target);
+            for emulatorId in EmulatorHotkeyTools.emulators() {
+                if (emulatorId.equals("retroarch")) { continue; }  // RetroArch's keyboard defaults: retroarch_keyboard.btrc
+                JSONValue shortcuts = SemuJson.get(fixture.model.emulator(emulatorId).profile, "native_shortcuts");
+                string label = target + " " + emulatorId;
+                contract.expect(shortcuts.isObject() && !SemuJson.textAt(shortcuts, "source").isEmpty() && !SemuJson.textAt(shortcuts, "why").isEmpty() && SemuJson.get(shortcuts, "fallback").isBool(), label + " declares its native shortcuts with their pinned source");
+                if (SemuJson.boolAt(shortcuts, "fallback", true)) {
+                    contract.expect(SemuJson.get(shortcuts, "defaults").isArray(), label + " vendors the defaults it falls back on");
+                    continue;
+                }
+                string file = SemuJson.textAt(shortcuts, "replaced_by.file");
+                string section = SemuJson.textAt(shortcuts, "replaced_by.section");
+                contract.expect(!section.isEmpty() && fixture.profile(emulatorId, file).contains(section), label + " writes " + section + " in " + file + " whole, so no native default applies");
+            }
+        }
+    }
+}
+
+class EmulatorHotkeyFixed {  // compiled-in shortcuts: the same action as the Semu chord, or out of every Steam binding's reach
+    class void run(Contract contract, Fixture fixture) {
+        Vector<string> steam = EmulatorHotkeyTools.steamChords(fixture);
+        contract.expect(!steam.contains("Esc") && steam.contains("Ctrl+Backspace"), "no Steam binding sends Esc; the hotkey set's R3 is Menu Back");
+        for emulatorId in EmulatorHotkeyTools.emulators() {
+            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            JSONValue fixed = SemuJson.get(emulator.profile, "native_shortcuts.fixed");
+            Vector<string> fixedKeys = [];
+            for (int index = 0; fixed.isArray() && index < fixed.size(); index++) {
+                JSONValue row = fixed.at(index);
+                string key = SemuJson.textAt(row, "key");
+                fixedKeys.push(key + "=" + SemuJson.textAt(row, "action"));
+                string chordAction = EmulatorHotkeyTools.actionFor(fixture.plan.input, key);
+                if (chordAction.isEmpty()) { continue; }
+                bool same = SemuJson.textAt(row, "action").equals(chordAction);
+                bool accepted = !SemuJson.textAt(row, "accepted").isEmpty() && !steam.contains(key);
+                contract.expect(same || accepted, emulatorId + "'s fixed " + key + " does what Semu's " + chordAction + " does, or no Steam binding sends it");
+            }
+            for group in ["hotkeys.keymap", "actions.native", "actions.external"] {
+                JSONValue rows = SemuJson.get(emulator.profile, group);
+                for (int index = 0; rows.isArray() && index < rows.size(); index++) {
+                    string native = SemuJson.textAt(rows.at(index), "native_chord");
+                    if (native.isEmpty()) { continue; }
+                    string action = SemuJson.textAt(rows.at(index), "action");
+                    contract.expect(fixedKeys.contains(native + "=" + action), emulatorId + " " + action + ": the key Semu types (" + native + ") is the emulator's own " + action + " shortcut");
+                }
+            }
+        }
+    }
+}
+
+class EmulatorHotkeyQuoting {  // QSettings reads an unquoted comma value as a list, which Azahar sees as empty
+    class void run(Contract contract, Fixture fixture) {
+        JSONValue encoding = SemuJson.get(fixture.model.emulator("azahar").profile, "compiler.line_groups.keymap_hotkeys.chord_encoding");
+        contract.expect(SemuJson.boolAt(encoding, "quote_commas", false) && SemuChords.compile(encoding, "Ctrl+Enter").equals("Ctrl+Return") && SemuChords.compile(encoding, "Ctrl++").equals("Ctrl++"), "azahar keymap values are Qt portable text (the main Enter key is Return), quoted when they hold a comma");
+        contract.expect(SemuChords.compile(encoding, "Ctrl+,").equals("\"Ctrl+,\"") && SemuChords.bare(encoding, "Ctrl+,").equals("Ctrl+,"), "a comma chord is written quoted and compared bare");
+        contract.expect(SemuChords.compile(encoding, "Ctrl+S").equals("Ctrl+S"), "a chord without a comma stays unquoted");
+    }
+}
+
+class EmulatorHotkeySteam {  // Esc quits RetroArch on macOS and leaves Cemu's fullscreen: no Steam binding sends it
+    class void run(Contract contract, Fixture fixture) {
+        JSONValue root = SemuJson.readFile(PathTools.join(fixture.project, "config/input/steam-deck/steam_input.json"));
+        JSONValue bindings = root.get("hotkey_bindings");
+        string rightStick = "";
+        for (int index = 0; index < bindings.size(); index++) {
+            contract.expect(!SemuJson.textAt(bindings.at(index), "action").equals("ui.escape"), "no hotkey binding sends Escape");
+            if (SemuJson.textAt(bindings.at(index), "button").equals("R3")) { rightStick = SemuJson.textAt(bindings.at(index), "action"); }
+        }
+        contract.expect(rightStick.equals("ui.menu.back"), "R3 in the hotkey set closes the Semu menu instead of sending Esc");
+        Vector<string> quick = SemuJson.strings(SemuJson.get(root, "radial.quick_slots"));
+        contract.expect(!quick.contains("ui.escape") && quick.contains("state.prev") && quick.contains("state.next"), "the quick radial steps the slot both ways and sends no Escape");
+        SteamInputDocument document = SteamInputDocument(root);
+        JSONValue templates = root.get("templates");
+        for (int index = 0; index < templates.size(); index++) {
+            string vdf = SteamInputVdf.render(document, templates.at(index));
+            contract.lacks(vdf, "key_press ESCAPE", "the rendered template presses no Esc");
+            contract.contains(vdf, "key_press J, Previous State Slot, semu-previous.png", "the radial's previous slot presses Ctrl+J");
+        }
+    }
+}
+
+class EmulatorHotkeySpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        EmulatorHotkeyOwnership.run(contract, fixture);
+        EmulatorHotkeyDefaults.run(contract);
+        EmulatorHotkeyFixed.run(contract, fixture);
+        EmulatorHotkeyQuoting.run(contract, fixture);
+        EmulatorHotkeySteam.run(contract, Fixture("steam-deck"));
+    }
+}

@@ -88,7 +88,9 @@
     "purpose": "Dolphin profile tree content as data: every INI body lives here, substituted by the generic profile compiler. Controller modes declare semantic actions, native hotkey settings, exact generated profile names, and the Dolphin input tree that owns each profile. The owned input.systems.wii.controller_mode setting selects the initial Wii Remote source and extension; all four profile hotkeys remain available for radial runtime switching.",
     "grammar": "Dolphin's control-expression wire format: backtick controls, `<device>:<control>` qualified references, @(...) hotkey chords.",
     "aspect": "GFX.ini pins AspectRatio = 5 (AspectMode::CustomStretch) at 4:3, the gc and wii display.aspect, so Dolphin draws exactly the SEMU_RENDER_ASPECT rectangle the compositor cuts (1067x800 on the Deck). Auto, the default, and Force 4:3 both draw at the VI's analog aspect (about 1.26 on GameCube), which left Dolphin's own black bars inside the cut. Both custom values are set because they default to 1:1.",
-    "disc_change": "Dolphin.ini [Core] AutoDiscChange = True: Dolphin loads a GameCube playlist itself but defaults MAIN_AUTO_DISC_CHANGE to false, so at the disc-change prompt the game would eject and wait for a file dialog Semu never shows. With it on, Dolphin inserts the next playlist entry when the game stops the motor or ejects. It acts only on a boot from an .m3u, so single discs and Wii titles are unaffected."
+    "disc_change": "Dolphin.ini [Core] AutoDiscChange = True: Dolphin loads a GameCube playlist itself but defaults MAIN_AUTO_DISC_CHANGE to false, so at the disc-change prompt the game would eject and wait for a file dialog Semu never shows. With it on, Dolphin inserts the next playlist entry when the game stops the motor or ejects. It acts only on a boot from an .m3u, so single discs and Wii titles are unaffected.",
+    "save_states": "Save and load bind Dolphin's Save to Selected Slot and Load from Selected Slot (HotkeyManager.cpp:143,155, groups :320-321), the slot Increase/Decrease Selected State Slot moves, so the slot Semu shows is the one Dolphin uses. Dolphin keeps the selected slot in Qt.ini [Emulation] StateSlot (DolphinQt/Settings.cpp:576-584); Semu writes that file with slot 1 each launch, which is where Semu's counter starts too (MainWindow.cpp:300-301, 1582-1596 wrap 1..10).",
+    "quit": "General/Stop is bound only on macOS: on Linux the supervisor reads every keyboard and quits the process group itself, so Ctrl+Q is Semu's alone there."
   },
   "controller_modes": [
     {
@@ -200,7 +202,10 @@
       },
       {
         "setting": "General/Stop",
-        "action": "app.quit"
+        "action": "app.quit",
+        "platforms": [
+          "macos"
+        ]
       },
       {
         "setting": "General/Toggle Fullscreen",
@@ -211,12 +216,14 @@
         "action": "ui.screenshot"
       },
       {
-        "setting": "Load State/Load State Slot 1",
-        "action": "state.load"
+        "setting": "Load State/Load from Selected Slot",
+        "action": "state.load",
+        "slot": "selected"
       },
       {
-        "setting": "Save State/Save State Slot 1",
-        "action": "state.save"
+        "setting": "Save State/Save to Selected Slot",
+        "action": "state.save",
+        "slot": "selected"
       },
       {
         "setting": "Other State Hotkeys/Decrease Selected State Slot",
@@ -419,6 +426,23 @@
         "Classic/D-Pad/Right = `D-Pad Right`",
         "Rumble/Motor = Strong"
       ]
+    },
+    {
+      "path": "${emulator_name}/config/Qt.ini",
+      "lines": [
+        "[Emulation]",
+        "StateSlot=1"
+      ]
     }
-  ]
+  ],
+  "native_shortcuts": {
+    "source": "dolphin c77bbaa Source/Core/InputCommon/InputConfig.cpp:70-100 and ControllerEmu/ControlGroup/ControlGroup.cpp:58-75",
+    "fallback": false,
+    "replaced_by": {
+      "file": "dolphin-user/Config/Hotkeys.ini",
+      "section": "[Hotkeys]"
+    },
+    "why": "Once Hotkeys.ini has a section, InputConfig::LoadConfig loads it and ControlGroup::LoadConfig reads every control the file leaves out as an empty expression; HotkeyManager::LoadDefaults (HotkeyManager.cpp:395-476) runs only without the file. Semu writes the whole [Hotkeys] section, so none of the defaults apply, among them Skylanders Portal on Ctrl+P, which would fire beside Toggle Pause.",
+    "fixed": []
+  }
 }

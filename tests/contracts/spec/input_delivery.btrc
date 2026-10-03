@@ -234,7 +234,7 @@ class InputDeliveryOnce {  // one execution per chord: per-action dedupe and the
 
 class InputDeliveryRoutes {  // RetroArch keeps the command port; unknown and undeclared actions do nothing
     class void run(Contract contract, Fixture fixture) {
-        contract.expect(SemuActionRouter.route("state.save", true, false).equals("udp:SAVE_STATE"), "a gamepad save reaches RetroArch over the command port");
+        contract.expect(SemuActionRouter.route("state.save", true, false).equals("udp:SAVE_STATE_SLOT"), "a gamepad save reaches RetroArch over the command port");
         string visual = PathTools.join(fixture.scratch, "delivery/visual");
         string home = PathTools.join(fixture.scratch, "delivery/visual-home");
         FileSystem.mkdirp(home);
@@ -248,6 +248,7 @@ class InputDeliveryRoutes {  // RetroArch keeps the command port; unknown and un
         string slots = PathTools.join(fixture.scratch, "delivery/slots");
         InputDeliveryTools.fresh();
         SemuLaunchPlan saving = InputDeliveryTools.launch(slots, InputDeliveryTools.none(), ["state.save"]);
+        saving.stateSlots = 10;
         SemuActionExecutor.execute(saving, "state.next", SEMU_SOURCE_GAMEPAD);
         contract.expect(SemuSupervisorRuntime.slot == 0 && InputDeliveryTools.records(slots) == 0, "an emulator that does not declare state.next keeps slot 0 and journals nothing");
         saving.emulatorActions.push("state.next");
@@ -262,6 +263,7 @@ class InputDeliverySeam {  // synthetic XI raw key bytes through one real pollDe
             string journal = PathTools.join(fixture.scratch, f"delivery/seam-{opcode}");
             InputDeliveryTools.fresh();
             SemuLaunchPlan launch = InputDeliveryTools.launch(journal, ["state.next=Ctrl+K", "ui.menu=Ctrl+M"], ["state.next"]);
+            launch.stateSlots = 10;
             int pair[2];
             if (socketpair(AF_UNIX, SOCK_STREAM, 0, pair) != 0) {
                 contract.expect(false, "a socketpair for the key-source seam");

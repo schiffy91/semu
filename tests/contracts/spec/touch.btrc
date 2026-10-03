@@ -163,7 +163,7 @@ class TouchSpecEmulators {
         for action in ["state.load", "state.save"] {
             JSONValue native = SemuJson.get(package, "native_actions").get(action);  // action ids contain dots, so no path
             JSONValue external = TouchSpecEmulators.external(melonDs.profile, action);
-            contract.expect(SemuJson.intAt(native, "slot", 0) == 1 && SemuJson.intAt(external, "native_slot", 0) == 1 && SemuJson.textAt(native, "chord").equals(SemuJson.textAt(external, "chord")) && SemuJson.textAt(native, "consumer").equals(SemuJson.textAt(external, "keyboard_consumer")), "melonDS " + action + ": package and profile agree on the slot-1 chord");
+            contract.expect(SemuJson.intAt(native, "slot", 0) == 1 && SemuJson.intAt(external, "native_slot", 0) == 1 && SemuJson.textAt(native, "chord").equals(SemuJson.textAt(external, "native_chord")) && SemuJson.textAt(native, "consumer").equals(SemuJson.textAt(external, "keyboard_consumer")), "melonDS " + action + ": package and profile agree on the slot-1 key Semu types");
         }
     }
 }

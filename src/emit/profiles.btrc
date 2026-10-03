@@ -87,12 +87,19 @@ class SemuChords {
         return Strings.fromInt(result);
     }
 
-    class string compile(JSONValue encoding, string chord) {
+    class string bare(JSONValue encoding, string chord) {  // the chord in the emulator's own grammar, before any quoting
         if (encoding == null || !encoding.isObject()) { return chord; }
         string mode = SemuJson.textAt(encoding, "mode");
+        if (mode.equals("verbatim")) { return chord; }
         if (mode.equals("joined")) { return SemuChords.joined(encoding, chord); }
         if (mode.equals("sum")) { return SemuChords.sum(encoding, chord); }
         return "";
+    }
+
+    class string compile(JSONValue encoding, string chord) {  // QSettings reads an unquoted comma value as a list
+        string value = SemuChords.bare(encoding, chord);
+        bool quoted = encoding != null && encoding.isObject() && SemuJson.boolAt(encoding, "quote_commas", false) && value.contains(",");
+        return quoted ? "\"" + value + "\"" : value;
     }
 
     class Vector<string> keys(JSONValue inputDefinition, JSONValue encoding) {  // every config/input chord as this encoding writes it
@@ -101,7 +108,7 @@ class SemuChords {
         if (actions == null || !actions.isObject()) { return result; }
         for action in actions.keys().sorted() {
             string chord = SemuJson.textAt(actions.get(action), "chord");
-            string compiled = chord.isEmpty() ? "" : SemuChords.compile(encoding, chord);
+            string compiled = chord.isEmpty() ? "" : SemuChords.bare(encoding, chord);
             if (!compiled.isEmpty() && !result.contains(compiled)) { result.push(compiled); }
         }
         return result;
@@ -236,7 +243,7 @@ class SemuProfileContext {
     public string collisions(JSONValue groups, JSONValue spec, string format) {  // the emulator's vendored defaults that share a key with a Semu chord
         JSONValue encoding = SemuJson.get(groups.get(SemuJson.textAt(spec, "chord_encoding_of")), "chord_encoding");
         Vector<string> chordKeys = SemuChords.keys(self.plan.input == null ? null : self.plan.input.definition, encoding);
-        Vector<string> excluded = SemuKeyCollisions.settings(SemuJson.get(self.emulator.profile, SemuJson.textAt(spec, "except_rows")));
+        Vector<string> excluded = SemuKeyCollisions.settings(SemuJson.get(self.emulator.profile, SemuJson.textAt(spec, "except_rows")), self.plan.platform, self.emulator.actions);
         JSONValue rows = SemuJson.get(self.emulator.profile, SemuJson.textAt(spec, "rows"));
         if (rows == null || !rows.isArray() || format.isEmpty() || encoding == null || !encoding.isObject()) {
             self.diagnostics.add(self.emulator.profileFile, "compiler.line_groups", "a collisions group needs rows, a format and chord_encoding_of");
@@ -269,8 +276,7 @@ class SemuProfileContext {
             } else {
                 for (int index = 0; index < rows.size(); index++) {
                     JSONValue row = rows.at(index);
-                    string action = SemuJson.textAt(row, "action");
-                    if (!action.isEmpty() && !self.emulator.actions.contains(action)) { continue; }
+                    if (!SemuKeyCollisions.rendered(row, self.plan.platform, self.emulator.actions)) { continue; }  // an undeclared action, or a row for another platform
                     string line = self.renderRow(format, row, index, spec.get("chord_encoding"), bindings);
                     if (line.isEmpty() || line.contains("${")) {
                         self.diagnostics.add(self.emulator.profileFile, "compiler.line_groups." + name, f"row {index} did not resolve");

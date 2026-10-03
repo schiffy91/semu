@@ -7,12 +7,6 @@
         "chord": "Ctrl+Q",
         "consumer": "semu-input-supervisor",
         "semantics": "immediate process-group termination"
-      },
-      {
-        "action": "ui.menu",
-        "chord": "Ctrl+M",
-        "consumer": "semu-renderer",
-        "semantics": "renderer-owned semantic menu above game treatment"
       }
     ]
   },
@@ -301,11 +295,13 @@
       },
       {
         "setting": "input_load_state",
-        "action": "state.load"
+        "action": "state.load",
+        "slot": "selected"
       },
       {
         "setting": "input_save_state",
-        "action": "state.save"
+        "action": "state.save",
+        "slot": "selected"
       },
       {
         "setting": "input_screenshot",

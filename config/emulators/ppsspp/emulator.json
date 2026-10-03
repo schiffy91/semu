@@ -6,7 +6,6 @@
       "ui.pause",
       "ui.screenshot",
       "ui.fullscreen",
-      "ui.menu",
       "app.quit",
       "state.prev",
       "state.next",
@@ -75,5 +74,14 @@
     "input": "Pad zero is PPSSPP's SDL GameController lane for the Steam Virtual Gamepad. PSP controls are explicit, Semu keymap actions compile to PPSSPP chords, and the target process-group watcher owns immediate physical Start+Select termination.",
     "rendering": "The managed profile pins OpenGL. libsemupreload (render_preload) composes Semu's bezel and shader at the SDL/EGL swap: it reads the emulator's back buffer and writes the composed frame back before the real swap.",
     "content": "What PPSSPP fa50bb19 boots (Core/Loaders.cpp:110 disc images, 227-228 executables, 264 .pbp) and a .zip holding an ISO (269, 294-307). A .7z is identified only to be refused."
+  },
+  "save_states": {
+    "slots": 5,
+    "first_slot": 1,
+    "doc": "PPSSPP cycles SaveStateSlotCount slots (5, pinned in ppsspp.ini) and wraps both ways, showing slot + 1 (Core/SaveState.cpp:353-359, 822 at fa50bb1); ppsspp.ini starts each launch on slot 0."
+  },
+  "menu": {
+    "pause": "emulator",
+    "doc": "Seen 2026-10-03 in the podman VM (tests/integration/menu-pause.sh, Burnout Legends through libsemupreload on llvmpipe): Ctrl+P (Pause (no menu)) froze the attract mode, and a menu record written while paused showed at once over the frozen frame, so PPSSPP keeps presenting while paused and the menu pauses it."
   }
 }

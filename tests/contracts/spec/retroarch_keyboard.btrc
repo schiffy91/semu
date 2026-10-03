@@ -50,7 +50,7 @@ class RetroArchKeyboardTable {  // the vendored 69a4f0e Linux defaults
                 "input_player1_a=x", "input_player1_b=z", "input_player1_x=s", "input_player1_y=a", "input_player1_l=q", "input_player1_r=w", "input_player1_start=enter", "input_player1_select=rshift", "input_player1_up=up", "input_player1_down=down"] {
             contract.expect(rows.contains(expected), "the vendored defaults hold " + expected);
         }
-        Vector<string> keymap = SemuKeyCollisions.settings(SemuJson.get(RetroArchKeyboardTools.profile(fixture), "hotkeys.keymap"));
+        Vector<string> keymap = SemuKeyCollisions.settings(SemuJson.get(RetroArchKeyboardTools.profile(fixture), "hotkeys.keymap"), fixture.plan.platform, fixture.model.emulator("retroarch").actions);
         Vector<string> none = [];
         Vector<string> newKey = ["l"];
         string added = SemuKeyCollisions.lines(hotkeys, newKey, keymap, none, "${setting} = \"nul\"").join("\n");
@@ -78,7 +78,7 @@ class RetroArchKeyboardTargets {  // Linux nul's the keymap and the colliding pl
             contract.expect(RetroArchKeyboardTools.value(cfg, "input_player1_b").isEmpty() && RetroArchKeyboardTools.value(cfg, "input_hold_fast_forward").isEmpty(), targetId + ": defaults no chord uses stay RetroArch's");
             contract.expect(RetroArchKeyboardTools.value(cfg, "input_save_state").equals(linux ? "nul" : "s"), targetId + ": RetroArch's own save key is " + (linux ? "off; the supervisor drives saves" : "Ctrl+S's s, macOS has no keyboard source"));
             JSONValue keymap = SemuJson.get(RetroArchKeyboardTools.profile(fixture), "hotkeys.keymap");
-            Vector<string> keymapSettings = SemuKeyCollisions.settings(keymap);
+            Vector<string> keymapSettings = SemuKeyCollisions.settings(keymap, fixture.plan.platform, fixture.model.emulator("retroarch").actions);
             for setting in keymapSettings {
                 string value = RetroArchKeyboardTools.value(cfg, setting);
                 contract.expect((linux && value.equals("nul")) || (!linux && !value.isEmpty() && !value.equals("nul")), targetId + ": keymap row " + setting + (linux ? " is nul" : " keeps its chord key"));

@@ -75,7 +75,7 @@ class SteamInputSpecTable {  // the rendered Neptune template: semantic radials,
     class void semanticBindings(Contract contract, string vdf) {
         Vector<string> bindings = [
             "Save State, semu-save.png", "Load State, semu-load.png", "Quit Emulator, semu-quit.png",
-            "Open Menu, semu-menu.png", "Take Screenshot, semu-screenshot.png", "Escape, semu-back.png", "Menu Up, semu-up.png",
+            "Open Menu, semu-menu.png", "Take Screenshot, semu-screenshot.png", "Previous State Slot, semu-previous.png", "Next State Slot, semu-next.png", "Menu Up, semu-up.png",
             "Menu Down, semu-down.png", "Menu Confirm, semu-confirm.png", "Menu Back, semu-back.png",
             "Wiimote, semu-wiimote.png", "Wiimote + Nunchuk, semu-wiimote-nunchuk.png",
             "Classic Controller, semu-classic-controller.png", "GameCube Controller, semu-gamecube-controller.png"

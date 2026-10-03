@@ -44,6 +44,8 @@ import ./spec/content.btrc;
 import ./spec/harness.btrc;
 import ./spec/input_delivery.btrc;
 import ./spec/retroarch_keyboard.btrc;
+import ./spec/emulator_hotkeys.btrc;
+import ./spec/save_slots.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -148,8 +150,8 @@ class NativeProfilesContract {
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
         string dolphin = fixture.profile("dolphin", "dolphin-user/Config/Hotkeys.ini");
-        contract.contains(dolphin, "Save State/Save State Slot 1 = @(Ctrl+S)", "dolphin save state chord");
-        contract.contains(dolphin, "Load State/Load State Slot 1 = @(Ctrl+A)", "dolphin load state chord");
+        contract.contains(dolphin, "Save State/Save to Selected Slot = @(Ctrl+S)", "dolphin save state chord saves the selected slot");
+        contract.contains(dolphin, "Load State/Load from Selected Slot = @(Ctrl+A)", "dolphin load state chord loads the selected slot");
         string dolphinMain = fixture.profile("dolphin", "dolphin-user/Config/Dolphin.ini");
         contract.contains(dolphinMain, "[Core]", "dolphin core section");
         string pcsx2 = fixture.profile("pcsx2", "config/PCSX2/inis/PCSX2.ini");
@@ -867,7 +869,7 @@ class UnifiedInputContract {  // one action vocabulary: chords parse, routes are
         contract.expect(wii.size() == 3 && wii.get(2) == KEY_F9, "Ctrl+Shift+F9 parses with two modifiers");
         contract.expect(SemuKeyNames.chord("Ctrl++").size() == 2 && SemuKeyNames.chord("Ctrl+Bogus").isEmpty(), "plus is a key and unknown keys reject the chord");
         contract.expect(SemuKeyNames.button("north") == BTN_NORTH && SemuKeyNames.button("select") == BTN_SELECT && SemuKeyNames.button("dpad_left") == BTN_DPAD_LEFT, "gamepad button names map to evdev codes");
-        contract.expect(SemuActionRouter.route("state.save", true, true).equals("udp:SAVE_STATE"), "RetroArch actions go through the command port even from a keyboard chord");
+        contract.expect(SemuActionRouter.route("state.save", true, true).equals("udp:SAVE_STATE_SLOT"), "RetroArch actions go through the command port even from a keyboard chord, saves naming Semu's slot");
         contract.expect(SemuActionRouter.route("state.save", false, false).equals("inject"), "native emulators get the chord typed for a gamepad chord");
         contract.expect(SemuActionRouter.route("state.save", false, true).equals("none"), "a keyboard chord already reached a native emulator");
         contract.expect(SemuActionRouter.route("ui.menu", false, false).equals("semu") && SemuActionRouter.route("visual.bezels.toggle", true, true).equals("semu"), "menu and visual toggles are Semu's own");
@@ -949,6 +951,8 @@ int main() {
     LaunchSpecContract.run(contract);
     InputDeliverySpecContract.run(contract);
     RetroArchKeyboardSpecContract.run(contract);
+    EmulatorHotkeySpecContract.run(contract);
+    SaveSlotSpecContract.run(contract);
     RenderEnvSpecContract.run(contract);
     DualLayoutSpecContract.run(contract);
     EditorSpecContract.run(contract);

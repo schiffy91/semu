@@ -311,6 +311,14 @@ Semu executing the actions itself.
   chord uses): the supervisor sends keyboard chords over the command port,
   because RetroArch polls its keymap once a frame and can miss a short tap.
   macOS keeps RetroArch's keymap, since its supervisor has no keyboard source.
+  Semu-owned actions (`ui.menu*`, `visual.*`, and `app.quit` wherever the
+  supervisor reads keyboards) are never compiled into an emulator's own
+  keymap, and every native default that shares a Semu chord is written empty
+  or provably never applies (`profile.json` `native_shortcuts`, from each
+  pinned source). Save slots are the emulator's own (`emulator.json`
+  `save_states`): Semu's counter wraps both ways as the emulator does, save
+  and load hit the selected slot, and the menu shows the slot as the emulator
+  numbers it.
 - Plain controllers: hold Select and press a button (`gamepad_chords`):
   Y opens the Semu menu, R1 saves, L1 loads, B screenshots, D-pad left and
   right change the slot. Start+Select stays the quit chord. Button names are
@@ -327,7 +335,10 @@ Semu executing the actions itself.
   back through X.
 - The native menu (`menu.items`): RESUME, SAVE STATE, LOAD STATE,
   SCREENSHOT, BEZEL ON/OFF, SHADER ON/OFF, QUIT GAME. Opening it pauses the
-  emulator through its own pause action and closes it on resume. The
+  emulator through its own pause action, and closing it resumes, only where
+  the emulator was seen to keep presenting while paused (`emulator.json`
+  `menu.pause`); elsewhere the menu draws over the running game, and an
+  emulator with no compositor gets no menu, never an invisible one. The
   renderer draws it from `SEMU_MENU_ITEMS` and the supervisor mirrors the
   same list, so the drawn selection and the executed action never diverge.
   Visual toggles flip the live renderer and persist to `semu.json`.
@@ -610,6 +621,50 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   positional pad (Semu's test pad, macOS GameController) is unchanged (2026-10-03).
 - An action an emulator does not declare in `input.actions` never reaches it: no route, no slot
   change, no journal record (2026-10-03).
+- Emulator hotkey hygiene (2026-10-03). No emulator keymap or `input.actions` names `ui.menu*` or
+  `visual.*` (PCSX2 OpenPauseMenu, PPSSPP Pause and Flycast btn_menu are gone, so the radial's
+  Ctrl+M no longer opens a second menu). `app.quit` keymap rows render only on macOS, whose
+  supervisor reads no keyboard; on Linux the supervisor quits the process group alone (Azahar Exit,
+  Dolphin Stop; PPSSPP Exit App and Flycast btn_escape are gone). Each standalone `profile.json`
+  declares `native_shortcuts` from its pinned source: `fallback` true means the emulator keeps a
+  default for every key Semu's file leaves out, so a `collisions` line group writes every default
+  that shares a Semu chord empty (Azahar: Audio Mute Ctrl+M, 3D factor Ctrl+-/Ctrl++, Browse Rooms
+  Ctrl+B, Frame Advancing Ctrl+A, Status Bar Ctrl+S, Exit Fullscreen Esc, Exit Ctrl+Q on Linux);
+  `fallback` false names the section Semu writes whole and the source lines that make the defaults
+  inert (Dolphin, PCSX2, PPSSPP, Flycast, Ryujinx); `fixed` lists compiled-in keys (melonDS menu
+  shortcuts, Cemu's window keys), each either the same action as the Semu chord or out of every
+  Steam binding's reach (Cemu's Esc leaves fullscreen; no Steam binding sends Esc any more).
+- Azahar reads its hotkeys only from `[UI]` `Shortcuts\<group>\<name>\KeySeq` (+ `\default=false`,
+  values with a comma quoted for QSettings); the old `[Shortcuts]` group was never read, so Ctrl+S,
+  Ctrl+A and Ctrl+P did nothing in standalone Azahar. Swap Screens, Toggle Screen Layout and Rotate
+  Screens Upright are always empty and `screen.swap` left Azahar's actions: SemuCompose re-derives
+  Azahar's layout, so any of them would break picture and touch (2026-10-03).
+- PCSX2 2.6.3 applies an input profile only through a per-game settings ini (VMManager
+  UpdateGameSettingsLayer), so the profile's `[Hotkeys]` never loaded and PCSX2 had no hotkeys at
+  all: its keymap is now written into PCSX2.ini `[Hotkeys]` too. Qt emulators spell the main Enter
+  key Return (Qt's Enter is the keypad), for Azahar and PCSX2 (2026-10-03).
+- Save slots (2026-10-03): `emulator.json` `save_states` {slots, first_slot} from each source:
+  RetroArch 10 from 0, Dolphin 10 from 1, PCSX2 10 from 1, PPSSPP 5 from 1, Flycast 10 from 1,
+  melonDS and Azahar one fixed slot, Cemu and Ryujinx none. Semu's counter wraps both ways like
+  the emulator; each profile pins the emulator's starting slot (Dolphin Qt.ini, PPSSPP StateSlot and
+  SaveStateSlotCount, Flycast SavestateSlot). Dolphin saves and loads the selected slot, not Slot 1.
+  RetroArch saves and loads name Semu's slot (`SAVE_STATE_SLOT n`, `LOAD_STATE_SLOT n`) and its own
+  slot counter is never moved, so RetroArch's own slot OSD no longer shows; Semu's menu shows the
+  slot as the emulator numbers it (`SEMU_MENU_SLOTS`, `SEMU_MENU_FIRST_SLOT`). Flycast gains next
+  and previous slot (its btn_next_slot/btn_prev_slot). melonDS binds slot 1 only to its compiled
+  Shift+F1 and F1, never Ctrl+S and Ctrl+A as the old package claimed, so its rows carry
+  `native_chord` and the supervisor types Shift+F1 or F1 for a save or load from any source.
+- Steam Input (2026-10-03): the hotkey set's R3 is Menu Back instead of Esc, and the quick radial
+  is Save, Load, Previous Slot, Next Slot, Menu, Screenshot, Quit (no Escape). The ring still starts
+  at touch_menu_button_0, the centre, until the Steam Input task renumbers it.
+- Menu pause (2026-10-03): the compositor draws the Semu menu at the emulator's own present, so
+  the menu pauses an emulator only where it was seen to keep presenting while paused
+  (`emulator.json` `menu.pause` emulator: RetroArch, PPSSPP). Azahar, Dolphin and PCSX2 stop
+  presenting when paused (VM, `tests/integration/menu-pause.sh`), and Flycast, Cemu and Ryujinx
+  declare no pause action: their menu opens over the running game, and the pad reaches the game
+  as well as the menu while it is open (a known limitation; blocking game input is a later task).
+  Standalone melonDS has no compositor on any platform, so Select+Y and Ctrl+M open no menu there
+  rather than an invisible one that paused the game.
 
 ### G1. Build and tests run on one host only — done on the Mac
 
@@ -1239,6 +1294,29 @@ Update this block whenever a milestone criterion changes state.
   there: Semu's uinput typing never reaches a bare Xvfb, so the echo suppression rests on the
   contracts (a socketpair through one real pollDevices tick, among others). Open for the Deck:
   Steam's own XTest from :0 through gamescope's EI into the game's Xwayland, and the radial.
+  2026-10-03, emulator hotkey hygiene and the menu pause (offline, Deck untouched; rulings above).
+  Observed in the podman VM under Xvfb with `tests/integration/menu-pause.sh` (real games through
+  `semu launch`, llvmpipe and lavapipe, ROMs and the PS2 BIOS folder mounted read-only):
+  - Standalone Azahar now reads Semu's hotkeys: Ctrl+P paused Pushmo, and Ctrl+S wrote the quick
+    save `states/0004000000068E00.00.cst`. With the previous profile (779555c, the same harness)
+    Ctrl+P left it running, being Azahar's default Capture Screenshot, and Ctrl+S wrote nothing.
+  - Paused, Azahar presents nothing: a menu record written while paused stayed invisible and showed
+    the moment it resumed (the same with the old profile and Azahar's own F4). Its `menu.pause` is
+    none, so the menu opens over the running game.
+  - PPSSPP keeps presenting while paused: Ctrl+P froze Burnout Legends' attract mode and the menu
+    showed over the frozen frame at once, with SLOT 1; its `menu.pause` is emulator. Ctrl+S wrote
+    `PPSSPP_STATE/ULUS10025_2.00_0.ppst`, slot 1 as PPSSPP numbers it.
+  - Dolphin and PCSX2 stop presenting while paused, as Azahar does (Animal Crossing and Marvel vs.
+    Capcom 2, openbox as the window manager because Dolphin takes no hotkey without focus): Ctrl+P
+    froze each game and a menu record written meanwhile showed only after Ctrl+P resumed it. Both
+    are none. Ctrl+S wrote Dolphin's `StateSaves/GAFE01.s01` (the selected slot 1) and PCSX2's
+    `sstates/SLUS-20486 (4D228733).01.p2s` (slot 1).
+  - PCSX2 had no hotkeys at all until now: with the previous profile (779555c, the same harness,
+    hotkeys only in the input profile) Ctrl+P left the game running and Ctrl+S wrote nothing.
+  The real renderer on the Mac (render host) draws SLOT 10 for Dolphin's last slot, SLOT 3 for
+  RetroArch's index 3 and no slot line for Azahar's single quick slot. Not observable offline:
+  Steam's radial chords reaching Azahar and the others in Game Mode, and melonDS typing Shift+F1
+  (uinput typing never reaches a bare Xvfb).
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a

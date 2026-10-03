@@ -14,17 +14,17 @@
   },
   "native_actions": {
     "state.load": {
-      "chord": "Ctrl+A",
+      "chord": "F1",
       "consumer": "MainWindow::actLoadState[1]",
       "slot": 1,
-      "source_marker": "actLoadState[i]->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_A));",
+      "source_marker": "actLoadState[i]->setShortcut(QKeySequence(Qt::Key_F1 + i - 1));",
       "source_consumer_marker": "connect(actLoadState[i], &QAction::triggered, this, &MainWindow::onLoadState);"
     },
     "state.save": {
-      "chord": "Ctrl+S",
+      "chord": "Shift+F1",
       "consumer": "MainWindow::actSaveState[1]",
       "slot": 1,
-      "source_marker": "actSaveState[i]->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_S));",
+      "source_marker": "actSaveState[i]->setShortcut(QKeySequence(Qt::ShiftModifier | (Qt::Key_F1 + i - 1)));",
       "source_consumer_marker": "connect(actSaveState[i], &QAction::triggered, this, &MainWindow::onSaveState);"
     }
   },
@@ -35,7 +35,7 @@
   },
   "doc": {
     "source": "The immutable GitHub revision and NAR hash are the exact source identity packaged by Semu and match the repository's locked nixpkgs melonDS dependency graph.",
-    "states": "The pinned frontend supports native savestate slots. Semu remaps only slot 1 to its global Ctrl+S and Ctrl+A action ABI while preserving the upstream shortcuts for slots 2 through 8."
+    "states": "The pinned frontend (src/frontend/qt_sdl/Window.cpp:318-343 at 906e9eb) binds save slots 1-8 to Shift+F1-F8 and load slots 1-8 to F1-F8, and Semu builds it unpatched. Semu saves and loads slot 1 by typing Shift+F1 and F1 (the profile rows' native_chord), whatever sent the Ctrl+S or Ctrl+A."
   },
   "flake": "flake.nix"
 }
