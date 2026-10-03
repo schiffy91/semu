@@ -301,6 +301,13 @@ class StandaloneSpecContract {
         string saves = PathTools.join(fixture.plan.stateRoot(), "melonds/data/melonDS/saves");
         contract.contains(main, "[3D]\nRenderer = 0", target + " melonDS uses the software renderer");
         contract.contains(main, "JoystickID = 0", target + " melonDS reads joystick zero");
+        // Seen on the Deck: Start did nothing in standalone melonDS. It reads RAW joystick buttons, where
+        // Steam's virtual pad is xpad-ordered (A B X Y LB RB View Menu Guide LS RS) with the D-pad on hat 0
+        // (0x100 | direction); the profile held game-controller numbers (Start 6 is raw View, D-pad 11-14
+        // does not exist).
+        for binding in ["A = 1", "B = 0", "X = 3", "Y = 2", "L = 4", "R = 5", "Select = 6", "Start = 7", "Up = 257", "Right = 258", "Down = 260", "Left = 264"] {
+            contract.contains(main, "\n" + binding + "\n", target + " melonDS raw xpad binding " + binding);
+        }
         contract.contains(main, "SaveFilePath = \"" + saves + "\"", target + " melonDS saves stay in the state root");
         contract.contains(main, "HK_Pause = 67108944", target + " melonDS pause chord");
         contract.contains(main, "HK_SwapScreens = 83886081", target + " melonDS swap chord");
