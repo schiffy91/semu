@@ -24,7 +24,6 @@ forAllSystems (system:
       bezel-tree = bezelTree;
       bezel-layers = bezelLayers;
       visual-assets = visualAssets.combined;  # shader presets and plates: data, so the Mac render host can use them
-      bezel-generate = visualAssets.bezels.generate;  # re-renders recipe bezels with imagemagick; copy the output back into config/assets
       asset-root = pkgs.symlinkJoin { name = "semu-asset-root"; paths = [ visualAssets.combined bezelLayers ]; };  # the bundle's data half, for the render host
     };
     product =

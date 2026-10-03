@@ -6,7 +6,6 @@
 #   plates derived from the Duimon and Soqueroeu packs are rendered with imagemagick over the
 #   pinned upstreams and checked for their declared size and PNG type only. The repository
 #   carries no derived art (the packs' licences forbid sharing adapted material, see NOTICE.md).
-# (passthru.generate) is the same render, kept as the named regenerator for inspection.
 #
 # Output layout: share/semu/<asset key> (what the launcher joins "assets/..." onto).
 { lib, stdenvNoCC, fetchFromGitHub, imagemagick }:
@@ -184,34 +183,6 @@ let
   # licences forbid distributing adapted material). Verbatim copies stay byte-checked.
 
   imageAssetNames = lib.attrNames imageAssets;
-
-  # The regenerator: fetch upstreams + render every recipe with imagemagick.
-  # `nix build .#bezel-generate`, then copy its share/semu/assets/bezels/ back over the
-  # committed tree. Kept as passthru.generate (and re-exported as the
-  # `bezel-generate` package) so a plain app/asset build never forces the
-  # fetch/render path.
-  generate = stdenvNoCC.mkDerivation {
-    pname = "semu-bezels-generate";
-    version = toString sources.schema_version;
-
-    dontUnpack = true;
-    nativeBuildInputs = [ imagemagick ];
-
-    installPhase = ''
-      runHook preInstall
-      ${renderScript}
-      runHook postInstall
-    '';
-
-    passthru = {
-      inherit imageAssetNames;
-    };
-
-    meta = {
-      description = "Regenerator for generated Semu bezel art from bezels.json";
-      platforms = lib.platforms.all;
-    };
-  };
 in
 assert lib.assertMsg (copyAssetsMissingHashes == [ ])
   "upstream copy recipes missing file_sha256: ${toString copyAssetsMissingHashes}";
@@ -234,7 +205,7 @@ stdenvNoCC.mkDerivation {
   '';
 
   passthru = {
-    inherit imageAssetNames generate;
+    inherit imageAssetNames;
   };
 
   meta = {
