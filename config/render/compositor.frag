@@ -32,7 +32,7 @@ uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uR
   vec2 cc=q1*2.0-1.0;c*=1.0-fx.y*smoothstep(0.45,1.7,dot(cc,cc));
   return c;}
  vec3 glassOver(vec3 c,sampler2D g,vec2 p,vec4 tube,float reflect,float hasGlass){if(hasGlass<0.5)return c;vec2 gu=uv(p,tube);gu.y=1.0-gu.y;vec4 gl=textureGrad(g,gu,vec2(1.0/tube.z,0.0),vec2(0.0,-1.0/tube.w));return 1.0-(1.0-c)*(1.0-gl.rgb*gl.a*clamp(reflect,0.0,1.0));}  // one glass over the whole opening: picture, corner wedges and lip alike
- vec4 frameRing(vec2 p,vec4 tube,vec4 shape){float w=uFrame.x;vec4 outer=vec4(tube.xy-w,tube.zw+2.0*w);vec4 os=vec4(shape.x>0.5?shape.x:1.0,uFrame.y,shape.z,0.0);
+ vec4 frameRing(vec2 p,vec4 tube,vec4 shape){float w=uFrame.x;vec4 outer=vec4(tube.xy-w,tube.zw+2.0*w);float opening=shape.x>0.5?clamp(shape.y,0.0,0.5)*min(tube.z,tube.w):0.0;vec4 os=vec4(shape.x>0.5?shape.x:1.0,(opening+w)/min(outer.z,outer.w),shape.z,0.0);  // concentric: the opening's corner grown by the frame, one width all round
   float mo=shapeMask(p,outer,os);float mi=shapeMask(p,tube,shape);float ring=mo*(1.0-mi);if(ring<=0.0)return vec4(0.0);
   vec2 h=outer.zw*0.5;vec2 d=abs(p-(outer.xy+h))/h;float edge=max(d.x,d.y);
   float shade=0.7+0.4*smoothstep(0.82,1.0,edge);float bevel=smoothstep(0.985,1.0,edge)*0.22;

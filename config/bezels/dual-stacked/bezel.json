@@ -8,7 +8,6 @@
   "background": "assets/bezels/backgrounds/desk-night.png",
   "frame": {
     "width": 0.03,
-    "radius": 0.03,
     "color": "#121212"
   },
   "canvas": null,
@@ -19,9 +18,7 @@
       "fit": "aspect",
       "inset": 0.0,
       "shape": {
-        "kind": "rounded",
-        "radius": 0.02,
-        "exponent": 4.0
+        "kind": "none"
       },
       "surround": "#000000",
       "curvature": 0.0,
@@ -36,9 +33,7 @@
       "fit": "aspect",
       "inset": 0.0,
       "shape": {
-        "kind": "rounded",
-        "radius": 0.02,
-        "exponent": 4.0
+        "kind": "none"
       },
       "surround": "#000000",
       "curvature": 0.0,
