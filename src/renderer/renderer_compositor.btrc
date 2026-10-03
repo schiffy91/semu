@@ -1331,6 +1331,9 @@ class RendererShaderPasses {
             lane->source_y + lane->source_height, 0, 0,
             lane->native_width, lane->native_height,
             (unsigned int)RGL_COLOR_BUFFER_BIT, (unsigned int)(downscale ? RGL_LINEAR : RGL_NEAREST));
+        if (!RendererGlErrors.none(gl)) { return false; }
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->raw_textures[index]);
+        RendererResources.mipmap(gl);  // magnified stays point-sampled; minified, the mips average
         return RendererGlErrors.none(gl);
     }
 
