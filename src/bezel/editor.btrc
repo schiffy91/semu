@@ -431,7 +431,15 @@ class BezelProductionRender {  // the real renderer on this machine (a checkout'
         string config = PathTools.join(self.scratch, "config");
         ExecResult copied = ChildProcess.run("cp", ["-R", self.repository.configRoot + "/.", config]);  // the current config, then the unsaved package over its own file
         if (!copied.ok() || !SemuPaths.writeOwned(self.scratch, PathTools.join(config, "bezels/" + id + "/bezel.json"), package.stringifyPretty(2) + "\n")) { return HTTPResponse.error(500, "could not stage the package in " + self.scratch); }
-        string settings = f"{{\"visual\":{{\"systems\":{{\"{system}\":{{\"bezel_variant\":\"{variant}\"}}}}}}}}";  // the system's own shader, as a launch would choose it
+        JSONValue choice = JSONValue.makeObject();  // the system's own shader, as a launch would choose it; built as JSON, never by pasting names into text
+        choice.set("bezel_variant", JSONValue.makeString(variant));
+        JSONValue systems = JSONValue.makeObject();
+        systems.set(system, choice);
+        JSONValue visual = JSONValue.makeObject();
+        visual.set("systems", systems);
+        JSONValue overlay = JSONValue.makeObject();
+        overlay.set("visual", visual);
+        string settings = overlay.stringify();
         ExecResult environment = ChildProcess.run(semu, ["render-env", "--system", system, "--project", config, "--asset-root", self.assetRoot, "--settings-json", settings], "", CommandEnvironment.empty(), CommandEnvironment.empty(), 60000);
         if (!environment.ok()) { return HTTPResponse.error(500, "semu render-env: " + environment.stderr()); }
         Vector<string> entries = [];

@@ -86,8 +86,12 @@ class EditorSpecContract {
         HTTPResponse unknown = production.render("{\"package\":{\"id\":\"no-such-package\"},\"system\":\"gba\",\"variant\":\"shell\",\"width\":1280,\"height\":800}");
         HTTPResponse huge = production.render("{\"package\":{\"id\":\"gba-shell\"},\"system\":\"gba\",\"variant\":\"shell\",\"width\":9000,\"height\":800}");
         HTTPResponse plain = production.render("{\"package\":{\"id\":\"gba-shell\"},\"system\":\"gba\",\"variant\":\"shell\",\"width\":1280,\"height\":800}");
+        HTTPResponse quotedVariant = production.render("{\"package\":{\"id\":\"gba-shell\"},\"system\":\"gba\",\"variant\":\"shell\\\"}},\\\"x\\\":{\\\"\",\"width\":1280,\"height\":800}");
+        HTTPResponse climbingSystem = production.render("{\"package\":{\"id\":\"gba-shell\"},\"system\":\"../gba\",\"variant\":\"shell\",\"width\":1280,\"height\":800}");
         contract.expect(climbing.status == 400 && unknown.status == 400 && huge.status == 400,
             f"the production render refuses, before it looks for build/render-host, a package id that is not a plain name ({climbing.status}), an unknown package ({unknown.status}) and a screen past 7680x4320 ({huge.status})");
+        contract.expect(quotedVariant.status == 400 && climbingSystem.status == 400,
+            f"the production render refuses a variant ({quotedVariant.status}) or a system ({climbingSystem.status}) that is not a plain name: both reach semu render-env's settings and command line");
         contract.expect(plain.status == 404, f"a well-formed production request gets past the request check to the missing render host: {plain.status}");
     }
 
