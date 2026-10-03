@@ -71,7 +71,7 @@
   },
   "doc": {
     "hardware": "consumer CRT or VGA monitor",
-    "intent": "Prefer 4:3 CRT; swap to 16:9/flat only when config or game profile proves widescreen. Linux and Steam Deck use the source-built standalone Flycast slice; macOS retains the libretro fallback.",
+    "intent": "Prefer 4:3 CRT; swap to 16:9/flat only when config or game profile proves widescreen. Linux and Steam Deck use the source-built standalone Flycast slice; Dreamcast is Linux-only, with no darwin Flycast build.",
     "bios": "Flycast can use HLE for many games, but original BIOS files improve compatibility."
   }
 }
