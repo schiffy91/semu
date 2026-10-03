@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "n3ds-shell",
   "label": "3DS shell",
-  "family": "dual",
   "layout": "fixed",
   "art": "assets/bezels/n3ds/shell.png",
   "background": "assets/bezels/backgrounds/desk-night.png",

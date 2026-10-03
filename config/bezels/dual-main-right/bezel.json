@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "dual-main-right",
   "label": "Large main screen, second screen right",
-  "family": "dual",
   "layout": "main_right",
   "art": null,
   "background": "assets/bezels/backgrounds/desk-night.png",

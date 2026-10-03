@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "dual-side-by-side",
   "label": "Side by side",
-  "family": "dual",
   "layout": "side_by_side",
   "art": null,
   "background": "assets/bezels/backgrounds/desk-night.png",

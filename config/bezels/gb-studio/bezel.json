@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "gb-studio",
   "label": "Studio Gray",
-  "family": "handheld",
   "layout": "fixed",
   "art": "assets/bezels/gb/classic.png",
   "background": "assets/bezels/backgrounds/desk-night.png",

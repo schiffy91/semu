@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "tv-soqueroeu-snes",
   "label": "Living room CRT · Super Nintendo",
-  "family": "tv",
   "layout": "fixed",
   "art": "assets/bezels/tv/soqueroeu/snes.png",
   "background": null,

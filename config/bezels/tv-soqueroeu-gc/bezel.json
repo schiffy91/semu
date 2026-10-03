@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "tv-soqueroeu-gc",
   "label": "Living room CRT · GameCube",
-  "family": "tv",
   "layout": "fixed",
   "art": "assets/bezels/tv/soqueroeu/gc.png",
   "background": null,

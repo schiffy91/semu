@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "gbc-berry",
   "label": "Game Boy Color · Berry",
-  "family": "handheld",
   "layout": "fixed",
   "art": "assets/bezels/gbc/berry.png",
   "background": "assets/bezels/backgrounds/desk-night.png",

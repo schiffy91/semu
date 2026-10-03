@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "tv-soqueroeu-nes",
   "label": "Living room CRT · NES",
-  "family": "tv",
   "layout": "fixed",
   "art": "assets/bezels/tv/soqueroeu/nes.png",
   "background": null,

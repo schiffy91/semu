@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "nds-vertical-shell",
   "label": "DS vertical shell",
-  "family": "dual",
   "layout": "fixed",
   "art": "assets/bezels/nds/vertical.png",
   "background": "assets/bezels/backgrounds/desk-night.png",

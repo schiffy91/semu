@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "gba-shell",
   "label": "Game Boy Advance",
-  "family": "handheld",
   "layout": "fixed",
   "art": "assets/bezels/gba/shell.png",
   "background": "assets/bezels/backgrounds/desk-night.png",

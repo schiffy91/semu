@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "gb-dmg-shell",
   "label": "Game Boy DMG-01",
-  "family": "handheld",
   "layout": "fixed",
   "art": "assets/bezels/gb/dmg-shell.png",
   "background": "assets/bezels/backgrounds/desk-night.png",
