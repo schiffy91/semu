@@ -14,7 +14,6 @@ unset WAYLAND_DISPLAY
 ln -s "$RETROARCH" "$work/assets/bin/retroarch"
 ln -s "$RENDERER/libsemurenderer.so" "$work/assets/lib/libsemurenderer.so"
 settings="{\"paths\":{\"roms\":\"$work/roms\",\"state_root\":\"$work/state\",\"content_root\":\"$work/content\"}}"
-failures=0
 echo "$CASES" | while read -r system core rom corefile boot; do
   [ -n "$system" ] || continue
   ln -sf "$corefile" "$work/assets/lib/retroarch/cores/${core}_libretro.so"
