@@ -116,7 +116,7 @@
     "cemu_display_name": "Xbox Controller",
     "cemu_uuid": "0_030000005e040000ea02000000000000",
     "cemu_profile": "Xbox",
-    "ryujinx_controller_id": "0-00000000-045e-0000-ea02-000000000000"
+    "ryujinx_controller_id": "0-00000003-045e-0000-ea02-000000000000"
   },
   "retroarch_hotkeys": {
     "enable_hotkey_btn": "nul",
