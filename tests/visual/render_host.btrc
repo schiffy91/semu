@@ -1,6 +1,7 @@
 // The real Semu renderer, offscreen on macOS (CGL, OpenGL 4.1 core): a test card (or a flat one,
 // RENDER_HOST_CARD=white/black with RENDER_HOST_LIT=screen) stands in for the
-// emulator's picture, SEMU_RENDER_* comes from `semu render-env`, and the frame is written as PPM.
+// emulator's picture, SEMU_RENDER_* comes from `semu render-env`, and the last of RENDER_HOST_FRAMES
+// frames (default 12, so a history pass sees a running game) is written as PPM.
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/gl3.h>
 #include <dlfcn.h>
@@ -126,6 +127,20 @@ class RenderHostTarget {  // the emulator's backbuffer: an FBO with the game dra
 }
 
 class RenderHost {
+    class int frames() {  // frames drawn before the capture: RENDER_HOST_FRAMES, else 12
+        char* text = getenv("RENDER_HOST_FRAMES");  // response-time reads seven frames of history: settle it
+        int count = text == null || text[0] == 0 ? 12 : atoi(text);
+        return count < 1 ? 1 : count;
+    }
+
+    class int settle(RenderHostTarget target, int count) {  // frames 1..count, each the same card
+        for (int frameNumber = 1; frameNumber <= count; frameNumber++) {
+            int result = RenderHost.frame(target, (unsigned long long)frameNumber);
+            if (result != 0) { return result; }
+        }
+        return 0;
+    }
+
     class int nativeWidth(int screen) { return RenderHost.nativePart(screen, 0); }
 
     class int nativeHeight(int screen) { return RenderHost.nativePart(screen, 1); }
@@ -211,13 +226,14 @@ int main(int argc, char** argv) {  // render_host WIDTH HEIGHT OUT.ppm [--reload
     if (width < 16 || height < 16 || !RenderHostContext.create()) { Console.error("render-host: no OpenGL 4.1 core context"); return 1; }
     RenderHostTarget target = RenderHostTarget(width, height);
     if (!target.complete()) { Console.error("render-host: the framebuffer is incomplete"); return 1; }
-    int result = RenderHost.frame(target, 1ULL);
+    int frames = RenderHost.frames();
+    int result = RenderHost.settle(target, frames);
     if (result != 0) { return result; }
     if (!target.writePortablePixmap(argv[3])) { return 1; }
     if (argc >= 6 && (int)strcmp(argv[4], "--reload") == 0) {  // edit the compositor, wait out the one-second check, draw again
         RenderHost.touchCompositor();
         usleep(1200000);
-        result = RenderHost.frame(target, 2ULL);
+        result = RenderHost.frame(target, (unsigned long long)frames + 1ULL);
         if (result != 0) { return result; }
         if (!target.writePortablePixmap(argv[5])) { return 1; }
     }
