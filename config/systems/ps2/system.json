@@ -19,9 +19,7 @@
       ".iso",
       ".m3u",
       ".mdf",
-      ".nrg",
-      ".7z",
-      ".zip"
+      ".nrg"
     ]
   },
   "emulators": [
@@ -72,6 +70,7 @@
   "doc": {
     "hardware": "consumer CRT, component CRT, or early flat panel",
     "intent": "Aspect should follow PCSX2/game widescreen state.",
-    "bios": "PCSX2 needs at least one legally dumped PS2 BIOS image."
+    "bios": "PCSX2 needs at least one legally dumped PS2 BIOS image.",
+    "extensions": "Only formats PCSX2 opens: it treats a .7z or .zip as an audio CD and boots the BIOS, so neither is offered. .m3u stays: PCSX2 gets the playlist's first disc (emulator.json playlist.open)."
   }
 }

@@ -14,7 +14,6 @@
       ".ccd",
       ".chd",
       ".cue",
-      ".ecm",
       ".exe",
       ".img",
       ".iso",
@@ -74,6 +73,7 @@
   "doc": {
     "hardware": "consumer CRT over composite/S-Video",
     "intent": "Preserve wobble/softness instead of HD-cleaning the output.",
-    "bios": "Beetle PSX expects user-supplied PlayStation BIOS dumps."
+    "bios": "Beetle PSX expects user-supplied PlayStation BIOS dumps.",
+    "extensions": "Beetle PSX has no ECM decoder (\"File format is unknown to module psx\"), so .ecm is not offered. .7z and .zip stay because single-file archives load. Beetle reads .m3u itself."
   }
 }

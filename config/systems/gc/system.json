@@ -22,9 +22,7 @@
       ".tgc",
       ".wad",
       ".wbfs",
-      ".wia",
-      ".7z",
-      ".zip"
+      ".wia"
     ]
   },
   "emulators": [
@@ -71,6 +69,7 @@
   },
   "doc": {
     "hardware": "consumer CRT or component CRT",
-    "intent": "Dolphin is pinned to draw 4:3 (CustomStretch in GFX.ini) until it reports the aspect it draws; then its aspect setting can drive 4:3 vs 16:9 presentation."
+    "intent": "Dolphin is pinned to draw 4:3 (CustomStretch in GFX.ini) until it reports the aspect it draws; then its aspect setting can drive 4:3 vs 16:9 presentation.",
+    "extensions": "Only formats Dolphin opens: a .7z or .zip ends in \"Could not recognize file\" and a modal \"Failed to init core\", so neither is offered. .wad and .wbfs stay because Dolphin boots them as Wii titles. Dolphin reads .m3u itself."
   }
 }

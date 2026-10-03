@@ -1,4 +1,4 @@
-// Playlist spec: an .m3u reaches each emulator in the form it opens.
+// Playlist spec: each emulator gets an .m3u in a form it opens, and ES-DE offers only formats one opens.
 
 import Library.FileSystem;
 import Library.JSON;
@@ -11,6 +11,7 @@ import ../../../src/lib/paths.btrc;
 import ../../../src/model.btrc;
 import ../../../src/resolve.btrc;
 import ../../../src/check.btrc;
+import ../../../src/emit/esde.btrc;
 import ../../../src/launch/plan.btrc;
 import ../../../src/launch/playlist.btrc;
 
@@ -228,10 +229,34 @@ class PlaylistSpecDeclarations {  // every .m3u binding states how its emulator 
     }
 }
 
+class PlaylistSpecExtensions {  // ES-DE offers only what a bound emulator opens
+    class void expectExtensions(Contract contract, Fixture fixture, string systemId, Vector<string> kept, Vector<string> dropped) {
+        Vector<string> extensions = fixture.model.system(systemId).extensions;
+        for extension in kept { contract.expect(extensions.contains(extension), f"{systemId} still offers {extension}"); }
+        for extension in dropped { contract.expect(!extensions.contains(extension), f"{systemId} no longer offers {extension}, which no bound emulator opens"); }
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        PlaylistSpecExtensions.expectExtensions(contract, fixture, "dreamcast", [".m3u", ".chd", ".7z", ".zip", ".lst"], [".iso"]);
+        PlaylistSpecExtensions.expectExtensions(contract, fixture, "ps2", [".m3u", ".iso", ".chd"], [".7z", ".zip"]);
+        PlaylistSpecExtensions.expectExtensions(contract, fixture, "gc", [".m3u", ".rvz", ".wad", ".wbfs"], [".7z", ".zip"]);
+        PlaylistSpecExtensions.expectExtensions(contract, fixture, "psx", [".m3u", ".chd", ".7z", ".zip"], [".ecm"]);
+        PlaylistSpecExtensions.expectExtensions(contract, fixture, "genesis", [".md", ".7z", ".zip"], [".32x"]);
+        string systems = SemuEsDeDocuments.systems(fixture.model, fixture.plan, fixture.diagnostics);
+        int start = systems.indexOf("<name>dreamcast</name>");
+        string entry = start < 0 ? "" : systems.substring(start, systems.len() - start);
+        entry = entry.contains("</system>") ? entry.substring(0, entry.indexOf("</system>")) : "";
+        contract.contains(entry, ".m3u .M3U", "es_systems.xml offers Dreamcast playlists in both cases");
+        contract.lacks(entry, ".iso", "es_systems.xml offers no Dreamcast .iso");
+    }
+}
+
 class PlaylistSpecContract {
     class void run(Contract contract) {
         PlaylistSpecParse.run(contract);
         PlaylistSpecLaunch.run(contract);
         PlaylistSpecDeclarations.run(contract);
+        PlaylistSpecExtensions.run(contract);
     }
 }
