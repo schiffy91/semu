@@ -1,0 +1,123 @@
+// Bezel emit spec: `semu bezel emit` over a copy of the committed packages writes every one back byte for byte,
+// so the committed files are its output, and what a person set by hand survives it: a ring's bevel and painted
+// band, bowed tube edges, an edited reflection on the second emit, a recolour's parent's ring. The writer once
+// rebuilt each ring from four fields and the renderer's missing-bevel default put the lit chamfer on every LCD lip.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Process;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/bezel/preset.btrc;
+import ../../../src/bezel/placement.btrc;
+import ../../../src/bezel/package.btrc;
+
+class BezelEmitSpecContract {
+    class string firstDifference(string committed, string emitted) {  // the first line that differs, for the failure message
+        Vector<string> before = Strings.split(committed, "\n");
+        Vector<string> after = Strings.split(emitted, "\n");
+        for (int index = 0; index < before.size() || index < after.size(); index++) {
+            string was = index < before.size() ? before[index].trim() : "(end)";
+            string now = index < after.size() ? after[index].trim() : "(end)";
+            if (!was.equals(now)) { return f"line {index + 1}: " + was + " became " + now; }
+        }
+        return "none";
+    }
+
+    class string droppedRingFields(JSONValue committed, JSONValue emitted) {  // ring keys the committed package has and the emitted one lacks
+        Vector<string> dropped = [];
+        JSONValue screens = committed.get("screens");
+        for (int index = 0; screens != null && screens.isArray() && index < screens.size(); index++) {
+            JSONValue ring = screens.at(index).get("ring");
+            JSONValue kept = SemuJson.get(emitted, f"screens.{index}.ring");
+            if (ring == null || !ring.isObject()) { continue; }
+            for key in ring.keys() { if (kept == null || !kept.isObject() || !kept.has(key)) { dropped.push(f"screens.{index}.ring.{key}"); } }
+        }
+        return Strings.join(dropped, ", ");
+    }
+
+    class string stage(Contract contract, Fixture fixture, string configRoot, string name) {  // the packages, the systems binding them and the upstream manifest, copied
+        string copy = PathTools.join(PathTools.join(fixture.scratch, name), "config");
+        FileSystem.mkdirp(PathTools.join(copy, "assets"));
+        bool copied = ChildProcess.run("cp", ["-R", PathTools.join(configRoot, "bezels"), PathTools.join(configRoot, "systems"), copy]).ok()
+            && ChildProcess.run("cp", [PathTools.join(configRoot, "assets/bezels.json"), PathTools.join(copy, "assets/bezels.json")]).ok();
+        contract.expect(copied, "the packages are copied to " + copy);
+        return copy;
+    }
+
+    class BezelPackageWriter emit(Contract contract, string copy, string root, Vector<string> wanted, string label) {
+        BezelRepository repository = BezelRepository(copy);
+        BezelPackageWriter writer = BezelPackageWriter(repository, MegaBezelTree(copy, root));
+        writer.emitAll(wanted);
+        contract.expect(writer.tree.ready && writer.failed.isEmpty() && writer.written.size() > 0, label + ": semu bezel emit writes every package: " + Strings.join(writer.failed, "; ") + writer.tree.failure);
+        return writer;
+    }
+
+    class void fixedPoint(Contract contract, Fixture fixture, string configRoot, string root) {
+        string copy = BezelEmitSpecContract.stage(contract, fixture, configRoot, "emit-committed");
+        BezelPackageWriter writer = BezelEmitSpecContract.emit(contract, copy, root, BezelRepository(copy).upstreamIds(), "the committed packages");
+        BezelRepository committed = BezelRepository(configRoot);
+        int same = 0;
+        Vector<string> packageIds = committed.packageIds();
+        for packageId in packageIds {
+            string before = FileSystem.readText(committed.packagePath(packageId));
+            string after = FileSystem.readText(writer.repository.packagePath(packageId));
+            string dropped = BezelEmitSpecContract.droppedRingFields(JSONValue.parse(before), JSONValue.parse(after));
+            contract.expect(dropped.isEmpty(), f"semu bezel emit keeps every ring field of {packageId}: dropped " + dropped);
+            if (before.equals(after)) { same++; }
+            else { contract.expect(false, f"semu bezel emit writes config/bezels/{packageId}/bezel.json back byte for byte (run it and commit what it writes); first difference at " + BezelEmitSpecContract.firstDifference(before, after)); }
+        }
+        contract.expect(same == packageIds.size() && same > 0, f"semu bezel emit reproduces {same} of {packageIds.size()} committed packages");
+    }
+
+    class void handSet(Contract contract, Fixture fixture, string configRoot, string root) {  // what a person sets survives two emits, and the recolour takes its parent's ring
+        string copy = BezelEmitSpecContract.stage(contract, fixture, configRoot, "emit-hand-set");
+        BezelRepository repository = BezelRepository(copy);
+        JSONValue package = repository.package("gba-shell");
+        JSONValue screen = SemuJson.get(package, "screens.0");
+        screen.get("ring").set("bevel", JSONValue.makeFloat(0.25));
+        screen.get("ring").set("color", JSONValue.makeString("none"));
+        screen.set("tube", JSONValue.parse("{\"x\":0,\"y\":0,\"w\":10,\"h\":10}"));  // holds no bezel: the opening and its shape are worked out again
+        screen.get("shape").set("bulge", JSONValue.parse("{\"x\":3,\"y\":2}"));
+        screen.set("reflection", JSONValue.parse("{\"strength\":0.5,\"blur\":0.25,\"fade\":0.75}"));
+        screen.get("provenance").set("edited", JSONValue.parse("{\"tool\":\"semu bezel edit\",\"when\":\"contract\"}"));
+        contract.expect(repository.save("gba-shell", package), "the hand-set gba-shell is staged");
+        Vector<string> wanted = ["gba-shell"];
+        BezelEmitSpecContract.emit(contract, copy, root, wanted, "the hand-set gba-shell, first emit");
+        JSONValue opened = repository.package("gba-shell");
+        contract.expect(SemuJson.textAt(opened, "screens.0.provenance.opening").equals("bezel_outer") && SemuJson.intAt(opened, "screens.0.shape.bulge.x", 0) == 3 && SemuJson.intAt(opened, "screens.0.shape.bulge.y", 0) == 2,
+            "a shape worked out for a new opening keeps the bowed edges: " + SemuJson.get(opened, "screens.0.shape").stringify());
+        BezelEmitSpecContract.emit(contract, copy, root, wanted, "the hand-set gba-shell, second emit");
+        JSONValue shell = repository.package("gba-shell");
+        JSONValue arctic = repository.package("gba-arctic");
+        contract.expect(SemuJson.textAt(shell, "screens.0.ring.bevel").equals("0.25") && SemuJson.textAt(shell, "screens.0.ring.color").equals("none"),
+            "emit keeps a ring's bevel and its painted band: bevel " + SemuJson.textAt(shell, "screens.0.ring.bevel") + ", colour " + SemuJson.textAt(shell, "screens.0.ring.color"));
+        contract.expect(SemuJson.intAt(shell, "screens.0.shape.bulge.x", 0) == 3, "the bowed edges survive the second emit: " + SemuJson.get(shell, "screens.0.shape").stringify());
+        contract.expect(BezelNumber.of(SemuJson.get(shell, "screens.0.reflection.strength")) == 0.5 && SemuJson.textAt(shell, "screens.0.provenance.edited.when").equals("contract"),
+            "an edited reflection survives a second emit, the editor's mark with it: " + SemuJson.get(shell, "screens.0.reflection").stringify());
+        contract.expect(SemuJson.textAt(arctic, "screens.0.ring.bevel").equals("0.25") && SemuJson.textAt(arctic, "screens.0.ring.color").equals("none"),
+            "the arctic recolour inherits its parent's ring, bevel and band included: " + SemuJson.get(arctic, "screens.0.ring").stringify());
+        JSONValue fresh = repository.package("tv-soqueroeu-nes");
+        SemuJson.get(fresh, "screens.0").set("ring", JSONValue.makeNull());
+        JSONValue lens = repository.package("gb-dmg-shell");
+        SemuJson.get(lens, "screens.0").set("ring", JSONValue.makeNull());
+        contract.expect(repository.save("tv-soqueroeu-nes", fresh) && repository.save("gb-dmg-shell", lens), "two packages without a ring are staged");
+        Vector<string> fresher = ["tv-soqueroeu-nes", "gb-dmg-shell"];
+        BezelEmitSpecContract.emit(contract, copy, root, fresher, "packages without a ring");
+        string television = SemuJson.textAt(repository.package("tv-soqueroeu-nes"), "screens.0.ring.bevel");
+        string handheld = SemuJson.textAt(repository.package("gb-dmg-shell"), "screens.0.ring.bevel");
+        contract.expect(television.equals("1") && handheld.equals("0"), "a new ring says its bevel: a chamfered CRT bezel 1, a Duimon lens's flat mask 0; wrote " + television + " and " + handheld);
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string configRoot = PathTools.join(fixture.project, "config");
+        string root = MegaBezelTree.locate(configRoot, "");
+        if (root.isEmpty()) { contract.skip("bezel emit", "no pinned slang tree (build it with `make bezel-tree` or set SEMU_BEZEL_TREE)"); return; }
+        BezelEmitSpecContract.fixedPoint(contract, fixture, configRoot, root);
+        BezelEmitSpecContract.handSet(contract, fixture, configRoot, root);
+    }
+}

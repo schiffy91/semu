@@ -73,7 +73,7 @@
           false
         ],
         "canvas_layer": "background",
-        "opening": "bezel_outer",
+        "opening": "kept",
         "parameters": {
           "HSM_ASPECT_RATIO_EXPLICIT": "1.3332999999999999",
           "HSM_ASPECT_RATIO_MODE": "0",
@@ -104,8 +104,6 @@
           "HSM_CRT_LAYER_ORDER": "5",
           "HSM_DUALSCREEN_POSITION_OFFSET_BETWEEN_SCREENS": "0",
           "HSM_DUALSCREEN_VIEWPORT_SPLIT_LOCATION": "0",
-          "HSM_FRM_THICKNESS": "30.000000",
-          "HSM_FRM_THICKNESS_SCALE_X": "100",
           "HSM_GLOBAL_CORNER_RADIUS": "10",
           "HSM_LED_LAYER_ORDER": "2",
           "HSM_LED_OPACITY": "100",
@@ -119,7 +117,6 @@
           "HSM_REFLECT_FADE_AMOUNT": "100",
           "HSM_REFLECT_GLOBAL_AMOUNT": "30.000000",
           "HSM_ROTATE_CORE_IMAGE": "0",
-          "HSM_SCREEN_CORNER_RADIUS_SCALE": "100",
           "HSM_SCREEN_POSITION_X": "0",
           "HSM_SCREEN_POSITION_Y": "71.000000",
           "HSM_TUBE_BLACK_EDGE_THICKNESS": "100",
