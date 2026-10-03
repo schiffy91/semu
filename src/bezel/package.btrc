@@ -378,12 +378,7 @@ class BezelPackageWriter {
 
     public string plain(string packageId) {  // a Semu-owned plate with no preset: its art is the one layer and the canvas
         JSONValue package = self.repository.package(packageId);
-        if (package == null) { return ""; }
-        if (package.has("layers")) {  // already layered: only the cutouts layer's name may need the current spelling
-            JSONValue layers = package.get("layers");
-            for (int index = 0; index < layers.size(); index++) { if (SemuJson.textAt(layers.at(index), "id").equals("screens")) { layers.at(index).set("id", JSONValue.makeString("cutouts")); if (!self.repository.save(packageId, package)) { return "could not write the package"; } } }
-            return "";
-        }
+        if (package == null || package.has("layers")) { return ""; }  // already layered: nothing to add
         string art = SemuJson.textAt(package, "art");
         if (art.isEmpty()) { return ""; }
         string path = PathTools.join(self.repository.configRoot, art);
