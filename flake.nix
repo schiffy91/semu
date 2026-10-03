@@ -47,7 +47,7 @@
   outputs = inputs@{ self, nixpkgs, btrc, renderer, retroarch, esde, ... }:
     let
       lib = nixpkgs.lib;
-      systems = [ "x86_64-linux" "aarch64-darwin" ];  # darwin is a development host: CLI, contracts, bezel tools
+      systems = [ "x86_64-linux" "aarch64-darwin" ];  # linux: desktop and Deck; darwin: the macos target and dev host
       forAllSystems = f: lib.genAttrs systems (system: f system);
       mkPkgs = system: import nixpkgs {
         inherit system;

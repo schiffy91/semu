@@ -89,7 +89,7 @@ class RetroArchSpecProfile {  // retroarch.cfg per target: fullscreen, shader ow
     }
 }
 
-class RetroArchSpecPlatforms {  // emulator.json slices: Linux frame ownership; no macOS slice while the flake builds Linux only
+class RetroArchSpecPlatforms {  // emulator.json slices: Linux frame ownership, macOS dylib cores on glcore
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
         SemuEmulator emulator = fixture.model.emulator("retroarch");
