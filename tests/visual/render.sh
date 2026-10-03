@@ -5,7 +5,8 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 out="$1"; size="$2"; shift 2
 width="${size%x*}"; height="${size#*x}"
-make -C "$root" --no-print-directory build/semu build/render-host build/bezel-tree >/dev/null && nix build --no-warn-dirty --out-link "$root/build/asset-root" "$root#asset-root"
+make -C "$root" --no-print-directory build/semu build/render-host >/dev/null
+nix build --no-warn-dirty --out-link "$root/build/asset-root" "$root#asset-root"
 mkdir -p "$out" "$root/build/asset-stub"
 failures=0
 for cell in "$@"; do
