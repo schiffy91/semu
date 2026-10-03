@@ -1,5 +1,5 @@
 # The bezel-art asset tree for Semu, driven by config/assets/bezels.json (recipe types copy,
-# local, flatten, recolor, glass, panel, shell, photo, scene, plus the "staging" section).
+# local, flatten, recolor, glass, scene, plus the "staging" section).
 #
 # (default / `semu-bezels`) bakes every recipe here, on the machine that builds Semu: verbatim
 #   `copy` files and Semu's own `local` files are byte-checked against their pinned hashes;
@@ -10,7 +10,7 @@
 #
 # Output layout: share/semu/<asset key> (what the launcher joins "assets/..." onto) plus every
 # staging destination whose src names a bezels.json asset or asset directory.
-{ lib, stdenvNoCC, fetchFromGitHub, fetchurl, imagemagick }:
+{ lib, stdenvNoCC, fetchFromGitHub, imagemagick }:
 
 let
   repoRoot = ../..;
@@ -31,14 +31,7 @@ let
     })
     (lib.filterAttrs (_: spec: spec.kind == "github") sources.upstreams);
 
-  urlFiles = lib.mapAttrs
-    (_: spec: fetchurl {
-      inherit (spec) url name;
-      sha256 = spec.sha256_base32;
-    })
-    (lib.filterAttrs (_: spec: spec.kind == "url") sources.upstreams);
-
-  imageTypes = [ "copy" "local" "flatten" "recolor" "glass" "panel" "shell" "photo" "scene" ];
+  imageTypes = [ "copy" "local" "flatten" "recolor" "glass" "scene" ];
   imageAssets = lib.filterAttrs (_: recipe: lib.elem recipe.type imageTypes)
     sources.assets;
 
@@ -107,7 +100,6 @@ let
   outFile = key: ''"$out/share/semu/${key}"'';
   treePath = recipe: path: "${githubTrees.${recipe.from}}/${path}";
   treeFile = recipe: path: ''"${treePath recipe path}"'';
-  urlFile = recipe: ''"${urlFiles.${recipe.from}}"'';
 
   copyUpstreamFile = key: recipe:
     let source = treePath recipe recipe.path;
@@ -127,24 +119,6 @@ let
         exit 1
       fi
     '';
-
-  # Shared plate renderer for "panel" (whole drawing) and "shell" (overlay
-  # plates on a device render): ordered round_rect / circle in canvas
-  # fractions of the given size.
-  drawPlateFor = canvasWidth: canvasHeight: plate:
-    let
-      pixelX = fraction: toString (builtins.floor (fraction * canvasWidth + 0.5));
-      pixelY = fraction: toString (builtins.floor (fraction * canvasHeight + 0.5));
-    in
-    if plate.kind == "circle" then
-      ''-draw "fill ${plate.fill} circle ${pixelX plate.cx},${pixelY plate.cy} ${
-        toString (builtins.floor (plate.cx * canvasWidth + 0.5) + plate.radius)},${pixelY plate.cy}" ''
-    else
-      ''-draw "${lib.optionalString (plate ? stroke)
-          "stroke ${plate.stroke} stroke-width 2 "}fill ${plate.fill} roundrectangle ${
-        pixelX plate.x},${pixelY plate.y} ${
-        pixelX (plate.x + plate.w)},${pixelY (plate.y + plate.h)} ${
-        toString plate.radius},${toString plate.radius}" '';
 
   # Composite an already-baked, pixel-aligned asset (e.g. the GBC glass layer,
   # which carries Duimon's authentic rainbow "GAME BOY COLOR" wordmark) over a
@@ -186,13 +160,6 @@ let
       copy = copyUpstreamFile key recipe;
       local = ''
         cp "${assetSource + "/${recipe.path}"}" ${outFile key}
-      '';
-      # Pinned device photograph (fetchurl-pinned, e.g. Wikimedia Commons):
-      # optional deskew rotation, trim to the device silhouette, cap size.
-      photo = ''
-        magick ${urlFile recipe} -background none \
-          ${lib.optionalString (recipe ? rotate) "-rotate ${toString recipe.rotate} "} \
-          -trim +repage -resize '2560x2560>' "PNG32:$out/share/semu/${key}"
       '';
       # -flatten merges the whole layer stack; pairwise -composite would only
       # merge the last two layers (the GBC LED-layer regression). A layer set
@@ -237,40 +204,6 @@ let
         magick ${outFile recipe.base} -modulate ${toString (recipe.brightness or 100)},0,100 \
           \( +clone -fill "${recipe.color}" -colorize 100% \) \
           -compose Multiply -composite -alpha on ${overlayAssetPass recipe}"PNG32:$out/share/semu/${key}"
-      '';
-      # layered device shell from a Duimon layer set. Their device base is
-      # black RGB with the shape in alpha, so: colorize + top-down light the
-      # silhouette, cut with its own alpha, lay the decal (modeled buttons),
-      # glass (control markings) and top (branding) Over, blend the LED plate
-      # additively (Screen — it is an opaque black plate with lit diodes),
-      # then cut again with the silhouette alpha.
-      shell = let
-        layer = path: treeFile recipe path;
-        overLayer = attribute:
-          lib.optionalString (recipe ? ${attribute})
-            " ${layer recipe.${attribute}} -compose Over -composite";
-        cut = " \\( ${layer recipe.silhouette} -alpha extract \\)"
-          + " -alpha off -compose CopyOpacity -composite";
-      in ''
-        shellDims=$(magick identify -format "%wx%h" ${layer recipe.silhouette})
-        magick ${layer recipe.silhouette} -fill "${recipe.color}" -colorize 100 \( -size "$shellDims" gradient:"${recipe.light or "#ffffff-#7e7e7e"}" \) -compose Multiply -composite${cut}${overLayer "decal"}${overLayer "glass_markings"}${overLayer "top"}${
-          lib.optionalString (recipe ? led)
-            " \\( ${layer recipe.led} -alpha off \\) -compose Screen -composite"
-        }${cut}${lib.optionalString (recipe ? plates) (" -compose Over " + lib.concatMapStrings (drawPlateFor recipe.size.w recipe.size.h) recipe.plates)}${cut} -resize '2048x2048>' "PNG32:$out/share/semu/${key}"${
-          lib.optionalString (recipe ? grain) ''
-
-        magick ${outFile key} -channel RGB -attenuate ${toString recipe.grain} +noise Gaussian +channel "PNG32:$out/share/semu/${key}"''
-        }
-      '';
-      # declarative drawn bezel: ordered plates (round_rect / circle) on a
-      # transparent canvas — the manifest entry IS the drawing, no upstream.
-      panel = ''
-        magick -size ${toString recipe.size.w}x${toString recipe.size.h} canvas:none \
-          ${lib.concatMapStrings (drawPlateFor recipe.size.w recipe.size.h) recipe.plates} "PNG32:$out/share/semu/${key}"${
-            lib.optionalString (recipe ? grain) ''
-
-        magick ${outFile key} -channel RGB -attenuate ${toString recipe.grain} +noise Gaussian +channel "PNG32:$out/share/semu/${key}"''
-          }
       '';
     }.${recipe.type}) + verifyOutput key recipe;
 
