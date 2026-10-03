@@ -344,8 +344,14 @@ class RenderingContract {
         Vector<string> computedEnv = SemuRenderEnvironment.compile(computed, nds, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(computedEnv.contains("SEMU_RENDER_BEZELS=1") && computedEnv.contains("SEMU_RENDER_LAYOUT=main_right") && computedEnv.contains("SEMU_RENDER_BEZEL_ID=dual-main-right"), "the computed main-right layout is an alternate that needs no plate");
         bool frame = false;
-        for entry in computedEnv { if (entry.startsWith("SEMU_RENDER_FRAME=0.03,0,") && Strings.split(entry, ",").size() == 5) { frame = true; } }  // width, no radius (the frame rounds concentric with the opening), then the colour
+        for entry in computedEnv { if (entry.equals("SEMU_RENDER_FRAME=0.03,0.0705882,0.0705882,0.0705882")) { frame = true; } }  // width,r,g,b: #121212; no radius, the frame rounds concentric with the opening
         contract.expect(frame, "computed layouts draw a frame around each screen");
+        Vector<string> rounded = [];
+        for packageId in SemuModel.sortedEntries(PathTools.join(fixture.plan.configRoot, "bezels")) {
+            JSONValue drawnFrame = SemuJson.get(SemuBezelPackage.load(fixture.plan, packageId), "frame");
+            if (drawnFrame.isObject() && drawnFrame.has("radius")) { rounded.push(packageId); }
+        }
+        contract.expect(rounded.isEmpty(), "no package gives its drawn frame a radius: nothing reads one, the frame rounds with its opening: " + Strings.join(rounded, ", "));
         SemuPlan shell = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"shell\"}}}}", diagnostics);
         Vector<string> shellEnv = SemuRenderEnvironment.compile(shell, nds, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(shellEnv.contains("SEMU_RENDER_BEZEL_ID=nds-shell") && shellEnv.contains("SEMU_RENDER_LAYOUT=fixed") && shellEnv.contains("SEMU_RENDER_SCREEN_1=0.509635,0.137963,0.471354,0.637963"), "the DS shell alternate is a fixed package with two computed openings");  // 1957,298,1810,1378: the right screen's bezel edge
