@@ -8,6 +8,7 @@ import Library.FileSystem;
 import Library.HTTP;
 import Library.JSON;
 import Library.Map;
+import Library.Process;
 import Library.Strings;
 import Library.Vector;
 import ../lib/json.btrc;
@@ -22,12 +23,14 @@ class BezelEditor {
     public MegaBezelTree tree;
     public string pagePath;
     public string assetRoot;  // the bundle: the background plates and tube glass the renderer reads
+    public BezelProductionRender production;
     public int port;
 
     public BezelEditor(BezelRepository repository, MegaBezelTree tree, string assetRoot) {
         self.repository = repository;
         self.tree = tree;
         self.assetRoot = BezelEditor.assets(repository.configRoot, assetRoot);
+        self.production = BezelProductionRender(repository, self.assetRoot);
         self.pagePath = PathTools.join(repository.configRoot, "editor/bezel-editor.html");
         self.port = 0;
     }
@@ -61,6 +64,7 @@ class BezelEditor {
         if (!self.trusted(request)) { return HTTPResponse.error(403, "the bezel editor answers only its own page on loopback"); }
         string path = HTTPServer.urlDecode(request.path);
         if (request.isPost() && path.equals("/api/save")) { return self.save(request.body); }
+        if (request.isPost() && path.equals("/api/production")) { return self.production.render(request.body); }
         if (path.equals("/")) { return FileSystem.isFile(self.pagePath) ? HTTPResponse.html(FileSystem.readText(self.pagePath)) : HTTPResponse.error(500, "no editor page at " + self.pagePath); }
         if (path.equals("/api/packages")) { return HTTPResponse.json(self.packages().stringify()); }
         if (path.equals("/api/geometry")) { return HTTPResponse.json(BezelComputedLayout.lanes(request.queryParams()).stringify()); }
@@ -380,5 +384,67 @@ class BezelComputedLayout {  // the computed DS/3DS layouts by the renderer's ow
         result.set("lanes", lanes);
         result.set("frame", JSONValue.makeInt(frame));
         return result;
+    }
+}
+
+class BezelProductionRender {  // the real renderer on this machine (a checkout's build/render-host) fed the unsaved package: the shader chain the page does not draw
+    public BezelRepository repository;
+    public string assetRoot;
+    public string scratch;  // a copy of config with the edited package written in; the real config is never touched
+
+    public BezelProductionRender(BezelRepository repository, string assetRoot) {
+        self.repository = repository;
+        self.assetRoot = assetRoot;
+        self.scratch = "";
+    }
+
+    class bool plainName(string name) {  // a system, variant or package id: letters, digits, dot, dash, underscore
+        if (name.isEmpty() || name.contains("..")) { return false; }
+        for (int index = 0; index < name.len(); index++) {
+            char letter = name.charAt(index);
+            if (!((letter >= 'a' && letter <= 'z') || (letter >= 'A' && letter <= 'Z') || (letter >= '0' && letter <= '9') || letter == '-' || letter == '_' || letter == '.')) { return false; }
+        }
+        return true;
+    }
+
+    public HTTPResponse render(string body) {  // {package, system, variant, width, height, card, aspect} -> the frame as PPM
+        string build = SemuPaths.normalize(PathTools.join(PathTools.join(self.repository.configRoot, ".."), "build"));
+        string host = PathTools.join(build, "render-host");
+        string semu = PathTools.join(build, "semu");
+        if (!FileSystem.isFile(host) || !FileSystem.isFile(semu)) { return HTTPResponse.error(404, "the production render needs a checkout with build/render-host and build/semu (make build/semu build/render-host)"); }
+        if (self.assetRoot.isEmpty()) { return HTTPResponse.error(404, "the production render needs the bundle's data (nix build --out-link build/asset-root .#asset-root)"); }
+        JSONValue request = JSONValue.parse(body);
+        JSONValue package = request == null ? null : request.get("package");
+        string id = SemuJson.textAt(package, "id");
+        string system = SemuJson.textAt(request, "system");
+        string variant = SemuJson.textAt(request, "variant");
+        string card = SemuJson.textAt(request, "card");
+        int width = SemuJson.intAt(request, "width", 0);
+        int height = SemuJson.intAt(request, "height", 0);
+        if (!BezelProductionRender.plainName(id) || self.repository.package(id) == null || !BezelProductionRender.plainName(system) || !BezelProductionRender.plainName(variant)) { return HTTPResponse.error(400, "a known package, a system and a variant"); }
+        if (width < 16 || height < 16 || width > 7680 || height > 4320) { return HTTPResponse.error(400, "a screen between 16x16 and 7680x4320"); }
+        if (self.scratch.isEmpty()) {
+            ExecResult made = ChildProcess.run("mktemp", ["-d"]);
+            if (!made.ok()) { return HTTPResponse.error(500, "no scratch directory: " + made.stderr()); }
+            self.scratch = made.trimmed();
+        }
+        string config = PathTools.join(self.scratch, "config");
+        ExecResult copied = ChildProcess.run("cp", ["-R", self.repository.configRoot + "/.", config]);  // the current config, then the unsaved package over its own file
+        if (!copied.ok() || !SemuPaths.writeOwned(self.scratch, PathTools.join(config, "bezels/" + id + "/bezel.json"), package.stringifyPretty(2) + "\n")) { return HTTPResponse.error(500, "could not stage the package in " + self.scratch); }
+        string settings = f"{{\"visual\":{{\"systems\":{{\"{system}\":{{\"bezel_variant\":\"{variant}\"}}}}}}}}";  // the system's own shader, as a launch would choose it
+        ExecResult environment = ChildProcess.run(semu, ["render-env", "--system", system, "--project", config, "--asset-root", self.assetRoot, "--settings-json", settings], "", CommandEnvironment.empty(), CommandEnvironment.empty(), 60000);
+        if (!environment.ok()) { return HTTPResponse.error(500, "semu render-env: " + environment.stderr()); }
+        Vector<string> entries = [];
+        for line in Strings.split(environment.stdout(), "\n") { if (line.contains("=") && !line.startsWith("SEMU_RENDER_COMPOSITOR_DIR=")) { entries.push(line); } }
+        entries.push("SEMU_RENDER_COMPOSITOR_DIR=" + PathTools.join(self.repository.configRoot, "render"));  // the compositor being edited, not the copy
+        entries.push("RENDER_HOST_CARD=" + (card.equals("white") || card.equals("black") ? card : "editor"));
+        double aspect = BezelNumber.of(request.get("aspect"));
+        if (aspect > 0.1) { entries.push(f"RENDER_HOST_ASPECT={aspect}"); }
+        string frame = PathTools.join(self.scratch, "production.ppm");
+        ExecResult drawn = ChildProcess.run(host, [f"{width}", f"{height}", frame], "", entries, CommandEnvironment.empty(), 120000);
+        if (!drawn.ok()) { return HTTPResponse.error(500, "render-host: " + drawn.stderr()); }
+        Bytes data = SemuPaths.readBytes(frame);
+        if (data.len == 0) { return HTTPResponse.error(500, "render-host wrote nothing"); }
+        return HTTPResponse.bytes(200, "image/x-portable-pixmap", data);
     }
 }

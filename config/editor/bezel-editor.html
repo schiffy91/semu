@@ -97,7 +97,7 @@
   <span class="spacer"></span>
   <div class="seg"><button id="undo" title="Undo (⌘Z)">↶</button><button id="redo" title="Redo (⇧⌘Z)">↷</button></div>
   <div class="seg"><button id="fit" title="Fit (F)">Fit</button><button id="zoom-out" title="Zoom out">−</button><button id="zoom-label" title="100% (1)" style="min-width:56px">100%</button><button id="zoom-in" title="Zoom in">+</button></div>
-  <div class="seg"><button id="xray" title="X-ray: cutouts at 35% or back to solid (X)">X-ray</button><button id="show-game" class="on" title="Show the test card in each picture">Test card</button></div>
+  <div class="seg"><button id="xray" title="X-ray: cutouts at 35% or back to solid (X)">X-ray</button><button id="show-game" class="on" title="Show the test card in each picture">Test card</button><button id="production" title="The real renderer's frame for the target screen, shader chain included, drawn by the checkout's build/render-host from the unsaved package">Production</button></div>
   <div class="seg"><button id="help-btn" title="Shortcuts" style="min-width:30px">?</button></div>
   <span id="status"></span>
   <button id="save" class="primary" title="Save (⌘S)">Save</button>
@@ -707,6 +707,53 @@ function composeView() {  // the frame on the view; with X-ray the cutouts fade 
   compositeKey = key;
   return composite;
 }
+function packageToRender() {  // the unsaved package as the renderer would read it: a computed layout without the view's stand-in canvas
+  return isComputed() ? { ...state.current, canvas: null, layers: undefined } : state.current;
+}
+function productionFrame() {  // the real renderer's frame for the target screen, asked of the editor server; null while it renders or after an edit
+  const request = { package: packageToRender(), system: state.preview.system, variant: state.preview.variant, width: state.target.width, height: state.target.height, card: state.showGame ? "test" : "black", aspect: state.preview.presentation || 0 };
+  const key = JSON.stringify(request), held = state.production;
+  if (held && held.key === key) return held.canvas;
+  if (!state.preview.system) { status("production: no system binds this package"); return null; }
+  clearTimeout(state.productionTimer);
+  state.productionTimer = setTimeout(async () => {  // after a pause in editing; one render at a time
+    if (state.productionBusy) { state.productionTimer = setTimeout(() => draw(), 300); return; }
+    state.productionBusy = true; status("production render…");
+    try {
+      const response = await fetch("/api/production", { method: "POST", headers: { "Content-Type": "application/json" }, body: key });
+      if (!response.ok) throw new Error(await response.text());
+      state.production = { key, canvas: portablePixmap(new Uint8Array(await response.arrayBuffer())) };
+      status(`production: ${state.preview.system} · ${state.target.width}×${state.target.height}${state.preview.shader ? " · " + state.preview.shader.label : ""}`);
+    } catch (error) { status("production: " + String(error.message || error).slice(0, 160)); state.productionView = false; document.getElementById("production").classList.remove("on"); }
+    state.productionBusy = false; draw();
+  }, held ? 400 : 0);
+  return null;
+}
+function portablePixmap(bytes) {  // P6 from the render host, as a canvas
+  let at = 0;
+  const token = () => { while (bytes[at] === 32 || bytes[at] === 10 || bytes[at] === 13 || bytes[at] === 9) at++; let text = ""; while (at < bytes.length && bytes[at] > 32) text += String.fromCharCode(bytes[at++]); return text; };
+  if (token() !== "P6") throw new Error("the render host did not answer with a P6 frame");
+  const width = Number(token()), height = Number(token()); token(); at++;
+  const out = document.createElement("canvas"); out.width = width; out.height = height;
+  const context = out.getContext("2d"), image = context.createImageData(width, height);
+  for (let pixel = 0; pixel < width * height; pixel++) { image.data[pixel * 4] = bytes[at++]; image.data[pixel * 4 + 1] = bytes[at++]; image.data[pixel * 4 + 2] = bytes[at++]; image.data[pixel * 4 + 3] = 255; }
+  context.putImageData(image, 0, 0);
+  return out;
+}
+function shaderBadges(production) {  // each screen's shader preset: the renderer runs it, the live preview does not
+  const shader = state.preview.shader;
+  if (!shader) return;
+  const scene = previewScene(false);
+  ctx.font = "600 11px -apple-system, system-ui, sans-serif";
+  scene.lanes.forEach((lane, index) => {
+    if (!lane || lane.tube.width < 40) return;
+    const id = (state.preview.screens[index] || {}).id, preset = (shader.screens && shader.screens[id]) || shader.preset;
+    const text = `Shader ${preset.replace(/^assets\/shaders\//, "")}${production ? "" : " · not previewed"}`;
+    const x = Math.round(lane.tube.x) + 8, y = Math.round(canvas.height - lane.tube.y - lane.tube.height) + 8, width = ctx.measureText(text).width + 12;
+    ctx.fillStyle = "rgba(0,0,0,.66)"; ctx.fillRect(x, y, width, 18);
+    ctx.fillStyle = production ? "#30d158" : "#ffd60a"; ctx.fillText(text, x + 6, y + 13);
+  });
+}
 function fetched(url) {  // an image element: WebGL decodes it on upload, inside the load, so a capture never sees a half-loaded scene
   return new Promise((resolve, reject) => { const image = new Image(); image.onload = () => resolve(image); image.onerror = () => reject(new Error(`${url} failed to load`)); image.src = url; });
 }
@@ -717,11 +764,13 @@ function draw() {
   if (!state.current) return;
   const c = state.current.canvas;
   const [cx0, cy0] = toScreen(0, 0);
+  const production = !CAPTURE && state.productionView ? productionFrame() : null, screenOnView = targetScreenRect();
   if (compositorReady) ctx.drawImage(composeView(), 0, 0);  // the renderer's frame; the outlines and handles go over it
+  if (production && screenOnView) { ctx.imageSmoothingEnabled = screenOnView.w < production.width; ctx.drawImage(production, screenOnView.x, screenOnView.y, screenOnView.w, screenOnView.h); ctx.imageSmoothingEnabled = false; }  // the real renderer on the target screen, shader chain and all
   if (CAPTURE) return;  // the picture only: no canvas outline, grid, outlines, handles or HUD
+  shaderBadges(!!production);
   ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 1; ctx.setLineDash([6, 4]);
   ctx.strokeRect(cx0 + 0.5, cy0 + 0.5, c.w * state.zoom, c.h * state.zoom);
-  const screenOnView = targetScreenRect();
   if (screenOnView) {  // the target screen as the renderer frames the canvas on it
     ctx.strokeStyle = "rgba(100,210,255,0.55)"; ctx.setLineDash([2, 5]);
     ctx.strokeRect(Math.round(screenOnView.x) + 0.5, Math.round(screenOnView.y) + 0.5, Math.round(screenOnView.w) - 1, Math.round(screenOnView.h) - 1);
@@ -998,6 +1047,9 @@ document.getElementById("zoom-out").addEventListener("click", () => zoomTo(ZOOMS
 document.getElementById("zoom-label").addEventListener("click", () => zoomTo(1, canvas.width / 2, canvas.height / 2));
 document.getElementById("xray").addEventListener("click", toggleXray);
 document.getElementById("show-game").addEventListener("click", event => { state.showGame = !state.showGame; event.currentTarget.classList.toggle("on", state.showGame); draw(); });
+document.getElementById("production").addEventListener("click", event => { state.productionView = !state.productionView; event.currentTarget.classList.toggle("on", state.productionView); draw(); });
+state.productionView = !CAPTURE && pageQuery.get("production") === "1";  // ?production=1 opens on the real renderer's frame
+document.getElementById("production").classList.toggle("on", state.productionView);
 document.getElementById("undo").addEventListener("click", undo);
 document.getElementById("redo").addEventListener("click", redo);
 async function save() {
