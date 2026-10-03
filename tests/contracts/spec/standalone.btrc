@@ -219,6 +219,9 @@ class StandaloneSpecContract {
         string hotkeys = fixture.profile("dolphin", "dolphin-user/Config/Hotkeys.ini");
         string graphics = fixture.profile("dolphin", "dolphin-user/Config/GFX.ini");
         contract.contains(main, "GFXBackend = OGL", target + " dolphin forces OpenGL");
+        // Dolphin loads a playlist but defaults AutoDiscChange off: the game would eject and wait
+        contract.contains(main, "AutoDiscChange = True", target + " dolphin swaps playlist discs when the game asks");
+        contract.expect(StandaloneSpecText.ordered(main, ["[Core]", "AutoDiscChange = True", "[Interface]"]), target + " dolphin AutoDiscChange sits in [Core]");
         // CustomStretch 4:3: Dolphin draws exactly the rectangle the compositor cuts (frame_layout.btrc)
         contract.contains(graphics, "[Settings]\nAspectRatio = 5\nCustomAspectRatioWidth = 4\nCustomAspectRatioHeight = 3", target + " dolphin draws 4:3 with no VI aspect");
         contract.contains(main, "[Semu Controller Modes]\nWiimoteProfile = Semu Wiimote\nNunchukProfile = Semu Nunchuk\nClassicProfile = Semu Classic\nGameCubeProfile = Semu GameCube", target + " dolphin names the mode profiles");
@@ -265,6 +268,9 @@ class StandaloneSpecContract {
         contract.contains(main, "RendererType = 0", target + " flycast forces OpenGL");
         contract.contains(main, "[window]\nfullscreen = yes", target + " flycast fullscreen");
         contract.contains(main, "AutoLoadState = no", target + " flycast never auto-loads a state");
+        // box art shows every disc of a game as one cover; list mode names each disc file
+        contract.expect(StandaloneSpecText.ordered(main, ["[config]", "BoxartDisplayMode = no", "[Dreamcast]"]), target + " flycast Insert Disk lists disc file names");
+        contract.expect(StandaloneSpecText.ordered(main, ["[config]", "FetchBoxart = no", "[Dreamcast]"]), target + " flycast fetches no box art");
         contract.contains(keyboard, "224,22:btn_quick_save:0", target + " flycast save chord");
         contract.contains(keyboard, "224,4:btn_jump_state:0", target + " flycast load chord");
         contract.contains(keyboard, "224,20:btn_escape:0", target + " flycast quit chord");

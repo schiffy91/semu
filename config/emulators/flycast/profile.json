@@ -76,6 +76,8 @@
       "lines": [
         "[config]",
         "PerGameVmu = yes",
+        "BoxartDisplayMode = no",
+        "FetchBoxart = no",
         "",
         "[Dreamcast]",
         "AutoLoadState = no",
@@ -123,6 +125,7 @@
     "ownership": "Every emitted Flycast config line, native action name, and SDL scancode lives in this declaration. The emitter only validates the rows against emulator.json, steam_input.json, and steamdeck.skm before rendering them.",
     "gameplay": "The generated keyboard mapping is action-only. Flycast's upstream SDL GameController mapping remains responsible for Dreamcast gameplay, analog triggers, Start, D-pad, and rumble.",
     "hotkeys": "Flycast version-4 combo rows use simultaneous SDL scancodes (sequential=0): Left Ctrl is 224; Q/A/S/M/X are 20/4/22/16/27. They invoke Flycast's native exit/load/save/menu/screenshot actions.",
-    "state": "No external save path is configured. Flycast therefore stores per-game VMUs and save states in the isolated XDG_DATA_HOME/flycast tree declared by emulator.json."
+    "state": "No external save path is configured. Flycast therefore stores per-game VMUs and save states in the isolated XDG_DATA_HOME/flycast tree declared by emulator.json.",
+    "disc_picker": "emu.cfg [config] BoxartDisplayMode = no and FetchBoxart = no: in box-art mode the Insert Disk picker shows every disc of a game as the same cover and title, so the discs of a playlist could not be told apart. List mode shows the (Disc N).chd file names, and nothing is fetched from TheGamesDB."
   }
 }
