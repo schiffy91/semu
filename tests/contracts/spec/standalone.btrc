@@ -365,6 +365,15 @@ class StandaloneSpecContract {
         JSONValue players = SemuJson.get(config, "input_config");
         JSONValue player = players.isArray() && players.size() > 0 ? players.at(0) : JSONValue.makeObject();
         contract.expect(SemuJson.textAt(player, "id").equals(StandaloneSpecContract.identity(fixture, "ryujinx_controller_id")), target + " ryujinx player one is the target pad");
+        // Seen on the Deck: Ryujinx opened its "configuration is invalid" controller applet. Ryujinx 1.3.3
+        // (SDL2GamepadDriver.GenerateGamepadId) names a pad "<index>-" + the .NET Guid string of the SDL GUID
+        // with its first four characters (the name CRC) replaced by "0000". Derive it from the SDL GUID.
+        string guid = StandaloneSpecContract.identity(fixture, "azahar_controller_guid");
+        if (guid.len() == 32) {
+            string derived = "0-0000" + guid.substring(2, 2) + guid.substring(0, 2) + "-" + guid.substring(10, 2) + guid.substring(8, 2) + "-" + guid.substring(14, 2) + guid.substring(12, 2)
+                + "-" + guid.substring(16, 4) + "-" + guid.substring(20, 12);
+            contract.expect(StandaloneSpecContract.identity(fixture, "ryujinx_controller_id").equals(derived), f"{target} ryujinx pad id is Ryujinx's CRC-stripped form of the SDL GUID: {derived}");
+        }
         contract.expect(SemuJson.textAt(player, "backend").equals("GamepadSDL2") && SemuJson.textAt(player, "player_index").equals("Player1"), target + " ryujinx player one reads SDL2");
         contract.expect(SemuJson.textAt(config, "graphics_backend").equals("Vulkan"), target + " ryujinx runs Vulkan for VK_LAYER_SEMU_compositor");
         contract.expect(SemuJson.boolAt(config, "start_fullscreen", false) && !SemuJson.boolAt(config, "show_confirm_exit", true), target + " ryujinx fullscreen without an exit prompt");
