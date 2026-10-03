@@ -39,17 +39,6 @@
         "provenance": "Semu-owned complete-console product render. The raster carries the continuous lens; config/bezels/gb-studio/bezel.json owns the game aperture."
       }
     },
-    "assets/fonts/menu-font.png": {
-      "type": "local",
-      "path": "config/assets/fonts/menu-font.png",
-      "output": {
-        "width": 384,
-        "height": 240,
-        "bit_depth": 8,
-        "color_type": 6,
-        "sha256": "ff31cc6b4813edc78aa24cfc4569aef7ef100b7f24d0289991f0c0b7693439f3"
-      }
-    },
     "assets/bezels/psp/classic.png": {
       "type": "copy",
       "from": "duimon_mega_bezel",
@@ -492,16 +481,5 @@
         "color_type": 6
       }
     }
-  },
-  "staging": [
-    {
-      "id": "renderer_menu",
-      "files": [
-        {
-          "src": "assets/fonts/menu-font.png",
-          "dest": "lib/semu/menu-font.png"
-        }
-      ]
-    }
-  ]
+  }
 }

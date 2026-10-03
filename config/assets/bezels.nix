@@ -1,5 +1,5 @@
 # The bezel-art asset tree for Semu, driven by config/assets/bezels.json (recipe types copy,
-# local, flatten, recolor, glass, scene, plus the "staging" section).
+# local, flatten, recolor, glass, scene).
 #
 # (default / `semu-bezels`) bakes every recipe here, on the machine that builds Semu: verbatim
 #   `copy` files and Semu's own `local` files are byte-checked against their pinned hashes;
@@ -8,8 +8,7 @@
 #   carries no derived art (the packs' licences forbid sharing adapted material, see NOTICE.md).
 # (passthru.generate) is the same render, kept as the named regenerator for inspection.
 #
-# Output layout: share/semu/<asset key> (what the launcher joins "assets/..." onto) plus every
-# staging destination whose src names a bezels.json asset or asset directory.
+# Output layout: share/semu/<asset key> (what the launcher joins "assets/..." onto).
 { lib, stdenvNoCC, fetchFromGitHub, imagemagick }:
 
 let
@@ -19,7 +18,6 @@ let
     fileset = lib.fileset.unions [
       ./bezels.json
       ./bezels
-      ./fonts
     ];
   };
   sources = lib.importJSON (assetSource + "/config/assets/bezels.json");
@@ -185,23 +183,6 @@ let
   # builds Semu: the repository carries recipes, never Duimon or Soqueroeu derivatives (their
   # licences forbid distributing adapted material). Verbatim copies stay byte-checked.
 
-  assetKeys = lib.attrNames sources.assets;
-  isAssetDir = src: lib.any (key: lib.hasPrefix "${src}/" key) assetKeys;
-
-  stageFile = unitId: file:
-    if imageAssets ? ${file.src} then ''
-      mkdir -p "$(dirname "$out/${file.dest}")"
-      cp ${outFile file.src} "$out/${file.dest}"
-    '' else if isAssetDir file.src then ''
-      mkdir -p "$(dirname "$out/${file.dest}")"
-      cp -R "$out/share/semu/${file.src}" "$out/${file.dest}"
-    '' else ''
-      echo "semu-bezels: skipping staging ${unitId}: ${file.src} (not a bezels.json asset)"
-    '';
-  stagingScript = lib.concatMapStrings
-    (unit: lib.concatMapStrings (stageFile unit.id) unit.files)
-    sources.staging;
-
   imageAssetNames = lib.attrNames imageAssets;
 
   # The regenerator: fetch upstreams + render every recipe with imagemagick.
@@ -219,7 +200,6 @@ let
     installPhase = ''
       runHook preInstall
       ${renderScript}
-      ${stagingScript}
       runHook postInstall
     '';
 
@@ -250,7 +230,6 @@ stdenvNoCC.mkDerivation {
   installPhase = ''
     runHook preInstall
     ${renderScript}
-    ${stagingScript}
     runHook postInstall
   '';
 
