@@ -68,10 +68,6 @@
         "fallback_dirs": [
           "${emulation_root}/Ryujinx/config/system",
           "${bios}/switch"
-        ],
-        "content_dirs": [
-          "${state_root}/config/Ryujinx/bis/system/Contents/registered",
-          "${emulation_root}/Ryujinx/config/bis/system/Contents/registered"
         ]
       },
       "ryujinx": {
@@ -135,10 +131,6 @@
         "fallback_dirs": [
           "${emulation_root}/Ryujinx/config/system",
           "${bios}/switch"
-        ],
-        "content_dirs": [
-          "${state_root}/config/Ryujinx/bis/system/Contents/registered",
-          "${emulation_root}/Ryujinx/config/bis/system/Contents/registered"
         ]
       },
       "args": [
