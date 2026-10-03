@@ -121,7 +121,7 @@ class SemuCompose {
             SemuFrameLayout.letterboxed(width, height, SemuComposition.aspect, &picture);
             if (picture.width < 1 || picture.height < 1) { return; }
             frame.surface_count = 1;
-            frame.presentation_aspect = (float)picture.width / (float)picture.height;
+            frame.presentation_aspect = SemuFrameLayout.presentationAspect(SemuComposition.aspect, &picture);
             SemuCompose.surface(&frame, 0, picture, SemuComposition.native_width, SemuComposition.native_height);
         }
         int status = semu_render_game_gl(&frame);

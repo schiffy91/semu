@@ -35,6 +35,14 @@ class SemuFrameLayout {
         }
     }
 
+    // The aspect the renderer shows a letterboxed picture at: the declared one, exact. The cut's whole
+    // pixels round it (PSP's 480:272 cut to 1280x724 at 1280x800 put its integer 2x lane at 962 wide
+    // instead of 960, and the LCD grid beat in two bands); with nothing declared, the cut's own shape.
+    class float presentationAspect(float declared, struct SemuComposeRect* picture) {
+        if (declared > 0.01f) { return declared; }
+        return picture->height > 0 ? (float)picture->width / (float)picture->height : 0.0f;
+    }
+
     // A picture edge (non-negative, in pixels) moved to the nearest pixel boundary inside the
     // picture: up for a leading edge, down for a trailing one, ignoring float noise on whole edges.
     class int inside(float edge, bool leading) {
