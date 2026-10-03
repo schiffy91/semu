@@ -1,7 +1,6 @@
 {
   "schema_version": 3,
   "enabled": true,
-  "screen": "assets/shaders/gbc/screen.slangp",
   "doc": {
     "intent": "GBC color response, panel persistence and the LCD subpixel grid, one grid cell per game pixel"
   },
