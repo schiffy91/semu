@@ -1,7 +1,6 @@
 {
   "schema_version": 3,
   "enabled": true,
-  "screen": "assets/shaders/dreamcast/sharp.slangp",
   "doc": {
     "intent": "480i/480p era CRT or VGA softness",
     "default": "480-line systems fill their tube at about 2x, where the royale slot mask aliases; easymode with halation is the default and royale the alternate"

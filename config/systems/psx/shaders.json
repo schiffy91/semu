@@ -1,7 +1,6 @@
 {
   "schema_version": 3,
   "enabled": true,
-  "screen": "assets/shaders/psx/screen.slangp",
   "doc": {
     "intent": "PS1 240p/480i CRT with analog softness"
   },
