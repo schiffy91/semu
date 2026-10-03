@@ -137,8 +137,7 @@ class MegaBezelScreen {  // one screen's rectangles in viewport fractions
 
 class MegaBezelLayerRect {
     public BezelRect rect;
-    public bool zoomed;
-    public MegaBezelLayerRect(BezelRect rect, bool zoomed) { self.rect = rect; self.zoomed = zoomed; }
+    public MegaBezelLayerRect(BezelRect rect) { self.rect = rect; }
 }
 
 class MegaBezelPlacement {
@@ -397,7 +396,6 @@ class MegaBezelPlacement {
         double posX = self.p.get("HSM_" + prefix + "_POS_X");
         double posY = self.p.get("HSM_" + prefix + "_POS_Y");
         int fill = self.p.mode("HSM_" + prefix + "_FILL_MODE");
-        bool zoomed = true;
         double inheritedW = 1.0;
         double inheritedH = 1.0;
         double centerX = 0.5;
@@ -415,8 +413,6 @@ class MegaBezelPlacement {
             inheritedW = background.rect.w; inheritedH = background.rect.h; centerX = background.rect.x + background.rect.w / 2.0; centerY = background.rect.y + background.rect.h / 2.0;
         } else if (follow == 4 && device != null) {
             inheritedW = device.rect.w; inheritedH = device.rect.h; centerX = device.rect.x + device.rect.w / 2.0; centerY = device.rect.y + device.rect.h / 2.0;
-        } else {
-            zoomed = self.p.flag("HSM_" + prefix + "_FOLLOW_FULL_USES_ZOOM");
         }
         double placementW = inheritedW * scaleX;
         double placementH = inheritedH * scaleY;
@@ -428,7 +424,7 @@ class MegaBezelPlacement {
             placementW = inheritedW * difference * offsetX;
             placementH = inheritedH * offsetY;
         }
-        return MegaBezelLayerRect(BezelRect.centered(centerX - posX * inheritedW, centerY - posY * inheritedH, placementW, placementH), zoomed);
+        return MegaBezelLayerRect(BezelRect.centered(centerX - posX * inheritedW, centerY - posY * inheritedH, placementW, placementH));
     }
 
     public BezelRect toScreen(BezelRect rect, double zoom) {  // after HSM_VIEWPORT_ZOOM, pan and the viewport flips: what the monitor shows

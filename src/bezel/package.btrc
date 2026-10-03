@@ -51,7 +51,6 @@ class BezelLayer {  // one layer of a package: a texture the preset draws, or th
     public string texture;   // Mega Bezel texture key, "" for the screens
     public string prefix;    // Mega Bezel parameter prefix
     public string file;      // "upstream:relative" or "semu:config-relative"
-    public string path;      // absolute file
     public int width;
     public int height;
     public double order;
@@ -66,7 +65,6 @@ class BezelLayer {  // one layer of a package: a texture the preset draws, or th
         self.texture = texture;
         self.prefix = prefix;
         self.file = "";
-        self.path = "";
         self.width = 0;
         self.height = 0;
         self.order = 0.0;
@@ -224,7 +222,6 @@ class BezelGeometry {  // one package: its preset, screens, layers and the canva
             if (size.w <= 16 || size.h <= 16) { continue; }  // Mega Bezel's placeholders are 16x16
             BezelLayer layer = BezelLayer(BezelGeometry.layerId(texture), texture, BezelGeometry.prefix(texture));
             layer.file = self.tree.reference(path);
-            layer.path = path;
             layer.width = size.w;
             layer.height = size.h;
             layer.order = self.params.get("HSM_" + layer.prefix + "_LAYER_ORDER");
