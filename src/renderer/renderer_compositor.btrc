@@ -155,7 +155,6 @@ struct RendererScreenConfig {
     float curvature;
     float vignette;
     float bloom;
-    float glow;
     float reflect;
     struct RendererPath glass;
     struct RendererPath shader;
@@ -400,8 +399,7 @@ class RendererConfiguration {
             screen->curvature = values[5];
             screen->vignette = values[6];
             screen->bloom = values[7];
-            screen->glow = values[8];
-            screen->reflect = values[9];
+            screen->reflect = values[9];  // values[8], the retired glow slot, is ignored
         }
         snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_SURROUND%s", index, suffix);
         char* surround = getenv(name);
@@ -1579,7 +1577,7 @@ class RendererCompositor {
         RendererCompositor.set4(gl, index == 0 ? resources->uniform_ring_color : resources->uniform_ring_color2,
             screen->ring_r, screen->ring_g, screen->ring_b, screen->ring_opacity);
         RendererCompositor.set4(gl, index == 0 ? resources->uniform_ring_reflect : resources->uniform_ring_reflect2,
-            ring ? screen->ring_reflect : 0.0f, screen->ring_reflect_blur, screen->ring_reflect_fade, 0.0f);  // the reflection needs a ring band to land on
+            (ring || (look && geometry->framed == 1)) ? screen->ring_reflect : 0.0f, screen->ring_reflect_blur, screen->ring_reflect_fade, 0.0f);  // the reflection lands on a ring band or a drawn frame
         RendererCompositor.setRect(gl, index == 0 ? resources->uniform_rect : resources->uniform_rect2,
             lane->output_x, lane->output_y, lane->output_width, lane->output_height);
         RendererCompositor.setRect(gl, index == 0 ? resources->uniform_tube : resources->uniform_tube2,
@@ -1587,7 +1585,7 @@ class RendererCompositor {
         RendererCompositor.set4(gl, index == 0 ? resources->uniform_shape : resources->uniform_shape2,
             look ? (float)screen->shape : 0.0f, look ? screen->radius : 0.0f, look ? screen->exponent : 2.0f, 0.0f);
         RendererCompositor.set4(gl, index == 0 ? resources->uniform_fx : resources->uniform_fx2,
-            look ? screen->curvature : 0.0f, look ? screen->vignette : 0.0f, look ? screen->bloom : 0.0f, look ? screen->glow : 0.0f);
+            look ? screen->curvature : 0.0f, look ? screen->vignette : 0.0f, look ? screen->bloom : 0.0f, 0.0f);
         RendererCompositor.set4(gl, index == 0 ? resources->uniform_surround : resources->uniform_surround2,
             look ? screen->surround_r : 0.0f, look ? screen->surround_g : 0.0f, look ? screen->surround_b : 0.0f, 1.0f);
     }
