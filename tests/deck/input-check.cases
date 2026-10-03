@@ -1,0 +1,26 @@
+# Every launch command ES-DE offers on the Deck, with presses that change the picture without
+# writing a save (mostly Start on a title screen; menus are only moved, never confirmed).
+# SYSTEM EMULATOR CORE|- FIRST BUTTON... -- ROM-GLOB; see input-check.sh. Wii is absent: Dolphin's
+# Wii remotes read the Deck's own controls (its SteamDeck backend), not a pad a test can replay.
+gb retroarch gambatte 25 start start -- Tetris (World) (Rev 1).zip
+gbc retroarch gambatte 25 start start -- Tetris DX*.zip
+gba retroarch mgba 30 start start -- Legend of Zelda, The - The Minish Cap (USA).zip
+nes retroarch mesen 25 start -- Super Mario Bros. (World).zip
+snes retroarch snes9x 25 start -- Super Mario World (USA).zip
+genesis retroarch genesis_plus_gx 25 start -- Sonic The Hedgehog (USA, Europe).zip
+n64 retroarch mupen64plus_next 40 start start -- Mario Kart 64 (USA).zip
+psx retroarch mednafen_psx 45 start -- Crash Bandicoot (USA).m3u
+nds retroarch melonds 40 start -- Legend of Zelda, The - Phantom Hourglass*.zip
+nds retroarch desmume 40 start -- Legend of Zelda, The - Phantom Hourglass*.zip
+nds melonds - 40 start -- Legend of Zelda, The - Phantom Hourglass*.zip
+dreamcast flycast - 40 start -- Crazy Taxi (USA).chd
+dreamcast retroarch flycast 40 start -- Crazy Taxi (USA).chd
+psp ppsspp - 45 start -- Daxter*.iso
+psp retroarch ppsspp 45 start -- Daxter*.iso
+n3ds azahar - 50 start -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+n3ds retroarch azahar 50 start -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+n3ds retroarch citra 50 start -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+gc dolphin - 50 start -- Legend of Zelda, The - The Wind Waker (USA).rvz
+ps2 pcsx2 - 60 start -- Devil May Cry (USA).iso
+wiiu cemu - 100 start start -- MARIO KART 8 (US).wua
+switch ryujinx - 120 dpad_down dpad_down -- The Legend of Zelda Tears of the Kingdom*.nsp
