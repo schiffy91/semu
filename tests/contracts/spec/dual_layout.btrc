@@ -1,6 +1,7 @@
 // Dual layout spec: the computed DS and 3DS layouts show each screen at a whole multiple of its native
 // size, the largest the display holds, with both screens and their drawn frames on screen and apart, at
-// the Deck's 1280x800, 1080p and 4K. A fractional second screen gave its pixels uneven widths.
+// the Deck's 1280x800, 1080p and 4K. A fractional second screen gave its pixels uneven widths; a main
+// centred alone kept the second at 1x and squeezed the frames to 1 px where centring the pair cost nothing.
 
 import Library.JSON;
 import Library.Strings;
@@ -68,6 +69,14 @@ class DualLayoutSpecContract {
         return scale;
     }
 
+    class int secondLargest(int layout, int areaWidth, int gap, int mainStep, struct RendererCompositionGeometry* geometry) {  // the second's step beside a main at its step: the room a centred pair leaves, no taller than the main
+        if (layout == SEMU_LAYOUT_STACKED || layout == SEMU_LAYOUT_SIDE_BY_SIDE) { return mainStep; }
+        int room = areaWidth - mainStep * geometry->lanes[0].native_width - 3 * gap;  // a centred pair has the most room: a gap at each end and one between
+        int across = room / geometry->lanes[1].native_width;
+        int down = mainStep * geometry->lanes[0].native_height / geometry->lanes[1].native_height;
+        return across < down ? across : down;
+    }
+
     class void check(Contract contract, Fixture fixture, string systemId, int layout, string package, int areaWidth, int areaHeight) {
         struct RendererCompositionGeometry geometry;
         DualLayoutSpecContract.prepare(&geometry, fixture.model.system(systemId));
@@ -86,12 +95,29 @@ class DualLayoutSpecContract {
         if (uniform) { paired = secondStep == mainStep; }
         contract.expect(mainStep >= 1 && secondStep >= 1 && paired, label + ": both screens at whole steps" + (uniform ? ", one step for both" : ", the second no larger than the main"));
         contract.expect(mainStep == want, label + f": the main at {want}x, the largest the screens and the gap allow; the frames never cost a step");
+        int secondWant = DualLayoutSpecContract.secondLargest(layout, areaWidth, gap, want, &geometry);
+        contract.expect(secondStep == secondWant, label + f": the second at {secondWant}x, the largest the room beside the main allows; centring the main alone never costs the second a step");
         contract.expect(drawn >= 0 && drawn <= frame && DualLayoutSpecContract.onScreen(main, drawn, areaWidth, areaHeight) && DualLayoutSpecContract.onScreen(second, drawn, areaWidth, areaHeight), label + ": both framed screens on screen");
         int apart = 0;
         if (layout == SEMU_LAYOUT_STACKED) { apart = main->output_y - second->output_y - second->output_height; }  // lane 0 above lane 1, GL rows up
         else if (layout == SEMU_LAYOUT_MAIN_LEFT) { apart = main->output_x - second->output_x - second->output_width; }
         else { apart = second->output_x - main->output_x - main->output_width; }
         contract.expect(apart >= 2 * drawn + gap, label + f": the screens {apart} px apart, room for two frames and the gap");
+    }
+
+    class void minimum(Contract contract, Fixture fixture, string row, int layout, string package) {  // "system WxH main second frame": the steps and the least frame each case must keep
+        Vector<string> fields = Strings.split(row, " ");
+        Vector<string> size = Strings.split(fields[1], "x");
+        int areaWidth = Strings.toInt(size[0]);
+        int areaHeight = Strings.toInt(size[1]);
+        struct RendererCompositionGeometry geometry;
+        DualLayoutSpecContract.prepare(&geometry, fixture.model.system(fields[0]));
+        int frame = DualLayoutSpecContract.frameWidth(fixture, package, areaHeight);
+        int drawn = RendererLayout.computed(&geometry, layout, areaWidth, areaHeight, frame, DualLayoutSpecContract.gapFraction(fixture));
+        int mainStep = DualLayoutSpecContract.step(&geometry.lanes[0]);
+        int secondStep = DualLayoutSpecContract.step(&geometry.lanes[1]);
+        contract.expect(mainStep == Strings.toInt(fields[2]) && secondStep == Strings.toInt(fields[3]) && drawn >= Strings.toInt(fields[4]),
+            f"{package} " + row + f" (main x, second x, least frame): drew main {mainStep}x, second {secondStep}x, frame {drawn} of {frame}");
     }
 
     class void run(Contract contract) {
@@ -105,6 +131,15 @@ class DualLayoutSpecContract {
                 for (int layout = 0; layout < 4; layout++) { DualLayoutSpecContract.check(contract, fixture, systemId, layouts[layout], packages[layout], widths[size], heights[size]); }
             }
         }
+        Vector<string> beside = ["nds 1280x800 3 1 24", "nds 1920x1080 5 2 9", "nds 3840x2160 11 3 19", "n3ds 1280x800 2 1 24", "n3ds 1920x1080 3 1 32", "n3ds 3840x2160 8 1 35"];  // nds 1080p was 5x beside 1x with a 1 px frame
+        Vector<string> sideBySide = ["nds 1280x800 2 2 24", "nds 1920x1080 3 3 32", "nds 3840x2160 7 7 49", "n3ds 1280x800 1 1 24", "n3ds 1920x1080 2 2 32", "n3ds 3840x2160 5 5 45"];
+        Vector<string> stacked = ["nds 1280x800 2 2 3", "nds 1920x1080 2 2 32", "nds 3840x2160 5 5 45", "n3ds 1280x800 1 1 24", "n3ds 1920x1080 2 2 22", "n3ds 3840x2160 4 4 45"];
+        for row in beside {
+            DualLayoutSpecContract.minimum(contract, fixture, row, SEMU_LAYOUT_MAIN_RIGHT, "dual-main-right");
+            DualLayoutSpecContract.minimum(contract, fixture, row, SEMU_LAYOUT_MAIN_LEFT, "dual-main-left");
+        }
+        for row in sideBySide { DualLayoutSpecContract.minimum(contract, fixture, row, SEMU_LAYOUT_SIDE_BY_SIDE, "dual-side-by-side"); }
+        for row in stacked { DualLayoutSpecContract.minimum(contract, fixture, row, SEMU_LAYOUT_STACKED, "dual-stacked"); }
         struct RendererCompositionGeometry geometry;  // the Deck cases the editor comparison measured: 1x stacked, a 1.39x and a 1.0125x second screen
         float gapFraction = DualLayoutSpecContract.gapFraction(fixture);
         DualLayoutSpecContract.prepare(&geometry, fixture.model.system("nds"));
