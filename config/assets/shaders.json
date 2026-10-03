@@ -105,36 +105,36 @@
         "shaders_slang"
       ],
       "params": {
-        "ia_black_level": 0.03,
+        "ia_black_level": 0,
         "ia_bright_boost": 0,
         "ia_luminance": 1.0,
-        "ia_saturation": 3.0,
-        "ia_target_gamma": 0.85,
-        "lighten_screen": 0.15,
+        "ia_saturation": 1.3,
+        "ia_target_gamma": 2.2,
+        "lighten_screen": 0.5,
         "mode": 1,
         "response_time": 0.222,
-        "gain": 1.33,
+        "gain": 1.45,
         "gamma": 2.2,
         "blacklevel": 0,
         "ambient": 0,
         "RSUBPIX_R": 0.96,
-        "RSUBPIX_G": 0.5,
-        "RSUBPIX_B": 0.5,
-        "GSUBPIX_R": 0.5,
+        "RSUBPIX_G": 0.45,
+        "RSUBPIX_B": 0.45,
+        "GSUBPIX_R": 0.45,
         "GSUBPIX_G": 0.96,
-        "GSUBPIX_B": 0.5,
-        "BSUBPIX_R": 0.5,
-        "BSUBPIX_G": 0.5,
-        "BSUBPIX_B": 0.85,
+        "GSUBPIX_B": 0.45,
+        "BSUBPIX_R": 0.45,
+        "BSUBPIX_G": 0.45,
+        "BSUBPIX_B": 0.88,
         "BGR": 0
       },
       "doc": {
-        "why": "GBC response and color, luminance, then the cgwg subpixel grid so the panel reads as a GBC LCD",
+        "why": "GBC response and color, a saturation lift, then the cgwg subpixel grid so the panel reads as a GBC LCD",
         "passes": "Colour passes stay at the native 160x144, unfiltered, and only the grid renders at the viewport: lcd-grid-v2 takes its LCD cell from its source size, so a viewport-sized source turns one cell into one screen pixel (no grid, flat lifted blacks, 1-px subpixel streaks). This is the upstream nds/3ds-lcd-grid-v2 structure.",
-        "params": "Tuned on settled frames: response-time mixes seven frames of history, and a single rendered frame reads it black, 27% dark. Luminance 1.0 keeps the image-adjustment pass from clipping HSV value (1.35 flattened every grey from 204 up to one colour in a running game); gamma 0.85 with black level 0.03 gives the tone curve round two tuned on one frame (level 1 of 31 stays above black). Each lcd-grid-v2 channel lights its own third of a cell, so a bright white needs either clipped subpixel peaks or light from the neighbours: the subpixels leak 0.5 and gain 1.33 brings white to about 229, with under half of any channel at 255 (gain 1.8 put 72/60/52% there) and the row gaps and colour stripes still drawn. Red and green subpixels at 0.96 and blue at 0.85 keep the white warm. Saturation 3.0 pays back what the leak and the GBC colour matrix take. blacklevel and ambient 0 keep black black."
+        "params": "Tuned on settled frames, with the core's own correction off (config/systems/gbc/shaders.json), so GBC colours pass this matrix once. lighten_screen 0.5 is Gambatte's default central frontlight (gamma 1.7), the brightness its correction used to add. Image-adjustment only lifts saturation: target gamma 2.2 equals its monitor gamma, so no per-channel gamma lift washes colours out (0.85 did, and saturation 3.0 then pushed HSV saturation past 1: 224,64,64 and 224,96,96 drew alike and orange drew red), and black level 0 keeps every base of its pow() at or above 0. Saturation 1.3 keeps every colour of the clip and bars cards under HSV saturation 1 after this matrix (the bars card's blue, the most saturated, at 0.90). Each lcd-grid-v2 channel lights its own third of a cell, so white needs light from the neighbours or clipped peaks: the subpixels leak 0.45 and gain 1.45 bring white to about 228 (224 at 4K) with about half of the red and green subpixel peaks at 255 and the row gaps and colour stripes still drawn. Red and green subpixels at 0.96 and blue at 0.88 keep the white slightly warm. blacklevel and ambient 0 keep black black."
       },
       "output": {
-        "sha256": "7bbc54e5615a486e82cc6dcfbbe63c6c42fe63fd0d16e349e05b763636fa3e12"
+        "sha256": "f26a6a9be3918c3503fe0ab4a8ec7f2ff5de3a08e0b7fb3d3ee4516a513bf9de"
       }
     },
     "assets/shaders/gba/screen.slangp": {
@@ -178,35 +178,35 @@
       ],
       "params": {
         "darken_screen": 0,
-        "ia_black_level": 0.02,
+        "ia_black_level": 0,
         "ia_bright_boost": 0,
         "ia_luminance": 1.0,
-        "ia_saturation": 2.6,
-        "ia_target_gamma": 1.2,
+        "ia_saturation": 1.3,
+        "ia_target_gamma": 2.2,
         "mode": 1,
         "response_time": 0.222,
-        "gain": 1.3,
+        "gain": 1.38,
         "gamma": 2.2,
         "blacklevel": 0,
         "ambient": 0,
         "RSUBPIX_R": 0.96,
-        "RSUBPIX_G": 0.5,
-        "RSUBPIX_B": 0.5,
-        "GSUBPIX_R": 0.5,
+        "RSUBPIX_G": 0.45,
+        "RSUBPIX_B": 0.45,
+        "GSUBPIX_R": 0.45,
         "GSUBPIX_G": 0.96,
-        "GSUBPIX_B": 0.5,
-        "BSUBPIX_R": 0.5,
-        "BSUBPIX_G": 0.5,
-        "BSUBPIX_B": 0.83,
+        "GSUBPIX_B": 0.45,
+        "BSUBPIX_R": 0.45,
+        "BSUBPIX_G": 0.45,
+        "BSUBPIX_B": 0.88,
         "BGR": 0
       },
       "doc": {
-        "why": "GBA response, NSO color matrix, luminance, then the cgwg subpixel grid so the panel reads as an AGB-001 LCD",
+        "why": "GBA response, NSO color matrix, a saturation lift, then the cgwg subpixel grid so the panel reads as an AGB-001 LCD",
         "passes": "Colour passes stay at the native 240x160, unfiltered, and only the grid renders at the viewport: lcd-grid-v2 takes its LCD cell from its source size, so a viewport-sized source turns one cell into one screen pixel (no grid, flat lifted blacks, 1-px subpixel streaks). This is the upstream nds/3ds-lcd-grid-v2 structure.",
-        "params": "The same grid as gbc/screen.slangp, tuned on settled frames: luminance 1.0 keeps the image-adjustment pass from clipping HSV value (1.4 flattened every grey from 187 up in a running game), gamma 1.2 with black level 0.02 follows round two's one-frame tone curve, subpixels leaking 0.5 with gain 1.3 give a white of about 228 with under half of any channel at 255 (gain 1.8 put 72/60/52% there), red and green subpixels 0.96 and blue 0.83 keep it warm, and saturation 2.6 pays back the leak. blacklevel and ambient 0 take the lift off black (54 before)."
+        "params": "The same grid as gbc/screen.slangp, tuned on settled frames, with mGBA's own correction pinned off (config/systems/gba/shaders.json). Image-adjustment only lifts saturation: target gamma 2.2 equals its monitor gamma, so no per-channel gamma lift washes colours out (1.2 did, and saturation 2.6 then pushed HSV saturation past 1 so 224,64,64 and 224,96,96 drew alike), and black level 0 keeps every base of its pow() at or above 0. Saturation 1.3 keeps every colour of the clip and bars cards under HSV saturation 1 after the NSO matrix (the bars card's blue, the most saturated, at 0.84). Subpixels leaking 0.45 with gain 1.38 give a white of about 226 with the row gaps and stripes still drawn; red and green subpixels 0.96 and blue 0.88 keep it slightly warm. blacklevel and ambient 0 take the lift off black (54 before)."
       },
       "output": {
-        "sha256": "5467e08a29c2cc283a68bf50923ccafeaa75a820db2bb0e2dad0e413e7de41d2"
+        "sha256": "62aeb949f21102a9b989811b42063ffd8dd1c7640c04c63941b972993a998131"
       }
     },
     "assets/shaders/nes/screen.slangp": {
