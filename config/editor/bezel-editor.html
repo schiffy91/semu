@@ -208,10 +208,9 @@ function shapePath(x, y, w, h, radius, n, bx, by) {  // rounded rectangle with e
   ctx.closePath();
 }
 function rectPath(screen, key) {  // one cutout rectangle's outline in screen pixels, with its radius and bulge
-  const r = screenRect(screen, key);
-  const [x0, y0] = toScreen(r.x, r.y), [x1, y1] = toScreen(r.x + r.w, r.y + r.h);
+  const s = snapped(screenRect(screen, key));
   const radius = radiusOf(screen, key), bulge = bulgeOf(screen, key) || { x: 0, y: 0 };
-  shapePath(x0, y0, x1 - x0, y1 - y0, (radius || 0) * state.zoom, key === "tube" ? exponentOf(screen) : 2, bulge.x * state.zoom, bulge.y * state.zoom);
+  shapePath(s.x, s.y, s.w, s.h, (radius || 0) * state.zoom, key === "tube" ? exponentOf(screen) : 2, bulge.x * state.zoom, bulge.y * state.zoom);
 }
 
 // ---- selection helpers
@@ -522,6 +521,11 @@ function resize() {
   if (state.fitted && state.current) fit(); else draw();  // a fitted view stays fitted as the window changes
 }
 function toScreen(x, y) { return [state.ox + x * state.zoom, state.oy + y * state.zoom]; }
+function snapped(r) {  // a canvas rectangle on screen with each edge on a device pixel, as the renderer rounds edges (aperture in renderer_abi.btrc)
+  const [x0, y0] = toScreen(r.x, r.y), [x1, y1] = toScreen(r.x + r.w, r.y + r.h);
+  const x = Math.round(x0), y = Math.round(y0);
+  return { x, y, w: Math.round(x1) - x, h: Math.round(y1) - y };
+}
 function toPlate(sx, sy) { return [(sx - state.ox) / state.zoom, (sy - state.oy) / state.zoom]; }
 function handles(r) {
   const [x0, y0] = toScreen(r.x, r.y), [x1, y1] = toScreen(r.x + r.w, r.y + r.h);
@@ -581,11 +585,11 @@ function innerContents(screen) {  // the picture, small: the thing the glass and
 }
 function drawReflection(screen, baseAlpha) {  // the picture mirrored across its own edge onto the glass and the lip: sharp at the edge, blurrier and fainter further out (reflectAt in config/render/compositor.frag)
   const look = screen.reflection, image = pictureRect(screen), band = screen.ring.outer;
-  const [ix, iy] = toScreen(image.x, image.y), iw = image.w * state.zoom, ih = image.h * state.zoom;
-  const [bx, by] = toScreen(band.x, band.y), bw = Math.ceil(band.w * state.zoom), bh = Math.ceil(band.h * state.zoom);
+  const { x: ix, y: iy, w: iw, h: ih } = snapped(image);
+  const { x: bx, y: by, w: bw, h: bh } = snapped(band);
   if (bw < 2 || bh < 2 || bw * bh > 16000000) return;
   const card = innerContents(screen);
-  const ox = Math.floor(bx), oy = Math.floor(by), ow = band.w * state.zoom, oh = band.h * state.zoom;
+  const ox = bx, oy = by, ow = bw, oh = bh;
   const mirrors = (o, blur) => {  // left, right, top, bottom, four corners
     o.save(); o.translate(-ox, -oy); o.filter = blur > 0.5 ? `blur(${blur}px)` : "none"; o.imageSmoothingEnabled = true;
     for (const [fx, fy, tx, ty] of [[-1, 1, 0, 0], [-1, 1, 2, 0], [1, -1, 0, 0], [1, -1, 0, 2], [-1, -1, 0, 0], [-1, -1, 2, 0], [-1, -1, 0, 2], [-1, -1, 2, 2]]) {
@@ -636,7 +640,7 @@ function drawCutouts(layer) {  // like Mega Bezel: the ring, the black edge insi
     if (screen.tube && state.showGame) {
       const picture = pictureRect(screen);
       ctx.save(); rectPath(screen, "tube"); ctx.clip();
-      const [x, y] = toScreen(picture.x, picture.y); drawTestCard(x, y, picture.w * state.zoom, picture.h * state.zoom, screen.id === "bottom");
+      const card = snapped(picture); drawTestCard(card.x, card.y, card.w, card.h, screen.id === "bottom");
       ctx.restore();
     }
   }
@@ -669,7 +673,7 @@ function drawPlaced(image, layer, c, cx0, cy0) {
     const [x, y] = toScreen((c.w - w) / 2, (c.h - h) / 2);
     ctx.beginPath(); ctx.rect(cx0, cy0, c.w * state.zoom, c.h * state.zoom); ctx.clip();
     ctx.drawImage(image, x, y, w * state.zoom, h * state.zoom);
-  } else if (layer.rect) { const [x, y] = toScreen(layer.rect.x, layer.rect.y); ctx.drawImage(image, x, y, layer.rect.w * state.zoom, layer.rect.h * state.zoom); }
+  } else if (layer.rect) { const s = snapped(layer.rect); ctx.drawImage(image, s.x, s.y, s.w, s.h); }
   else if (layer.follow === "viewport") { const [x, y] = toScreen(0, 0); ctx.drawImage(image, x, y, c.w * state.zoom, c.h * state.zoom); }
 }
 function draw() {
