@@ -53,7 +53,8 @@
         },
         "inner_radius": 10.306700556772771,
         "outer_radius": 7.3822639420833385,
-        "color": "#0f0f0f"
+        "color": "#0f0f0f",
+        "bevel": 0
       },
       "aspect": 1.1100000000000001,
       "provenance": {

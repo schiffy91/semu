@@ -619,6 +619,28 @@ function drawReflection(screen, baseAlpha) {  // the picture mirrored across its
   ctx.drawImage(reflectCanvas, ox, oy);
   ctx.restore();
 }
+const lipCache = new Map();
+function lipPaint(screen) {  // lipColor in config/render/compositor.frag: the ring colour shaded toward the outer edge, plus ring.bevel's lit chamfer one width all round
+  const ring = screen.ring, s = snapped(ring.outer);
+  if (s.w < 1 || s.h < 1 || s.w * s.h > 16000000) return null;
+  const hx = s.w / 2, hy = s.h / 2, rad = Math.min((ring.outer_radius || 0) * state.zoom, hx, hy), rim = 0.015 * Math.min(hx, hy);
+  const bevel = ring.bevel === undefined ? 1 : ring.bevel, key = [s.w, s.h, rad, ring.color, bevel].join("/");
+  if (!lipCache.has(key)) {
+    const out = document.createElement("canvas"); out.width = s.w; out.height = s.h;
+    const o = out.getContext("2d"), image = o.createImageData(s.w, s.h), px = image.data, [r, g, b] = hexRgb(ring.color || "#202020");
+    const smooth = (e0, e1, v) => { const t = Math.max(0, Math.min(1, (v - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+    for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) {
+      const dx = Math.abs(x + 0.5 - hx), dy = Math.abs(y + 0.5 - hy), edge = Math.max(dx / hx, dy / hy);  // the box metric the shade uses
+      const qx = dx - (hx - rad), qy = dy - (hy - rad), distance = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - rad;  // from the rounded outer edge
+      const shade = 0.7 + 0.4 * smooth(0.82, 1, edge), light = smooth(-rim, 0, distance) * 0.22 * bevel * 255, at = (y * s.w + x) * 4;
+      px[at] = r * shade + light; px[at + 1] = g * shade + light; px[at + 2] = b * shade + light; px[at + 3] = 255;
+    }
+    o.putImageData(image, 0, 0);
+    if (lipCache.size > 32) lipCache.clear();
+    lipCache.set(key, out);
+  }
+  return { canvas: lipCache.get(key), x: s.x, y: s.y };
+}
 function pictureRect(screen) {  // the picture rectangle, or the aspect-fitted picture inside the opening when the package has none
   if (screen.image) return screen.image;
   const t = screen.tube, aspect = screen.aspect;
@@ -633,7 +655,7 @@ function drawCutouts(layer) {  // like Mega Bezel: the ring, the black edge insi
     const ring = screen.ring, image = screen.image, reflecting = screen.reflection && screen.reflection.strength > 0 && state.showGame && screen.tube;
     const filled = ring && ring.color !== "none";  // a ring without fill only marks a painted bezel
     if (ring && ring.outer && ring.inner) {
-      if (filled) { ctx.fillStyle = ring.color || "#202020"; rectPath(screen, "outer"); ctx.fill(); }
+      if (filled) { const lip = lipPaint(screen); ctx.save(); rectPath(screen, "outer"); ctx.clip(); if (lip) ctx.drawImage(lip.canvas, lip.x, lip.y); else { ctx.fillStyle = ring.color || "#202020"; ctx.fill(); } ctx.restore(); }  // the lip as the renderer paints it
       else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }
       if (reflecting) drawReflection(screen, ctx.globalAlpha);  // the lip runs to the picture edge: no black inner rectangle, no second outline
     } else if (screen.tube) { ctx.fillStyle = screen.surround || "#000"; rectPath(screen, "tube"); ctx.fill(); }

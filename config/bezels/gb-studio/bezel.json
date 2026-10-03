@@ -57,7 +57,8 @@
         },
         "inner_radius": 18.0,
         "outer_radius": 21.0,
-        "color": "none"
+        "color": "none",
+        "bevel": 0
       }
     }
   ],

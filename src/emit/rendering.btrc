@@ -187,7 +187,7 @@ class SemuRenderEnvironment {
         return w < h ? w : h;
     }
 
-    class string ring(JSONValue screen, JSONValue canvas) {  // inner rect, outer rect, corner radii as fractions of each rect's short side, r,g,b
+    class string ring(JSONValue screen, JSONValue canvas) {  // inner rect, outer rect, corner radii as fractions of each rect's short side, r,g,b, opacity, bevel
         JSONValue ring = screen.get("ring");
         if (ring == null || !ring.isObject()) { return ""; }
         string inner = SemuRenderEnvironment.rect(ring.get("inner"), canvas);
@@ -198,9 +198,10 @@ class SemuRenderEnvironment {
         double innerRadius = atof(SemuRenderEnvironment.numberOr(ring, "inner_radius", "0"));
         double outerRadius = atof(SemuRenderEnvironment.numberOr(ring, "outer_radius", "0"));
         string radii = f"{SemuRenderEnvironment.fraction(innerSide > 0.0 ? innerRadius / innerSide : 0.0)},{SemuRenderEnvironment.fraction(outerSide > 0.0 ? outerRadius / outerSide : 0.0)}";
+        string bevel = SemuRenderEnvironment.numberOr(ring, "bevel", "1");  // the lit chamfer on the lip, 0 for a flat printed mask
         string color = SemuJson.textAt(ring, "color");
-        if (color.equals("none")) { return f"{inner},{outer},{radii},0,0,0,0"; }  // the band marks a painted bezel: reflection only, no fill
-        return f"{inner},{outer},{radii},{SemuRenderEnvironment.color(color, "0.1,0.1,0.1")},1";
+        if (color.equals("none")) { return f"{inner},{outer},{radii},0,0,0,0,{bevel}"; }  // the band marks a painted bezel: reflection only, no fill
+        return f"{inner},{outer},{radii},{SemuRenderEnvironment.color(color, "0.1,0.1,0.1")},1,{bevel}";
     }
 
     class string color(string hex, string fallback) {  // #rrggbb -> r,g,b in 0..1

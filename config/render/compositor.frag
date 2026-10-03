@@ -37,7 +37,9 @@ uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uR
   vec2 h=outer.zw*0.5;vec2 d=abs(p-(outer.xy+h))/h;float edge=max(d.x,d.y);
   float shade=0.7+0.4*smoothstep(0.82,1.0,edge);float bevel=smoothstep(0.985,1.0,edge)*0.22;
   return vec4(uFrameColor.rgb*shade+bevel,ring);}
- vec3 lipColor(vec2 p,vec4 outer,vec4 color){vec2 h=outer.zw*0.5;vec2 d=abs(p-(outer.xy+h))/h;float edge=max(d.x,d.y);return color.rgb*(0.7+0.4*smoothstep(0.82,1.0,edge))+smoothstep(0.985,1.0,edge)*0.22;}  // the lip's paint, as bezelRing shades it
+ float boxDistance(vec2 p,vec4 r,float s,vec2 b){p=unbulge(p,r,b);vec2 h=r.zw*0.5;float rad=clamp(s,0.0,0.5)*min(r.z,r.w);vec2 q=abs(p-(r.xy+h))-(h-rad);return length(max(q,0.0))+min(max(q.x,q.y),0.0)-rad;}  // signed pixels from a rounded rectangle's edge, negative inside
+ vec3 lipColor(vec2 p,vec4 outer,vec4 look,vec4 color,vec2 b){vec2 h=outer.zw*0.5;vec2 d=abs(p-(outer.xy+h))/h;float edge=max(d.x,d.y);float rim=smoothstep(-0.015*min(h.x,h.y),0.0,boxDistance(p,outer,look.y,b));  // the lip's paint, shaded toward its outer edge
+  return color.rgb*(0.7+0.4*smoothstep(0.82,1.0,edge))+rim*0.22*look.w;}  // a lit chamfer one width all round, ring.bevel strong
  vec2 bentUv(vec2 p,vec4 tube,vec4 rect,vec4 fx){vec2 q=curved(uv(p,tube),fx.x);return uv(tube.xy+q*tube.zw,rect);}  // where p lands in the picture after the bend; outside 0..1 beyond the bent edge
  float edgeDistance(vec2 g,vec4 rect){vec2 e=clamp(g,0.0,1.0);vec2 depth=min(e,1.0-e)*rect.zw;return g==e?-min(depth.x,depth.y):length((g-e)*rect.zw);}  // signed pixels from the bent picture edge, negative inside
  vec3 reflectAt(sampler2D t,sampler2D raw,vec2 p,vec4 tube,vec4 rect,vec4 outer,vec4 fx,float rot,vec4 look){if(look.x<=0.0)return vec3(0.0);  // the bent picture mirrored across its bent edge: sharp there, blurrier and fainter outward
@@ -48,9 +50,7 @@ uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uR
   return c/25.0*look.x*fade;}
  vec4 bezelRing(vec2 p,vec4 inner,vec4 outer,vec4 look,vec4 color,vec2 b){if(look.z<0.5)return vec4(0.0);
   float ring=shapeMaskB(p,outer,vec4(1.0,look.y,2.0,0.0),b)*(1.0-shapeMaskB(p,inner,vec4(1.0,look.x,2.0,0.0),b));if(ring<=0.0)return vec4(0.0);
-  vec2 h=outer.zw*0.5;vec2 d=abs(p-(outer.xy+h))/h;float edge=max(d.x,d.y);
-  float shade=0.7+0.4*smoothstep(0.82,1.0,edge);float bevel=smoothstep(0.985,1.0,edge)*0.22;
-  return vec4(color.rgb*shade+bevel,ring);}
+  return vec4(lipColor(p,outer,look,color,b),ring);}
  vec3 lensMirror(sampler2D t,sampler2D raw,vec2 p,vec4 tube,vec4 rect,vec4 outer,vec4 look,vec4 color,vec4 reflection,vec4 fx,float rot,vec2 b){if(look.z<0.5||color.a>0.0||reflection.x<=0.0)return vec3(0.0);  // an unfilled ring marks a painted lens: the mirror alone, from the bent picture edge out
   float band=shapeMaskB(p,outer,vec4(1.0,look.y,2.0,0.0),b)*clamp(edgeDistance(bentUv(p,tube,rect,fx),rect)+0.5,0.0,1.0);return band>0.0?reflectAt(t,raw,p,tube,rect,outer,fx,rot,reflection)*band:vec3(0.0);}
  vec4 framePaint(sampler2D t,sampler2D raw,vec2 p,vec4 tube,vec4 rect,vec4 shape,vec4 fx,float rot,vec4 look){vec4 f=frameRing(p,tube,shape,1.0);if(f.a<=0.0)return f;vec4 outer=vec4(tube.xy-uFrame.x,tube.zw+2.0*uFrame.x);  // a drawn frame mirrors the picture like a lip: sharp at the edge, never its edge pixels smeared outward
@@ -66,12 +66,12 @@ void main(){
   if(m0>=m1){bool lipAtEdge=layered>0.5&&uRingLook.z>0.5;c=screenColor(uGame,p,uTube,uRect,uFx,uSurround,uRotation.x,lipAtEdge?0.5:(uFrame.z>0.5?1.0:0.0));a=m0;
    if(uFrame.z>1.5){vec4 f=frameRing(p,uRect,vec4(1.0,uFrame.y,2.0,0.0),0.0);c=mix(c,f.rgb,f.a);}
    if(lipAtEdge){a=min(a,shapeMaskB(p,uRingOut,vec4(1.0,uRingLook.y,2.0,0.0),uBulge.xy));vec2 bg=bentUv(p,uTube,uRect,uFx);float off=clamp(edgeDistance(bg,uRect)+0.5,0.0,1.0);  // the lip starts at the bent picture edge: one surface, no second outline, antialiased half a pixel either side of it
-    if(off>0.0){vec3 lip=lipColor(p,uRingOut,uRingColor)*uRingColor.a;vec3 f=reflectAt(uGame,uRaw,p,uTube,uRect,uRingOut,uFx,uRotation.x,uRingReflect);c=mix(c,1.0-(1.0-lip)*(1.0-f),off);}}
+    if(off>0.0){vec3 lip=lipColor(p,uRingOut,uRingLook,uRingColor,uBulge.xy)*uRingColor.a;vec3 f=reflectAt(uGame,uRaw,p,uTube,uRect,uRingOut,uFx,uRotation.x,uRingReflect);c=mix(c,1.0-(1.0-lip)*(1.0-f),off);}}
    else{vec4 r=bezelRing(p,uRingIn,uRingOut,uRingLook,uRingColor,uBulge.xy);if(r.a>0.0){vec3 lip=mix(c,r.rgb,uRingColor.a);if(uRingReflect.x>0.0){vec3 f=reflectAt(uGame,uRaw,p,uTube,uRect,uRingOut,uFx,uRotation.x,uRingReflect);lip=1.0-(1.0-lip)*(1.0-f);}c=mix(c,lip,r.a);}}c=glassOver(c,uGlass,p,uTube,uReflect.x,uReflect.z);}
   else{bool lipAtEdge=layered>0.5&&uRingLook2.z>0.5;c=screenColor(uGame2,p,uTube2,uRect2,uFx2,uSurround2,uRotation.y,lipAtEdge?0.5:(uFrame.z>0.5?1.0:0.0));a=m1;
    if(uFrame.z>1.5){vec4 f=frameRing(p,uRect2,vec4(1.0,uFrame.y,2.0,0.0),0.0);c=mix(c,f.rgb,f.a);}
    if(lipAtEdge){a=min(a,shapeMaskB(p,uRingOut2,vec4(1.0,uRingLook2.y,2.0,0.0),uBulge.zw));vec2 bg=bentUv(p,uTube2,uRect2,uFx2);float off=clamp(edgeDistance(bg,uRect2)+0.5,0.0,1.0);
-    if(off>0.0){vec3 lip=lipColor(p,uRingOut2,uRingColor2)*uRingColor2.a;vec3 f=reflectAt(uGame2,uRaw2,p,uTube2,uRect2,uRingOut2,uFx2,uRotation.y,uRingReflect2);c=mix(c,1.0-(1.0-lip)*(1.0-f),off);}}
+    if(off>0.0){vec3 lip=lipColor(p,uRingOut2,uRingLook2,uRingColor2,uBulge.zw)*uRingColor2.a;vec3 f=reflectAt(uGame2,uRaw2,p,uTube2,uRect2,uRingOut2,uFx2,uRotation.y,uRingReflect2);c=mix(c,1.0-(1.0-lip)*(1.0-f),off);}}
    else{vec4 r=bezelRing(p,uRingIn2,uRingOut2,uRingLook2,uRingColor2,uBulge.zw);if(r.a>0.0){vec3 lip=mix(c,r.rgb,uRingColor2.a);if(uRingReflect2.x>0.0){vec3 f=reflectAt(uGame2,uRaw2,p,uTube2,uRect2,uRingOut2,uFx2,uRotation.y,uRingReflect2);lip=1.0-(1.0-lip)*(1.0-f);}c=mix(c,lip,r.a);}}c=glassOver(c,uGlass2,p,uTube2,uReflect.y,uReflect.w);}
   frag=vec4(c,a);return;}
  if(uPass<2.5){vec4 c=vec4(0.0);
