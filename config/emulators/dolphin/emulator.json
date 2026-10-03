@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "name": "Dolphin",
-  "default_system": "gc",
   "input": {
     "actions": [
       "ui.open",

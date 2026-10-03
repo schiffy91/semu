@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "name": "PCSX2",
-  "default_system": "ps2",
   "input": {
     "actions": [
       "ui.pause",
