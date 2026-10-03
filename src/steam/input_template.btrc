@@ -61,8 +61,7 @@ class SteamInputChordNames {  // Semu chord text -> Steam key_press names
         if (lower.equals("tab")) { return "TAB"; }
         if (lower.equals("+")) { return "KEYPAD_PLUS"; }
         if (lower.equals("-")) { return "DASH"; }
-        if (lower.startsWith("f") && lower.len() <= 3) { return name.toUpper(); }
-        return name.toUpper();
+        return name.toUpper();  // F-keys and other names: Steam spells them upper-case
     }
 
     class string modifier(string name) {
