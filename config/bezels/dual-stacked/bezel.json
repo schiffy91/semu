@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "dual-stacked",
   "label": "Stacked",
-  "family": "dual",
   "layout": "stacked",
   "art": null,
   "background": "assets/bezels/backgrounds/desk-night.png",

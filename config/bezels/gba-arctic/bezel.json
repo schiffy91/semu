@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "gba-arctic",
   "label": "Game Boy Advance · Arctic",
-  "family": "handheld",
   "layout": "fixed",
   "art": "assets/bezels/gba/arctic.png",
   "background": "assets/bezels/backgrounds/desk-night.png",

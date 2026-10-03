@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "tv-soqueroeu-wii-16x9",
   "label": "Living room CRT · Wii widescreen",
-  "family": "tv",
   "layout": "fixed",
   "art": "assets/bezels/tv/soqueroeu/wii-16x9.png",
   "background": null,

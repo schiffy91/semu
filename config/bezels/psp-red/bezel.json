@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "psp-red",
   "label": "PSP · Deep Red",
-  "family": "handheld",
   "layout": "fixed",
   "art": "assets/bezels/psp/red.png",
   "background": "assets/bezels/backgrounds/desk-night.png",

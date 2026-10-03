@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "tv-soqueroeu-genesis",
   "label": "Living room CRT · Sega Genesis",
-  "family": "tv",
   "layout": "fixed",
   "art": "assets/bezels/tv/soqueroeu/genesis.png",
   "background": null,

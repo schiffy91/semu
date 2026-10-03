@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "psp-e1000",
   "label": "PSP E1000",
-  "family": "handheld",
   "layout": "fixed",
   "art": "assets/bezels/psp/classic.png",
   "background": "assets/bezels/backgrounds/desk-night.png",

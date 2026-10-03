@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "tv-soqueroeu-psx",
   "label": "Living room CRT · PlayStation",
-  "family": "tv",
   "layout": "fixed",
   "art": "assets/bezels/tv/soqueroeu/psx.png",
   "background": null,

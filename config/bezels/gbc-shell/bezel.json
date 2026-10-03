@@ -2,7 +2,6 @@
   "schema_version": 1,
   "id": "gbc-shell",
   "label": "Game Boy Color",
-  "family": "handheld",
   "layout": "fixed",
   "art": "assets/bezels/gbc/shell.png",
   "background": "assets/bezels/backgrounds/desk-night.png",
