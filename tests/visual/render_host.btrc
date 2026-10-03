@@ -1,5 +1,6 @@
 // The real Semu renderer, offscreen on macOS (CGL, OpenGL 4.1 core): a test card (or a flat one,
-// RENDER_HOST_CARD=white/black with RENDER_HOST_LIT=screen, or a measuring card: ramp, lines, bars) stands in for the
+// RENDER_HOST_CARD=white/black with RENDER_HOST_LIT=screen, a measuring card: ramp, lines, bars, or the bezel
+// editor's card with RENDER_HOST_CARD=editor) stands in for the
 // emulator's picture, SEMU_RENDER_* comes from `semu render-env`, and the last of RENDER_HOST_FRAMES
 // frames (default 12, so a history pass sees a running game) is written as PPM.
 #include <OpenGL/OpenGL.h>
@@ -58,6 +59,7 @@ class RenderHostTestCard {  // the editor's card: blue over green (orange over y
             }
             return data;
         }
+        if (flat != null && strcmp(flat, "editor") == 0) { return RenderHostTestCard.editorCard(data, width, height, screen); }
         int cell = width < height ? width / 40 : height / 40;
         if (cell < 2) { cell = 2; }
         int corner = cell * 4;
@@ -95,6 +97,35 @@ class RenderHostTestCard {  // the editor's card: blue over green (orange over y
         if (bar == 5) { return 13127880; }  // magenta 200,80,200
         if (bar == 6) { return 11591832; }  // pale green 176,224,152
         return 15777952;  // skin 240,192,160
+    }
+
+    class unsigned char* editorCard(unsigned char* data, int width, int height, int screen) {  // RENDER_HOST_CARD=editor: the editor's drawTestCard colours and layout at native size
+        float cell = (float)width / 32.0f;
+        if (cell < 1.0f) { cell = 1.0f; }
+        float block = cell * 4.0f;
+        for (int row = 0; row < height; row++) {
+            for (int column = 0; column < width; column++) {
+                bool upper = row * 3 < height * 2;
+                int red = upper ? (screen == 0 ? 48 : 200) : (screen == 0 ? 48 : 232);
+                int green = upper ? (screen == 0 ? 96 : 72) : (screen == 0 ? 200 : 176);
+                int blue = upper ? (screen == 0 ? 224 : 48) : (screen == 0 ? 64 : 40);
+                if (column == 0 || row == 0 || column == width - 1 || row == height - 1 || column == width / 2 || row == height / 2) { red = 255; green = 255; blue = 255; }
+                bool cornerColumn = (float)column < block || (float)column >= (float)width - block;
+                bool cornerRow = (float)row < block || (float)row >= (float)height - block;
+                if (cornerColumn && cornerRow) {  // each corner's 4x4 checker starts white at its own top left
+                    float across = (float)column < block ? (float)column : (float)column - ((float)width - block);
+                    float down = (float)row < block ? (float)row : (float)row - ((float)height - block);
+                    int shade = ((int)(across / cell) + (int)(down / cell)) % 2 == 0 ? 255 : 16;
+                    red = shade; green = shade; blue = shade;
+                }
+                int offset = ((height - 1 - row) * width + column) * 4;  // GL rows start at the bottom
+                data[offset] = (unsigned char)red;
+                data[offset + 1] = (unsigned char)green;
+                data[offset + 2] = (unsigned char)blue;
+                data[offset + 3] = (unsigned char)255;
+            }
+        }
+        return data;
     }
 }
 
