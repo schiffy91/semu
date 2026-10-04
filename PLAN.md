@@ -1213,6 +1213,36 @@ the Wii IR, the players page by eye, Steam's own radials and icons.
     fractional fit (686x515 on the Wii at 1280x800) is reached only by Reset, which also returns the
     players' layouts and pads and, on a 16:9 Wii game, reboots it.
 
+### M14. Owner feedback from the Deck, round 2 (2026-10-04)
+
+The owner played the e1fcb01 release in Game Mode and reported (verbatim where quoted):
+
+1. **N64** "rendering is off centered on the bezel. loaded mario 64. also very laggy". Done when Super
+   Mario 64 sits centred in the TV bezel at whole steps and runs at full speed on the Deck.
+2. **GBC** "start select buttons are missing from" the shell. Done when the GBC shell shows them.
+3. **Bezel fit** "on some systems, bezel fit has black bars because the bezel ends and doesn't repeat".
+   Done when no system shows black bars in bezel fit (the scene continues past the art).
+4. **Wii controller layouts** "changing wii controllers causes you to reboot even when it's not
+   supported - we shouldn't press again to reboot, there should be a reboot button in the radial maybe,
+   that way you can oscillate through and it works". Done when layouts cycle without rebooting and a
+   separate Restart slot reboots once when a change needs it.
+5. **Wii U** "hitting bezel in wii u caused it to hang? maybe it was just slow". Done when the cause is
+   known and Bezel on Wii U never hangs.
+6. **Dreamcast** "flickers, something looks wrong with the shader". Done when it no longer flickers.
+7. **Reflections** "take the shader lines into account in a way that's kind of low resolution ... the
+   reflections of Aero the Acro-Bat on Sega Genesis had a weird pixelated look". Done when reflections
+   are smooth (mirror the clean picture, softened outward), checked by eye.
+8. **CRT shader** "looks fake on the Sony PS1 white loading screen? looks like bands"; port Retro Crisis's
+   "Realistic PlayStation RGB CRT Shader" (GDV-NTSC presets on crt-guest-advanced-ntsc,
+   https://www.youtube.com/watch?v=cyktna9FF08) for the CRT systems if the Deck can run it. Done when the
+   PS1 white screen shows no banding and the new preset runs at full speed on the Deck (measured).
+9. **Speed** "make sure we are compiling our emulators with the recommended settings for speed".
+   Done when every emulator is built with its upstream-recommended release flags (and the Deck's CPU
+   level where safe), with the evidence listed.
+(The owner's PlayStation quit report was holding Start+Select, which is by design.)
+
+Status: tackled in three parallel tracks (performance, picture, controls), then review and the Deck.
+
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
 The review ran on the Mac (mbp21, aarch64-darwin, macOS 27). FRACTAL-NORTH did not resolve
