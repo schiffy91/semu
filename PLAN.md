@@ -1242,6 +1242,17 @@ The owner played the e1fcb01 release in Game Mode and reported (verbatim where q
 (The owner's PlayStation quit report was holding Start+Select, which is by design.)
 
 Status: tackled in three parallel tracks (performance, picture, controls), then review and the Deck.
+- Item 4 (controls): built and contract-proven on the Mac; the Deck rerun is open. No choice restarts
+  the game by itself any more. Controller Layout, the Wii layer and the players page step layouts
+  freely, live where Dolphin switches them; GameCube (or leaving the GameCube a game booted on) is
+  saved and toasts P1 GAMECUBE: RESTART TO APPLY. Aspect saves at one press (ASPECT 16:9: RESTART TO
+  APPLY). Reset keeps its safety confirm but never reboots (RESET: RESTART TO APPLY). The new
+  Restart Game action (Ctrl+Shift+D, Lucide refresh-cw icon, journal 87) sits in the settings radial
+  after Controller Layout, in the centre of the held Wii layer, as the menu's RESTART GAME row (the
+  Wii menu is 13 rows; the texture grew to 683 px, still scale 1 at 1280x800, seen on the render
+  host) and as the players page's RESTART GAME. It restarts once when anything differs from the
+  launch, else toasts RESTART: NO CHANGES. radial-check.cases case 16 now cycles Classic, GameCube
+  and Wii Remote without a restart, then applies 16:9 with one Restart Game.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 

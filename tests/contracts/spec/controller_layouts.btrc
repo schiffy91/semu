@@ -1,9 +1,9 @@
 // Controller layouts and the players page, the supervisor's and the renderer's sides: the paced
 // timeline (every press and gap at least 30 ms, the X keycode the evdev code plus eight), the
 // presses Dolphin's shared profile index needs (one with Semu's file alone, a full cycle to reload),
-// a live switch copying the player's own stored profile, GameCube's confirm and restart, Reset's
-// way back, and the page's pads, RESTART GAME and BACK as the supervisor journals and the renderer
-// draws them.
+// a live switch copying the player's own stored profile, GameCube saved to wait for Restart Game,
+// Reset's way back, and the page's pads, RESTART GAME and BACK as the supervisor journals and the
+// renderer draws them.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -88,7 +88,7 @@ class LayoutsTimingSpec {  // the paced timeline and the press count
     }
 }
 
-class LayoutsSwitchSpec {  // live switches, the stray, GameCube's restart, Reset
+class LayoutsSwitchSpec {  // live switches, the stray, GameCube waiting for Restart Game, Reset
     class void run(Contract contract, Fixture fixture) {
         SemuLaunchPlan launch = LayoutsBed.launch(fixture, "switch", "wii", "dolphin", 2);
         SemuPlayerSet set = launch.players;
@@ -97,42 +97,51 @@ class LayoutsSwitchSpec {  // live switches, the stray, GameCube's restart, Rese
         FileSystem.writeText(retired, "[Profile]\nold\n");
         contract.expect(SemuControllerLayouts.prepare(set) && LayoutsBed.active(launch).equals(FileSystem.readText(set.storeFile(0, 1))), "at launch Semu's one file holds player 1's layout (Nunchuk)");
         contract.expect(!FileSystem.exists(retired) && FileSystem.readText(PathTools.join(set.retiredDirectory, "Semu Classic.ini")).equals("[Profile]\nold\n") && SemuControllerLayouts.listing(set.directory).size() == 1, "an older release's profile moves out of the cycled folder, kept whole");
-        long long now = SemuClock.milliseconds();
-        SemuControllerLayouts.select(launch, 0, 2, now);
+        SemuControllerLayouts.select(launch, 0, 2);
         contract.expect(LayoutsBed.downs(KEY_F5) == 1 && LayoutsBed.downs(KEY_LEFTALT) == 1 && LayoutsBed.active(launch).equals(FileSystem.readText(set.storeFile(0, 2))), "Classic for player 1: its stored profile copied in, then one paced Alt+F5");
-        contract.expect(RadialBed.record(launch, 0, SemuActions.layoutSelect(), 2, 0) && set.layouts.get(0) == 2 && SemuJson.textAt(RadialBed.saved(launch), "input.systems.wii.players.1.layout").equals("classic"), "it journals 83 slot 2 for player 1 and saves the layout for the system");
+        contract.expect(RadialBed.record(launch, 0, SemuActions.layoutSelect(), 2, 0) && set.layouts.get(0) == 2 && set.runningLayouts.get(0) == 2 && SemuJson.textAt(RadialBed.saved(launch), "input.systems.wii.players.1.layout").equals("classic"), "it journals 83 slot 2 for player 1, applied, and saves the layout for the system");
         FileSystem.writeText(PathTools.join(set.directory, "Aaa.ini"), "[Profile]\n");  // the owner's own profile sorts first
         SemuTypedSteps.count = 0;
-        SemuControllerLayouts.select(launch, 1, 0, now);
+        SemuControllerLayouts.select(launch, 1, 0);
         string second = LayoutsBed.active(launch);
         contract.expect(LayoutsBed.downs(KEY_F6) == 1 && second.contains("Device = SDL/0/Xbox Series X Controller\n") && !second.contains("Steam Deck"), "Wii Remote for player 2: Alt+F6 once from index 0 to Semu's file at 1, and the profile names only player 2's pad");
         SemuTypedSteps.count = 0;
-        SemuControllerLayouts.select(launch, 1, 0, now);
+        SemuControllerLayouts.select(launch, 1, 0);
         contract.expect(LayoutsBed.downs(KEY_F6) == 2 && set.sharedIndex == 1, "choosing it again cycles once around the two files: a lost press is redone");
         SemuTypedSteps.count = 0;
-        SemuControllerLayouts.select(launch, 0, 3, now);
-        contract.expect(SemuTypedSteps.count == 0 && RadialBed.record(launch, 3, SemuActions.layoutSelect(), 3, 16) && set.layouts.get(0) == 2 && SemuSupervisorRuntime.relaunch == 0, "GameCube asks for a second press: 83 reserved 16, nothing typed or saved");
-        SemuControllerLayouts.select(launch, 0, 3, now + 1000LL);
-        contract.expect(RadialBed.record(launch, 4, SemuActions.layoutSelect(), 3, 32) && SemuSupervisorRuntime.relaunch == 1 && SemuJson.textAt(RadialBed.saved(launch), "input.systems.wii.players.1.layout").equals("gamecube"), "the second press saves GameCube and restarts the game (83 reserved 32)");
-        SemuSupervisorRuntime.relaunch = 0;
-        SemuSupervisorRuntime.quit = 0;
-        SemuRelaunch.disarm();
-        SemuControllerLayouts.select(launch, 0, 1, now + 5000LL);
-        contract.expect(RadialBed.record(launch, 5, SemuActions.layoutSelect(), 1, 16), "leaving GameCube asks again: Dolphin reads the Wii Remote's source at boot");
-        SemuControllerLayouts.select(launch, 3, 1, now);
-        contract.expect(RadialBed.record(launch, 6, SemuActions.layoutSelect(), -1, 3), "a player without a pad has nothing to choose (83 slot -1)");
-        SemuRelaunch.disarm();
-        set.layouts.set(0, 2);
+        SemuControllerLayouts.select(launch, 0, 3);
+        contract.expect(SemuTypedSteps.count == 0 && RadialBed.record(launch, 3, SemuActions.layoutSelect(), 3, 16) && set.layouts.get(0) == 3 && set.runningLayouts.get(0) == 2 && set.waiting(0) && SemuJson.textAt(RadialBed.saved(launch), "input.systems.wii.players.1.layout").equals("gamecube"), "GameCube, read at boot: one press saves it and journals it waiting for Restart Game (83 reserved 16), nothing typed");
+        contract.expect(SemuSupervisorRuntime.relaunch == 0 && SemuSupervisorRuntime.quit == 0, "and the game keeps running: no layout restarts it");
+        SemuControllerLayouts.select(launch, 0, 3);
+        contract.expect(RadialBed.record(launch, 4, SemuActions.layoutSelect(), 3, 16) && SemuSupervisorRuntime.relaunch == 0, "pressing it again restarts nothing either: there is no second press to reboot");
         SemuTypedSteps.count = 0;
-        SemuControllerLayouts.pick(launch, "wii.controller.wiimote", now);
+        SemuControllerLayouts.step(launch, 0, 1);
+        contract.expect(LayoutsBed.downs(KEY_F5) > 0 && RadialBed.record(launch, 5, SemuActions.layoutSelect(), 0, 0) && set.runningLayouts.get(0) == 0 && !set.waiting(0) && LayoutsBed.active(launch).equals(FileSystem.readText(set.storeFile(0, 0))), "the next step from the waiting GameCube, Wii Remote, switches live from the Classic still running (83 reserved 0): the owner cycles through freely");
+        set.runningLayouts.set(0, 3);  // a game booted on GameCube
+        set.layouts.set(0, 3);
+        SemuTypedSteps.count = 0;
+        SemuControllerLayouts.select(launch, 0, 1);
+        contract.expect(SemuTypedSteps.count == 0 && RadialBed.record(launch, 6, SemuActions.layoutSelect(), 1, 16) && set.waiting(0), "leaving a GameCube the game booted on waits too: Dolphin reads the Wii Remote's source at boot");
+        SemuControllerLayouts.select(launch, 0, 3);
+        contract.expect(RadialBed.record(launch, 7, SemuActions.layoutSelect(), 3, 0) && !set.waiting(0), "back to the GameCube it runs: nothing waits (83 reserved 0)");
+        SemuControllerLayouts.select(launch, 3, 1);
+        contract.expect(RadialBed.record(launch, 8, SemuActions.layoutSelect(), -1, 3), "a player without a pad has nothing to choose (83 slot -1)");
+        set.layouts.set(0, 2);
+        set.runningLayouts.set(0, 2);
+        SemuTypedSteps.count = 0;
+        SemuControllerLayouts.pick(launch, "wii.controller.wiimote");
         contract.expect(set.layouts.get(0) == 0 && LayoutsBed.downs(KEY_F5) > 0, "a Wii layer slot picks that layout for player 1");
         contract.expect(SemuControllerLayouts.stepped(set, 2, 1) == 3 && SemuControllerLayouts.stepped(set, 0, -1) == 3 && SemuControllerLayouts.stepped(set, 3, 1) == 0, "Controller Layout steps through the layouts and wraps");
         set.layouts.set(1, 2);
+        set.runningLayouts.set(1, 2);
         SemuTypedSteps.count = 0;
         SemuControllerLayouts.reset(launch);
-        contract.expect(set.layouts.get(0) == 1 && set.layouts.get(1) == 1 && LayoutsBed.downs(KEY_F5) > 0 && LayoutsBed.downs(KEY_F6) > 0 && !SemuControllerLayouts.resetRestarts(set), "Reset switches every player back to Nunchuk live");
+        contract.expect(set.layouts.get(0) == 1 && set.layouts.get(1) == 1 && LayoutsBed.downs(KEY_F5) > 0 && LayoutsBed.downs(KEY_F6) > 0 && !set.pending(), "Reset switches every player back to Nunchuk live: nothing waits");
         set.layouts.set(0, 3);
-        contract.expect(SemuControllerLayouts.resetRestarts(set), "a player on GameCube returns only by restarting");
+        set.runningLayouts.set(0, 3);
+        int before = InputDeliveryTools.records(launch.stateDir);
+        SemuControllerLayouts.reset(launch);
+        contract.expect(set.layouts.get(0) == 1 && set.waiting(0) && set.pending() && RadialBed.record(launch, before, SemuActions.layoutSelect(), 1, 16) && SemuSupervisorRuntime.relaunch == 0, "a player on the GameCube it booted with returns to Nunchuk only at Restart Game: Reset journals it waiting (83 reserved 16) and restarts nothing");
         SemuTypedSteps.recording = 0;
     }
 }
@@ -144,35 +153,34 @@ class LayoutsPageSpec {  // the players page as the supervisor runs it
         SemuLaunchPlan launch = LayoutsBed.launch(fixture, "page", "wii", "dolphin", 3);
         contract.expect(launch.menuActions.contains("controller.layout.next") && launch.menuActions.contains("ui.players"), "the Wii menu shows CONTROLLER and PLAYERS");
         SemuSupervisorRuntime.menu_visible = 1;
-        long long now = SemuClock.milliseconds();
         SemuActionExecutor.dispatch(launch, "ui.players", SEMU_SOURCE_X11, SEMU_SOURCE_X11);
         contract.expect(launch.players.pageOpen && RadialBed.record(launch, 0, SemuActions.menuPage(), 1, 0) && LayoutsPageSpec.rows(launch).join("|").equals("P1  PAD 1  NUNCHUK|P2  PAD 2  NUNCHUK|P3  PAD 3  NUNCHUK|P4  NO PAD|RESTART GAME|BACK"), "Players opens the page: a row per player, then RESTART GAME and BACK");
         SemuSupervisorRuntime.menu_selected = 5;
         SemuActionExecutor.dispatch(launch, "ui.menu.down", SEMU_SOURCE_X11, 900);
         contract.expect(SemuSupervisorRuntime.menu_selected == 0, "down from BACK wraps to P1 over the page's six rows");
         SemuSupervisorRuntime.menu_selected = 1;
-        SemuPlayersPage.confirm(launch, now);
+        SemuPlayersPage.confirm(launch);
         contract.expect(launch.players.pads.get(1) == -1 && RadialBed.record(launch, 2, SemuActions.playerAssign(), -1, 1) && LayoutsPageSpec.rows(launch).get(1).equals("P2  NO PAD"), "confirm on P2 skips the pads P1 and P3 hold and reaches none");
-        SemuPlayersPage.confirm(launch, now);
+        SemuPlayersPage.confirm(launch);
         contract.expect(launch.players.pads.get(1) == 1 && JSONValue.parse(FileSystem.readText(PathTools.join(launch.semuHome, "semu.json"))) != null && SemuJson.intAt(RadialBed.saved(launch), "input.systems.wii.players.2.pad", -9) == 1, "again: back to pad 2, saved for the system");
         SemuSupervisorRuntime.menu_selected = 4;
-        SemuPlayersPage.confirm(launch, now);
-        contract.expect(RadialBed.record(launch, 4, SemuActions.menuPage(), 1, 2) && SemuSupervisorRuntime.relaunch == 0, "RESTART GAME with nothing changed says so and restarts nothing");
+        SemuPlayersPage.confirm(launch);
+        contract.expect(RadialBed.record(launch, 4, SemuActions.restartNotice(), 0, 0) && SemuSupervisorRuntime.relaunch == 0, "RESTART GAME with nothing changed is Restart Game: it says so (87/0) and restarts nothing");
         SemuSupervisorRuntime.menu_selected = 2;
         SemuActionExecutor.dispatch(launch, "ui.menu.right", SEMU_SOURCE_X11, 901);
         contract.expect(launch.players.layouts.get(2) == 2 && LayoutsPageSpec.rows(launch).get(2).equals("P3  PAD 3  CLASSIC"), "right on P3 steps its layout live and rewrites the row");
         SemuSupervisorRuntime.menu_selected = 1;
-        SemuPlayersPage.confirm(launch, now);
+        SemuPlayersPage.confirm(launch);
         SemuSupervisorRuntime.menu_selected = 4;
-        SemuPlayersPage.confirm(launch, now);
-        contract.expect(SemuSupervisorRuntime.relaunch == 1, "after a pad change RESTART GAME restarts the game");
+        SemuPlayersPage.confirm(launch);
+        contract.expect(SemuSupervisorRuntime.relaunch == 1 && RadialBed.record(launch, InputDeliveryTools.records(launch.stateDir) - 1, SemuActions.restartNotice(), 1, 0), "after a pad change RESTART GAME restarts the game (87/1)");
         SemuSupervisorRuntime.relaunch = 0;
         SemuSupervisorRuntime.quit = 0;
         SemuSupervisorRuntime.menu_selected = 5;
         SemuActionExecutor.dispatch(launch, "ui.menu.confirm", SEMU_SOURCE_X11, 902);
         contract.expect(!launch.players.pageOpen && SemuSupervisorRuntime.menu_selected == launch.menuActions.indexOf("ui.players"), "BACK returns to the menu on its PLAYERS row");
         SemuLaunchPlan gba = LayoutsBed.launch(fixture, "page-gba", "gba", "retroarch", 3);
-        contract.expect(!gba.menuActions.contains("ui.players") && !gba.menuActions.contains("controller.layout.next"), "a one-player system without layouts shows neither row");
+        contract.expect(!gba.menuActions.contains("ui.players") && !gba.menuActions.contains("controller.layout.next") && !gba.menuActions.contains("system.restart"), "a one-player system without layouts shows none of the three rows, RESTART GAME included");
         SemuSupervisorRuntime.menu_visible = 0;
         SemuActionExecutor.dispatch(gba, "ui.players", SEMU_SOURCE_X11, 903);
         contract.expect(RadialBed.record(gba, 0, SemuActions.menuPage(), -1, 0) && SemuSupervisorRuntime.menu_visible == 0, "Players on a one-player game says so (86 slot -1) and opens nothing");
@@ -197,23 +205,22 @@ class LayoutsRulesSpec {  // the written rules the page and Reset keep: player 1
         SemuLaunchPlan launch = LayoutsBed.launch(fixture, "rules", "wii", "dolphin", 2);
         SemuPlayerSet set = launch.players;
         SemuSupervisorRuntime.menu_visible = 1;
-        long long now = SemuClock.milliseconds();
         SemuActionExecutor.dispatch(launch, "ui.players", SEMU_SOURCE_X11, SEMU_SOURCE_X11);
         SemuSupervisorRuntime.menu_selected = 0;
-        SemuPlayersPage.confirm(launch, now);
+        SemuPlayersPage.confirm(launch);
         contract.expect(set.pads.get(0) == 0 && RadialBed.record(launch, LayoutsRulesSpec.last(launch), SemuActions.playerAssign(), -1, 0), "confirm on P1 with every other pad taken keeps its pad (84 slot -1): player 1 is never moved to none");
         SemuSupervisorRuntime.menu_selected = 0;
         SemuActionExecutor.dispatch(launch, "ui.menu.right", SEMU_SOURCE_X11, 910);
         SemuSupervisorRuntime.menu_selected = set.count;
-        SemuPlayersPage.confirm(launch, now);
-        contract.expect(SemuSupervisorRuntime.relaunch == 1 && RadialBed.record(launch, LayoutsRulesSpec.last(launch), SemuActions.menuPage(), 1, 1), "a layout already switched live still counts as a change: RESTART GAME restarts, so every file comes from the saved choice (the ruling)");
+        SemuPlayersPage.confirm(launch);
+        contract.expect(SemuSupervisorRuntime.relaunch == 1 && RadialBed.record(launch, LayoutsRulesSpec.last(launch), SemuActions.restartNotice(), 1, 0), "a layout already switched live still counts as a change: RESTART GAME restarts, so every file comes from the saved choice (the ruling)");
         SemuSupervisorRuntime.relaunch = 0;
         SemuSupervisorRuntime.quit = 0;
         SemuLaunchPlan padless = LayoutsBed.launch(fixture, "rules-padless", "wii", "dolphin", 2);
         SemuPlayerSet unplugged = padless.players;
         unplugged.layouts.set(3, 3);
         unplugged.launchLayouts.set(3, 3);
-        contract.expect(!unplugged.connected(3) && !SemuControllerLayouts.resetRestarts(unplugged), "a player without a pad on a stale GameCube layout does not make Reset restart the game");
+        contract.expect(!unplugged.connected(3) && !unplugged.pending(), "a player without a pad on a stale GameCube layout leaves nothing waiting for Restart Game");
         SemuTypedSteps.count = 0;
         SemuControllerLayouts.reset(padless);
         contract.expect(unplugged.layouts.get(3) == 3 && !unplugged.changed() && SemuTypedSteps.count == 0, "Reset leaves a padless player's layout alone, so RESTART GAME has nothing to restart for it");
@@ -253,9 +260,16 @@ class LayoutsRendererSpec {  // the renderer draws the page from the file and na
         LayoutsRendererSpec.apply(&ui, SemuActions.layoutSelect(), 2, 0);
         contract.expect(ui.layout_shown == 2 && strcmp(ui.toast, "P1: CLASSIC") == 0, "83 for player 1 toasts P1: CLASSIC and the CONTROLLER row follows: ");
         LayoutsRendererSpec.apply(&ui, SemuActions.layoutSelect(), 3, 17);
-        contract.expect(ui.layout_shown == 2 && strcmp(ui.toast, "P2 GAMECUBE: AGAIN TO REBOOT") == 0, "a prompt names the player and the layout and changes nothing yet: ");
+        contract.expect(ui.layout_shown == 2 && strcmp(ui.toast, "P2 GAMECUBE: RESTART TO APPLY") == 0, "a layout waiting for Restart Game names the player and the layout; player 2's leaves the CONTROLLER row alone: ");
         LayoutsRendererSpec.apply(&ui, SemuActions.menuPage(), 0, 0);
-        contract.expect(ui.page == 0 && ui.item_count == 12 && ui.selected == RendererMenuModel.rowOf(&ui, "ui.players") && strcmp(RendererMenuRaster.rowValue(&ui, controller), "CLASSIC") == 0, "86 slot 0 brings the menu back on PLAYERS, CONTROLLER now CLASSIC");
+        contract.expect(ui.page == 0 && ui.item_count == 13 && ui.selected == RendererMenuModel.rowOf(&ui, "ui.players") && strcmp(RendererMenuRaster.rowValue(&ui, controller), "CLASSIC") == 0, "86 slot 0 brings the menu back on PLAYERS, CONTROLLER now CLASSIC, thirteen rows with RESTART GAME");
+        contract.expect(RendererMenuRaster.height(&ui) == 72 + 13 * 43 + 52 && RendererMenuRaster.height(&ui) <= SEMU_RENDER_MENU_HEIGHT && RendererMenuModel.rowOf(&ui, "system.restart") == 10, "the whole thirteen-row menu fits the texture, RESTART GAME after PLAYERS");
+        LayoutsRendererSpec.apply(&ui, SemuActions.layoutSelect(), 3, 16);
+        contract.expect(ui.layout_shown == 3 && strcmp(RendererMenuRaster.rowValue(&ui, controller), "GAMECUBE") == 0 && strcmp(ui.toast, "P1 GAMECUBE: RESTART TO APPLY") == 0, "player 1's waiting GameCube: the CONTROLLER row names the choice and the toast says it applies at Restart Game");
+        LayoutsRendererSpec.apply(&ui, SemuActions.layoutSelect(), 0, 16);
+        contract.expect(strcmp(ui.toast, "P1 WII REMOTE: RESTART TO APPLY") == 0, "the longest layout toast fits the 31 glyphs: ");
+        LayoutsRendererSpec.apply(&ui, SemuActions.restartNotice(), 1, 0);
+        contract.expect(strcmp(ui.toast, "RESTARTING GAME") == 0, "87 slot 1 says the game restarts");
         LayoutsRendererSpec.apply(&ui, SemuActions.menuPage(), -1, 0);
         contract.expect(strcmp(ui.toast, "PLAYERS: ONE PLAYER") == 0, "86 slot -1 says the game takes one player");
         for name in ["SEMU_RENDER_STATE_DIR", "SEMU_MENU_ITEMS", "SEMU_MENU_ACTIONS", "SEMU_MENU_TOASTS", "SEMU_MENU_LAYOUTS", "SEMU_MENU_LAYOUT"] { unsetenv(name); }
@@ -268,7 +282,7 @@ class LayoutsLaunchSpec {  // a real launch plan deals the players and hands the
         SemuLaunchPlan wii = bed.launch("dolphin", "wii", "Sports.rvz");
         string environment = wii.environment.join("\n");
         contract.expect(wii.ok() && wii.players.count == 4 && wii.players.pads.size() == 4 && wii.players.layoutsAvailable() && wii.players.layouts.get(0) == 1, "a Wii launch on Dolphin deals four players, player 1 on Nunchuk");
-        contract.expect(wii.menuActions.contains("controller.layout.next") && wii.menuActions.contains("ui.players") && environment.contains("SEMU_MENU_LAYOUTS=WII REMOTE|NUNCHUK|CLASSIC|GAMECUBE\nSEMU_MENU_LAYOUT=1"), "its menu has CONTROLLER and PLAYERS and the renderer gets the layouts");
+        contract.expect(wii.menuActions.contains("controller.layout.next") && wii.menuActions.contains("ui.players") && wii.menuActions.indexOf("system.restart") == wii.menuActions.indexOf("ui.players") + 1 && environment.contains("SEMU_MENU_LAYOUTS=WII REMOTE|NUNCHUK|CLASSIC|GAMECUBE\nSEMU_MENU_LAYOUT=1"), "its menu has CONTROLLER, PLAYERS and RESTART GAME and the renderer gets the layouts");
         contract.expect(FileSystem.isFile(PathTools.join(bed.stateRoot("dolphin"), "dolphin-user/Config/Semu Layouts/P1 Classic.ini")) && wii.players.directory.equals(PathTools.join(bed.stateRoot("dolphin"), "dolphin-user/Config/Profiles/Wiimote")), "the launch wrote player 1's stored layouts and names the folder Dolphin cycles");
         contract.contains(wii.json(), "\"players\": [\n    \"P1  PAD 1  NUNCHUK\",\n    \"P2  NO PAD\"", "--print-plan lists the players as dealt");
         SemuLaunchPlan cube = bed.launch("dolphin", "gc", "Melee.iso");
@@ -281,9 +295,9 @@ class ControllerLayoutsSpecContract {
     class void run(Contract contract) {
         Fixture fixture = Fixture("steam-deck");
         LayoutsLaunchSpec.run(contract);
-        contract.expect(SemuActions.layoutSelect() == 83 && SemuActions.playerAssign() == 84 && SemuActions.menuPage() == 86, "journal codes: layout select 83, player assign 84, players page 86");
+        contract.expect(SemuActions.layoutSelect() == 83 && SemuActions.playerAssign() == 84 && SemuActions.menuPage() == 86 && SemuActions.restartNotice() == 87, "journal codes: layout select 83, player assign 84, players page 86, restart 87");
         bool owned = true;
-        for code in [83, 84, 86] { owned = owned && SemuActions.rendererOwned(code) && SemuActions.code(SemuActions.id(code)) == code; }
+        for code in [83, 84, 86, 87] { owned = owned && SemuActions.rendererOwned(code) && SemuActions.code(SemuActions.id(code)) == code; }
         contract.expect(owned, "each round-trips id and code and is the renderer's");
         LayoutsTimingSpec.run(contract);
         LayoutsSwitchSpec.run(contract, fixture);

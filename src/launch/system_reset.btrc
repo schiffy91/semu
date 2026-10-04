@@ -1,9 +1,10 @@
 // Reset to Default from the radial or the menu: a first press asks for a second within the confirm
 // window; the second removes this system's own choices from semu.json (its bezel, shader, placement,
 // each game's output, its players' pads and layouts), journals the defaults as absolute selects the
-// renderer applies live, switches the players back to the default layout where the emulator can do
-// that live, and restarts the game only when the output or a layout needs it (pads return at the
-// next launch).
+// renderer applies live, and switches the players back to the default layout where the emulator can
+// do that live. It never restarts the game: what only a restart applies (the default output, a
+// layout read at boot, the default pads) waits for Restart Game, and the done notice says so
+// (85 slot 1, reserved 1).
 
 import Library.Vector;
 import ../lib/settings.btrc;
@@ -14,22 +15,16 @@ import ./plan.btrc;
 import ./relaunch.btrc;
 import ./visual_cycle.btrc;
 import ./controller_layouts.btrc;
+import ./game_restart.btrc;
 
 class SemuSystemReset {
-    class bool restarts(SemuLaunchPlan launch) {  // the game draws a non-default output, which only a restart changes
-        SemuVariantChoice output = launch.variants.output;
-        bool outputs = output.available() && output.defaultIndex >= 0 && output.index != output.defaultIndex;
-        return outputs || SemuControllerLayouts.resetRestarts(launch.players);  // or a player's layout returns only by restarting (GameCube on Wii)
-    }
-
     class void execute(SemuLaunchPlan launch, long long now) {
         if (!SemuRelaunch.confirmed(SemuActions.resetNotice(), 0, now)) {
             SemuRelaunch.arm(SemuActions.resetNotice(), 0, now);
-            SemuActionJournal.appendWith(launch, SemuActions.resetNotice(), 0, SemuSystemReset.restarts(launch) ? 2 : 1);
+            SemuActionJournal.appendWith(launch, SemuActions.resetNotice(), 0, 1);
             return;
         }
         SemuRelaunch.disarm();
-        bool restart = SemuSystemReset.restarts(launch);
         if (!launch.semuHome.isEmpty() && !launch.system.isEmpty()) {
             SemuSettingsStore.removePath(launch.semuHome, ["visual", "systems", launch.system]);
             SemuSettingsStore.removePath(launch.semuHome, ["visual", "games", launch.system]);
@@ -39,8 +34,9 @@ class SemuSystemReset {
             SemuVariantChoice choice = launch.variants.choice(kind);
             if (choice.available() && choice.defaultIndex >= 0) { SemuVisualCycle.apply(launch, choice, choice.defaultIndex); }
         }
+        SemuVariantChoice output = launch.variants.output;
+        if (output.available() && output.defaultIndex >= 0 && output.index != output.defaultIndex) { SemuOutputSwitch.choose(launch, output, output.defaultIndex); }  // the default output, from the next boot
         SemuControllerLayouts.reset(launch);  // every player's layout, live where it can be
-        SemuActionJournal.appendWith(launch, SemuActions.resetNotice(), 1, 0);
-        if (restart) { SemuRelaunch.request(); }
+        SemuActionJournal.appendWith(launch, SemuActions.resetNotice(), 1, SemuGameRestart.waiting(launch) ? 1 : 0);
     }
 }

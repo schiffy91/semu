@@ -199,7 +199,7 @@ evidence() {  # what the case left: the X key adapter, each action by source, th
   arrows
   if [ -n "$game" ] && [ -f "$state/semu-render-actions.bin" ]; then  # emptied when this session started
     od -A d -t d4 -w56 -v "$state/semu-render-actions.bin" > "$dir/journal.od"
-    note "journal (action/slot[/reserved: a player, or a prompt]; 1 menu, 2 up, 3 down, 4 confirm, 5 back, 6 save, 7 load, 9 screenshot, 77 next slot, 78 previous slot, 79 bezel, 80 shader, 81 fit, 82 aspect, 83 layout, 84 pad, 85 reset, 86 players page): $(awk 'NF >= 11 { printf "%s%s/%s%s", separator, $8, $10, ($11 != 0 ? "/" $11 : ""); separator = " " }' "$dir/journal.od")"
+    note "journal (action/slot[/reserved: a player, or a prompt]; 1 menu, 2 up, 3 down, 4 confirm, 5 back, 6 save, 7 load, 9 screenshot, 77 next slot, 78 previous slot, 79 bezel, 80 shader, 81 fit, 82 aspect, 83 layout, 84 pad, 85 reset, 86 players page, 87 restart): $(awk 'NF >= 11 { printf "%s%s/%s%s", separator, $8, $10, ($11 != 0 ? "/" $11 : ""); separator = " " }' "$dir/journal.od")"
   else
     note "journal: none (no session, or none at $state)"
   fi

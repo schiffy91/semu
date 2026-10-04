@@ -105,7 +105,7 @@ class DeckHarnessScripts {  // read as text: the parts of a run that only the De
         contract.contains(injector, "for pid in $(pgrep -x Xwayland); do", "the displays are found among Xwaylands, whoever their parent is");
         DeckHarnessScripts.pointer(contract, check, injector);
         Vector<string> legends = [f"{SemuActions.menuToggle()} menu", f"{SemuActions.menuBack()} back", f"{SemuActions.screenshot()} screenshot", f"{SemuActions.stateNext()} next slot", f"{SemuActions.statePrev()} previous slot", f"{SemuActions.bezelSelect()} bezel", f"{SemuActions.shaderSelect()} shader",
-                                  f"{SemuActions.placementSelect()} fit", f"{SemuActions.outputSelect()} aspect", f"{SemuActions.layoutSelect()} layout", f"{SemuActions.playerAssign()} pad", f"{SemuActions.resetNotice()} reset", f"{SemuActions.menuPage()} players page"];
+                                  f"{SemuActions.placementSelect()} fit", f"{SemuActions.outputSelect()} aspect", f"{SemuActions.layoutSelect()} layout", f"{SemuActions.playerAssign()} pad", f"{SemuActions.resetNotice()} reset", f"{SemuActions.menuPage()} players page", f"{SemuActions.restartNotice()} restart"];
         for legend in legends {
             contract.contains(check, legend, "input-check.sh names journal codes as action_abi does");
             contract.contains(cases, legend, "radial-check.cases names journal codes as action_abi does");
@@ -127,7 +127,9 @@ class DeckHarnessScripts {  // read as text: the parts of a run that only the De
             contract.expect(!chord.isEmpty() && (cases.contains("key:" + chord + " ") || cases.contains("key:" + chord + ",")), f"radial-check.cases types the radial slot {action} with its input.json chord {chord}");
         }
         contract.contains(cases, "key:ctrl+shift+r,ctrl+shift+r ", "Reset's second press is typed inside its confirm window");
-        contract.contains(cases, "key:ctrl+shift+g,ctrl+shift+g ", "and Aspect's");
+        contract.lacks(cases, "key:ctrl+shift+g,ctrl+shift+g", "Aspect takes one press: no choice asks for a second press to reboot");
+        contract.contains(cases, "key:ctrl+shift+c key:ctrl+shift+c key:ctrl+shift+c ", "the Wii case cycles the layouts through GameCube without a restart");
+        contract.contains(cases, "key:ctrl+shift+g key:ctrl+shift+d ", "and applies 16:9 with one Restart Game");
     }
 }
 

@@ -1,7 +1,8 @@
 // Radial v2 spec, the supervisor's side: Fit (codes 81) toggles the whole bezel and the screen
-// placement live and saves it per system; Aspect (82) waits for a confirming press, saves the output
-// for that game only and restarts it; Reset to Default (85) asks twice, removes the system's own
-// choices and journals the defaults; the menu shows FIT and ASPECT only where they offer two choices.
+// placement live and saves it per system; Aspect (82) saves the output for that game only at one
+// press and waits for Restart Game (87), the one action that restarts; Reset to Default (85) asks
+// twice, removes the system's own choices and journals the defaults; the menu shows FIT, ASPECT and
+// RESTART GAME only where they apply.
 
 #include <stdio.h>
 #include <string.h>
@@ -21,6 +22,7 @@ import ../../../src/launch/plan.btrc;
 import ../../../src/launch/actions.btrc;
 import ../../../src/launch/relaunch.btrc;
 import ../../../src/launch/system_reset.btrc;
+import ../../../src/launch/game_restart.btrc;
 import ../../../src/launch/supervisor.btrc;
 import ../../../src/launch/visual_cycle.btrc;
 import ../../../src/renderer/action_abi.btrc;
@@ -41,6 +43,7 @@ class RadialBed {  // a scratch launch of SYSTEM with its own journal and semu.j
         plan.tokens.put("rom", rom);
         launch.variants = SemuRenderVariants.choose(plan, fixture.model.system(systemId));
         Vector<string> shown = launch.variants.shown();
+        launch.players.show(shown);  // as the launch plan does: RESTART GAME where a second output waits for it
         launch.menuLabels = fixture.plan.input.menuItemsShown("label", shown);
         launch.menuActions = fixture.plan.input.menuItemsShown("action", shown);
         launch.menuDrawn = true;
@@ -63,14 +66,16 @@ class RadialBed {  // a scratch launch of SYSTEM with its own journal and semu.j
 
 class RadialAbiSpec {  // the new codes after 80, their ids and toasts, and the settings store's remove
     class void run(Contract contract, Fixture fixture) {
-        contract.expect(SemuActions.placementSelect() == 81 && SemuActions.outputSelect() == 82 && SemuActions.resetNotice() == 85, "journal codes: placement select 81, output select 82, reset notice 85 (83, 84 and 86 stay for the players page)");
+        contract.expect(SemuActions.placementSelect() == 81 && SemuActions.outputSelect() == 82 && SemuActions.resetNotice() == 85 && SemuActions.restartNotice() == 87, "journal codes: placement select 81, output select 82, reset notice 85, restart notice 87 (83, 84 and 86 stay for the players page)");
         bool roundTrip = true;
-        for code in [81, 82, 85] { roundTrip = roundTrip && SemuActions.code(SemuActions.id(code)) == code && SemuActions.rendererOwned(code); }
-        contract.expect(roundTrip && SemuActions.toastAction(81).equals("visual.placement.next") && SemuActions.toastAction(82).equals("visual.output.next") && SemuActions.toastAction(85).equals("system.reset"), "each new code round-trips id and code, is the renderer's, and shows its action's toasts");
+        for code in [81, 82, 85, 87] { roundTrip = roundTrip && SemuActions.code(SemuActions.id(code)) == code && SemuActions.rendererOwned(code); }
+        contract.expect(roundTrip && SemuActions.toastAction(81).equals("visual.placement.next") && SemuActions.toastAction(82).equals("visual.output.next") && SemuActions.toastAction(85).equals("system.reset") && SemuActions.toastAction(87).equals("system.restart"), "each new code round-trips id and code, is the renderer's, and shows its action's toasts");
         string toasts = fixture.plan.input.toasts();
-        for entry in ["visual.placement.next=FIT: {label}", "visual.placement.next:unavailable=", "visual.bezel.next:unavailable=BEZEL: NONE HERE", "visual.output.next:confirm={label}: AGAIN TO REBOOT GAME", "visual.output.next:done=ASPECT {label}: REBOOTING", "system.reset:confirm=", "system.reset:restart=RESET: AGAIN TO REBOOT GAME", "system.reset:done=RESET TO DEFAULTS"] {
+        for entry in ["visual.placement.next=FIT: {label}", "visual.placement.next:unavailable=", "visual.bezel.next:unavailable=BEZEL: NONE HERE", "visual.output.next=ASPECT: {label}", "visual.output.next:pending=ASPECT {label}: RESTART TO APPLY", "system.reset:confirm=RESET: PRESS AGAIN", "system.reset:pending=RESET: RESTART TO APPLY", "system.reset:done=RESET TO DEFAULTS",
+                      "system.restart:done=RESTARTING GAME", "system.restart:unchanged=RESTART: NO CHANGES", "controller.layout.next:pending={slot} {label}: RESTART TO APPLY"] {
             contract.contains(toasts, entry, "SEMU_MENU_TOASTS carries every NAME_toast as action:NAME: " + entry);
         }
+        contract.lacks(toasts, "REBOOT", "no toast asks for a second press to reboot: only Restart Game restarts");
         string home = PathTools.join(fixture.scratch, "radial/settings");
         FileSystem.mkdirp(home);
         FileSystem.writeText(PathTools.join(home, "semu.json"), "{\"visual\":{\"bezels\":false,\"systems\":{\"gba\":{\"placement\":\"bezel\"},\"snes\":{\"placement\":\"game\"}}}}");
@@ -111,22 +116,27 @@ class RadialFitSpec {  // the Fit toggle: live, per system, never the fractional
     }
 }
 
-class RadialAspectSpec {  // Aspect: prompt, confirm, save for this game, restart
+class RadialAspectSpec {  // Aspect: one press saves it for this game and waits; Restart Game applies it
     class void run(Contract contract, Fixture fixture) {
         SemuLaunchPlan wii = RadialBed.launch(fixture, "wii", "aspect", "", "Sports.rvz");
         SemuVariantChoice output = wii.variants.output;
-        contract.expect(output.ids.join("|").equals("standard|widescreen") && output.labels.join("|").equals("4:3|16:9") && output.index == 0, "wii offers 4:3 and 16:9 and runs 4:3");
-        SemuOutputSwitch.press(wii, output, 1, 10000LL);
-        contract.expect(RadialBed.record(wii, 0, SemuActions.outputSelect(), 1, 1) && !FileSystem.isFile(PathTools.join(wii.semuHome, "semu.json")) && SemuSupervisorRuntime.relaunch == 0, "the first Aspect press prompts (82, reserved 1) and saves nothing");
-        SemuOutputSwitch.press(wii, output, 1, 14000LL);
-        contract.expect(RadialBed.record(wii, 1, SemuActions.outputSelect(), 1, 1) && SemuSupervisorRuntime.relaunch == 0, "a press after the three-second window prompts again");
-        SemuOutputSwitch.press(wii, output, 1, 15000LL);
+        contract.expect(output.ids.join("|").equals("standard|widescreen") && output.labels.join("|").equals("4:3|16:9") && output.index == 0 && output.launched == 0, "wii offers 4:3 and 16:9 and runs 4:3");
+        SemuActionExecutor.execute(wii, "visual.output.next", SEMU_SOURCE_X11);
         JSONValue games = SemuJson.get(RadialBed.saved(wii), "visual.games.wii");
-        contract.expect(RadialBed.record(wii, 2, SemuActions.outputSelect(), 1, 0) && SemuJson.textAt(games.get("Sports"), "output").equals("widescreen") && games.keys().size() == 1, "the confirming press saves visual.games.wii.Sports.output=widescreen, for that game only");
-        contract.expect(SemuSupervisorRuntime.relaunch == 1 && SemuSupervisorRuntime.quit == 1 && SemuSupervisor.relaunching(), "and asks the supervisor to stop the game and start it again");
+        contract.expect(RadialBed.record(wii, 0, SemuActions.outputSelect(), 1, 1) && SemuJson.textAt(games.get("Sports"), "output").equals("widescreen") && games.keys().size() == 1 && output.index == 1, "one Aspect press saves visual.games.wii.Sports.output=widescreen, for that game only, and journals it waiting for Restart Game (82, reserved 1)");
+        contract.expect(SemuSupervisorRuntime.relaunch == 0 && SemuSupervisorRuntime.quit == 0 && SemuGameRestart.waiting(wii), "and never restarts the game by itself: 16:9 waits");
+        SemuActionExecutor.execute(wii, "visual.output.next", SEMU_SOURCE_X11);
+        contract.expect(RadialBed.record(wii, 1, SemuActions.outputSelect(), 0, 0) && SemuJson.textAt(SemuJson.get(RadialBed.saved(wii), "visual.games.wii.Sports"), "output").equals("standard") && !SemuGameRestart.waiting(wii) && SemuSupervisorRuntime.relaunch == 0, "a second press steps on to 4:3, the output running: nothing waits (82, reserved 0) and nothing restarts, so the owner can cycle freely");
+        SemuActionExecutor.execute(wii, "visual.output.next", SEMU_SOURCE_X11);
+        SemuActionExecutor.execute(wii, "system.restart", SEMU_SOURCE_X11);
+        contract.expect(RadialBed.record(wii, 2, SemuActions.outputSelect(), 1, 1) && RadialBed.record(wii, 3, SemuActions.restartNotice(), 1, 0), "16:9 again waits, and Restart Game journals 87/1 (RESTARTING GAME)");
+        contract.expect(SemuSupervisorRuntime.relaunch == 1 && SemuSupervisorRuntime.quit == 1 && SemuSupervisor.relaunching(), "and asks the supervisor to stop the game and start it again, once, on the saved 16:9");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
         SemuLaunchPlan snes = RadialBed.launch(fixture, "snes", "aspect-snes", "", "Mario.sfc");
         SemuActionExecutor.execute(snes, "visual.output.next", SEMU_SOURCE_X11);
         contract.expect(RadialBed.record(snes, 0, SemuActions.outputSelect(), -1, 0) && SemuSupervisorRuntime.relaunch == 0, "a system with one output journals 82/-1 (ASPECT: ONE ONLY) and never restarts");
+        SemuActionExecutor.execute(snes, "system.restart", SEMU_SOURCE_X11);
+        contract.expect(RadialBed.record(snes, 1, SemuActions.restartNotice(), 0, 0) && SemuSupervisorRuntime.relaunch == 0 && SemuSupervisorRuntime.quit == 0, "Restart Game with nothing to apply says so (87/0, RESTART: NO CHANGES) and restarts nothing");
         memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
     }
 }
@@ -150,7 +160,11 @@ class RadialResetSpec {  // Reset to Default: ask, then remove this system's own
         SemuLaunchPlan wii = RadialBed.launch(fixture, "wii", "reset-wii", wide, "Sports.rvz");
         SemuSystemReset.execute(wii, 40000LL);
         SemuSystemReset.execute(wii, 41000LL);
-        contract.expect(RadialBed.record(wii, 0, SemuActions.resetNotice(), 0, 2) && SemuJson.get(RadialBed.saved(wii), "visual.games.wii").isNull() && SemuSupervisorRuntime.relaunch == 1, "a Wii game on 16:9 warns that Reset reboots it (reserved 2), clears the games' outputs and restarts on 4:3");
+        int last = InputDeliveryTools.records(wii.stateDir) - 1;
+        contract.expect(RadialBed.record(wii, 0, SemuActions.resetNotice(), 0, 1) && SemuJson.get(RadialBed.saved(wii), "visual.games.wii").isNull() && SemuSupervisorRuntime.relaunch == 0 && SemuSupervisorRuntime.quit == 0, "a Wii game on 16:9: Reset asks as anywhere else (85/0, reserved 1), clears the games' outputs and never restarts the game by itself");
+        contract.expect(RadialBed.record(wii, last - 1, SemuActions.outputSelect(), 0, 1) && RadialBed.record(wii, last, SemuActions.resetNotice(), 1, 1) && wii.variants.output.index == 0, "it chooses 4:3 waiting for Restart Game (82/0, reserved 1) and says so (85/1, reserved 1: RESET: RESTART TO APPLY)");
+        SemuActionExecutor.execute(wii, "system.restart", SEMU_SOURCE_X11);
+        contract.expect(RadialBed.record(wii, last + 1, SemuActions.restartNotice(), 1, 0) && SemuSupervisorRuntime.relaunch == 1, "Restart Game then boots it on 4:3");
         memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
     }
 }
@@ -160,8 +174,9 @@ class RadialMenuSpec {  // FIT and ASPECT rows where they apply, stepped from th
         SemuLaunchPlan wii = RadialBed.launch(fixture, "wii", "menu-wii", "", "Sports.rvz");
         SemuLaunchPlan snes = RadialBed.launch(fixture, "snes", "menu-snes", "", "Mario.sfc");
         SemuLaunchPlan wiiu = RadialBed.launch(fixture, "wiiu", "menu-wiiu", "", "Zelda.wux");
-        contract.expect(wii.menuLabels.join("|").equals("RESUME|SAVE STATE|LOAD STATE|SCREENSHOT|BEZEL|SHADER|FIT|ASPECT|RESET TO DEFAULT|QUIT GAME"), "the wii menu shows FIT and ASPECT: " + wii.menuLabels.join("|"));
+        contract.expect(wii.menuLabels.join("|").equals("RESUME|SAVE STATE|LOAD STATE|SCREENSHOT|BEZEL|SHADER|FIT|ASPECT|RESTART GAME|RESET TO DEFAULT|QUIT GAME"), "the wii menu shows FIT, ASPECT and RESTART GAME: " + wii.menuLabels.join("|"));
         contract.expect(snes.menuActions.contains("visual.placement.next") && !snes.menuActions.contains("visual.output.next") && !wiiu.menuActions.contains("visual.placement.next") && wiiu.menuActions.contains("system.reset"), "snes shows FIT but no ASPECT; wiiu, with no bezel to place, neither");
+        contract.expect(!snes.menuActions.contains("system.restart") && !wiiu.menuActions.contains("system.restart"), "without a second output, layouts or a second player nothing waits for a restart: no RESTART GAME row");
         SemuActionExecutor.execute(wii, "ui.menu", SEMU_SOURCE_GAMEPAD);
         for (int row = 0; row < 6; row++) { SemuActionExecutor.execute(wii, "ui.menu.down", SEMU_SOURCE_GAMEPAD); }
         int before = InputDeliveryTools.records(wii.stateDir);
@@ -169,10 +184,15 @@ class RadialMenuSpec {  // FIT and ASPECT rows where they apply, stepped from th
         contract.expect(RadialBed.record(wii, before, SemuActions.placementSelect(), 0, 0) && SemuSupervisorRuntime.menu_visible == 1, "right on FIT journals 81 and keeps the menu open");
         SemuActionExecutor.execute(wii, "ui.menu.down", SEMU_SOURCE_GAMEPAD);
         SemuActionExecutor.execute(wii, "ui.menu.right", SEMU_SOURCE_GAMEPAD);
-        contract.expect(RadialBed.record(wii, before + 2, SemuActions.outputSelect(), 1, 1) && SemuSupervisorRuntime.relaunch == 0, "right on ASPECT prompts for the restart (82, reserved 1)");
+        contract.expect(RadialBed.record(wii, before + 2, SemuActions.outputSelect(), 1, 1) && SemuSupervisorRuntime.relaunch == 0, "right on ASPECT saves 16:9 waiting for Restart Game (82, reserved 1) and restarts nothing");
         SemuActionExecutor.execute(wii, "ui.menu.down", SEMU_SOURCE_GAMEPAD);
         SemuActionExecutor.execute(wii, "ui.menu.confirm", SEMU_SOURCE_GAMEPAD);
-        contract.expect(RadialBed.record(wii, before + 4, SemuActions.resetNotice(), 0, 1) && SemuSupervisorRuntime.menu_visible == 1, "confirm on RESET TO DEFAULT asks for a second press and keeps the menu open");
+        contract.expect(RadialBed.record(wii, before + 4, SemuActions.restartNotice(), 1, 0) && SemuSupervisorRuntime.relaunch == 1, "confirm on RESTART GAME, the next row, restarts the game once to apply it (87/1)");
+        SemuSupervisorRuntime.relaunch = 0;
+        SemuSupervisorRuntime.quit = 0;
+        SemuActionExecutor.execute(wii, "ui.menu.down", SEMU_SOURCE_GAMEPAD);
+        SemuActionExecutor.execute(wii, "ui.menu.confirm", SEMU_SOURCE_GAMEPAD);
+        contract.expect(RadialBed.record(wii, before + 6, SemuActions.resetNotice(), 0, 1) && SemuSupervisorRuntime.menu_visible == 1, "confirm on RESET TO DEFAULT asks for a second press and keeps the menu open");
         memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
     }
 }

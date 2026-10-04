@@ -1,0 +1,33 @@
+// Restart Game: the settings radial's slot, the Wii layer's centre, the menu's RESTART GAME row and
+// the players page's. It is the one action that restarts the game, so the choices an emulator reads
+// only at boot (a Wii game's output, a GameCube pad on the Wii, a pad dealt to another player) are
+// saved when chosen, say RESTART TO APPLY, and wait here. It restarts once when anything differs
+// from the launch (a layout switched live counts too, so every file comes from the saved choice):
+// the supervisor stops the emulator as it does on quit and `semu launch` plans the same game again
+// from semu.json. With nothing to apply it says so and restarts nothing. Records: 87 slot 1
+// restarting, 0 nothing to apply.
+
+import ../renderer/action_abi.btrc;
+import ./journal.btrc;
+import ./plan.btrc;
+import ./player_set.btrc;
+import ./relaunch.btrc;
+
+class SemuGameRestart {
+    class bool waiting(SemuLaunchPlan launch) {  // something only a restart applies: the chosen output, a pad dealt anew, a layout read at boot
+        return SemuOutputSwitch.pending(launch.variants.output) || launch.players.pending();
+    }
+
+    class bool due(SemuLaunchPlan launch) {  // anything differs from the launch: what waits, or a layout already switched live
+        return SemuOutputSwitch.pending(launch.variants.output) || launch.players.changed();
+    }
+
+    class void execute(SemuLaunchPlan launch) {
+        if (!SemuGameRestart.due(launch)) {
+            SemuActionJournal.appendWith(launch, SemuActions.restartNotice(), 0, 0);
+            return;
+        }
+        SemuActionJournal.appendWith(launch, SemuActions.restartNotice(), 1, 0);
+        SemuRelaunch.request();
+    }
+}

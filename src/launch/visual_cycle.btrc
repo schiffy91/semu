@@ -1,8 +1,8 @@
 // The radial's and the menu's visual choices: bezel, shader, placement (Fit) and output (Aspect).
 // The supervisor journals the absolute index into the launch's variants file, which the renderer
 // applies live, and saves the choice for this system only: a system's own value beats the global
-// switch, which stays the default. An output is drawn from boot, so it waits for a confirming press
-// and restarts the game (SemuOutputSwitch). With nothing to choose the record carries slot -1 and
+// switch, which stays the default. An output is drawn from boot, so it is saved at once and waits
+// for Restart Game (SemuOutputSwitch). With nothing to choose the record carries slot -1 and
 // the renderer shows the action's unavailable toast.
 
 #include <stdlib.h>
@@ -61,7 +61,7 @@ class SemuVisualCycle {
             return;
         }
         if (choice.kind.equals("output")) {
-            SemuOutputSwitch.press(launch, choice, choice.next(delta), SemuClock.milliseconds());
+            SemuOutputSwitch.press(launch, choice, choice.next(delta));
             return;
         }
         SemuVisualCycle.select(launch, choice, choice.next(delta));

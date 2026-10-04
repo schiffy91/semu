@@ -42,6 +42,7 @@ pipeline as the Lucide derivatives.
 | `semu-previous.png` | `circle-chevron-left` |
 | `semu-quit.png` | `power` |
 | `semu-reset.png` | `rotate-ccw` |
+| `semu-restart.png` | `refresh-cw` |
 | `semu-rewind.png` | `rewind` |
 | `semu-save.png` | `save` |
 | `semu-screenshot.png` | `camera` |

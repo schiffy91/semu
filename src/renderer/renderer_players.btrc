@@ -37,5 +37,5 @@ class RendererPlayersPage {
 
     class int player(int reserved) { return reserved % 16; }  // 83 and 84 carry the player here
 
-    class int kind(int reserved) { return reserved / 16; }  // 83: 0 switched, 1 asks again, 2 restarting
+    class int kind(int reserved) { return reserved / 16; }  // 83: 0 applied, 1 saved and waiting for Restart Game
 }

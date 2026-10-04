@@ -1,6 +1,7 @@
-// Choices an emulator reads only at boot (a Wii game's 4:3 or 16:9 output) and Reset to Default take a
-// confirming press: the first press arms a short window and says what the second will do, a second
-// press of the same choice inside it acts. Acting may restart the game: the supervisor stops the
+// Reset to Default takes a confirming press: the first press arms a short window and says what the
+// second will do, a second press of the same choice inside it acts. A choice the emulator reads only
+// at boot (a Wii game's 4:3 or 16:9 output, a GameCube pad on the Wii) is saved at once and waits
+// for Restart Game (SemuGameRestart), the one action that restarts: the supervisor stops the
 // emulator as it does on quit, waits for its group, and `semu launch` plans the same game again.
 
 import Library.JSON;
@@ -42,16 +43,18 @@ class SemuRelaunch {
 class SemuOutputSwitch {  // Aspect: saved for this game only, so one 16:9 title never stretches the 4:3 ones
     class Vector<string> path(SemuLaunchPlan launch) { return ["visual", "games", launch.system, SemuRenderEnvironment.gameKeyOf(launch.rom), "output"]; }
 
-    class void press(SemuLaunchPlan launch, SemuVariantChoice choice, int target, long long now) {  // the first press prompts (82, reserved 1); the second saves, says so and restarts the game
-        if (!SemuRelaunch.confirmed(SemuActions.outputSelect(), target, now)) {
-            SemuRelaunch.arm(SemuActions.outputSelect(), target, now);
-            SemuActionJournal.appendWith(launch, SemuActions.outputSelect(), target, 1);
-            return;
-        }
+    class bool pending(SemuVariantChoice choice) { return choice.available() && choice.index != choice.launched; }  // the chosen output is not the one the game booted on
+
+    class void choose(SemuLaunchPlan launch, SemuVariantChoice choice, int target) {  // follow TARGET in the launch and journal it: 82, reserved 1 while it waits for Restart Game
+        choice.index = target;
+        choice.lastReal = target;
+        SemuActionJournal.appendWith(launch, SemuActions.outputSelect(), target, SemuOutputSwitch.pending(choice) ? 1 : 0);
+    }
+
+    class void press(SemuLaunchPlan launch, SemuVariantChoice choice, int target) {  // every press steps on and saves; the game draws it from the next boot
         if (!launch.semuHome.isEmpty() && !launch.system.isEmpty() && !launch.rom.isEmpty()) {
             SemuSettingsStore.putPath(launch.semuHome, SemuOutputSwitch.path(launch), JSONValue.makeString(choice.ids.get(target)));
         }
-        SemuActionJournal.appendWith(launch, SemuActions.outputSelect(), target, 0);
-        SemuRelaunch.request();
+        SemuOutputSwitch.choose(launch, choice, target);
     }
 }

@@ -12,8 +12,8 @@ import ./renderer_variants.btrc;
 import ./action_abi.btrc;
 import ./renderer_players.btrc;
 int SEMU_RENDER_MENU_WIDTH = 384;
-int SEMU_RENDER_MENU_HEIGHT = 640;  // the texture: header, up to twelve rows, slot line; RendererMenuRaster.height draws what a menu needs
-int SEMU_RENDER_MENU_ROWS = 12;
+int SEMU_RENDER_MENU_HEIGHT = 683;  // the texture: header, up to thirteen rows, slot line; RendererMenuRaster.height draws what a menu needs
+int SEMU_RENDER_MENU_ROWS = 13;  // the Wii menu: every value row, CONTROLLER, PLAYERS and RESTART GAME
 int SEMU_RENDER_MAX_CAPTURE_FRAME = 900;
 int SEMU_RENDER_MAX_CAPTURE_ATTEMPTS = 8;
 int SEMU_RENDER_ACTION_POLL_INTERVAL = 2;
@@ -43,8 +43,8 @@ struct RendererPostUiState {
     unsigned long long next_action_frame;
     long journal_offset;
     int item_count;
-    char labels[12 * 24];  // twelve 24-byte labels
-    char actions[12 * 32];  // SEMU_MENU_ACTIONS: each row's action, so a value row (BEZEL, SHADER, FIT, ASPECT) shows its value
+    char labels[13 * 24];  // thirteen 24-byte labels
+    char actions[13 * 32];  // SEMU_MENU_ACTIONS: each row's action, so a value row (BEZEL, SHADER, FIT, ASPECT) shows its value
     int bezels_toggles;  // requests the renderer applies to its config after consuming the journal
     int shaders_toggles;
     int bezel_request;  // a select's index for the game phase to apply; -1 while none waits
@@ -54,7 +54,7 @@ struct RendererPostUiState {
     int bezel_shown;  // the choice the menu row names: the latest select's, else the launch's
     int shader_shown;
     int placement_shown;
-    int output_shown;  // the running output: a new one takes effect when the game restarts
+    int output_shown;  // the chosen output: a new one takes effect at Restart Game
     int page;  // 1 while the players page replaces the menu's rows
     int layout_shown;  // player 1's layout, the CONTROLLER row's value; -1 without layouts
     int layout_count;
@@ -263,10 +263,10 @@ class RendererMenuModel {
         }
         if (state->catalog.loaded == 0 || record->slot >= RendererVariantFile.count(&state->catalog, action)) { return; }
         char* label = RendererVariantFile.choiceLabel(&state->catalog, action, record->slot);
-        if (action == SemuActions.outputSelect()) {  // the game draws its output from boot: the record prompts, or confirms the restart
-            if (fresh && record->reserved != 0) { RendererMenuModel.notice(state, action, "confirm", label, now); }
-            if (fresh && record->reserved == 0) { RendererMenuModel.notice(state, action, "done", label, now); }
-            if (record->reserved == 0) { state->output_shown = record->slot; }
+        if (action == SemuActions.outputSelect()) {  // the game draws its output from boot: the row names the choice, the toast says when it waits for Restart Game
+            state->output_shown = record->slot;
+            if (fresh && record->reserved != 0) { RendererMenuModel.notice(state, action, "pending", label, now); }
+            if (fresh && record->reserved == 0) { RendererToast.show(state, SemuActions.toastAction(action), "", label, now); }
             return;
         }
         if (action == SemuActions.bezelSelect()) {
@@ -286,11 +286,17 @@ class RendererMenuModel {
         if (action == SemuActions.shaderSelect()) { state->shader_shown = record->slot; }
     }
 
-    class void reset(struct RendererPostUiState* state, struct SemuActionRecord* record, long long now) {  // slot 0 asks for the confirming press (reserved 2: and the game reboots), 1 is done
+    class void reset(struct RendererPostUiState* state, struct SemuActionRecord* record, long long now) {  // slot 0 asks for the confirming press, 1 is done (reserved 1: something waits for Restart Game)
+        if (!RendererToast.fresh(record, now)) { return; }
+        if (record->slot == 1 && record->reserved == 1) { RendererMenuModel.notice(state, record->action, "pending", "", now); }
+        else if (record->slot == 1) { RendererMenuModel.notice(state, record->action, "done", "", now); }
+        else { RendererMenuModel.notice(state, record->action, "confirm", "", now); }
+    }
+
+    class void restart(struct RendererPostUiState* state, struct SemuActionRecord* record, long long now) {  // 87: slot 1 restarting, 0 nothing to apply
         if (!RendererToast.fresh(record, now)) { return; }
         if (record->slot == 1) { RendererMenuModel.notice(state, record->action, "done", "", now); }
-        else if (record->reserved == 2) { RendererMenuModel.notice(state, record->action, "restart", "", now); }
-        else { RendererMenuModel.notice(state, record->action, "confirm", "", now); }
+        else { RendererMenuModel.notice(state, record->action, "unchanged", "", now); }
     }
 
     class int rowOf(struct RendererPostUiState* state, char* action) {  // the menu row running ACTION, else 0
@@ -304,7 +310,7 @@ class RendererMenuModel {
     }
 
     class void playersPage(struct RendererPostUiState* state) {  // the rows the supervisor wrote; the menu's stay when there are none
-        char rows[12 * 24];
+        char rows[13 * 24];
         int count = RendererPlayersPage.load(rows, 24, SEMU_RENDER_MENU_ROWS);
         if (count < 1) { return; }
         memcpy(state->labels, rows, sizeof(rows));
@@ -314,17 +320,13 @@ class RendererMenuModel {
         if (state->selected >= count) { state->selected = 0; }
     }
 
-    class void page(struct RendererPostUiState* state, struct SemuActionRecord* record, long long now) {  // 86: open, rows rewritten, restarting, nothing changed, back, or one player only
+    class void page(struct RendererPostUiState* state, struct SemuActionRecord* record, long long now) {  // 86: open, rows rewritten, back, or one player only
         bool fresh = RendererToast.fresh(record, now);
         if (record->slot < 0) {
             if (fresh) { RendererMenuModel.notice(state, record->action, "unavailable", "", now); }
         } else if (record->slot == 0) {
             RendererMenuModel.mainPage(state);
             state->selected = RendererMenuModel.rowOf(state, "ui.players");
-        } else if (record->reserved == 1) {
-            if (fresh) { RendererMenuModel.notice(state, record->action, "done", "", now); }
-        } else if (record->reserved == 2) {
-            if (fresh) { RendererMenuModel.notice(state, record->action, "unchanged", "", now); }
         } else if (record->reserved == 3) {
             if (state->page != 0) { RendererMenuModel.playersPage(state); }
         } else {
@@ -334,7 +336,7 @@ class RendererMenuModel {
         }
     }
 
-    class void layout(struct RendererPostUiState* state, struct SemuActionRecord* record, long long now) {  // 83: a player's layout switched, asking for the second press, or restarting
+    class void layout(struct RendererPostUiState* state, struct SemuActionRecord* record, long long now) {  // 83: a player's layout applied, or saved and waiting for Restart Game
         bool fresh = RendererToast.fresh(record, now);
         int player0 = RendererPlayersPage.player(record->reserved);
         int kind = RendererPlayersPage.kind(record->reserved);
@@ -345,11 +347,10 @@ class RendererMenuModel {
         char* label = record->slot < state->layout_count ? state->layouts + record->slot * 24 : "";
         char seat[8];
         RendererPlayersPage.seat(seat, (int)sizeof(seat), player0);
-        if (kind != 1 && player0 == 0) { state->layout_shown = record->slot; }
+        if (player0 == 0) { state->layout_shown = record->slot; }  // the CONTROLLER row names the choice, applied or waiting
         if (!fresh) { return; }
-        if (kind == 0) { RendererToast.show(state, "controller.layout.next", seat, label, now); }
-        if (kind == 1) { RendererToast.show(state, "controller.layout.next:confirm", seat, label, now); }
-        if (kind == 2) { RendererToast.show(state, "controller.layout.next:done", seat, label, now); }
+        if (kind == 1) { RendererToast.show(state, "controller.layout.next:pending", seat, label, now); }
+        else { RendererToast.show(state, "controller.layout.next", seat, label, now); }
     }
 
     class void apply(struct RendererPostUiState* state,
@@ -394,6 +395,8 @@ class RendererMenuModel {
             if (state->page != 0) { RendererMenuModel.playersPage(state); }  // the rows name the new pad
         } else if (action == SemuActions.menuPage()) {
             RendererMenuModel.page(state, record, now);
+        } else if (action == SemuActions.restartNotice()) {
+            RendererMenuModel.restart(state, record, now);
         }
     }
 }

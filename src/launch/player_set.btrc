@@ -1,8 +1,9 @@
 // What the supervisor knows of the players of a launch and changes while it runs: how many the game
 // takes, the roster's pads, which pad and layout each player holds now and held at the launch, the
-// system's layouts with how this emulator applies each (live, or by restarting the game), and the
-// facts of the emulator's live switch (emulator.json controllers). SemuControllerLayouts and
-// SemuPlayersPage change it; the menu and the renderer show it.
+// system's layouts with how this emulator applies each (live, or at Restart Game), which layout each
+// player's emulator runs now (the launch's or the last live switch), and the facts of the
+// emulator's live switch (emulator.json controllers). SemuControllerLayouts and SemuPlayersPage
+// change it; the menu and the renderer show it.
 
 import Library.JSON;
 import Library.Strings;
@@ -20,6 +21,7 @@ class SemuPlayerSet {
     public Vector<int> launchPads;
     public Vector<int> layouts;  // per player: the layout index, -1 for a system without layouts
     public Vector<int> launchLayouts;
+    public Vector<int> runningLayouts;  // per player: what the emulator runs now, the launch's layout or the last live switch
     public Vector<string> layoutIds;
     public Vector<string> layoutLabels;
     public Vector<string> layoutApply;  // per layout: live, relaunch, or "" where this emulator has no row for it
@@ -43,6 +45,7 @@ class SemuPlayerSet {
         self.launchPads = [-1];
         self.layouts = [-1];
         self.launchLayouts = [-1];
+        self.runningLayouts = [-1];
         self.layoutIds = [];
         self.layoutLabels = [];
         self.layoutApply = [];
@@ -74,7 +77,18 @@ class SemuPlayerSet {
 
     public bool live(int layout) { return layout >= 0 && layout < self.layoutApply.size() && self.layoutApply.get(layout).equals("live") && !self.directory.isEmpty(); }
 
-    public bool changed() {  // what only a restart applies differs from the launch
+    public bool waiting(int player0) {  // a connected player's chosen layout is not the one its emulator runs: it applies at Restart Game
+        return self.connected(player0) && player0 < self.layouts.size() && player0 < self.runningLayouts.size() && self.layouts.get(player0) != self.runningLayouts.get(player0);
+    }
+
+    public bool pending() {  // something only Restart Game applies: a pad dealt anew or a layout read at boot
+        for (int player0 = 0; player0 < self.count; player0++) {
+            if (self.pads.get(player0) != self.launchPads.get(player0) || self.waiting(player0)) { return true; }
+        }
+        return false;
+    }
+
+    public bool changed() {  // anything differs from the launch, a layout switched live included: Restart Game restarts
         for (int player0 = 0; player0 < self.count; player0++) {
             if (self.pads.get(player0) != self.launchPads.get(player0) || self.layouts.get(player0) != self.launchLayouts.get(player0)) { return true; }
         }
@@ -94,9 +108,10 @@ class SemuPlayerSet {
         return layout >= 0 && layout < self.layoutLabels.size() ? self.layoutLabels.get(layout) : "";
     }
 
-    public void show(Vector<string> shown) {  // the menu rows this launch adds: CONTROLLER where layouts apply, PLAYERS where the game takes more than one
+    public void show(Vector<string> shown) {  // the menu rows this launch adds: CONTROLLER where layouts apply, PLAYERS where the game takes more than one, RESTART GAME with either or a second output
         if (self.layoutsAvailable()) { shown.push("layouts"); }
         if (self.playersAvailable()) { shown.push("players"); }
+        if (self.layoutsAvailable() || self.playersAvailable() || shown.contains("outputs")) { shown.push("restarts"); }  // RESTART GAME where some choice waits for it
     }
 
     public Vector<string> environment() {  // the CONTROLLER row's value and the layout toasts
@@ -122,6 +137,7 @@ class SemuPlayerSets {
         set.launchPads = [];
         set.layouts = [];
         set.launchLayouts = [];
+        set.runningLayouts = [];
         set.count = rows.size();
         set.padCount = SemuPlayers.known(plan) ? plan.pads.size() : 0;
         for (int index = 0; index < rows.size(); index++) {
@@ -131,6 +147,7 @@ class SemuPlayerSets {
         }
         for pad in set.pads { set.launchPads.push(pad); }
         for layout in set.layouts { set.launchLayouts.push(layout); }
+        for layout in set.layouts { set.runningLayouts.push(layout); }
         set.defaultLayout = SemuPlayers.layoutIndex(system, SemuPlayers.defaultLayout(system));
         JSONValue declared = SemuPlayers.layouts(system);
         for (int index = 0; index < declared.size(); index++) {

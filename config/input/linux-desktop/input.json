@@ -130,31 +130,33 @@
       "label": "Aspect (4:3/16:9)",
       "chord": "Ctrl+Shift+G",
       "toast": "ASPECT: {label}",
-      "confirm_toast": "{label}: AGAIN TO REBOOT GAME",
-      "done_toast": "ASPECT {label}: REBOOTING",
+      "pending_toast": "ASPECT {label}: RESTART TO APPLY",
       "unavailable_toast": "ASPECT: ONE ONLY"
     },
     "system.reset": {
       "label": "Reset to Default",
       "chord": "Ctrl+Shift+R",
       "confirm_toast": "RESET: PRESS AGAIN",
-      "restart_toast": "RESET: AGAIN TO REBOOT GAME",
+      "pending_toast": "RESET: RESTART TO APPLY",
       "done_toast": "RESET TO DEFAULTS"
+    },
+    "system.restart": {
+      "label": "Restart Game",
+      "chord": "Ctrl+Shift+D",
+      "done_toast": "RESTARTING GAME",
+      "unchanged_toast": "RESTART: NO CHANGES"
     },
     "controller.layout.next": {
       "label": "Controller Layout",
       "chord": "Ctrl+Shift+C",
       "toast": "{slot}: {label}",
-      "confirm_toast": "{slot} {label}: AGAIN TO REBOOT",
-      "done_toast": "{slot} {label}: REBOOTING",
+      "pending_toast": "{slot} {label}: RESTART TO APPLY",
       "unavailable_toast": "CONTROLLER: ONE LAYOUT"
     },
     "ui.players": {
       "label": "Players",
       "chord": "Ctrl+Shift+U",
-      "unavailable_toast": "PLAYERS: ONE PLAYER",
-      "unchanged_toast": "PLAYERS: NO CHANGES",
-      "done_toast": "PLAYERS: REBOOTING"
+      "unavailable_toast": "PLAYERS: ONE PLAYER"
     }
   },
   "quit_chord": {
@@ -233,6 +235,11 @@
         "when": "players"
       },
       {
+        "label": "RESTART GAME",
+        "action": "system.restart",
+        "when": "restarts"
+      },
+      {
         "label": "RESET TO DEFAULT",
         "action": "system.reset"
       },
@@ -242,7 +249,7 @@
       }
     ],
     "pause_action": "ui.pause",
-    "doc": "The native Semu menu the renderer draws over any emulator with a compositor. The supervisor mirrors this list: the same journal drives the drawn selection and the executed action. A row with `when` shows only where that choice offers two or more (placements: a bezel to place; outputs: a system with two pictures, Wii 4:3 and 16:9); the renderer draws up to twelve. BEZEL, SHADER, FIT and ASPECT are value rows: confirm or right steps forward, left back. BEZEL and SHADER step this system's own choice through its variants, then off, live and saved as visual.systems.<id>.bezel_variant or shader_variant, never the global switches, which stay the default for systems without their own choice. FIT switches live between the whole bezel and the screen (game) placement, both at a whole-number scale, saved as visual.systems.<id>.placement. ASPECT asks for a second press, then restarts the game on the other output, saved for that game only (visual.games.<id>.<game>.output). CONTROLLER (where a system has several layouts) steps player 1's layout like a value row; a layout read only at boot (GameCube on Wii) asks for a second press and restarts the game. PLAYERS (where the game takes more than one player) opens a page: one row per player with the pad it holds and its layout (confirm moves the player to the next free pad, or none; left and right step its layout), then RESTART GAME, which restarts only after a change, and BACK. Pads are dealt at launch, so a pad change applies when the game restarts. RESET TO DEFAULT asks for a second press, then removes the system's own choices and applies the defaults live (restarting only when the running output was not the default). An action's toast is what the renderer shows for a moment after it runs (SEMU_MENU_TOASTS): {slot} is the slot as the emulator numbers it (SLOT 3), empty with one fixed slot; {label} is the chosen value's label, OFF for none; any change shows the action's toast, and a NAME_toast is the toast for one outcome: loading while a shader chain compiles, unavailable where the system has nothing to choose, confirm and restart when a second press is needed, done when it acted. pause_action reaches only emulators whose emulator.json menu.pause is emulator (seen to keep presenting while paused); the others keep running under the menu, and an emulator without a compositor gets no menu."
+    "doc": "The native Semu menu the renderer draws over any emulator with a compositor. The supervisor mirrors this list: the same journal drives the drawn selection and the executed action. A row with `when` shows only where that choice offers two or more (placements: a bezel to place; outputs: a system with two pictures, Wii 4:3 and 16:9; restarts: a system where some choice waits for a restart, its outputs, layouts or players); the renderer draws up to thirteen. BEZEL, SHADER, FIT and ASPECT are value rows: confirm or right steps forward, left back. BEZEL and SHADER step this system's own choice through its variants, then off, live and saved as visual.systems.<id>.bezel_variant or shader_variant, never the global switches, which stay the default for systems without their own choice. FIT switches live between the whole bezel and the screen (game) placement, both at a whole-number scale, saved as visual.systems.<id>.placement. ASPECT steps the output at once and saves it for that game only (visual.games.<id>.<game>.output); the game draws it from boot, so it applies at RESTART GAME. CONTROLLER (where a system has several layouts) steps player 1's layout like a value row, live where the emulator switches it; a layout read only at boot (GameCube on Wii) is saved and applies at RESTART GAME. PLAYERS (where the game takes more than one player) opens a page: one row per player with the pad it holds and its layout (confirm moves the player to the next free pad, or none; left and right step its layout), then RESTART GAME and BACK. Pads are dealt at launch, so a pad change applies when the game restarts. RESTART GAME (here, on the players page, in the settings radial and in the centre of the Wii layer) restarts the game once when anything differs from the launch, and otherwise says so and restarts nothing; no other row restarts the game, and a choice that waits for it toasts RESTART TO APPLY. RESET TO DEFAULT asks for a second press, then removes the system's own choices and applies the defaults live; what only a restart applies (an output, a GameCube pad) waits for RESTART GAME. An action's toast is what the renderer shows for a moment after it runs (SEMU_MENU_TOASTS): {slot} is the slot as the emulator numbers it (SLOT 3), empty with one fixed slot; {label} is the chosen value's label, OFF for none; any change shows the action's toast, and a NAME_toast is the toast for one outcome: loading while a shader chain compiles, unavailable where the system has nothing to choose, confirm when Reset needs its second press, pending when the choice is saved and waits for RESTART GAME, done when it acted, unchanged when Restart had nothing to apply. pause_action reaches only emulators whose emulator.json menu.pause is emulator (seen to keep presenting while paused); the others keep running under the menu, and an emulator without a compositor gets no menu."
   },
   "gamepad_chords": {
     "modifier": "select",

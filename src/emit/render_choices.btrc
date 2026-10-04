@@ -20,6 +20,7 @@ class SemuVariantChoice {  // one kind's ordered ids, their labels and the live 
     public int lastReal;  // the last choice that was not none, for the On/Off switches
     public int cycled;  // how many leading ids the toggle steps through: a default outside them (placement fit) follows them
     public int defaultIndex;  // what Reset to Default selects, -1 with nothing to choose
+    public int launched;  // the index the game booted on: an output it draws from boot changes only at Restart Game
 
     public SemuVariantChoice(string kind) {
         self.kind = kind;
@@ -29,6 +30,7 @@ class SemuVariantChoice {  // one kind's ordered ids, their labels and the live 
         self.lastReal = 0;
         self.cycled = 0;
         self.defaultIndex = -1;
+        self.launched = 0;
     }
 
     public bool available() { return self.cycled > 0; }
@@ -125,6 +127,7 @@ class SemuRenderChoices {
         result.index = result.ids.indexOf(SemuRenderEnvironment.outputId(plan, system));
         result.defaultIndex = result.ids.indexOf(SemuRenderEnvironment.defaultOutput(system));
         if (result.index < 0) { result.index = result.defaultIndex >= 0 ? result.defaultIndex : 0; }
+        result.launched = result.index;
         result.lastReal = result.index;
         return result;
     }

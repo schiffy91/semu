@@ -50,17 +50,20 @@ class SemuActions {
     class int bezelSelect() { return SemuActions.statePrev() + 1; }  // slot carries the absolute index into the variants file's bezels
     class int shaderSelect() { return SemuActions.bezelSelect() + 1; }
     // Past 80 the slot is still an absolute index into the variants file's lists, and -1 means this
-    // system has nothing to choose (the action's unavailable toast). reserved carries a prompt: 1 on
-    // an output select or a reset notice asks for the confirming press (2: and that press reboots the
-    // game). 83 carries the player in reserved plus 16 times its kind (0 switched, 1 asks for the
-    // second press, 2 restarting); 84 the player in reserved; 86 slot 1 the players page (reserved 1
-    // restarting, 2 nothing changed, 3 rows rewritten), 0 back to the menu.
+    // system has nothing to choose (the action's unavailable toast). No record restarts the game but
+    // 87: an output select carries 1 in reserved when the chosen output waits for Restart Game (0: it
+    // is the one running); a reset notice's slot 0 asks for the confirming press and slot 1 is done
+    // (reserved 1: something waits for Restart Game). 83 carries the player in reserved plus 16
+    // times its kind (0 applied, 1 saved and waiting for Restart Game); 84 the player in reserved;
+    // 86 slot 1 the players page (reserved 3 rows rewritten), 0 back to the menu; 87 slot 1
+    // restarting, 0 nothing to apply.
     class int placementSelect() { return SemuActions.shaderSelect() + 1; }  // 81: the system's placements, bezel or screen
     class int outputSelect() { return SemuActions.shaderSelect() + 2; }  // 82: the system's outputs, 4:3 or 16:9
     class int layoutSelect() { return SemuActions.shaderSelect() + 3; }  // 83: a player's controller layout
     class int playerAssign() { return SemuActions.shaderSelect() + 4; }  // 84: the pad a player holds on the players page
     class int resetNotice() { return SemuActions.shaderSelect() + 5; }  // 85: slot 0 armed, 1 done
     class int menuPage() { return SemuActions.shaderSelect() + 6; }  // 86: the players page
+    class int restartNotice() { return SemuActions.shaderSelect() + 7; }  // 87: Restart Game
 
     class void resetExtensions() {
         memset(SemuActionExtensionIds, 0,
@@ -115,6 +118,7 @@ class SemuActions {
         if (actionId.equals("controller.layout.select")) { return SemuActions.layoutSelect(); }
         if (actionId.equals("player.assign")) { return SemuActions.playerAssign(); }
         if (actionId.equals("ui.players.page")) { return SemuActions.menuPage(); }
+        if (actionId.equals("system.restart.notice")) { return SemuActions.restartNotice(); }
         if (actionId.equals("app.quit")) { return SemuActions.appQuit(); }
         if (actionId.equals("ui.screenshot")) { return SemuActions.screenshot(); }
         if (actionId.equals("ui.escape")) { return SemuActions.escape(); }
@@ -141,6 +145,7 @@ class SemuActions {
         if (action == SemuActions.layoutSelect()) { return "controller.layout.select"; }
         if (action == SemuActions.playerAssign()) { return "player.assign"; }
         if (action == SemuActions.menuPage()) { return "ui.players.page"; }
+        if (action == SemuActions.restartNotice()) { return "system.restart.notice"; }
         if (action == SemuActions.appQuit()) { return "app.quit"; }
         if (action == SemuActions.screenshot()) { return "ui.screenshot"; }
         if (action == SemuActions.escape()) { return "ui.escape"; }
@@ -155,6 +160,7 @@ class SemuActions {
         if (action == SemuActions.resetNotice()) { return "system.reset"; }
         if (action == SemuActions.layoutSelect()) { return "controller.layout.next"; }
         if (action == SemuActions.playerAssign() || action == SemuActions.menuPage()) { return "ui.players"; }
+        if (action == SemuActions.restartNotice()) { return "system.restart"; }
         return SemuActions.id(action);
     }
 
@@ -188,7 +194,8 @@ class SemuActions {
             || action == SemuActions.resetNotice()
             || action == SemuActions.layoutSelect()
             || action == SemuActions.playerAssign()
-            || action == SemuActions.menuPage();
+            || action == SemuActions.menuPage()
+            || action == SemuActions.restartNotice();
     }
 }
 

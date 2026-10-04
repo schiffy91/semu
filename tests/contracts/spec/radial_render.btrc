@@ -67,20 +67,30 @@ class RadialRenderLive {  // records 81, 82 and 85 as the post-UI phase and the 
         LiveVariantTools.fill(&record, SemuActions.outputSelect(), 1, now, 2ULL);
         record.reserved = 1;
         RendererMenuModel.apply(&post, &record, now);
-        contract.expect(strcmp(post.toast, "16:9: AGAIN TO REBOOT GAME") == 0 && post.output_shown == 0, "an output prompt says the second press reboots the game and changes nothing yet");
-        LiveVariantTools.fill(&record, SemuActions.outputSelect(), 1, now, 3ULL);
+        contract.expect(strcmp(post.toast, "ASPECT 16:9: RESTART TO APPLY") == 0 && post.output_shown == 1 && strcmp(RendererMenuRaster.rowValue(&post, 7), "16:9") == 0, "an output saved for the next boot says it waits for Restart Game, and the ASPECT row names it");
+        LiveVariantTools.fill(&record, SemuActions.outputSelect(), 0, now, 3ULL);
         RendererMenuModel.apply(&post, &record, now);
-        contract.expect(strcmp(post.toast, "ASPECT 16:9: REBOOTING") == 0 && post.output_shown == 1, "the confirming record says the game reboots on 16:9");
+        contract.expect(strcmp(post.toast, "ASPECT: 4:3") == 0 && post.output_shown == 0, "stepping back to the output the game runs shows the plain toast: nothing waits");
         LiveVariantTools.fill(&record, SemuActions.bezelSelect(), -1, now, 4ULL);
         RendererMenuModel.apply(&post, &record, now);
         contract.expect(strcmp(post.toast, "BEZEL: NONE HERE") == 0 && post.bezel_request == -1, "slot -1 shows the unavailable toast and asks for nothing");
         LiveVariantTools.fill(&record, SemuActions.resetNotice(), 0, now, 5ULL);
-        record.reserved = 2;
+        record.reserved = 1;
         RendererMenuModel.apply(&post, &record, now);
-        bool restart = strcmp(post.toast, "RESET: AGAIN TO REBOOT GAME") == 0;
+        bool prompt = strcmp(post.toast, "RESET: PRESS AGAIN") == 0;
         LiveVariantTools.fill(&record, SemuActions.resetNotice(), 1, now, 6ULL);
+        record.reserved = 1;
         RendererMenuModel.apply(&post, &record, now);
-        contract.expect(restart && strcmp(post.toast, "RESET TO DEFAULTS") == 0, "the reset notices: the prompt that warns of the reboot, then RESET TO DEFAULTS");
+        bool waiting = strcmp(post.toast, "RESET: RESTART TO APPLY") == 0;
+        LiveVariantTools.fill(&record, SemuActions.resetNotice(), 1, now, 7ULL);
+        RendererMenuModel.apply(&post, &record, now);
+        contract.expect(prompt && waiting && strcmp(post.toast, "RESET TO DEFAULTS") == 0, "the reset notices: the prompt, RESET: RESTART TO APPLY when something waits for Restart Game, else RESET TO DEFAULTS");
+        LiveVariantTools.fill(&record, SemuActions.restartNotice(), 1, now, 8ULL);
+        RendererMenuModel.apply(&post, &record, now);
+        bool restarting = strcmp(post.toast, "RESTARTING GAME") == 0;
+        LiveVariantTools.fill(&record, SemuActions.restartNotice(), 0, now, 9ULL);
+        RendererMenuModel.apply(&post, &record, now);
+        contract.expect(restarting && strcmp(post.toast, "RESTART: NO CHANGES") == 0, "Restart Game's notices: RESTARTING GAME, or RESTART: NO CHANGES with nothing to apply");
         LiveVariantTools.clear();
     }
 }

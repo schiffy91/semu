@@ -114,7 +114,7 @@ class HarnessSpecStyle {  // no one- or two-letter names in the multi-disc, chec
         for name in ["input_delivery", "input_devices", "menu_modal", "retroarch_keyboard", "emulator_hotkeys", "emulator_keyboard", "save_slots", "render_variants", "visual_cycle", "live_variants", "live_switch", "steam_configset", "steam_controllers", "right_trackpad", "standalone_cursor", "placement", "performance", "mods", "mods_paths", "mods_install", "mods_launch", "mods_cli"] { result.push("tests/contracts/spec/" + name + ".btrc"); }
         for name in ["players", "controller_layouts", "radial_choices", "radial_render", "wii_pointer", "mods_migrate"] { result.push("tests/contracts/spec/" + name + ".btrc"); }  // the M13 series
         for name in ["declarations", "install", "kind", "layout", "library", "listing", "manifest", "migrate", "move", "report", "title_settings", "titles", "updates"] { result.push("src/mods/" + name + ".btrc"); }
-        for name in ["paced_keys", "controller_layouts", "pad_roster", "player_set", "players_page", "relaunch", "system_reset", "seeds"] { result.push("src/launch/" + name + ".btrc"); }
+        for name in ["paced_keys", "controller_layouts", "pad_roster", "player_set", "players_page", "relaunch", "system_reset", "game_restart", "seeds"] { result.push("src/launch/" + name + ".btrc"); }
         for name in ["players", "composed_scale", "render_choices", "esde_choice"] { result.push("src/emit/" + name + ".btrc"); }
         for name in ["src/check_outputs.btrc", "src/check_players.btrc", "src/renderer/renderer_players.btrc"] { result.push(name); }
         return result;
