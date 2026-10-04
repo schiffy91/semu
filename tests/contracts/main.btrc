@@ -47,6 +47,7 @@ import ./spec/content.btrc;
 import ./spec/harness.btrc;
 import ./spec/deck_harness.btrc;
 import ./spec/input_delivery.btrc;
+import ./spec/menu_modal.btrc;
 import ./spec/retroarch_keyboard.btrc;
 import ./spec/emulator_hotkeys.btrc;
 import ./spec/save_slots.btrc;
@@ -961,6 +962,7 @@ int main() {
     RightTrackpadSpecContract.run(contract);
     LaunchSpecContract.run(contract);
     InputDeliverySpecContract.run(contract);
+    MenuModalSpecContract.run(contract);
     RetroArchKeyboardSpecContract.run(contract);
     EmulatorHotkeySpecContract.run(contract);
     SaveSlotSpecContract.run(contract);

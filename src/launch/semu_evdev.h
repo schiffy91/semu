@@ -20,6 +20,9 @@ struct uinput_abs_setup { uint16_t code; struct input_absinfo absinfo; };
 #define EVIOCGNAME(len) 0UL
 #define EVIOCGBIT(ev, len) 0UL
 #define EVIOCGID 0UL
+#define EVIOCGABS(abs) 0UL
+#define EVIOCGKEY(len) 0UL
+#define EVIOCGRAB 0UL
 #define UI_DEV_CREATE 0UL
 #define UI_DEV_DESTROY 0UL
 #define UI_DEV_SETUP 0UL

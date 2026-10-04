@@ -32,8 +32,9 @@ nds retroarch melonds 40 move:0.5,0.5 tap:0.5,0.5 tap:0.05,0.9 key:ctrl+shift+b 
 n3ds azahar - 50 move:0.5,0.5 tap:0.5,0.5 key:ctrl+shift+b tap:0.5,0.5 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
 # 5. The Semu menu over a standalone that keeps running under it (Azahar menu.pause none): Ctrl+M
 #    opens it (journal 1, ui.menu "(keyboard)", Azahar's own Ctrl+M mute is blanked), the pad moves
-#    it (3, 2) and A on RESUME closes it (5). Until the menu holds the pad for itself (follow-up F1),
-#    the same A also reaches the game: a title that advances in after-4 is that known limitation.
+#    it (3, 2) and A on RESUME closes it (5). The menu holds the pad while it is open (follow-up F1):
+#    the launch log says "the menu holds 1 pad(s)" then "gave 1 pad(s) back", and the title must not
+#    advance in after-4, since neither the d-pad nor that A reached Azahar.
 n3ds azahar - 50 key:ctrl+m dpad_down dpad_up south -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
 # 6. The Azahar core reads x as 0.1 + 0.8 f of its 400-wide frame: core x about 0.14, 0.50, 0.86.
 n3ds retroarch azahar 50 tap:0.05,0.5 tap:0.5,0.5 tap:0.95,0.5 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds

@@ -21,6 +21,7 @@ import Library.Vector;
 #define SEMU_DEDUPE_ACTION_BYTES 64
 #define SEMU_DEDUPE_TABLE_BYTES 2048  // thirty-two action ids of sixty-four bytes each
 #define SEMU_DEDUPE_WINDOW_MS 250  // one chord through two sources inside this window
+#define SEMU_PAD_AXES 64  // ABS_CNT: every absolute axis evdev numbers
 
 struct SemuChordState {  // one device's view of the configured quit chord
     int buttons[SEMU_QUIT_CHORD_BUTTONS];
@@ -40,6 +41,11 @@ struct SemuInputDevice {
     int hat_x;
     int hat_y;
     struct SemuChordState quit_chord;
+    int grabbed;  // Semu asked for EVIOCGRAB: while the menu holds the pad no other reader gets its events
+    unsigned char axis_known[SEMU_PAD_AXES];  // calibrated from EVIOCGABS when the pad was opened
+    int axis_value[SEMU_PAD_AXES];
+    int axis_rest[SEMU_PAD_AXES];  // where the axis sits untouched: centre for a stick or hat, minimum for a trigger
+    int axis_reach[SEMU_PAD_AXES];  // how far from rest still counts as untouched
 };
 
 struct SemuKeySource {  // keys beside evdev: one descriptor to poll and its drain
@@ -70,6 +76,8 @@ struct SemuSupervisorState {
     int dedupe_sources[SEMU_DEDUPE_ACTIONS];
     long long dedupe_ms[SEMU_DEDUPE_ACTIONS];
     int dedupe_count;
+    int modal_phase;  // SEMU_MODAL_*: whether the open menu holds the pads
+    long long modal_since;  // when that phase began
 };
 
 struct SemuSupervisorState SemuSupervisorRuntime;

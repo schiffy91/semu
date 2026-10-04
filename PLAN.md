@@ -346,7 +346,13 @@ Semu executing the actions itself.
   emulator through its own pause action, and closing it resumes, only where
   the emulator was seen to keep presenting while paused (`emulator.json`
   `menu.pause`); elsewhere the menu draws over the running game, and an
-  emulator with no compositor gets no menu, never an invisible one. The
+  emulator with no compositor gets no menu, never an invisible one. On every
+  emulator the open menu is modal for pad input: on Linux the supervisor
+  grabs the pads it reads (EVIOCGRAB, Steam's virtual pad in Game Mode) once
+  every button, stick, trigger and hat on them is at rest, so the emulator
+  never keeps a held button it saw go down but not come up, and lets them go
+  after the menu closes, once the closing press is released (2 s at most), and
+  at once on quit, a stop, the emulator's exit and the supervisor's end. The
   renderer draws it from `SEMU_MENU_ITEMS` and the supervisor mirrors the
   same list, so the drawn selection and the executed action never diverge.
   BEZEL and SHADER (and the radial's Next Bezel, Next Shader) step this
@@ -368,7 +374,8 @@ Semu executing the actions itself.
   the second Xwayland of a private gamescope, runs its action once (`semu:
   action <id> (keyboard)` and its journal record), Next Bezel and Next Shader
   switch live with their toast and are saved for that system, Select+Y on the
-  replica of Steam's pad opens the menu, and right-trackpad taps reach every
+  replica of Steam's pad opens the menu, the menu over running Azahar keeps
+  its d-pad and A from the game, and right-trackpad taps reach every
   DS and 3DS route where the touch screen is drawn, before and after a layout
   switch. Then the owner, once in Game Mode: Steam loads Semu's profile
   (controller_ui.txt names config/semu/controller_neptune.vdf for App ID
@@ -713,10 +720,32 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   the menu pauses an emulator only where it was seen to keep presenting while paused
   (`emulator.json` `menu.pause` emulator: RetroArch, PPSSPP). Azahar, Dolphin and PCSX2 stop
   presenting when paused (VM, `tests/integration/menu-pause.sh`), and Flycast, Cemu and Ryujinx
-  declare no pause action: their menu opens over the running game, and the pad reaches the game
-  as well as the menu while it is open (a known limitation; blocking game input is a later task).
-  Standalone melonDS has no compositor on any platform, so Select+Y and Ctrl+M open no menu there
-  rather than an invisible one that paused the game.
+  declare no pause action: their menu opens over the running game. Until 2026-10-04 the pad reached
+  the game as well as the menu (seen on the Deck: OoT 3D went from its title to file select under
+  the menu); the modal menu below ends that. Standalone melonDS has no compositor on any platform,
+  so Select+Y and Ctrl+M open no menu there rather than an invisible one that paused the game.
+- Modal menu (2026-10-04, follow-up F1): the open menu holds the pads for itself on every emulator,
+  paused or not (`src/launch/menu_modal.btrc`). A pure state machine (free, arming, held,
+  releasing) runs after every supervisor tick's drain: opening the menu arms it, and it grabs every
+  pad the supervisor reads (EVIOCGRAB) only once nothing on any pad is down, then releases them after
+  the menu closes once the closing press is up. Reversible defaults: an axis is at rest within an
+  eighth of its travel (or its flat zone, if wider) from where it rests; signed axes rest at their
+  middle, unsigned sticks (ABS_X/Y/RX/RY, or any axis centred when the pad was opened) at their
+  middle, other unsigned axes (triggers) at their minimum; a pad opened mid-press is seeded from
+  EVIOCGKEY and EVIOCGABS; a pad that never comes to rest after the close is released 2 s later
+  (it can only lose presses that way, never gain a stuck one), but arming never times out, since
+  grabbing a held button would leave it held in the game; a pad plugged in while the menu is open is
+  grabbed too; quit, a stop signal, the emulator's exit and the supervisor's end release at once,
+  and closing a descriptor ends its grab in the kernel, so not even a killed supervisor leaves a pad
+  held. Only pads are grabbed: keyboards (and so Steam's radial keys, as XTest), the right
+  trackpad's X pointer and the touchscreen still reach the game while the menu is open. macOS has no
+  equivalent (GameController cannot be grabbed), so the menu over a macOS standalone stays
+  non-modal. Follow-up F2, an Azahar patch so a paused Azahar keeps presenting, stays open: with
+  async_presentation=false it presents from the emulation thread, which blocks while paused, and
+  with async presentation its present thread also only presents queued frames (fbd3fb0
+  vk_present_window.cpp:310-324 waits on present_queue), so the patch would mean
+  re-presenting from a paused emulation thread inside Azahar's renderer, neither small nor safe,
+  and F1 already keeps the game from seeing the menu's input.
 - Per-system bezel and shader choices (2026-10-04). A system's own `bezel_variant` or
   `shader_variant` (including `none`) beats the global `visual.bezels` / `visual.crt_shaders`,
   which are only the default for systems without their own value; the settings page shows what
@@ -1598,6 +1627,29 @@ Update this block whenever a milestone criterion changes state.
   emulators (melonDS Shift+F1, Azahar's pause), with their echo suppression, which headless gamescope
   cannot see (no libinput); the Deck touchscreen, Dolphin's Wii remotes and the lower-grip Wii layer;
   both Steam Controllers; and how a shell-bezel decode stall feels.
+  2026-10-04, the modal menu (follow-up F1; offline, Deck untouched; ruling above). Built: the open
+  menu grabs the pads the supervisor reads once all of them are at rest and releases them after the
+  closing press (`src/launch/menu_modal.btrc`, run after every tick's drain); pads now track their
+  sticks and triggers, and are seeded from EVIOCGKEY and EVIOCGABS when opened. Observed in the
+  podman VM with `tests/integration/menu-modal.sh` (rootful stage, /dev/input bound in): `semu
+  launch azahar` ran a stand-in Azahar, sdl2-jstest printing every SDL joystick event with a
+  timestamp, while the replica of Steam's virtual pad (`virtual_pad --steam-virtual-pad`, SDL GUID
+  030079f6de280000ff11000001000000, "Microsoft X-Box 360 pad 0") played A; A held through
+  Select+Y, then released; d-pad down, down, up, up, R1, L1, X, L3 and R2 in the menu; B; then A and
+  d-pad up; Start+Select. The supervisor logged ui.menu, "the menu holds 1 pad(s)" in the same
+  millisecond as A's late release (1.1 s after Select came up), two downs and two ups, ui.menu.back, then
+  "gave 1 pad(s) back" 78-89 ms after B (two runs); SDL saw exactly A down and up, A, Select, Y down, Y and Select
+  up, A's release, then nothing for 4.2 s (both runs), then A and d-pad up, and Select of the quit chord (Start
+  was cut off by the quit). The previous semu (4707ffb, the same script) let SDL see the whole menu:
+  the four d-pad moves, R1, L1, X, L3, R2's axis and B. `make test` carries the state machine, the
+  rest rules and the Select+Y sequence through real pollDevices ticks on socketpair pads (one
+  standing in for Steam's pad, one plugged in mid-menu), and fails under each of 7 mutations: no
+  grab, no wait before grabbing, no wait for the closing release, the EVIOCGRAB ioctl dropped, the
+  tick never updating the hold, sticks and triggers untracked, and the emulator's exit not releasing.
+  Still for the Deck: `radial-check.cases` case 5 (Ctrl+M over Azahar's OoT 3D title, d-pad and A in
+  the menu) must now leave the title where it was, with `menu-holds: 1 gave-back: 1` in its result;
+  and in Game Mode the same on Steam's real virtual pad. macOS stays non-modal (no grab in
+  GameController); F2 (Azahar presenting while paused) stays open (ruling above).
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a

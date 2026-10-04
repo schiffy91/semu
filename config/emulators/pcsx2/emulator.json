@@ -108,6 +108,6 @@
   },
   "menu": {
     "pause": "none",
-    "doc": "Seen 2026-10-03 in the podman VM (tests/integration/menu-pause.sh with openbox, Marvel vs. Capcom 2 through the render hook on llvmpipe): Ctrl+P (TogglePause) froze the game under PCSX2's own Paused notice, and a menu record written while paused stayed invisible until Ctrl+P resumed it, so a paused PCSX2 stops presenting. The Semu menu therefore opens over the running game; while it is open the pad still reaches the game."
+    "doc": "Seen 2026-10-03 in the podman VM (tests/integration/menu-pause.sh with openbox, Marvel vs. Capcom 2 through the render hook on llvmpipe): Ctrl+P (TogglePause) froze the game under PCSX2's own Paused notice, and a menu record written while paused stayed invisible until Ctrl+P resumed it, so a paused PCSX2 stops presenting. The Semu menu therefore opens over the running game, and on Linux it holds the pad while it is open (EVIOCGRAB once every pad is at rest, released after the closing press), so the game sees none of the menu's input; taps and Steam's radial keys still reach it."
   }
 }

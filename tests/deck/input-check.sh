@@ -172,6 +172,7 @@ evidence() {  # what the case left: the X key adapter, each action by source, th
   note "x-listener: $(grep -o 'semu: listening for keys on X display [^ ]*' "$dir/run.log" | sed 's/.* //' | tr '\n' ' ')($(grep -c 'semu: listening for keys on X display' "$dir/run.log") lines)"
   grep -o 'semu: action [^ ]* ([a-z]*)' "$dir/run.log" | sort | uniq -c | while read -r count _ _ action source; do note "action: $action $source x$count"; done
   note "deduplicated: $(grep -c 'already ran from another input source' "$dir/run.log")"
+  note "menu-holds: $(grep -c 'semu: the menu holds' "$dir/run.log") gave-back: $(grep -c 'semu: the menu gave' "$dir/run.log")"  # the modal menu: grabbed once every pad rested, released after the closing press
   grep -E 'semu-retroarch: touch|semu-vulkan: touch' "$dir/run.log" > "$dir/touch.log"
   note "touch: $(grep -c 'semu-retroarch: touch' "$dir/touch.log") retroarch, $(grep -c 'semu-vulkan: touch' "$dir/touch.log") vulkan"
   head -12 "$dir/touch.log" | sed 's/^/touch-line: /' >> "$dir/result"

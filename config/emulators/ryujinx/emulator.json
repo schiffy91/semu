@@ -172,6 +172,6 @@
   },
   "menu": {
     "pause": "none",
-    "doc": "Ryujinx declares no pause action, so the Semu menu draws over the running game."
+    "doc": "Ryujinx declares no pause action, so the Semu menu draws over the running game; on Linux it holds the pad while it is open, so the game sees none of the menu's input."
   }
 }

@@ -21,6 +21,7 @@ import ./process.btrc;
 import ./plan.btrc;
 import ./gamepad.btrc;
 import ./x11_keys.btrc;
+import ./menu_modal.btrc;
 
 struct SemuInputDevice SemuControllerDevices[SEMU_SUPERVISOR_DEVICES];  // GameController pads, one slot per connected controller
 unsigned int SemuControllerButtons[SEMU_SUPERVISOR_DEVICES];  // last polled button bits per pad
@@ -87,8 +88,9 @@ class SemuInputDevices {  // evdev gamepads and keyboards, opened into reusable 
 
     class void vacate(int slot) {  // unplugged: the slot becomes free again
         struct SemuInputDevice* device = &SemuSupervisorRuntime.devices[slot];
-        if (device->descriptor >= 0) { close(device->descriptor); }
+        if (device->descriptor >= 0) { close(device->descriptor); }  // closing also ends a grab
         device->descriptor = -1;
+        device->grabbed = 0;
         SemuDevicePaths[slot * 64] = 0;
     }
 
@@ -115,6 +117,7 @@ class SemuInputDevices {  // evdev gamepads and keyboards, opened into reusable 
                             SemuInputDevices.adopt(slot, handle, gamepad, keyboard, path);
                             bool swapped = gamepad != 0 && SemuFaceLayout.swapped(vendor, product, launch.xpadLayoutIds);
                             SemuSupervisorRuntime.devices[slot].face_swapped = swapped ? 1 : 0;
+                            if (gamepad != 0) { SemuPadModal.calibrate(&SemuSupervisorRuntime.devices[slot], handle); }  // what it holds now, so the menu never grabs it mid-press
                         } else {
                             close(handle);
                         }
@@ -249,6 +252,7 @@ class SemuInputEvents {  // evdev events to Semu actions and the quit chord
                 int hatX = ABS_HAT0X;
                 int hatY = ABS_HAT0Y;
                 int keyType = EV_KEY;
+                if (type == absoluteType && device->gamepad != 0) { SemuPadRest.move(device, code, value); }  // whether the pad is at rest
                 if (type == absoluteType && device->gamepad != 0 && (code == hatX || code == hatY)) {
                     SemuInputEvents.hat(launch, device, code, value);
                     continue;
@@ -386,7 +390,7 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
         SemuSupervisorRuntime.key_source.descriptor = -1;
     }
 
-    class void pollDevices(SemuLaunchPlan launch) {  // one bounded wait for evdev devices and the key source, then drain them
+    class void pollDevices(SemuLaunchPlan launch) {  // one bounded wait for evdev devices and the key source, then drain them and update the menu's hold on the pads
         struct pollfd polls[SEMU_SUPERVISOR_DEVICES + 1];
         int count = SemuSupervisorRuntime.device_count;
         int open = 0;
@@ -405,7 +409,12 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
         int ready = 0;
         nfds_t total = (nfds_t)(count + 1);
         if (open > 0) { ready = poll(polls, total, SEMU_POLL_MS); } else { usleep(SEMU_POLL_MS * 1000); }
-        if (ready <= 0) { return; }
+        if (ready > 0) { SemuSupervisor.drainReady(launch, polls, count, keys); }
+        SemuPadModal.update(SemuClock.milliseconds());  // grabs once every pad is at rest, releases once the closing press is up
+    }
+
+    class void drainReady(SemuLaunchPlan launch, struct pollfd* polls, int count, bool keys) {  // the devices and key source poll() found readable
+        struct SemuKeySource* source = &SemuSupervisorRuntime.key_source;
         for (int index = 0; index < count; index++) {
             int returned = (int)polls[index].revents;
             struct SemuInputDevice* device = &SemuSupervisorRuntime.devices[index];
@@ -418,7 +427,8 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
         if (keys && (sourceReturned & ((int)POLLERR | (int)POLLHUP)) != 0) { SemuX11KeyListener.disconnect(source); }  // the next rescan reconnects
     }
 
-    class void end() {  // closes every device, the key source and the virtual keyboard
+    class void end() {  // lets every pad go, then closes every device, the key source and the virtual keyboard
+        SemuPadModal.leave();
         for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) {
             if (SemuSupervisorRuntime.devices[index].descriptor >= 0) { SemuInputDevices.vacate(index); }
         }
@@ -435,10 +445,12 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
         while (true) {
             exitCode = SemuProcessGroup.reap(child, &exited);
             if (exited) {
+                SemuPadModal.leave();  // the emulator died, perhaps under the open menu: the pads are free at once
                 SemuProcessGroup.finish(child);  // no orphan outlives the emulator
                 break;
             }
             if (SemuStopSignals.pending() != 0) {
+                SemuPadModal.leave();
                 bool honoured = SemuProcessGroup.stop(child, launch.retroarchPort);
                 Console.error(honoured ? "semu: stopped; the emulator honoured QUIT" : "semu: stopped by signal");
                 exitCode = 128 + SemuStopSignals.pending();
@@ -453,6 +465,7 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
             SemuSupervisor.pollDevices(launch);
             if (SemuSupervisorRuntime.quit == 0) { SemuGameControllers.poll(launch); }
             if (SemuSupervisorRuntime.quit != 0) {
+                SemuPadModal.leave();  // before the QUIT wait: QUIT GAME from the menu never keeps a pad held
                 bool honoured = SemuProcessGroup.stop(child, launch.retroarchPort);
                 Console.error(honoured ? "semu: quit; the emulator honoured QUIT" : "semu: quit");
                 exitCode = 0;

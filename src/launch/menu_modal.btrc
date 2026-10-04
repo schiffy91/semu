@@ -1,0 +1,182 @@
+// The Semu menu is modal for pad input. Once it is open and every pad the supervisor reads is at
+// rest, the supervisor grabs those pads (EVIOCGRAB), so the emulator under the menu sees none of
+// their input; after the menu closes it lets them go once the closing press is released. Waiting
+// at both ends means the emulator never keeps a button it saw go down but never saw come up, and
+// never sees half of a press that was Semu's. Closing a pad's descriptor ends its grab too, so a
+// supervisor that exits or dies never leaves a pad held.
+
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include "semu_evdev.h"
+
+import Library.Console;
+import ./input_state.btrc;
+import ./input_filters.btrc;
+
+#define SEMU_MODAL_FREE 0  // the menu is closed and the pads are the emulator's
+#define SEMU_MODAL_ARMING 1  // the menu is open; grabbing waits until every pad is at rest
+#define SEMU_MODAL_HELD 2  // the menu is open and holds the pads: only Semu sees them
+#define SEMU_MODAL_RELEASING 3  // the menu closed; the pads stay held until the closing press is up
+#define SEMU_MODAL_RELEASE_MS 2000  // a pad that never comes to rest is let go anyway: the game must get it back
+
+class SemuMenuModal {  // pure: when the open menu takes the pads and when it gives them back
+    class bool holds(int phase) { return phase == SEMU_MODAL_HELD || phase == SEMU_MODAL_RELEASING; }
+
+    class int next(int phase, bool menuOpen, bool padsIdle, long long since, long long now) {  // since: when PHASE began
+        if (menuOpen) {
+            if (SemuMenuModal.holds(phase)) { return SEMU_MODAL_HELD; }  // a press inside the menu, or a reopen before the release
+            return padsIdle ? SEMU_MODAL_HELD : SEMU_MODAL_ARMING;  // grabbing a held button would leave it held in the emulator
+        }
+        if (!SemuMenuModal.holds(phase)) { return SEMU_MODAL_FREE; }  // closed before the pads came to rest: nothing was grabbed
+        bool late = phase == SEMU_MODAL_RELEASING && now - since >= (long long)SEMU_MODAL_RELEASE_MS;
+        return padsIdle || late ? SEMU_MODAL_FREE : SEMU_MODAL_RELEASING;  // the closing press stays Semu's until it is released
+    }
+}
+
+class SemuPadRest {  // pure: a pad is at rest with no button down and every stick, trigger and hat untouched
+    class int rest(int code, int minimum, int maximum, int value) {  // where an untouched axis sits, from its range and its value when opened
+        long long span = (long long)maximum - (long long)minimum;  // wide ranges never overflow
+        int middle = (int)((long long)minimum + span / 2LL);
+        if (minimum < 0) { return middle; }  // signed sticks and d-pad hats centre on zero
+        int stickX = ABS_X;
+        int stickY = ABS_Y;
+        int rightX = ABS_RX;
+        int rightY = ABS_RY;
+        bool stick = code == stickX || code == stickY || code == rightX || code == rightY;
+        long long offset = (long long)value - (long long)middle;
+        if (offset < 0LL) { offset = -offset; }
+        if (stick || offset <= span / 16LL) { return middle; }  // an unsigned stick, or an axis centred when the pad was opened
+        return minimum;  // a trigger
+    }
+
+    class void calibrate(struct SemuInputDevice* device, int code, int minimum, int maximum, int flat, int value) {  // one axis from EVIOCGABS
+        if (code < 0 || code >= SEMU_PAD_AXES || maximum <= minimum) { return; }
+        int rest = SemuPadRest.rest(code, minimum, maximum, value);
+        long long travel = (long long)maximum - (long long)rest;
+        int reach = (int)(travel / 8LL);  // an eighth of the travel, inside any game's dead zone
+        device->axis_known[code] = (unsigned char)1;
+        device->axis_rest[code] = rest;
+        device->axis_reach[code] = flat > reach ? flat : reach;
+        device->axis_value[code] = value;
+        int hatX = ABS_HAT0X;
+        int hatY = ABS_HAT0Y;
+        if (code == hatX) { device->hat_x = value; }
+        if (code == hatY) { device->hat_y = value; }
+    }
+
+    class void move(struct SemuInputDevice* device, int code, int value) {
+        if (code >= 0 && code < SEMU_PAD_AXES) { device->axis_value[code] = value; }
+    }
+
+    class bool axisHeld(struct SemuInputDevice* device, int code) {
+        if (device->axis_known[code] == 0) { return false; }
+        long long offset = (long long)device->axis_value[code] - (long long)device->axis_rest[code];
+        if (offset < 0LL) { offset = -offset; }
+        return offset > (long long)device->axis_reach[code];
+    }
+
+    class bool idle(struct SemuInputDevice* device) {
+        if (device->hat_x != 0 || device->hat_y != 0) { return false; }
+        for (int code = 0; code < SEMU_SUPERVISOR_KEYS; code++) {
+            if (device->down[code] != 0) { return false; }
+        }
+        for (int code = 0; code < SEMU_PAD_AXES; code++) {
+            if (SemuPadRest.axisHeld(device, code)) { return false; }
+        }
+        return true;
+    }
+
+    class void seed(struct SemuInputDevice* device, unsigned long* keyBits) {  // buttons already down when the pad was opened (EVIOCGKEY)
+        for (int code = 0; code < SEMU_SUPERVISOR_KEYS && code / 64 < SEMU_BIT_WORDS; code++) {
+            if (((keyBits[code / 64] >> (code % 64)) & 1UL) == 0UL) { continue; }
+            int position = device->face_swapped != 0 ? SemuFaceLayout.positional(code) : code;  // down[] is indexed by position
+            device->down[position] = (unsigned char)1;
+        }
+    }
+}
+
+class SemuPadGrab {  // the device seam's grab: EVIOCGRAB on one pad's descriptor
+    class bool set(struct SemuInputDevice* device, bool hold) {  // true when this call changed what Semu asked for
+        if (device->descriptor < 0 || (device->grabbed != 0) == hold) { return false; }
+        unsigned long request = (unsigned long)EVIOCGRAB;
+        int failed = ioctl(device->descriptor, request, hold ? 1 : 0);
+        int reason = errno;
+        device->grabbed = hold ? 1 : 0;  // what Semu asked: letting go of a grab another reader owns is harmless
+        if (failed != 0 && getenv("SEMU_RENDER_DEBUG") != null) {
+            string verb = hold ? "grab" : "release";
+            Console.error(f"semu: could not {verb} a pad (errno {reason}); the emulator may still see it");
+        }
+        return true;
+    }
+}
+
+class SemuPadModal {  // applies SemuMenuModal to the pads the supervisor reads, once per supervisor tick
+    class bool padsIdle() {
+        for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) {
+            struct SemuInputDevice* device = &SemuSupervisorRuntime.devices[index];
+            if (device->descriptor >= 0 && device->gamepad != 0 && !SemuPadRest.idle(device)) { return false; }
+        }
+        return true;
+    }
+
+    class void update(long long now) {  // after the drain, so a release just read counts
+        int phase = SemuSupervisorRuntime.modal_phase;
+        bool open = SemuSupervisorRuntime.menu_visible != 0;
+        int next = SemuMenuModal.next(phase, open, SemuPadModal.padsIdle(), SemuSupervisorRuntime.modal_since, now);
+        if (next != phase) {
+            SemuSupervisorRuntime.modal_phase = next;
+            SemuSupervisorRuntime.modal_since = now;
+        }
+        if (SemuMenuModal.holds(next)) {
+            SemuPadModal.hold();  // also takes a pad plugged in while the menu is open
+        } else if (SemuMenuModal.holds(phase)) {
+            SemuPadModal.releaseAll();
+        }
+    }
+
+    class int hold() {  // grabs every open pad not yet held; how many it took
+        int taken = 0;
+        for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) {
+            struct SemuInputDevice* device = &SemuSupervisorRuntime.devices[index];
+            if (device->gamepad != 0 && device->grabbed == 0 && SemuPadGrab.set(device, true)) { taken++; }
+        }
+        if (taken > 0 && getenv("SEMU_RENDER_DEBUG") != null) { Console.error(f"semu: the menu holds {taken} pad(s); the emulator sees none of their input"); }
+        return taken;
+    }
+
+    class int releaseAll() {  // lets every held pad go; how many it released
+        int released = 0;
+        for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) {
+            if (SemuPadGrab.set(&SemuSupervisorRuntime.devices[index], false)) { released++; }
+        }
+        if (released > 0 && getenv("SEMU_RENDER_DEBUG") != null) { Console.error(f"semu: the menu gave {released} pad(s) back to the emulator"); }
+        return released;
+    }
+
+    class void leave() {  // quit, stop, the emulator's exit and the supervisor's end: no pad stays held
+        SemuPadModal.releaseAll();
+        SemuSupervisorRuntime.modal_phase = SEMU_MODAL_FREE;
+    }
+
+    class void calibrate(struct SemuInputDevice* device, int handle) {  // a freshly opened pad's held buttons and axis ranges
+        unsigned long keyBits[SEMU_BIT_WORDS];
+        memset(keyBits, 0, sizeof(keyBits));
+        unsigned long keyRequest = (unsigned long)EVIOCGKEY(sizeof(keyBits));
+        if (ioctl(handle, keyRequest, keyBits) >= 0) { SemuPadRest.seed(device, keyBits); }
+        unsigned long axisBits[SEMU_BIT_WORDS];
+        memset(axisBits, 0, sizeof(axisBits));
+        int absoluteType = EV_ABS;
+        unsigned long axisRequest = (unsigned long)EVIOCGBIT(absoluteType, sizeof(axisBits));
+        if (ioctl(handle, axisRequest, axisBits) < 0) { return; }
+        for (int code = 0; code < SEMU_PAD_AXES; code++) {
+            if (((axisBits[code / 64] >> (code % 64)) & 1UL) == 0UL) { continue; }
+            struct input_absinfo info;
+            memset(&info, 0, sizeof(info));
+            unsigned long infoRequest = (unsigned long)EVIOCGABS(code);
+            if (ioctl(handle, infoRequest, &info) < 0) { continue; }
+            SemuPadRest.calibrate(device, code, info.minimum, info.maximum, info.flat, info.value);
+        }
+    }
+}

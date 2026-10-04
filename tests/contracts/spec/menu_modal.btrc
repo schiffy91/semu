@@ -1,0 +1,263 @@
+// Menu modal spec: the open Semu menu holds the pads the supervisor reads (EVIOCGRAB) once every pad
+// is at rest, and gives them back once the closing press is released, so the emulator under it never
+// sees the menu's input and never keeps a button it saw go down but not come up. The pads here are
+// socketpairs in the supervisor's device slots, fed evdev events and drained by real pollDevices ticks.
+
+#include <fcntl.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include "semu_evdev.h"
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/launch/actions.btrc;
+import ../../../src/launch/menu_modal.btrc;
+import ../../../src/launch/supervisor.btrc;
+import ./input_delivery.btrc;
+
+class MenuModalTools {
+    class SemuLaunchPlan launch(string stateDir) {  // Select+north opens the menu; two items to move between
+        SemuLaunchPlan launch = InputDeliveryTools.launch(stateDir, InputDeliveryTools.none(), InputDeliveryTools.none());
+        launch.menuActions = ["ui.menu.back", "ui.screenshot"];
+        return launch;
+    }
+
+    class int pad(int slot, bool swapped) {  // a pad in SLOT whose events the contract writes; returns the writing end
+        int pair[2];
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, pair) != 0) { return -1; }
+        int flags = fcntl(pair[0], F_GETFL, 0);
+        fcntl(pair[0], F_SETFL, flags | (int)O_NONBLOCK);  // the drain reads until the device is empty, as with evdev
+        struct SemuInputDevice* device = &SemuSupervisorRuntime.devices[slot];
+        memset(device, 0, sizeof(struct SemuInputDevice));
+        device->descriptor = pair[0];
+        device->gamepad = 1;
+        device->source = SEMU_SOURCE_GAMEPAD;
+        device->face_swapped = swapped ? 1 : 0;  // Steam's virtual pad sends its top button as BTN_WEST
+        SemuPadRest.calibrate(device, ABS_X, -32768, 32767, 128, 0);  // Steam's virtual pad: signed sticks,
+        SemuPadRest.calibrate(device, ABS_Z, 0, 255, 0, 0);  // triggers from 0 to 255,
+        SemuPadRest.calibrate(device, ABS_HAT0Y, -1, 1, 0, 0);  // and the d-pad as a hat
+        if (slot >= SemuSupervisorRuntime.device_count) { SemuSupervisorRuntime.device_count = slot + 1; }
+        return pair[1];
+    }
+
+    class void send(int writer, int type, int code, int value) {  // one event and its report, as evdev delivers them
+        struct input_event events[2];
+        memset(events, 0, sizeof(events));
+        events[0].type = (unsigned short)type;
+        events[0].code = (unsigned short)code;
+        events[0].value = value;
+        events[1].type = (unsigned short)EV_SYN;
+        events[1].code = (unsigned short)SYN_REPORT;
+        ssize_t wrote = write(writer, events, sizeof(events));
+        (void)wrote;
+    }
+
+    class void key(int writer, int code, int value) { MenuModalTools.send(writer, EV_KEY, code, value); }
+
+    class bool phase(int expected) { return SemuSupervisorRuntime.modal_phase == expected; }
+
+    class bool grabbed(int slot) { return SemuSupervisorRuntime.devices[slot].grabbed != 0; }
+}
+
+class MenuModalPhases {  // the pure state machine
+    class void run(Contract contract) {
+        contract.expect(SemuMenuModal.next(SEMU_MODAL_FREE, true, true, 0LL, 10LL) == SEMU_MODAL_HELD, "a menu opened over resting pads takes them at once");
+        contract.expect(SemuMenuModal.next(SEMU_MODAL_FREE, true, false, 0LL, 10LL) == SEMU_MODAL_ARMING, "a menu opened while a pad button is down waits instead of grabbing it");
+        contract.expect(SemuMenuModal.next(SEMU_MODAL_ARMING, true, false, 0LL, 99999LL) == SEMU_MODAL_ARMING, "it waits as long as the button stays down");
+        contract.expect(SemuMenuModal.next(SEMU_MODAL_ARMING, true, true, 0LL, 10LL) == SEMU_MODAL_HELD, "the last release lets the menu take the pads");
+        contract.expect(SemuMenuModal.next(SEMU_MODAL_ARMING, false, false, 0LL, 10LL) == SEMU_MODAL_FREE, "a menu closed before the pads rested never took them");
+        contract.expect(SemuMenuModal.next(SEMU_MODAL_HELD, true, false, 0LL, 10LL) == SEMU_MODAL_HELD, "a press inside the menu keeps the hold");
+        contract.expect(SemuMenuModal.next(SEMU_MODAL_HELD, false, false, 0LL, 10LL) == SEMU_MODAL_RELEASING, "the closing press keeps the pads held until it is released");
+        contract.expect(SemuMenuModal.next(SEMU_MODAL_HELD, false, true, 0LL, 10LL) == SEMU_MODAL_FREE, "a menu closed from the keyboard with every pad at rest lets go at once");
+        contract.expect(SemuMenuModal.next(SEMU_MODAL_RELEASING, false, true, 0LL, 10LL) == SEMU_MODAL_FREE, "the closing button's release gives the pads back");
+        contract.expect(SemuMenuModal.next(SEMU_MODAL_RELEASING, true, false, 0LL, 10LL) == SEMU_MODAL_HELD, "a menu reopened before the release keeps holding");
+        contract.expect(SemuMenuModal.next(SEMU_MODAL_RELEASING, false, false, 1000LL, 2999LL) == SEMU_MODAL_RELEASING, "a pad still pressed under 2 s after the close stays held");
+        contract.expect(SemuMenuModal.next(SEMU_MODAL_RELEASING, false, false, 1000LL, 3000LL) == SEMU_MODAL_FREE, "after 2 s a pad that never rests is given back anyway");
+        contract.expect(SemuMenuModal.holds(SEMU_MODAL_HELD) && SemuMenuModal.holds(SEMU_MODAL_RELEASING) && !SemuMenuModal.holds(SEMU_MODAL_ARMING) && !SemuMenuModal.holds(SEMU_MODAL_FREE), "only the held and releasing phases grab");
+    }
+}
+
+class MenuModalRest {  // when a pad counts as untouched
+    class void run(Contract contract) {
+        struct SemuInputDevice pad;
+        memset(&pad, 0, sizeof(pad));
+        SemuPadRest.calibrate(&pad, ABS_X, -32768, 32767, 128, 0);
+        SemuPadRest.calibrate(&pad, ABS_Z, 0, 255, 0, 0);
+        SemuPadRest.calibrate(&pad, ABS_HAT0X, -1, 1, 0, 0);
+        SemuPadRest.calibrate(&pad, ABS_RX, 0, 255, 0, 128);  // a PlayStation stick: unsigned, centred
+        SemuPadRest.calibrate(&pad, ABS_RZ, 0, 255, 0, 0);  // a PlayStation trigger: unsigned, at its minimum
+        SemuPadRest.calibrate(&pad, ABS_HAT0X + 5, 0, 32767, 0, 0);  // the Deck's own trigger (hid-steam ABS_HAT2Y)
+        contract.expect(SemuPadRest.idle(&pad), "a calibrated pad with nothing touched is at rest");
+        SemuPadRest.move(&pad, ABS_X, 3000);
+        contract.expect(SemuPadRest.idle(&pad), "stick noise inside an eighth of its travel is rest");
+        SemuPadRest.move(&pad, ABS_X, -20000);
+        contract.expect(!SemuPadRest.idle(&pad), "a pushed stick is not at rest");
+        SemuPadRest.move(&pad, ABS_X, 0);
+        SemuPadRest.move(&pad, ABS_Z, 200);
+        contract.expect(!SemuPadRest.idle(&pad) && !SemuPadRest.axisHeld(&pad, ABS_X), "a pulled trigger is not at rest; the centred stick is");
+        SemuPadRest.move(&pad, ABS_Z, 20);
+        contract.expect(SemuPadRest.idle(&pad), "a trigger resting under an eighth is at rest");
+        SemuPadRest.move(&pad, ABS_RX, 140);
+        contract.expect(SemuPadRest.idle(&pad), "an unsigned stick rests at its middle, not its minimum");
+        SemuPadRest.move(&pad, ABS_RX, 255);
+        contract.expect(!SemuPadRest.idle(&pad), "an unsigned stick pushed to its end is not at rest");
+        SemuPadRest.move(&pad, ABS_RX, 128);
+        SemuPadRest.move(&pad, ABS_RZ, 100);
+        contract.expect(!SemuPadRest.idle(&pad), "an unsigned trigger rests at its minimum");
+        SemuPadRest.move(&pad, ABS_RZ, 0);
+        SemuPadRest.move(&pad, ABS_HAT0X + 5, 20000);
+        contract.expect(!SemuPadRest.idle(&pad), "an unsigned trigger on a hat code rests at its minimum too");
+        SemuPadRest.move(&pad, ABS_HAT0X + 5, 0);
+        SemuPadRest.move(&pad, ABS_HAT0X, -1);
+        contract.expect(!SemuPadRest.idle(&pad), "a d-pad hat away from 0 is not at rest");
+        SemuPadRest.move(&pad, ABS_HAT0X, 0);
+        pad.hat_y = 1;
+        contract.expect(!SemuPadRest.idle(&pad), "the hat the actions track counts on an uncalibrated pad too");
+        pad.hat_y = 0;
+        pad.down[(int)BTN_TR] = (unsigned char)1;
+        contract.expect(!SemuPadRest.idle(&pad), "a button down is not at rest");
+        struct SemuInputDevice wide;
+        memset(&wide, 0, sizeof(wide));
+        SemuPadRest.calibrate(&wide, ABS_Y, -128, 127, 40, 0);
+        SemuPadRest.move(&wide, ABS_Y, 30);
+        contract.expect(SemuPadRest.idle(&wide), "a flat zone wider than an eighth counts as rest");
+        unsigned long keyBits[SEMU_BIT_WORDS];
+        memset(keyBits, 0, sizeof(keyBits));
+        int west = BTN_WEST;
+        keyBits[west / 64] = 1UL << (west % 64);
+        struct SemuInputDevice steam;
+        memset(&steam, 0, sizeof(steam));
+        steam.face_swapped = 1;
+        SemuPadRest.seed(&steam, keyBits);
+        contract.expect((int)steam.down[(int)BTN_NORTH] == 1 && (int)steam.down[(int)BTN_WEST] == 0 && !SemuPadRest.idle(&steam), "a button already down when the pad opened is seeded at its position");
+    }
+}
+
+class MenuModalSeam {  // Select+Y on Steam's virtual pad through real pollDevices ticks
+    class void run(Contract contract, Fixture fixture) {
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan launch = MenuModalTools.launch(PathTools.join(fixture.scratch, "modal/seam"));
+        int writer = MenuModalTools.pad(0, true);
+        if (writer < 0) {
+            contract.expect(false, "a socketpair standing in for Steam's virtual pad");
+            return;
+        }
+        MenuModalTools.key(writer, BTN_SOUTH, 1);
+        MenuModalTools.key(writer, BTN_SELECT, 1);
+        MenuModalTools.key(writer, BTN_WEST, 1);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(SemuSupervisorRuntime.menu_visible == 1 && MenuModalTools.phase(SEMU_MODAL_ARMING) && !MenuModalTools.grabbed(0), "Select+Y opens the menu, but the pad is not grabbed while A, Select and Y are down");
+        MenuModalTools.key(writer, BTN_WEST, 0);
+        MenuModalTools.key(writer, BTN_SELECT, 0);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(!MenuModalTools.grabbed(0), "the emulator still sees A come up: no grab while it is held");
+        MenuModalTools.key(writer, BTN_SOUTH, 0);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(MenuModalTools.grabbed(0) && MenuModalTools.phase(SEMU_MODAL_HELD), "the last release grabs the pad: only Semu sees it now");
+        MenuModalTools.send(writer, EV_ABS, ABS_HAT0Y, 1);
+        MenuModalTools.send(writer, EV_ABS, ABS_HAT0Y, 0);
+        MenuModalTools.send(writer, EV_ABS, ABS_Z, 255);
+        MenuModalTools.send(writer, EV_ABS, ABS_Z, 0);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(SemuSupervisorRuntime.menu_selected == 1 && MenuModalTools.grabbed(0), "the d-pad moves the menu while the pad stays held");
+        MenuModalTools.key(writer, BTN_EAST, 1);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(SemuSupervisorRuntime.menu_visible == 0 && MenuModalTools.phase(SEMU_MODAL_RELEASING) && MenuModalTools.grabbed(0), "B closes the menu; the pad stays held while B is down");
+        MenuModalTools.key(writer, BTN_EAST, 0);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(!MenuModalTools.grabbed(0) && MenuModalTools.phase(SEMU_MODAL_FREE), "B's release gives the pad back: the emulator saw neither half of that press");
+        MenuModalTools.send(writer, EV_ABS, ABS_Z, 200);
+        MenuModalTools.key(writer, BTN_SELECT, 1);
+        MenuModalTools.key(writer, BTN_WEST, 1);
+        MenuModalTools.key(writer, BTN_WEST, 0);
+        MenuModalTools.key(writer, BTN_SELECT, 0);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(SemuSupervisorRuntime.menu_visible == 1 && !MenuModalTools.grabbed(0), "a trigger pulled when the menu opens delays the grab");
+        MenuModalTools.send(writer, EV_ABS, ABS_Z, 10);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(MenuModalTools.grabbed(0), "the trigger at rest lets the menu take the pad");
+        int second = MenuModalTools.pad(1, false);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(second >= 0 && MenuModalTools.grabbed(1), "a pad plugged in while the menu is open is held too");
+        MenuModalTools.send(writer, EV_ABS, ABS_X, 20000);
+        SemuSupervisor.pollDevices(launch);
+        SemuActionExecutor.closeMenu(launch);  // Ctrl+M from the radial
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(MenuModalTools.phase(SEMU_MODAL_RELEASING) && MenuModalTools.grabbed(0) && MenuModalTools.grabbed(1), "a stick pushed when the menu closes keeps every pad held");
+        MenuModalTools.send(writer, EV_ABS, ABS_X, 100);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(!MenuModalTools.grabbed(0) && !MenuModalTools.grabbed(1), "the stick back at rest gives every pad back");
+        SemuActionExecutor.openMenu(launch);  // Ctrl+M with every pad at rest
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(MenuModalTools.grabbed(0) && MenuModalTools.grabbed(1), "a menu opened from the keyboard over resting pads takes them on the next tick");
+        MenuModalTools.key(writer, BTN_TR, 1);
+        SemuSupervisor.pollDevices(launch);
+        SemuActionExecutor.closeMenu(launch);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(MenuModalTools.phase(SEMU_MODAL_RELEASING) && MenuModalTools.grabbed(0), "R1 held through the close keeps the pads");
+        SemuSupervisorRuntime.modal_since = SemuSupervisorRuntime.modal_since - 3000LL;
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(!MenuModalTools.grabbed(0) && !MenuModalTools.grabbed(1) && MenuModalTools.phase(SEMU_MODAL_FREE), "2 s later the pads are the game's again, R1 still down");
+        MenuModalTools.key(writer, BTN_TR, 0);
+        SemuActionExecutor.openMenu(launch);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(MenuModalTools.grabbed(0), "the menu holds the pad again");
+        SemuSupervisor.end();
+        contract.expect(!MenuModalTools.grabbed(0) && !MenuModalTools.grabbed(1) && SemuSupervisorRuntime.devices[0].descriptor < 0 && MenuModalTools.phase(SEMU_MODAL_FREE), "the supervisor's end lets every pad go and closes it, the menu still open");
+        close(writer);
+        close(second);
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan undrawn = MenuModalTools.launch(PathTools.join(fixture.scratch, "modal/undrawn"));
+        undrawn.menuDrawn = false;
+        int lone = MenuModalTools.pad(0, true);
+        MenuModalTools.key(lone, BTN_SELECT, 1);
+        MenuModalTools.key(lone, BTN_WEST, 1);
+        MenuModalTools.key(lone, BTN_WEST, 0);
+        MenuModalTools.key(lone, BTN_SELECT, 0);
+        SemuSupervisor.pollDevices(undrawn);
+        contract.expect(SemuSupervisorRuntime.menu_visible == 0 && !MenuModalTools.grabbed(0), "no compositor, no menu, no grab: the game keeps its pad");
+        SemuSupervisor.end();
+        close(lone);
+    }
+}
+
+class MenuModalWiring {  // the kernel grab and every exit path, by source
+    class void run(Contract contract, Fixture fixture) {
+        string modal = FileSystem.readText(PathTools.join(fixture.project, "src/launch/menu_modal.btrc"));
+        contract.contains(modal, "(unsigned long)EVIOCGRAB", "the menu grabs with EVIOCGRAB");
+        contract.contains(modal, "ioctl(device->descriptor, request, hold ? 1 : 0)", "the grab asks the kernel to hold and to let go");
+        string supervisor = FileSystem.readText(PathTools.join(fixture.project, "src/launch/supervisor.btrc"));
+        contract.expect(Strings.split(supervisor, "SemuPadModal.leave();").size() - 1 == 4, "the end, the emulator's exit, a stop signal and quit each let the pads go");
+        contract.contains(supervisor, "SemuPadModal.calibrate(&SemuSupervisorRuntime.devices[slot], handle)", "a pad's held buttons and axis ranges are read when it is opened");
+        contract.contains(modal, "semu: the menu holds {taken} pad(s)", "the supervisor logs each hold");
+        contract.contains(modal, "semu: the menu gave {released} pad(s) back", "and each release");
+        for harness in ["tests/deck/input-check.sh", "tests/integration/menu-modal.sh"] {
+            string text = FileSystem.readText(PathTools.join(fixture.project, harness));
+            contract.contains(text, "semu: the menu holds", harness + " reads the hold line the supervisor prints");
+            contract.contains(text, "semu: the menu gave", harness + " reads the release line the supervisor prints");
+        }
+        for emulator in ["azahar", "cemu", "dolphin", "flycast", "pcsx2", "ryujinx"] {
+            string doc = SemuJson.textAt(fixture.model.emulator(emulator).definition, "menu.doc");
+            contract.lacks(doc, "the pad still reaches the game", emulator + "'s menu pause doc no longer says the pad reaches the game");
+            contract.contains(doc, "holds the pad", emulator + "'s menu pause doc says the menu holds the pad");
+        }
+    }
+}
+
+class MenuModalSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        MenuModalPhases.run(contract);
+        MenuModalRest.run(contract);
+        MenuModalSeam.run(contract, fixture);
+        MenuModalWiring.run(contract, fixture);
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}

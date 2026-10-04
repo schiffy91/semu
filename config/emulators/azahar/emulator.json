@@ -236,6 +236,6 @@
   },
   "menu": {
     "pause": "none",
-    "doc": "Seen 2026-10-03 in the podman VM (tests/integration/menu-pause.sh, Pushmo on lavapipe through VK_LAYER_SEMU_compositor): paused with its own pause key, Azahar presents nothing (async_presentation=false presents from the emulation thread), so a menu record written while paused stayed invisible until it resumed. The Semu menu therefore opens over the running game; while it is open the pad still reaches the game."
+    "doc": "Seen 2026-10-03 in the podman VM (tests/integration/menu-pause.sh, Pushmo on lavapipe through VK_LAYER_SEMU_compositor): paused with its own pause key, Azahar presents nothing (async_presentation=false presents from the emulation thread), so a menu record written while paused stayed invisible until it resumed. The Semu menu therefore opens over the running game, and on Linux it holds the pad while it is open (EVIOCGRAB once every pad is at rest, released after the closing press), so the game sees none of the menu's input; taps and Steam's radial keys still reach it."
   }
 }
