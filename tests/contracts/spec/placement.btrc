@@ -158,8 +158,10 @@ class PlacementSpecGeometry {
                 f"N64 320x240 at {widths[size]}x{heights[size]}, game placement: the largest whole step of 240, {lines[size]} lines, 4:3, centred on the screen: " + PlacementSpecGeometry.text(&picture));
             PlacementSpecGeometry.place(fixture, "n64", 320, 240, 2, widths[size], heights[size], &canvas, &picture);
             int steps = PlacementSpecGeometry.rounded(picture.height) / 240;
-            contract.expect(steps >= 1 && PlacementSpecGeometry.near(picture.height, (float)(steps * 240)) && PlacementSpecGeometry.near(canvas.x * 2.0f + canvas.width, (float)widths[size]) && PlacementSpecGeometry.near(canvas.y * 2.0f + canvas.height, (float)heights[size]),
-                f"N64 320x240 at {widths[size]}x{heights[size]}, bezel placement: a whole multiple of 240 in the TV, the TV centred on the screen: " + PlacementSpecGeometry.text(&picture) + ", canvas " + PlacementSpecGeometry.text(&canvas));
+            bool shorter = canvas.height < (float)heights[size];
+            bool standing = (shorter && canvas.y > -0.5f && canvas.y <= 0.5f) || (!shorter && PlacementSpecGeometry.near(canvas.y * 2.0f + canvas.height, (float)heights[size]));  // a room shorter than the screen keeps its table on the bottom edge, within the half pixel that keeps the picture on the grid (scene_fill.btrc); else it is centred
+            contract.expect(steps >= 1 && PlacementSpecGeometry.near(picture.height, (float)(steps * 240)) && PlacementSpecGeometry.near(canvas.x * 2.0f + canvas.width, (float)widths[size]) && standing,
+                f"N64 320x240 at {widths[size]}x{heights[size]}, bezel placement: a whole multiple of 240 in the TV, the TV centred across the screen, its table on the bottom edge: " + PlacementSpecGeometry.text(&picture) + ", canvas " + PlacementSpecGeometry.text(&canvas));
         }
         PlacementSpecGeometry.place(fixture, "n64", 625, 237, 1, 1280, 800, &canvas, &picture);
         contract.expect(PlacementSpecGeometry.near(picture.height, 711.0f) && PlacementSpecGeometry.centred(&picture, 1280, 800), "a core that crops to 625x237, game placement at 1280x800: 3x the reported height, 711 lines, so the step is the reported height's: " + PlacementSpecGeometry.text(&picture));

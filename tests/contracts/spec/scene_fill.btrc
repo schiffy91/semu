@@ -1,0 +1,109 @@
+// Scene fill spec: the owner's second Deck round (M14 items 2 and 3). The GBC shells draw Duimon's Start and
+// Select buttons, which live in GBC_Decal.png and which no Duimon preset names, so the package declares the plate
+// in upstream.textures and `semu bezel emit` stacks it. And no system shows black bars in any placement at 1280x800
+// or 1920x1080: a handheld or DS stands on its cover-fit desk plate, a TV scene's room covers the screen or
+// carries on past its edges (its layer line, and the night plate over it, end |1), and a scene shorter than the
+// screen keeps its table on the screen's bottom edge, so the room is only ever carried up and sideways.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/emit/rendering.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+import ../../../src/renderer/renderer_config.btrc;
+import ../../../src/renderer/renderer_placement.btrc;
+import ./render_env.btrc;
+import ./placement.btrc;
+
+class SceneFillSpecChecks {
+    class Vector<string> variants(Fixture fixture, string systemId) {  // "" (the system's default) and every declared bezel variant
+        Vector<string> found = [""];
+        JSONValue declared = fixture.model.system(systemId).bezels.get("variants");
+        for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) { found.push(SemuJson.textAt(declared.at(index), "id")); }
+        return found;
+    }
+
+    class void startSelect(Contract contract, Fixture fixture) {
+        for variant in ["", "berry"] {
+            Vector<string> decal = PlacementSpecEnvironment.layers(PlacementSpecEnvironment.compile(fixture, "gbc", variant), "/decal.png");
+            contract.expect(decal.size() == 1 && decal[0].contains("|0,0,1,1|0|0|1|"), "gbc" + (variant.isEmpty() ? "" : ":" + variant) + " draws Duimon's Start and Select buttons (GBC_Decal.png) on the whole shell, under the screen: " + decal.join(" "));
+        }
+    }
+
+    class void roomLines(Contract contract, Fixture fixture) {
+        Vector<string> environment = PlacementSpecEnvironment.compile(fixture, "nes", "");
+        Vector<string> room = PlacementSpecEnvironment.layers(environment, "/background.png");
+        Vector<string> night = PlacementSpecEnvironment.layers(environment, "/ambient.png");
+        Vector<string> light = PlacementSpecEnvironment.layers(environment, "/led.png");
+        contract.expect(room.size() == 1 && room[0].endsWith("|0|1") && night.size() == 1 && night[0].endsWith("|0.2|1") && light.size() == 1 && light[0].endsWith("|-|0"),
+            "the NES room and the night plate over it carry on past the canvas (|1); its LED stays on the canvas: " + room.join(" ") + " " + night.join(" ") + " " + light.join(" "));
+        struct RendererLayerConfig parsed;
+        bool roomParsed = RendererConfigKeys.parseLayer(&parsed, "/plates/room.png|0,0,1,1|0|0|1|-|0|1") && parsed.room == 1 && parsed.lift == 0.0f;
+        bool plainParsed = RendererConfigKeys.parseLayer(&parsed, "/plates/led.png|0,0,1,1|0|0|1|-|0") && parsed.room == 0;
+        contract.expect(roomParsed && plainParsed, "the renderer reads the room field after the lift, and a line without it stays on its rectangle");
+        string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "render/compositor.frag"));
+        int pass = Strings.find(source, "if(uPass>3.5){", 0);
+        int end = pass < 0 ? -1 : Strings.find(source, "\n", pass);
+        string layerPass = pass < 0 || end < 0 ? "" : source.substring(pass, end - pass);
+        contract.expect(layerPass.contains("uLayer.w>0.5") && layerPass.contains("roomPlate(") && source.contains("vec4 roomPlate(") && source.contains("clamp(artUv(p,r),0.0,1.0)"),
+            "the compositor's layer pass draws a room past its rectangle, its edge rows and columns carried outward: " + layerPass.substring(0, layerPass.len() < 120 ? layerPass.len() : 120));
+    }
+
+    class void coverage(Contract contract, Fixture fixture) {
+        int widths[2] = {1280, 1920};
+        int heights[2] = {800, 1080};
+        Vector<string> failures = [];
+        int checked = 0;
+        int rooms = 0;
+        for systemId in fixture.model.systemIds() {
+            JSONValue screens = SemuJson.get(fixture.model.system(systemId).definition, "display.screens");
+            int count = screens != null && screens.isArray() && screens.size() == 2 ? 2 : 1;
+            for variant in SceneFillSpecChecks.variants(fixture, systemId) {
+                Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, variant);
+                string label = systemId + (variant.isEmpty() ? "" : ":" + variant);
+                if (!PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_BEZELS").equals("1")) { continue; }  // bezel off: pure black outside the picture, by design
+                if (!PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_BACKGROUND").isEmpty()) { checked++; continue; }  // the desk plate is cover-fit: it fills every screen
+                struct RendererVariantConfig config;
+                PlacementSpecGeometry.load(environment, &config);
+                if (config.canvas_width <= 0 || config.canvas_height <= 0) { failures.push(label + ": neither a backdrop nor a canvas"); continue; }
+                bool room = false;
+                for (int index = 0; index < config.layer_count; index++) { if (config.layers[index].room != 0) { room = true; } }
+                if (room) { rooms++; }
+                struct SemuRenderFrameGl frame;
+                memset(&frame, 0, sizeof(struct SemuRenderFrameGl));
+                frame.surface_count = count;
+                for (int index = 0; index < count; index++) {
+                    frame.surfaces[index].native_width = SemuJson.intAt(screens.at(index), "native.w", 0);
+                    frame.surfaces[index].native_height = SemuJson.intAt(screens.at(index), "native.h", 0);
+                }
+                float shown = PlacementSpecGeometry.aspect(environment, frame.surfaces[0].native_width, frame.surfaces[0].native_height);
+                int fractionalBelow = atoi(PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_GAME_FRACTIONAL_BELOW"));
+                for (int placement = 0; placement <= 2; placement++) {
+                    for (int size = 0; size < 2; size++) {
+                        struct RendererCanvasRect canvas;
+                        RendererPlacement.canvas(&frame, &config, placement, fractionalBelow, shown, widths[size], heights[size], config.canvas_width, config.canvas_height, &canvas);
+                        bool covers = canvas.x <= 0.5f && canvas.y <= 0.5f && canvas.x + canvas.width >= (float)widths[size] - 0.5f && canvas.y + canvas.height >= (float)heights[size] - 0.5f;
+                        bool carried = room && canvas.y <= 0.5f;  // the room carries on up and sideways; its table never leaves the bottom edge
+                        if (!covers && !carried) { failures.push(label + f" placement {placement} at {widths[size]}x{heights[size]}: canvas " + PlacementSpecGeometry.text(&canvas) + (room ? " (the room's table is above the bottom edge)" : " (no room carries on)")); }
+                        checked++;
+                    }
+                }
+            }
+        }
+        contract.expect(failures.isEmpty() && checked > 0 && rooms > 0, f"no system shows black bars in fit, game or bezel at 1280x800 or 1920x1080 ({checked} pictures, {rooms} rooms): " + failures.join("; "));
+    }
+}
+
+class SceneFillSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        RenderEnvSpecAssets.packages(fixture.plan.assetRoot, fixture.plan.configRoot);  // every layer file exists, so the stacks are the packages' own
+        SceneFillSpecChecks.startSelect(contract, fixture);
+        SceneFillSpecChecks.roomLines(contract, fixture);
+        SceneFillSpecChecks.coverage(contract, fixture);
+    }
+}

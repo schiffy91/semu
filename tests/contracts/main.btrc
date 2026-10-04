@@ -44,6 +44,7 @@ import ./spec/editor.btrc;
 import ./spec/core_colour.btrc;
 import ./spec/bezel_emit.btrc;
 import ./spec/placement.btrc;
+import ./spec/scene_fill.btrc;
 import ./spec/radial_choices.btrc;
 import ./spec/radial_render.btrc;
 import ./spec/players.btrc;
@@ -518,7 +519,7 @@ class LayerLookContract {  // recolour tints and the night plate reach the compo
         contract.expect(LayerLookContract.layerWith(shellEnv, "/layers/gba-shell/device.png|").endsWith("|-|0"), "the default GBA shell is untinted, so the two variants differ");
         Vector<string> nesEnv = SemuRenderEnvironment.compile(fixture.plan, fixture.model.system("nes"), "retroarch", "/state/retroarch", diagnostics);
         string night = LayerLookContract.layerWith(nesEnv, "/layers/tv-soqueroeu-nes/ambient.png|");
-        contract.expect(night.endsWith("|0|2|1|-|0.2"), "the TV scene multiplies the night plate, lifted by one minus its opacity: " + night);
+        contract.expect(night.endsWith("|0|2|1|-|0.2|1"), "the TV scene multiplies the night plate, lifted by one minus its opacity, and carries it on past the canvas with the room: " + night);
         contract.expect(nesEnv.contains("SEMU_RENDER_LAYER_COUNT=3"), "background, night plate and LED make the NES stack");
         SemuPlan off = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"gba\":{\"bezel_variant\":\"none\",\"shader_variant\":\"none\"}}}}", diagnostics);
         Vector<string> offEnv = SemuRenderEnvironment.compile(off, fixture.model.system("gba"), "retroarch", "/state/retroarch", diagnostics);
@@ -995,6 +996,7 @@ int main() {
     EditorSpecContract.run(contract);
     BezelEmitSpecContract.run(contract);
     PlacementSpecContract.run(contract);
+    SceneFillSpecContract.run(contract);
     RadialChoicesSpecContract.run(contract);
     RadialRenderSpecContract.run(contract);
     PlayersSpecContract.run(contract);

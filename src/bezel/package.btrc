@@ -181,6 +181,7 @@ class BezelGeometry {  // one package: its preset, screens, layers and the canva
             coreHeight = coreHeight + h;
         }
         self.preset = MegaBezelPreset(tree.packagePreset(package));
+        BezelGeometry.supplement(self.preset, tree, package);
         if (self.preset.chain.size() == 0) { self.failure = "preset not found: " + SemuJson.textAt(package, "upstream.preset"); return; }
         if (self.preset.missing.size() > 0) { self.failure = "missing textures: " + Strings.join(self.preset.missing, ", "); return; }
         self.params = MegaBezelParams(self.preset, tree.defaults);
@@ -188,6 +189,20 @@ class BezelGeometry {  // one package: its preset, screens, layers and the canva
         for (int index = 1; index <= self.count; index++) { self.screens.push(self.placement.screen(index)); }
         if (!self.placement.failure.isEmpty()) { self.failure = self.placement.failure; return; }
         self.stack();
+    }
+
+    class void supplement(MegaBezelPreset preset, MegaBezelTree tree, JSONValue package) {  // upstream.textures and upstream.parameters: a plate the pack ships that its preset never names, and where it sits
+        string source = SemuJson.textAt(package, "upstream.source");
+        JSONValue textures = SemuJson.get(package, "upstream.textures");  // texture key -> the file inside the pack (Duimon draws the GBC Start and Select buttons in GBC_Decal.png and no preset names it)
+        if (textures != null && textures.isObject()) {
+            for key in textures.keys() {
+                string file = tree.presetPath(source, SemuJson.textAt(textures, key));
+                preset.textures.put(key, file);
+                if (!FileSystem.isFile(file)) { preset.missing.push(key + ": " + file); }
+            }
+        }
+        JSONValue parameters = SemuJson.get(package, "upstream.parameters");  // after the preset chain, as a later #reference would set them
+        if (parameters != null && parameters.isObject()) { for key in parameters.keys() { preset.values.put(key, SemuJson.textAt(parameters, key)); } }
     }
 
     class Vector<string> textureKeys() { return ["BackgroundImage", "DeviceImage", "DecalImage", "CabinetGlassImage", "TopLayerImage", "LEDImage", "DeviceLEDImage"]; }

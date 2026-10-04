@@ -10,6 +10,7 @@ uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uR
  vec2 rotatedUv(vec2 q,float r){if(r<0.5)return q;if(r<1.5)return vec2(1.0-q.y,q.x);if(r<2.5)return vec2(1.0-q.x,1.0-q.y);return vec2(q.y,1.0-q.x);}
  vec2 artUv(vec2 p,vec4 r){return vec2((p.x-r.x)/r.z,1.0-(p.y-r.y)/r.w);}
  vec4 plate(sampler2D t,vec2 p,vec4 r){return textureGrad(t,artUv(p,r),vec2(1.0/r.z,0.0),vec2(0.0,-1.0/r.w));}  // explicit gradients keep the mip level right at plate edges
+ vec4 roomPlate(sampler2D t,vec2 p,vec4 r){return textureGrad(t,clamp(artUv(p,r),0.0,1.0),vec2(1.0/r.z,0.0),vec2(0.0,-1.0/r.w));}  // a scene's room past its edges: the flat wall's top row carries on up, the wall and the table's level grain to either side (folding it back would put a second TV beside the first)
  vec2 curved(vec2 q,float k){vec2 c=q*2.0-1.0;c*=(1.0+k*dot(c,c))/(1.0+k);return c*0.5+0.5;}
  vec2 unbulge(vec2 p,vec4 r,vec2 b){if(b.x<=0.0&&b.y<=0.0)return p;vec2 h=r.zw*0.5;vec2 c=r.xy+h;vec2 u=(p-c)/h;
   float sx=1.0+b.x*max(0.0,1.0-u.y*u.y);float sy=1.0+b.y*max(0.0,1.0-u.x*u.x);return c+vec2(u.x/sx,u.y/sy)*h;}
@@ -58,7 +59,7 @@ uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uR
 void main(){
  vec2 p=gl_FragCoord.xy;float dual=uFlags.x;float hasArt=uFlags.y;float hasBg=uFlags.z;float layered=uFlags.w;
  if(uPass>4.5){vec3 f=lensMirror(uGame,uRaw,p,uTube,uRect,uRingOut,uRingLook,uRingColor,uRingReflect,uFx,uRotation.x,uBulge.xy);if(dual>0.5)f=max(f,lensMirror(uGame2,uRaw2,p,uTube2,uRect2,uRingOut2,uRingLook2,uRingColor2,uRingReflect2,uFx2,uRotation.y,uBulge.zw));if(max(f.r,max(f.g,f.b))<=0.0)discard;frag=vec4(f,1.0);return;}  // screened onto the plate
- if(uPass>3.5){if(!inside(p,uBezelRect))discard;vec4 t=plate(uBezel,p,uBezelRect);if(uLayerTint.w>0.0){float l=clamp((max(max(t.r,t.g),t.b)+min(min(t.r,t.g),t.b))*0.5*uLayerTint.w,0.0,1.0);t.rgb=l*uLayerTint.rgb;}t.rgb=mix(t.rgb,vec3(1.0),uLayer.z);float a=t.a*uLayer.x;if(uLayer.y>1.5)t.rgb*=a;frag=vec4(t.rgb,a);return;}
+ if(uPass>3.5){bool room=uLayer.w>0.5;if(!room&&!inside(p,uBezelRect))discard;vec4 t=room?roomPlate(uBezel,p,uBezelRect):plate(uBezel,p,uBezelRect);if(uLayerTint.w>0.0){float l=clamp((max(max(t.r,t.g),t.b)+min(min(t.r,t.g),t.b))*0.5*uLayerTint.w,0.0,1.0);t.rgb=l*uLayerTint.rgb;}t.rgb=mix(t.rgb,vec3(1.0),uLayer.z);float a=t.a*uLayer.x;if(uLayer.y>1.5)t.rgb*=a;frag=vec4(t.rgb,a);return;}
  if(uPass<0.5){vec3 c=vec3(0.0);if(hasBg>0.5&&inside(p,uBackgroundRect))c=plate(uBackground,p,uBackgroundRect).rgb;frag=vec4(c,1.0);return;}
  if(uPass<1.5){float m0=shapeMaskB(p,uTube,uShape,uBulge.xy);float m1=dual>0.5?shapeMaskB(p,uTube2,uShape2,uBulge.zw):0.0;
   if(m0<=0.0&&m1<=0.0)discard;

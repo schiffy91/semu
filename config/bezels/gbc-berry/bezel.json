@@ -102,6 +102,12 @@
           "HSM_CROP_PERCENT_TOP": "0",
           "HSM_CROP_PERCENT_ZOOM": "0",
           "HSM_CRT_LAYER_ORDER": "11.000000",
+          "HSM_DECAL_LAYER_ORDER": "7",
+          "HSM_DECAL_OPACITY": "100",
+          "HSM_DECAL_POS_X": "0",
+          "HSM_DECAL_POS_Y": "0",
+          "HSM_DECAL_SCALE": "100",
+          "HSM_DECAL_SCALE_X": "100",
           "HSM_DEVICELED_LAYER_ORDER": "4",
           "HSM_DEVICELED_OPACITY": "100",
           "HSM_DEVICELED_POS_X": "0",
@@ -225,6 +231,26 @@
         "h": 6116
       },
       "order": 4,
+      "visible": true,
+      "follow": "canvas",
+      "blend": "normal",
+      "opacity": 1,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 3440,
+        "h": 6116
+      }
+    },
+    {
+      "id": "decal",
+      "texture": "DecalImage",
+      "file": "duimon_mega_bezel:Graphics/Nintendo_Game_Boy_Color/GBC_Decal.png",
+      "size": {
+        "w": 3440,
+        "h": 6116
+      },
+      "order": 7,
       "visible": true,
       "follow": "canvas",
       "blend": "normal",

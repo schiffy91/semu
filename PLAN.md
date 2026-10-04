@@ -1271,6 +1271,27 @@ Status: tackled in three parallel tracks (performance, picture, controls), then 
   covered TV. Contracts: the core-options fixture (n64-core-options.cfg), no angrylion or cxd4 in either
   slice, the N64 at 320x240 whatever render_resolution says, and the TV at whole steps of 240, centred,
   at 1280x800 and 1920x1080. Each fails under its mutation.
+- Items 2 and 3 (picture): built and checked on the Mac render host at 1280x800 and 1920x1080, every
+  system and bezel variant in bezel fit, judged by eye; the Deck look is open. GBC: a3d0dc6's hidden
+  carbon plate never carried the buttons. Duimon draws Start and Select in GBC_Decal.png and no Duimon
+  preset names it (res/layers/Nintendo_Game_Boy_Color/*.params at d03dabf), so the shell never had
+  them. gbc-shell now declares the plate in `upstream.textures` (DecalImage, following the device:
+  `upstream.parameters` HSM_DECAL_FOLLOW_LAYER 4), `semu bezel emit` stacks it at Mega Bezel's decal
+  order 7, and gbc-berry inherits it. Bezel fit: the black bars were the Soqueroeu TV rooms, shrunk to
+  the whole step, ending inside the screen (138 px top and bottom, 282 px each side at 1920x1080 on the
+  PSX). Folding the room back put a second TV beside the first, so a scene's room (its viewport-
+  following canvas layer, and the night plate over it) now carries its edge rows and columns outward:
+  the flat wall up, the wall and the table's level grain to either side (layer line field `|1`,
+  compositor `roomPlate`, mirrored in the editor). Its table never extends down, because the plate's
+  last rows are the table's dark front edge: a room shorter than the screen in bezel fit stands on the
+  screen's bottom edge, as fit already shows it. The TV stays centred across and at whole steps (the
+  N64 contract now expects the table on the bottom edge). The gb studio render's opaque black backdrop
+  read as bars on the desk, so its surround is now transparent (config/assets/bezels/gb/classic.png,
+  digest updated). Contracts (scene_fill.btrc): both GBC shells draw the decal; the NES room and night
+  lines carry `|1` and the renderer parses it; the layer pass draws roomPlate; and every system and
+  variant in fit, game and bezel at both sizes is covered by its desk, its canvas or a standing room
+  (194 pictures, 28 rooms). Each fails under its mutation: no anchor, no field, no parse, no roomPlate,
+  no supplement (the emit fixed point) and no decal layer.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 

@@ -71,6 +71,7 @@ struct RendererLayerConfig {  // one layer of the package stack: SEMU_RENDER_LAY
     float opacity;
     float tint[4];  // r, g, b, brightness: grayscale times brightness times colour; brightness 0 is untinted
     float lift;     // blends the texel toward white first, so a multiply plate lightens
+    int room;       // the room a scene is: past its rectangle its edge rows and columns carry on, so a canvas smaller than the screen (bezel fit) leaves no black bars
 };
 
 struct RendererLookupState {  // while reloadVariants runs, a variant key comes from this section only
@@ -199,7 +200,7 @@ class RendererConfigKeys {
         screen->shader_available = RendererFileHash.sha256(screen->shader.value, screen->shader_sha256) ? 1 : 0;
     }
 
-    class bool parseLayer(struct RendererLayerConfig* layer, char* value) {  // file|x,y,w,h or cover|above|blend|opacity|tint|lift
+    class bool parseLayer(struct RendererLayerConfig* layer, char* value) {  // file|x,y,w,h or cover|above|blend|opacity|tint|lift[|room]
         memset(layer, 0, sizeof(struct RendererLayerConfig));
         if (value == null || value[0] == 0) { return false; }
         char* bar = strchr(value, '|');
@@ -228,6 +229,8 @@ class RendererConfigKeys {
         if (field != null && field[1] != '-') { sscanf(field + 1, "%f,%f,%f,%f", &layer->tint[0], &layer->tint[1], &layer->tint[2], &layer->tint[3]); }
         char* liftField = field == null ? null : strchr(field + 1, (int)'|');
         if (liftField != null) { layer->lift = RendererConfigKeys.clamp01((float)atof(liftField + 1)); }
+        char* roomField = liftField == null ? null : strchr(liftField + 1, (int)'|');
+        if (roomField != null) { layer->room = atoi(roomField + 1) != 0 ? 1 : 0; }
         layer->set = 1;
         return true;
     }

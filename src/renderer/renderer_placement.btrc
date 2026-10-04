@@ -60,6 +60,7 @@ class RendererPlacement {
             if (canvas->width <= (float)areaWidth) { canvas->x = canvas->x + RendererPlacement.wholePixels(((float)areaWidth - canvas->width) * 0.5f - canvas->x); }
             if (canvas->height <= (float)areaHeight) { canvas->y = canvas->y + RendererPlacement.wholePixels(((float)areaHeight - canvas->height) * 0.5f - canvas->y); }
         }
+        if (placement == 2 && variant->canvas_cover != 0 && canvas->height < (float)areaHeight) { canvas->y = canvas->y + RendererPlacement.wholePixels(0.0f - canvas->y); }  // bezel on a scene shorter than the screen: the table stays on the screen's bottom edge and the wall carries on above, never a band under the table
     }
 
     class bool shellHidden(int placement, int surfaceCount) { return placement == 1 && surfaceCount == 2; }  // DS and 3DS screen placement: no shell, the whole-step layout over the background

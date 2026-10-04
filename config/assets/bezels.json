@@ -33,10 +33,10 @@
         "height": 1477,
         "bit_depth": 8,
         "color_type": 6,
-        "sha256": "0196da73be03748301247b562a107ebcbdc5e5555426311c63ad02e4bdf86c64"
+        "sha256": "76319e175f6f9c340414045e6e9ff5eac669f37b37beb84522096ff8235f4637"
       },
       "doc": {
-        "provenance": "Semu-owned complete-console product render. The raster carries the continuous lens; config/bezels/gb-studio/bezel.json owns the game aperture."
+        "provenance": "Semu-owned complete-console product render. The raster carries the continuous lens; config/bezels/gb-studio/bezel.json owns the game aperture. The surround outside the console is transparent (keyed from its black studio backdrop), so the desk shows past the silhouette in every placement."
       }
     },
     "assets/bezels/psp/classic.png": {

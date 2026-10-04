@@ -117,26 +117,27 @@ const BezelRenderer = (() => {
       screen.surround = Environment.color(source.surround, [0, 0, 0]);
       return screen;
     }
-    static layers(pkg, available) {  // SemuRenderLayers.emit: the drawable stack bottom first, each with its extent, side, blend, opacity, tint and lift
+    static layers(pkg, available) {  // SemuRenderLayers.emit: the drawable stack bottom first, each with its extent, side, blend, opacity, tint, lift and room
       const canvas = pkg.canvas, layers = Array.isArray(pkg.layers) ? pkg.layers : [];
       if (!canvas || !(canvas.w > 0)) return [];
       const cutouts = layers.find(layer => layer.id === "cutouts"), screensOrder = cutouts ? Environment.number(cutouts.order, 0) : 0, recolor = pkg.recolor;
       const lines = [];
       const place = (line, order) => { let at = 0; while (at < lines.length && lines[at].order <= order) at++; lines.splice(at, 0, { ...line, order }); };
-      let backgroundExtent = null, backgroundOrder = 0;
+      let backgroundExtent = null, backgroundOrder = 0, backgroundRoom = false;
       for (const layer of layers) {
         if (layer.id === "cutouts" || layer.visible === false || !available(layer.id)) continue;
         const order = Environment.number(layer.order, 0), canvasSized = layer.size && layer.size.w === canvas.w && layer.size.h === canvas.h;
         const extent = layer.follow === "viewport" ? (canvasSized ? { set: true, x: 0, y: 0, width: 1, height: 1 } : "cover") : Environment.hole(layer.rect, canvas);
         if (extent !== "cover" && !extent.set) continue;  // the renderer is never given a layer that leaves the canvas
-        if (layer.id === "background") { backgroundExtent = extent; backgroundOrder = order; }
+        const room = layer.id === pkg.canvas_layer && layer.follow === "viewport" && !!canvasSized;  // a scene whose canvas is the room: past the canvas its edge rows and columns carry on
+        if (layer.id === "background") { backgroundExtent = extent; backgroundOrder = order; backgroundRoom = room; }
         const tinted = recolor && Array.isArray(recolor.layers) && recolor.layers.includes(layer.id);
         place({ id: layer.id, extent, above: order > screensOrder, blend: layer.blend === "add" ? 1 : (layer.blend === "multiply" ? 2 : 0), opacity: Environment.clamp01(Environment.fraction(Environment.number(layer.opacity, 1))),
-          tint: tinted ? [...Environment.color(recolor.color, [1, 1, 1]), Environment.fraction(Environment.number(recolor.brightness, 1))] : [0, 0, 0, 0], lift: 0 }, order);
+          tint: tinted ? [...Environment.color(recolor.color, [1, 1, 1]), Environment.fraction(Environment.number(recolor.brightness, 1))] : [0, 0, 0, 0], lift: 0, room }, order);
       }
       const ambient = pkg.ambient;
       if (ambient && typeof ambient === "object" && backgroundExtent && available("ambient")) {  // the late-night light, multiplied over the scene below the screens
-        place({ id: "ambient", extent: backgroundExtent, above: false, blend: 2, opacity: 1, tint: [0, 0, 0, 0], lift: Environment.clamp01(Environment.fraction(1 - Environment.number(ambient.opacity, 1))) }, backgroundOrder + 0.5);
+        place({ id: "ambient", extent: backgroundExtent, above: false, blend: 2, opacity: 1, tint: [0, 0, 0, 0], lift: Environment.clamp01(Environment.fraction(1 - Environment.number(ambient.opacity, 1))), room: backgroundRoom }, backgroundOrder + 0.5);
       }
       return lines.length > 8 ? [] : lines;
     }
@@ -169,7 +170,7 @@ const BezelRenderer = (() => {
       }
       return { x, y, width, height };
     }
-    static integerPlacement(nativeHeight, screen, placement, aspect, areaWidth, areaHeight, canvas, fractionalBelow) {  // the picture at a whole multiple of its native height; FRACTIONAL_BELOW: a 3D-era system's opt-in for game
+    static integerPlacement(nativeHeight, screen, placement, aspect, areaWidth, areaHeight, canvas, fractionalBelow, scene) {  // the picture at a whole multiple of its native height; FRACTIONAL_BELOW: a 3D-era system's opt-in for game; SCENE: a room canvas (canvasCover)
       let area = screen.image;
       if (!area.set) {
         const tubeWidth = float(screen.tube.width * canvas.width), tubeHeight = float(screen.tube.height * canvas.height);
@@ -200,6 +201,7 @@ const BezelRenderer = (() => {
         if (placed.width <= areaWidth) placed.x = float(placed.x + Geometry.wholePixels(float(float(float(areaWidth - placed.width) * 0.5) - placed.x)));
         if (placed.height <= areaHeight) placed.y = float(placed.y + Geometry.wholePixels(float(float(float(areaHeight - placed.height) * 0.5) - placed.y)));
       }
+      if (placement === "bezel" && scene && placed.height < areaHeight) placed.y = float(placed.y + Geometry.wholePixels(float(0 - placed.y)));  // a scene shorter than the screen keeps its table on the bottom edge, the wall carrying on above
       return placed;
     }
     static wholePixels(shift) {  // RendererPlacement.wholePixels: rounded half away from zero
@@ -218,7 +220,7 @@ const BezelRenderer = (() => {
       if (variant.layered && variant.canvasCover) canvas = Geometry.coverKeepingTubes(variant, preview.screens.length, areaWidth, areaHeight, canvas);
       const first = variant.screens[0];
       if (preview.placement !== "fit" && preview.screens.length === 1 && first && (first.image.set || first.tube.set)) {
-        canvas = Geometry.integerPlacement(preview.screens[0].h, first, preview.placement, Geometry.singleAspect(preview), areaWidth, areaHeight, canvas, preview.game_fractional_below);
+        canvas = Geometry.integerPlacement(preview.screens[0].h, first, preview.placement, Geometry.singleAspect(preview), areaWidth, areaHeight, canvas, preview.game_fractional_below, variant.layered && variant.canvasCover);
       }
       return canvas;
     }
@@ -353,10 +355,10 @@ const BezelRenderer = (() => {
         if (layer.above !== above || !entry || layer.opacity <= 0) continue;
         const rect = layer.extent === "cover" ? this.cover(screen, entry.width, entry.height) : CompositionContract.aperture(canvas, layer.extent);
         if (rect.width <= 0 || rect.height <= 0) continue;
-        this.scissor(layer.extent === "cover" ? screen : null);
+        this.scissor(layer.extent === "cover" || layer.room ? screen : null);  // a room fills the target screen, never the page around it
         this.bind(1, entry);
         this.setRect("uBezelRect", rect);
-        this.set4("uLayer", layer.opacity, layer.blend, layer.lift, 0);
+        this.set4("uLayer", layer.opacity, layer.blend, layer.lift, layer.room ? 1 : 0);
         this.set4("uLayerTint", layer.tint[0], layer.tint[1], layer.tint[2], layer.tint[3]);
         gl.enable(gl.BLEND);
         if (layer.blend === 1) gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE, gl.ZERO, gl.ONE);  // add: black adds nothing

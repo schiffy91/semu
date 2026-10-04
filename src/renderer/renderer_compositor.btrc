@@ -996,7 +996,7 @@ class RendererCompositor {
             gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->layer_textures[slot]);
             gl->active_texture((unsigned int)RGL_TEXTURE0);
             if (resources->uniform_bezel_rect >= 0) { gl->uniform_4f(resources->uniform_bezel_rect, x, y, width, height); }
-            RendererCompositor.set4(gl, resources->uniform_layer, layer->opacity, (float)layer->blend, layer->lift, 0.0f);
+            RendererCompositor.set4(gl, resources->uniform_layer, layer->opacity, (float)layer->blend, layer->lift, layer->room != 0 ? 1.0f : 0.0f);  // w: the room carries on past its rectangle
             RendererCompositor.set4(gl, resources->uniform_layer_tint, layer->tint[0], layer->tint[1], layer->tint[2], layer->tint[3]);
             gl->enable((unsigned int)RGL_BLEND);
             if (layer->blend == 1) {

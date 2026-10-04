@@ -73,6 +73,8 @@ class SemuRenderLayers {  // the package's layer stack for the compositor: file,
         Vector<string> lines = [];
         Vector<double> orders = [];
         string backgroundExtent = "";
+        string backgroundRoom = "";
+        string canvasLayer = SemuJson.textAt(package, "canvas_layer");
         double backgroundOrder = 0.0;
         for (int index = 0; index < layers.size(); index++) {
             JSONValue layer = layers.at(index);
@@ -84,21 +86,22 @@ class SemuRenderLayers {  // the package's layer stack for the compositor: file,
             bool canvasSized = SemuJson.intAt(layer.get("size"), "w", 0) == canvasWidth && SemuJson.intAt(layer.get("size"), "h", 0) == canvasHeight;
             string extent = SemuJson.textAt(layer, "follow").equals("viewport") ? (canvasSized ? "0,0,1,1" : "cover") : SemuRenderEnvironment.rect(layer.get("rect"), canvas);  // a viewport-following plate the size of the canvas is the canvas
             if (extent.isEmpty()) { diagnostics.add(packageId, "layers." + id, "the layer's rectangle does not fit the canvas"); continue; }
-            if (id.equals("background")) { backgroundExtent = extent; backgroundOrder = order; }
+            bool room = id.equals(canvasLayer) && SemuJson.textAt(layer, "follow").equals("viewport") && canvasSized;  // a scene whose canvas is the room: past the canvas the edge rows and columns carry on (the wall above, wall and table to either side), so a canvas smaller than the screen (bezel fit) never leaves black bars
+            string roomField = room ? "|1" : "";
+            if (id.equals("background")) { backgroundExtent = extent; backgroundOrder = order; backgroundRoom = roomField; }
             string blend = SemuJson.textAt(layer, "blend");
             string blendCode = blend.equals("add") ? "1" : (blend.equals("multiply") ? "2" : "0");
-            SemuRenderLayers.place(lines, orders, f"{file}|{extent}|{order > screensOrder ? "1" : "0"}|{blendCode}|{SemuRenderEnvironment.numberOr(layer, "opacity", "1")}|{SemuRenderLayers.tint(recolor, id)}|0", order);
+            SemuRenderLayers.place(lines, orders, f"{file}|{extent}|{order > screensOrder ? "1" : "0"}|{blendCode}|{SemuRenderEnvironment.numberOr(layer, "opacity", "1")}|{SemuRenderLayers.tint(recolor, id)}|0{roomField}", order);
         }
         JSONValue ambient = package.get("ambient");
         if (ambient != null && ambient.isObject() && !backgroundExtent.isEmpty()) {  // the late-night light, multiplied over the scene below the screens
             string file = SemuRenderLayers.file(plan, packageId, "ambient", SemuJson.textAt(ambient, "file"));
             double opacity = atof(SemuRenderEnvironment.numberOr(ambient, "opacity", "1"));
-            if (!file.isEmpty()) { SemuRenderLayers.place(lines, orders, f"{file}|{backgroundExtent}|0|2|1|-|{SemuRenderEnvironment.fraction(1.0 - opacity)}", backgroundOrder + 0.5); }
+            if (!file.isEmpty()) { SemuRenderLayers.place(lines, orders, f"{file}|{backgroundExtent}|0|2|1|-|{SemuRenderEnvironment.fraction(1.0 - opacity)}{backgroundRoom}", backgroundOrder + 0.5); }
         }
         if (lines.size() == 0) { return; }
         if (lines.size() > 8) { diagnostics.add(packageId, "layers", f"{lines.size()} drawable layers, the compositor holds 8"); return; }
         env.set("SEMU_RENDER_CANVAS" + suffix, f"{SemuRenderEnvironment.numberOr(canvas, "w", "0")},{SemuRenderEnvironment.numberOr(canvas, "h", "0")}");
-        string canvasLayer = SemuJson.textAt(package, "canvas_layer");
         for (int index = 0; index < layers.size(); index++) {  // a scene whose canvas is the room fills the screen; a device keeps its whole silhouette
             if (SemuJson.textAt(layers.at(index), "id").equals(canvasLayer) && SemuJson.textAt(layers.at(index), "follow").equals("viewport")) { env.set("SEMU_RENDER_CANVAS_FIT" + suffix, "cover"); }
         }
