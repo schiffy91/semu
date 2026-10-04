@@ -24,9 +24,9 @@ class PlayersBed {  // a launch-like plan: the target, a system, settings, and a
         Vector<int> nodes = [5, 7, 9, 3];
         Vector<JSONValue> found = [];
         for (int slot = 0; slot < count && slot < 4; slot++) {
-            found.push(SemuPadRoster.pad(nodes.get(slot), "Microsoft X-Box 360 pad " + Strings.fromInt(slot), 3, 0x28de, 0x11ff, 1, slot, names));
+            found.push(SemuPadRoster.pad(nodes.get(slot), "Microsoft X-Box 360 pad " + Strings.fromInt(slot), 3, 0x28de, 0x11ff, 1, slot, names, null));
         }
-        if (count > 4) { found.push(SemuPadRoster.pad(2, "8BitDo Pro 2", 3, 0x2dc8, 0x6006, 0x0111, -1, names)); }
+        if (count > 4) { found.push(SemuPadRoster.pad(2, "8BitDo Pro 2", 3, 0x2dc8, 0x6006, 0x0111, -1, names, null)); }
         return SemuPadRoster.order(found);
     }
 
@@ -77,6 +77,16 @@ class PlayersRosterSpec {  // the roster's order, names and identities
         contract.expect(order.join(",").equals("Steam Deck Controller/0/0,Xbox Series X Controller/0/1,Xbox Series X Controller/1/2,DualSense Wireless Controller/0/3,8BitDo Pro 2/0/4"), "Steam's slots come first by slot (not by event node), named from the slot file, numbered per name; another pad follows: " + order.join(","));
         bool distinct = !SemuJson.textAt(pads.at(1), "guid").equals(SemuJson.textAt(pads.at(2), "guid")) && SemuJson.textAt(pads.at(2), "same_guid_index").equals("0");
         contract.expect(distinct && SemuJson.textAt(pads.at(1), "ryujinx_guid").equals(SemuJson.textAt(pads.at(2), "ryujinx_guid")), "Steam's pads differ in SDL's GUID (their names' CRC) and match in Ryujinx's");
+        Vector<string> noSlots = [];
+        Vector<JSONValue> twinPads = [];
+        twinPads.push(SemuPadRoster.pad(4, "8BitDo Pro 2", 3, 0x2dc8, 0x6006, 0x0111, -1, noSlots, null));
+        twinPads.push(SemuPadRoster.pad(6, "8BitDo Pro 2", 3, 0x2dc8, 0x6006, 0x0111, -1, noSlots, null));
+        JSONValue twins = SemuPadRoster.order(twinPads);
+        contract.expect(SemuJson.textAt(twins.at(0), "same_guid_index").equals("0") && SemuJson.textAt(twins.at(1), "same_guid_index").equals("1") && SemuJson.textAt(twins.at(1), "same_name_index").equals("1"), "two pads of one model share SDL's GUID: Cemu's <n>_<guid> counts them 0 and 1");
+        JSONValue sdlNames = SemuJson.get(Fixture("linux-desktop").plan.input.definition, "players.sdl_names");
+        JSONValue renamed = SemuPadRoster.pad(8, "Microsoft X-Box 360 pad", 3, 0x045e, 0x028e, 0x0114, -1, noSlots, sdlNames);
+        contract.expect(SemuJson.textAt(renamed, "name").equals("Xbox 360 Controller") && SemuJson.textAt(renamed, "evdev_name").equals("Microsoft X-Box 360 pad") && SemuJson.textAt(renamed, "guid").equals(SemuPadGuid.sdl(3, 0x045e, 0x028e, 0x0114, "Microsoft X-Box 360 pad")), "a pad SDL renames carries SDL's name (Dolphin's device name) and keeps the evdev name's GUID");
+        contract.expect(SemuJson.textAt(SemuPadRoster.pad(9, "Sony Interactive Entertainment DualSense Wireless Controller", 3, 0x054c, 0x0ce6, 0x8111, -1, noSlots, sdlNames), "name").equals("PS5 Controller") && SemuJson.textAt(SemuPadRoster.pad(10, "8BitDo Pro 2", 3, 0x2dc8, 0x6006, 0x0111, -1, noSlots, sdlNames), "name").equals("8BitDo Pro 2"), "a DualSense is SDL's PS5 Controller; a pad SDL does not rename keeps its evdev name");
     }
 }
 
@@ -103,6 +113,8 @@ class PlayersRowsSpec {  // the rows: counts, pads dealt, identities per player
         JSONValue dealt = SemuPlayers.rows(saved, fixture.model.system("wii"), fixture.model.emulator("dolphin"));
         string pads = SemuJson.textAt(dealt.at(0), "pad") + "," + SemuJson.textAt(dealt.at(1), "pad") + "," + SemuJson.textAt(dealt.at(2), "pad") + "," + SemuJson.textAt(dealt.at(3), "pad");
         contract.expect(pads.equals("2,0,-1,1"), "saved pads win in player order, a taken one falls back to the lowest free pad, none stays none: " + pads);
+        Vector<int> firstNone = SemuPlayers.assign(JSONValue.parse("{\"input\":{\"systems\":{\"wii\":{\"players\":{\"1\":{\"pad\":-1}}}}}}"), "wii", 2, 2);
+        contract.expect(firstNone.get(0) == 0 && firstNone.get(1) == 1, "a saved player 1 without a pad is dealt the first pad anyway (player 1 always plays), and player 2 the next");
         contract.expect(SemuJson.textAt(dealt.at(1), "layout").equals("classic") && SemuJson.textAt(dealt.at(1), "extension").equals("Classic") && SemuJson.textAt(dealt.at(0), "layout").equals("nunchuk") && SemuJson.textAt(dealt.at(2), "connected").isEmpty() && SemuJson.textAt(dealt.at(2), "wiimote_source").equals("0"), "each player's layout row; a player without a pad has no Wii Remote");
         SemuPlan gba = PlayersBed.plan(fixture, "steam-deck", "gba", "", 4);
         contract.expect(SemuPlayers.rows(gba, fixture.model.system("gba"), fixture.model.emulator("retroarch")).size() == 1 && SemuPlayers.rows(PlayersBed.plan(fixture, "steam-deck", "ps2", "", 4), fixture.model.system("ps2"), fixture.model.emulator("pcsx2")).size() == 2, "a single-player system is one slot; PS2 on PCSX2 two");
@@ -147,6 +159,16 @@ class PlayersProfilesSpec {  // each emulator's per-player output
         contract.expect(pro.contains("<type>Wii U Pro Controller</type>") && pro.contains("<uuid>0_0300" + SemuPadGuid.word(SemuPadGuid.crc16("Microsoft X-Box 360 pad 1")) + "de280000ff11000001000000</uuid>") && pro.contains("<entry><mapping>25</mapping><button>40</button></entry>"), "Cemu: controller1.xml is player 2's Pro Controller");
         contract.contains(PlayersBed.file(fixture, wiiu, "cemu", "config/Cemu/controllerProfiles/controller0.xml"), "<uuid>0_030079f6de280000ff11000001000000</uuid>", "Cemu: the GamePad keeps the Deck's uuid");
         contract.expect(PlayersBed.file(fixture, PlayersBed.plan(fixture, "steam-deck", "wiiu", "", 1), "cemu", "config/Cemu/controllerProfiles/controller1.xml").isEmpty(), "Cemu: no second pad, no controller1.xml");
+        SemuPlan desktop = PlayersBed.plan(fixture, "linux-desktop", "wii", "", -1);
+        JSONValue sdlNames = SemuJson.get(desktop.input.definition, "players.sdl_names");
+        Vector<string> noSlots = [];
+        Vector<JSONValue> desktopPads = [];
+        desktopPads.push(SemuPadRoster.pad(3, "8BitDo Pro 2", 3, 0x2dc8, 0x6006, 0x0111, -1, noSlots, sdlNames));
+        desktopPads.push(SemuPadRoster.pad(5, "Microsoft X-Box 360 pad", 3, 0x045e, 0x028e, 0x0114, -1, noSlots, sdlNames));
+        desktop.pads = SemuPadRoster.order(desktopPads);
+        string desktopRemotes = PlayersBed.file(fixture, desktop, "dolphin", "dolphin-user/Config/WiimoteNew.ini");
+        contract.contains(PlayersBed.section(desktopRemotes, "[Wiimote2]"), "Device = SDL/0/Xbox 360 Controller\n", "Dolphin on the desktop: player 2's Xbox 360 pad is named as SDL names it, not by its kernel name");
+        contract.contains(PlayersBed.section(PlayersBed.file(fixture, desktop, "dolphin", "dolphin-user/Config/GCPadNew.ini"), "[GCPad2]"), "Device = SDL/0/Xbox 360 Controller", "and so is its GameCube pad");
     }
 }
 
@@ -195,6 +217,21 @@ class PlayersCheckerSpec {  // the checker refuses a layout no emulator row appl
         SemuDiagnostics clean = SemuDiagnostics();
         SemuPlayersChecker.check(fixture.model, fixture.plan, fixture.model.system("wii"), clean);
         contract.expect(clean.ok(), "the shipped Wii layouts and Dolphin's switch pass: " + clean.render());
+        Fixture thin = Fixture("steam-deck");
+        JSONValue hotkeys = thin.model.emulator("dolphin").profile.get("layout_hotkeys");
+        JSONValue fewer = JSONValue.makeArray();
+        fewer.push(hotkeys.at(0));
+        fewer.push(hotkeys.at(1));
+        thin.model.emulator("dolphin").profile.set("layout_hotkeys", fewer);
+        JSONValue controllers = thin.model.system("wii").definition.get("controllers");
+        JSONValue single = JSONValue.makeArray();
+        single.push(controllers.get("layouts").at(1));
+        controllers.set("layouts", single);
+        SemuDiagnostics thinner = SemuDiagnostics();
+        SemuPlayersChecker.check(thin.model, thin.plan, thin.model.system("wii"), thinner);
+        string refused = thinner.render();
+        contract.expect(refused.contains("layout_hotkeys") && refused.contains("needs a key for each of the 4 players"), "the checker refuses fewer layout keys than players (players 3 and 4 could never switch): " + refused);
+        contract.expect(refused.contains("controllers.layouts") && refused.contains("declare two or more layouts, or none"), "and a single layout, which has nothing to switch to: " + refused);
     }
 }
 

@@ -151,7 +151,10 @@ class ModsSpecMigrate {
         contract.expect(bed.reverse() == 0 && bed.snapshot().equals(reversed), "a second reverse changes nothing");
         bed.run();
         FileSystem.mkdirp(bed.old("Azahar/data/load/mods/0004000000033600"));
-        bed.reverse();
+        string recordLine = "";
+        for line in Strings.split(FileSystem.readText(bed.migration.place("tsv")), "\n") { if (line.contains("\tmoved\t") && line.contains("load/mods/0004000000033600")) { recordLine = line; } }
+        contract.expect(bed.migration.restore(recordLine).outcome.equals("left: something is back at the old place"), "reverse leaves an entry whose old place is taken again, and says so");
+        contract.expect(bed.reverse() == 0, "a reverse that leaves such an entry still succeeds: leaving is no failure");
         contract.expect(FileSystem.isFile(bed.library("azahar/mods/0004000000033600/code.ips")) && FileSystem.listDir(bed.old("Azahar/data/load/mods/0004000000033600")).isEmpty() && FileSystem.isDir(bed.old("Azahar/data/load/mods/0004000000125500")), "reverse leaves an entry whose old place was taken again, and restores the rest");
     }
 
@@ -183,6 +186,14 @@ class ModsSpecMigrate {
         off.owner();
         for name in ["mods", "paths.mods"] { off.bed.fixture.plan.tokens.put(name, ""); }
         contract.expect(off.run() == 1 && !off.migration.refusal().isEmpty(), "with paths.mods empty nothing is migrated");
+        ModsSpecMigrateBed through = ModsSpecMigrateBed("Linked");
+        through.owner();
+        string target = PathTools.join(through.bed.fixture.scratch, "library-elsewhere");
+        FileSystem.mkdirp(target);
+        FileSystem.symlink(target, through.mods);
+        string linkedBefore = through.snapshot();
+        contract.expect(through.migration.refusal().equals(through.mods + " is a link; Semu never moves mods through it") && through.run() == 1, "a library that is itself a link is refused");
+        contract.expect(through.snapshot().equals(linkedBefore) && FileSystem.listDir(target).isEmpty() && FileSystem.isFile(through.old("Azahar/data/load/mods/0004000000033600/code.ips")), "and neither the old trees nor the link's target change");
         ModsSpecMigrateBed unmounted = ModsSpecMigrateBed("SD/Emulation");
         contract.expect(unmounted.run() == 1 && !FileSystem.exists(PathTools.join(unmounted.bed.fixture.scratch, "SD")), "an unmounted card refuses, creating no library on the root disk");
     }
@@ -200,6 +211,10 @@ class ModsSpecMigrate {
         FileSystem.mkdirp(second + ".semu-partial");
         contract.expect(!SemuModMover.copyEntry(source, second).isEmpty() && !SemuModMover.present(second), "a partial copy left from before is never overwritten or removed");
         contract.expect(SemuModMover.renameExclusive(PathTools.join(source, "code.ips"), PathTools.join(source, "romfs/a.bin")) != 0 && FileSystem.readText(PathTools.join(source, "romfs/a.bin")).equals("aaaa"), "the exclusive rename refuses an existing destination");
+        string shortCopy = PathTools.join(fixture.scratch, "copy/library/short");
+        ModsSpecTree.write(PathTools.join(shortCopy + ".semu-partial", "code.ips"), "PATCH");
+        string refused = SemuModMover.adopt(source, shortCopy + ".semu-partial", shortCopy);
+        contract.expect(refused.contains("the copy holds 1 files, 5 bytes, 0 links, the source 2 files, 9 bytes, 0 links") && !SemuModMover.present(shortCopy) && SemuModMover.present(shortCopy + ".semu-partial"), "a copy that comes out short is never renamed in: the partial stays where it is: " + refused);
         FileSystem.mkdirp(PathTools.join(fixture.scratch, "copy/empty"));
         contract.expect(SemuModMover.renameExclusive(PathTools.join(source, "romfs"), PathTools.join(fixture.scratch, "copy/empty")) != 0 && FileSystem.isFile(PathTools.join(source, "romfs/a.bin")), "it refuses even an empty folder, which plain rename would replace");
     }

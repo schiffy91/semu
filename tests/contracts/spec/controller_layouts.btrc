@@ -183,6 +183,45 @@ class LayoutsPageSpec {  // the players page as the supervisor runs it
     }
 }
 
+class LayoutsRulesSpec {  // the written rules the page and Reset keep: player 1 always holds a pad, Dolphin's listing, a padless player
+    class int last(SemuLaunchPlan launch) { return InputDeliveryTools.records(launch.stateDir) - 1; }
+
+    class void run(Contract contract, Fixture fixture) {
+        string folder = PathTools.join(fixture.scratch, "layouts/listing");
+        FileSystem.mkdirp(PathTools.join(folder, "Sub"));
+        for name in ["Semu.ini", "Aaa.ini", "Ccc.INI", "Sub/Bbb.ini", "notes.txt"] { FileSystem.writeText(PathTools.join(folder, name), "[Profile]\n"); }
+        Vector<string> listed = SemuControllerLayouts.listing(folder);
+        int semu = listed.indexOf(PathTools.join(folder, "Semu.ini"));
+        contract.expect(listed.size() == 4 && semu == 2 && listed.get(1).equals(PathTools.join(folder, "Ccc.INI")) && listed.get(3).equals(PathTools.join(folder, "Sub/Bbb.ini")) && SemuControllerLayouts.presses(semu, 0, listed.size()) == 2,
+            f"the press count lists the folder as Dolphin does: subfolders walked and .ini in any case ({listed.size()} files, Semu's at {semu})");
+        SemuLaunchPlan launch = LayoutsBed.launch(fixture, "rules", "wii", "dolphin", 2);
+        SemuPlayerSet set = launch.players;
+        SemuSupervisorRuntime.menu_visible = 1;
+        long long now = SemuClock.milliseconds();
+        SemuActionExecutor.dispatch(launch, "ui.players", SEMU_SOURCE_X11, SEMU_SOURCE_X11);
+        SemuSupervisorRuntime.menu_selected = 0;
+        SemuPlayersPage.confirm(launch, now);
+        contract.expect(set.pads.get(0) == 0 && RadialBed.record(launch, LayoutsRulesSpec.last(launch), SemuActions.playerAssign(), -1, 0), "confirm on P1 with every other pad taken keeps its pad (84 slot -1): player 1 is never moved to none");
+        SemuSupervisorRuntime.menu_selected = 0;
+        SemuActionExecutor.dispatch(launch, "ui.menu.right", SEMU_SOURCE_X11, 910);
+        SemuSupervisorRuntime.menu_selected = set.count;
+        SemuPlayersPage.confirm(launch, now);
+        contract.expect(SemuSupervisorRuntime.relaunch == 1 && RadialBed.record(launch, LayoutsRulesSpec.last(launch), SemuActions.menuPage(), 1, 1), "a layout already switched live still counts as a change: RESTART GAME restarts, so every file comes from the saved choice (the ruling)");
+        SemuSupervisorRuntime.relaunch = 0;
+        SemuSupervisorRuntime.quit = 0;
+        SemuLaunchPlan padless = LayoutsBed.launch(fixture, "rules-padless", "wii", "dolphin", 2);
+        SemuPlayerSet unplugged = padless.players;
+        unplugged.layouts.set(3, 3);
+        unplugged.launchLayouts.set(3, 3);
+        contract.expect(!unplugged.connected(3) && !SemuControllerLayouts.resetRestarts(unplugged), "a player without a pad on a stale GameCube layout does not make Reset restart the game");
+        SemuTypedSteps.count = 0;
+        SemuControllerLayouts.reset(padless);
+        contract.expect(unplugged.layouts.get(3) == 3 && !unplugged.changed() && SemuTypedSteps.count == 0, "Reset leaves a padless player's layout alone, so RESTART GAME has nothing to restart for it");
+        SemuTypedSteps.recording = 0;
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
 class LayoutsRendererSpec {  // the renderer draws the page from the file and names the layouts
     class void apply(struct RendererPostUiState* postUi, int action, int slot, int reserved) {  // one fresh record through the post-UI state
         struct SemuActionRecord record;
@@ -249,6 +288,7 @@ class ControllerLayoutsSpecContract {
         LayoutsTimingSpec.run(contract);
         LayoutsSwitchSpec.run(contract, fixture);
         LayoutsPageSpec.run(contract, fixture);
+        LayoutsRulesSpec.run(contract, fixture);
         LayoutsRendererSpec.run(contract, fixture);
     }
 }

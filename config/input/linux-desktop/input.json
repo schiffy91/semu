@@ -264,6 +264,16 @@
     "pad_name": "Xbox Controller",
     "steam_slots_variable": "SteamVirtualGamepadInfo",
     "steam_pad_prefix": "Microsoft X-Box 360 pad ",
+    "sdl_names": {
+      "045e:028e": "Xbox 360 Controller",
+      "045e:02d1": "Xbox One Controller",
+      "045e:02ea": "Xbox One S Controller",
+      "045e:0b12": "Xbox Series X Controller",
+      "054c:05c4": "PS4 Controller",
+      "054c:09cc": "PS4 Controller",
+      "054c:0ce6": "PS5 Controller"
+    },
+    "sdl_names_doc": "What SDL calls a pad its mapping database renames, by vendor:product (lowercase hex), so Dolphin's SDL/<n>/<name> names a real device; any other pad keeps its evdev name. Read from SDL 3 (sdl2-compat 2.32.72, the evdev path) in the podman VM with uinput pads under the kernel drivers' names on 2026-10-04: Microsoft X-Box 360 pad became Xbox 360 Controller, Sony Interactive Entertainment Wireless Controller (054c:0ce6) PS5 Controller, and so on; Nintendo Switch Pro Controller, Logitech Gamepad F310, 8BitDo Pro 2 and the DualSense Edge kept their names. Steam's virtual pads take their names from Steam's slot file instead.",
     "identities": {
       "dolphin_pad": "SDL/${same_name_index}/${pad_name}",
       "pcsx2_pad": "SDL-${pad_index}",

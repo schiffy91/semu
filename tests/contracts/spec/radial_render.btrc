@@ -138,6 +138,23 @@ class RadialRenderOutputs {  // the Wii's 16:9 output: its own environment, beze
         outputs.set("widescreen", JSONValue.makeObject());
         contract.expect(!SemuChecker.check(fixture.model, fixture.plan, broken) && broken.render().contains("outputs.wii.widescreen.args"), "semu check refuses an output an emulator gives no arguments for: " + broken.render());
         outputs.set("widescreen", SemuJson.get(Fixture("linux-desktop").model.emulator("dolphin").definition, "platforms.linux.outputs.wii.widescreen"));
+        Fixture variantsFixture = Fixture("linux-desktop");
+        JSONValue variants = variantsFixture.model.system("wii").bezels.get("variants");
+        JSONValue television = null;
+        JSONValue wideVariant = null;
+        for (int index = 0; index < variants.size(); index++) {
+            if (SemuJson.textAt(variants.at(index), "id").equals("tv")) { television = variants.at(index); }
+            if (SemuJson.textAt(variants.at(index), "id").equals("tv_wide")) { wideVariant = variants.at(index); }
+        }
+        wideVariant.set("output", JSONValue.makeString("16x10"));
+        SemuDiagnostics undeclared = SemuDiagnostics();
+        SemuOutputChecker.check(variantsFixture.model, variantsFixture.plan, variantsFixture.model.system("wii"), undeclared);
+        contract.contains(undeclared.render(), "variant tv_wide is drawn for an undeclared output 16x10", "semu check refuses a bezel variant drawn for an output the system does not declare");
+        wideVariant.set("output", JSONValue.makeString("widescreen"));
+        television.get("outputs").set("widescreen", JSONValue.makeString("speakers"));
+        SemuDiagnostics partner = SemuDiagnostics();
+        SemuOutputChecker.check(variantsFixture.model, variantsFixture.plan, variantsFixture.model.system("wii"), partner);
+        contract.contains(partner.render(), "variant tv names speakers for widescreen, which is not drawn for it", "and a partner that is not drawn for the output it is named for");
     }
 }
 

@@ -71,6 +71,10 @@ class SemuModMover {
         if (!SemuPaths.prepareDirectory(PathTools.dirname(destination))) { return "could not create " + PathTools.dirname(destination); }
         ExecResult copy = ChildProcess.run("cp", ["-Rp", source, partial]);
         if (!copy.ok()) { return "cp failed, " + partial + " is left: " + copy.stderr().trim(); }
+        return SemuModMover.adopt(source, partial, destination);
+    }
+
+    class string adopt(string source, string partial, string destination) {  // a finished copy is renamed in only when its counts match the source's
         string wanted = SemuModMover.totals(source);
         string found = SemuModMover.totals(partial);
         if (!found.equals(wanted)) { return f"the copy holds {found}, the source {wanted}; {partial} is left"; }

@@ -66,6 +66,14 @@ class WiiPointerSpecRouting {
             contract.expect(!WiiPointerSpecRouting.names(other, "SEMU_RENDER_POINTER_"), systemId + ": no pointer screen, so its window pointer is left alone");
         }
         contract.expect(fixture.diagnostics.ok(), "pointer routing compiles without diagnostics: " + fixture.diagnostics.render());
+        Fixture typo = Fixture("linux-desktop");
+        SemuJson.get(typo.model.system("wii").definition, "display.surface_mapping").set("pointer_screen", JSONValue.makeString("mian"));
+        SemuJson.get(typo.model.system("nds").definition, "display.surface_mapping").set("touch_screen", JSONValue.makeString("bottm"));
+        SemuDiagnostics refused = SemuDiagnostics();
+        Vector<string> typoed = SemuRenderEnvironment.compile(typo.plan, typo.model.system("wii"), "dolphin", "/state/dolphin", refused);
+        Vector<string> touchTypo = SemuRenderEnvironment.compile(typo.plan, typo.model.system("nds"), "retroarch", "/state/retroarch", refused);
+        contract.expect(!WiiPointerSpecRouting.names(typoed, "SEMU_RENDER_POINTER_") && refused.render().contains("display.surface_mapping.pointer_screen") && refused.render().contains("names no declared screen: mian"), "a pointer screen that names no declared screen is refused, not silently dropped: " + refused.render());
+        contract.expect(!WiiPointerSpecRouting.names(touchTypo, "SEMU_RENDER_TOUCH_SURFACE_INDEX") && refused.render().contains("display.surface_mapping.touch_screen") && refused.render().contains("names no declared screen: bottm"), "and so is such a touch screen");
     }
 }
 
@@ -143,6 +151,8 @@ class WiiPointerSpecWiring {
                 "if (found != 0) { SemuPointerRemap.apply(windowX, windowY); }", "return found;"]),
             "XIQueryPointer asks libXi first, then remaps the window point it found");
         contract.contains(preload, "SemuPreloadHooks.bind(&SemuPreload.query_pointer, next, \"XIQueryPointer\");", "the real XIQueryPointer is the next one after the preload");
+        contract.expect(WiiPointerSpecText.ordered(hook, ["if (SemuPreload.query_pointer == null) {  // libXi loaded after the first hook", "SemuPreloadHooks.bind(&SemuPreload.query_pointer, next, \"XIQueryPointer\");", "if (SemuPreload.query_pointer == null) { return 0; }", "int found = SemuPreload.query_pointer("]),
+            "a libXi loaded after the preload's first hook is bound at the first query, before it is called");
         string apply = WiiPointerSpecText.between(preload, "class bool apply(double* windowX, double* windowY) {", "\n    }\n");
         contract.expect(WiiPointerSpecText.ordered(apply, ["int screen = SemuCompose.pointerSurface();", "screen < 0", "SemuCompose.unmapOn(screen, (float)*windowX, (float)*windowY, true, &emulatorX, &emulatorY) != 1",
                 "*windowX = (double)emulatorX;", "*windowY = (double)emulatorY;"]),

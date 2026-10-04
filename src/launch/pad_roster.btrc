@@ -1,7 +1,8 @@
 // The pads a launch deals to players (plan.pads): the evdev gamepads present that SDL is not told
 // to ignore, Steam's virtual pads first in slot order and named from Steam's slot file as SDL names
 // them (SDL_steam_virtual_gamepad.c: "[slot N]" sections, "name=" lines; the slot is the N of the
-// pad's evdev name), then any other pad by event node under its evdev name. Each pad carries what
+// pad's evdev name), then any other pad by event node under the name SDL gives it (players.sdl_names
+// by vendor:product, as SDL's mapping database renames known pads, else its evdev name). Each pad carries what
 // emulators match a pad by: SDL 2.26's GUID (bus, CRC-16 of the evdev name, vendor, product,
 // version, each a little-endian word), how many pads before it share its name (Dolphin's
 // SDL/<n>/<name>) or its GUID (Cemu's <n>_<guid>, Ryujinx's <n>-<guid>), and Ryujinx's spelling of
@@ -92,9 +93,15 @@ class SemuPadRoster {
         return Strings.isDigitStr(rest) ? Strings.toInt(rest) : -1;
     }
 
-    class JSONValue pad(int node, string evdevName, int bus, int vendor, int product, int version, int slot, Vector<string> names) {  // one roster entry before its place is known
+    class string sdlName(JSONValue sdlNames, int vendor, int product, string evdevName) {  // SDL's gamepad name for a pad its mapping database renames (players.sdl_names), else the evdev name
+        string key = SemuPadGuid.hexByte((vendor >> 8) & 255) + SemuPadGuid.hexByte(vendor & 255) + ":" + SemuPadGuid.hexByte((product >> 8) & 255) + SemuPadGuid.hexByte(product & 255);
+        string named = sdlNames != null && sdlNames.isObject() && sdlNames.has(key) ? SemuJson.text(sdlNames.get(key)) : "";
+        return named.isEmpty() ? evdevName : named;
+    }
+
+    class JSONValue pad(int node, string evdevName, int bus, int vendor, int product, int version, int slot, Vector<string> names, JSONValue sdlNames) {  // one roster entry before its place is known
         JSONValue entry = JSONValue.makeObject();
-        string name = slot >= 0 && slot < names.size() && !names.get(slot).isEmpty() ? names.get(slot) : evdevName;
+        string name = slot >= 0 && slot < names.size() && !names.get(slot).isEmpty() ? names.get(slot) : SemuPadRoster.sdlName(sdlNames, vendor, product, evdevName);  // the name SDL gives it: Dolphin matches SDL/<n>/<name>
         entry.set("node", JSONValue.makeInt(node));
         entry.set("slot", JSONValue.makeInt(slot));
         entry.set("evdev_name", JSONValue.makeString(evdevName));
@@ -166,7 +173,7 @@ class SemuPadRoster {
             if (evdevName.equals("Semu Virtual Keyboard") || SemuSdlIgnore.ignored(vendor, product, ignore, except) || !SemuPadRoster.gamepad("/dev/input/" + node)) { continue; }
             int bus = SemuPadRoster.hex(FileSystem.readText(PathTools.join(device, "id/bustype")));
             int version = SemuPadRoster.hex(FileSystem.readText(PathTools.join(device, "id/version")));
-            found.push(SemuPadRoster.pad(Strings.toInt(node.substring(5, node.len() - 5)), evdevName, bus, vendor, product, version, SemuPadRoster.steamSlot(evdevName, SemuJson.textAt(players, "steam_pad_prefix")), names));
+            found.push(SemuPadRoster.pad(Strings.toInt(node.substring(5, node.len() - 5)), evdevName, bus, vendor, product, version, SemuPadRoster.steamSlot(evdevName, SemuJson.textAt(players, "steam_pad_prefix")), names, SemuJson.get(players, "sdl_names")));
         }
         return SemuPadRoster.order(found);
     }

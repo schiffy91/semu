@@ -137,6 +137,8 @@ class ModsSpecLaunch {
         contract.expect(ModsSpecTree.snapshot(mods).equals(before), "the library is unchanged");
         string updates = PathTools.join(bed.roms, "switch/updates/");
         JSONValue chosen = SemuJson.readFile(PathTools.join(root, "games/0100f2c0115b6000/updates.json"));
+        Vector<string> games = FileSystem.listDir(PathTools.join(root, "games"));
+        contract.expect(games.contains("0100f2c0115b6000") && !games.contains("0100F2C0115B6000") && games.contains("0100abcd12340000"), "the choice folders are the title ids in lower case, exactly as Ryujinx reads them on a case-sensitive card: " + games.join(" "));
         string zelda = updates + "The Legend of Zelda Tears of the Kingdom ";
         contract.expect(SemuJson.textAt(chosen, "selected").equals(zelda + "[0100F2C0115B6800][v393216].nsp"), "TotK boots its highest update, v393216: " + chosen.stringify());
         contract.expect(SemuJson.strings(chosen.get("paths")).join("|").equals(zelda + "[0100F2C0115B6800][v196608].nsp|" + zelda + "[0100F2C0115B6800][v393216].nsp"), "both of its updates are listed, never its DLC: " + chosen.stringify());

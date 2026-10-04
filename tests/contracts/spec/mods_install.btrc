@@ -17,6 +17,7 @@ import ../../../src/mods/kind.btrc;
 import ../../../src/mods/library.btrc;
 import ../../../src/mods/install.btrc;
 import ../../../src/mods/report.btrc;
+import ../../../src/mods/titles.btrc;
 import ./standalone.btrc;
 import ./mods_paths.btrc;
 
@@ -69,6 +70,37 @@ class ModsSpecBed {  // azahar on linux-desktop carrying only the synthetic kind
     public string lines(SemuModInstallReport report) { return report.lines.join("\n"); }
 }
 
+class ModsSpecValidity {  // the cheap checks before a link, at their edges
+    class void run(Contract contract) {
+        ModsSpecBed bed = ModsSpecBed();
+        string entry = PathTools.join(bed.bed.fixture.scratch, "validity/entry");
+        ModsSpecTree.write(PathTools.join(entry, "exheader.bin"), ModsSpecTree.sized(2049));
+        SemuModCheck exheader = SemuModCheck(JSONValue.parse("{\"file\":\"exheader.bin\",\"size\":2048}"));
+        contract.expect(exheader.problem(entry).equals("exheader.bin is over 2048 bytes"), "an exheader over 2048 bytes is refused, as Azahar refuses it: " + exheader.problem(entry));
+        ModsSpecTree.write(PathTools.join(entry, "exheader.bin"), ModsSpecTree.sized(2048));
+        contract.expect(exheader.problem(entry).isEmpty(), "exactly 2048 bytes passes");
+        SemuModCheck patch = SemuModCheck(JSONValue.parse("{\"file\":\"code.bps\",\"format\":\"bps\"}"));
+        ModsSpecTree.writeBytes(PathTools.join(entry, "code.bps"), [66, 80, 83, 49, 0, 128, 44, 129, 128]);  // BPS1, source 128 and target 300 in two bytes each, metadata 0
+        contract.expect(patch.problem(entry).isEmpty(), "a BPS whose sizes take two bytes each and carries no metadata passes: " + patch.problem(entry));
+        ModsSpecTree.writeBytes(PathTools.join(entry, "code.bps"), [66, 80, 83, 49, 0, 128, 44, 129, 0, 128]);  // metadata 128, spelled [0x00, 0x80]
+        contract.expect(patch.problem(entry).contains("carries metadata"), "a BPS whose metadata size is 128 in two bytes is refused: each beat number adds its shift");
+        SemuModKind kind = bed.kind("fixture-textures");
+        contract.expect(kind.readsName("TEX.PNG", false) && kind.readsName("tex.png", false) && !kind.readsName("TEX.JPG", false), "a pack whose files end in .PNG is read: the suffix matches in any case");
+        SemuModLevel title = SemuModLevel(JSONValue.parse("{\"length\":16,\"characters\":\"0123456789ABCDEFabcdef\"}"));
+        contract.expect(title.matches("0004000000033600") && !title.matches("X004000000033600") && !title.matches("000400000003360X"), "a title name is checked from its first character to its last");
+        SemuModLevel free = SemuModLevel(JSONValue.parse("{}"));
+        contract.expect(free.matches("My Mod") && !free.matches("My Mod.semu-partial") && !free.matches("My Mod.semu-link") && !free.matches(".hidden"), "at a level with no name rule a leftover .semu-partial copy (or .semu-link) is never an entry");
+        string packs = PathTools.join(bed.bed.fixture.scratch, "validity/packs");
+        ModsSpecTree.write(PathTools.join(packs, "Pack$One/rules.txt"), "[Definition]\n");
+        ModsSpecTree.write(PathTools.join(packs, "PackTwo/rules.txt"), "[Definition]\n");
+        SemuModKind listed = SemuModKind("fixture", JSONValue.parse("{\"id\":\"packs\",\"library\":\"packs\",\"target\":\"" + packs + "\",\"levels\":[{}],\"reads\":[\"rules.txt\"],\"entry_lines\":{\"format\":\"<entry>${target}/${entry}/rules.txt</entry>\"}}"), bed.bed.fixture.plan.tokens);
+        string lines = listed.entryLines();
+        contract.expect(lines.contains("/PackTwo/rules.txt") && !lines.contains("Pack$One"), "an entry whose name holds $ gets no settings line, which the token pass would expand: " + lines);
+        JSONValue brackets = JSONValue.parse("{\"length\":16,\"open\":\"[\",\"close\":\"]\"}");
+        contract.expect(SemuRomTitles.fromName(brackets, "Game [0004000000033600] (USA).3ds").equals("0004000000033600") && SemuRomTitles.fromName(brackets, "Game [00040000000336001] (USA).3ds").isEmpty(), "a bracket token one character too long names no title");
+    }
+}
+
 class ModsSpecInstall {
     class void owner(ModsSpecBed bed) {  // the library a careless owner might leave
         ModsSpecTree.write(bed.source("fixture-textures/0004000000033600/tex1_a.png"), "a");
@@ -101,6 +133,8 @@ class ModsSpecInstall {
         int scale = SemuComposedScale.of(bed.bed.fixture.plan, bed.bed.fixture.model.system("n3ds"), "azahar");
         string settings = FileSystem.readText(PathTools.join(bed.state, "config/fixture/custom/0004000000033600.ini"));
         contract.expect(settings.equals(f"[Fixture]\nscale={scale}\ntitle=0004000000033600\n") && FileSystem.isFile(PathTools.join(bed.state, "config/fixture/custom/00040000000AEB00.ini")), "each installed title gets its title settings at the composed scale: " + settings);
+        Vector<string> custom = FileSystem.listDir(PathTools.join(bed.state, "config/fixture/custom"));
+        contract.expect(custom.contains("00040000000AEB00.ini") && !custom.contains("00040000000aeb00.ini"), "the title settings file is spelled as the linked title, exactly (a case-sensitive card finds no other spelling): " + custom.join(" "));
         contract.expect(!FileSystem.exists(PathTools.join(bed.state, "config/fixture/custom/0004000000ABCDEF.ini")), "a title without a linkable entry gets no title settings");
         contract.expect(ModsSpecTree.snapshot(bed.library).equals(before), "the library is byte-identical after the install");
         FileSystem.mkdirp(bed.textures("0004000000099999"));  // what the emulator does for a game without a pack
@@ -108,6 +142,10 @@ class ModsSpecInstall {
         string manifest = bed.manifest();
         bed.install();
         contract.expect(bed.manifest().equals(manifest) && FileSystem.readLink(bed.textures("0004000000033600")).equals(bed.source("fixture-textures/0004000000033600")) && FileSystem.isDir(bed.textures("0004000000099999")), "a second install keeps the links and the manifest, and leaves the emulator's folder");
+        string titleFile = PathTools.join(bed.state, "config/fixture/custom/0004000000033600.ini");
+        FileSystem.writeText(titleFile, "[Fixture]\nscale=9\ntitle=0004000000033600\n");
+        bed.install();
+        contract.expect(FileSystem.readText(titleFile).equals(settings), "title settings whose content differs (a stale scale) are rewritten at the next install");
         contract.expect(SemuModKind.settingValue(bed.bed.fixture.plan, bed.emulator, "fixture").equals("true"), "the settings group is on while a kind of it is installed");
         ModsSpecTree.write(bed.source("fixture-textures/00040000000aeb00/.semu-off"), "");
         bed.install();
@@ -230,5 +268,6 @@ class ModsSpecInstall {
         ModsSpecInstall.precedence(contract);
         ModsSpecInstall.depth(contract);
         ModsSpecInstall.refusals(contract);
+        ModsSpecValidity.run(contract);
     }
 }

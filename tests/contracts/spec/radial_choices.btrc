@@ -92,6 +92,7 @@ class RadialFitSpec {  // the Fit toggle: live, per system, never the fractional
         contract.expect(RadialBed.record(gba, 1, SemuActions.placementSelect(), 1, 0) && SemuJson.textAt(RadialBed.saved(gba), "visual.systems.gba.placement").equals("game"), "a second Fit goes back to the screen");
         SemuLaunchPlan wii = RadialBed.launch(fixture, "wii", "fit-wii", "", "Sports.rvz");
         contract.expect(wii.variants.placement.ids.join("|").equals("bezel|game|fit") && wii.variants.placement.cycled == 2 && wii.variants.placement.index == 2, "wii starts on the default fit, which sits after the two the toggle steps through");
+        contract.expect(wii.variants.placement.next(-1) == 1 && wii.variants.placement.next(1) == 0, "from the default fit, Left (the menu's FIT row) goes to SCREEN and Right to BEZEL");
         SemuActionExecutor.execute(wii, "visual.placement.next", SEMU_SOURCE_X11);
         SemuActionExecutor.execute(wii, "visual.placement.next", SEMU_SOURCE_X11);
         SemuActionExecutor.execute(wii, "visual.placement.next", SEMU_SOURCE_X11);
