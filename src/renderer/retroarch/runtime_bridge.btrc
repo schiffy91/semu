@@ -117,16 +117,12 @@ class SemuRetroArchGeneration {
 class SemuRetroArchFrameBridge {
     class void cursor(struct SemuRenderFrameGl* frame) {  // the window pointer for Semu's cursor, on touch systems only
         semuRetroArchDisplayLock(video_state_get_ptr());
-        int16_t x = SemuRetroArchPointer.hover_x;
-        int16_t y = SemuRetroArchPointer.hover_y;
-        bool shown = SemuRetroArchCursorPolicy.shown(
-            SemuRetroArchSurfaces.touch_index,
-            SemuRetroArchPointer.hover_allowed != 0, (int)x, (int)y,
-            frame->framebuffer_width, frame->framebuffer_height);
-        frame->cursor.visible = shown ? 1 : 0;
-        frame->cursor.x = shown ? (int)x : 0;
-        frame->cursor.y = shown ? (int)y : 0;
-        frame->cursor.pressed = shown && SemuRetroArchPointer.hover_pressed != 0 ? 1 : 0;
+        SemuRetroArchCursorPolicy.fill(SemuRetroArchSurfaces.touch_index,
+            SemuRetroArchPointer.hover_allowed != 0,
+            (int)SemuRetroArchPointer.hover_x, (int)SemuRetroArchPointer.hover_y,
+            SemuRetroArchPointer.hover_pressed != 0,
+            frame->framebuffer_width, frame->framebuffer_height,
+            &frame->cursor.visible, &frame->cursor.x, &frame->cursor.y, &frame->cursor.pressed);
         semuRetroArchDisplayUnlock(video_state_get_ptr());
     }
 

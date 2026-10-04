@@ -1,6 +1,39 @@
 // Header-free arithmetic of the RetroArch bridge, imported by surface_contract.btrc and the contracts:
-// where a mapped touch lands in the core's whole stacked frame, and when the bridge hands the
-// renderer a cursor to draw.
+// the declared surfaces and their stacked composite, where a mapped touch lands in the core's whole
+// frame, and the cursor the bridge hands the renderer.
+
+struct SemuRetroArchSurface {
+    char id[64];
+    unsigned int native_width;
+    unsigned int native_height;
+};
+
+struct SemuRetroArchSurfaceContract {
+    int loaded;
+    int valid;
+    int count;
+    int layout;
+    int native_width_policy;
+    int geometry_policy;
+    int touch_index;
+    struct SemuRetroArchSurface surfaces[2];
+};
+
+class SemuRetroArchComposite {  // the core's whole frame: the surfaces stacked top to bottom, as wide as the widest
+    class unsigned int width(struct SemuRetroArchSurfaceContract* contract) {
+        if (contract == null || contract->count < 1) { return 0u; }
+        if (contract->count == 1 || contract->surfaces[0].native_width >= contract->surfaces[1].native_width) {
+            return contract->surfaces[0].native_width;
+        }
+        return contract->surfaces[1].native_width;
+    }
+
+    class unsigned int height(struct SemuRetroArchSurfaceContract* contract) {
+        if (contract == null || contract->count < 1) { return 0u; }
+        if (contract->count == 1) { return contract->surfaces[0].native_height; }
+        return contract->surfaces[0].native_height + contract->surfaces[1].native_height;
+    }
+}
 
 class SemuRetroArchCoreAxis {
     class float x(float compositeWidth, float surfaceWidth, float normalized) {  // the narrower screen sits centred, as partition() cuts it
@@ -12,11 +45,36 @@ class SemuRetroArchCoreAxis {
         if (compositeHeight <= 0.0f) { return 0.0f; }
         return (rowsBefore + normalized * surfaceHeight) / compositeHeight;
     }
+
+    class bool declared(struct SemuRetroArchSurfaceContract* contract, int surface) {
+        return contract != null && surface >= 0 && surface < contract->count;
+    }
+
+    class float column(struct SemuRetroArchSurfaceContract* contract, int surface, float normalized) {  // the core's x for a tap NORMALIZED across SURFACE; 0 for an undeclared surface
+        if (!SemuRetroArchCoreAxis.declared(contract, surface)) { return 0.0f; }
+        return SemuRetroArchCoreAxis.x((float)SemuRetroArchComposite.width(contract), (float)contract->surfaces[surface].native_width, normalized);
+    }
+
+    class float row(struct SemuRetroArchSurfaceContract* contract, int surface, float normalized) {  // the core's y: the surfaces above it come first
+        if (!SemuRetroArchCoreAxis.declared(contract, surface)) { return 0.0f; }
+        unsigned int before = 0u;
+        for (int index = 0; index < surface; index++) { before = before + contract->surfaces[index].native_height; }
+        return SemuRetroArchCoreAxis.y((float)before, (float)contract->surfaces[surface].native_height, (float)SemuRetroArchComposite.height(contract), normalized);
+    }
 }
 
 class SemuRetroArchCursorPolicy {
     class bool shown(int touchIndex, bool allowed, int screenX, int screenY, int framebufferWidth, int framebufferHeight) {  // a touch system, a pointer the core may read, in the window
         return touchIndex >= 0 && allowed && screenX >= 0 && screenY >= 0
             && screenX < framebufferWidth && screenY < framebufferHeight;
+    }
+
+    class void fill(int touchIndex, bool allowed, int screenX, int screenY, bool pressed, int framebufferWidth, int framebufferHeight,
+                    int* visible, int* cursorX, int* cursorY, int* cursorPressed) {  // the frame's cursor fields: the pointer where it shows, zeros elsewhere
+        bool shown = SemuRetroArchCursorPolicy.shown(touchIndex, allowed, screenX, screenY, framebufferWidth, framebufferHeight);
+        *visible = shown ? 1 : 0;
+        *cursorX = shown ? screenX : 0;
+        *cursorY = shown ? screenY : 0;
+        *cursorPressed = shown && pressed ? 1 : 0;
     }
 }

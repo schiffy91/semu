@@ -60,15 +60,33 @@ class RightTrackpadSpecAxis {  // the core's own coordinates for a mapped touch
             "the bottom screen's middle row is three quarters down the stacked frame");
         contract.expect(SemuRetroArchCoreAxis.x(0.0f, 320.0f, 0.5f) == 0.0f && SemuRetroArchCoreAxis.y(0.0f, 240.0f, 0.0f, 0.5f) == 0.0f,
             "an empty composite maps to 0, never a division by zero");
+        struct SemuRetroArchSurfaceContract threeDs;
+        memset(&threeDs, 0, sizeof(struct SemuRetroArchSurfaceContract));
+        threeDs.count = 2;
+        threeDs.surfaces[0].native_width = 400u;
+        threeDs.surfaces[0].native_height = 240u;
+        threeDs.surfaces[1].native_width = 320u;
+        threeDs.surfaces[1].native_height = 240u;
+        contract.expect(SemuRetroArchComposite.width(&threeDs) == 400u && SemuRetroArchComposite.height(&threeDs) == 480u, "a 400x240 top over a 320x240 bottom is a 400x480 composite");
+        contract.expect(RightTrackpadSpecText.near(SemuRetroArchCoreAxis.column(&threeDs, 1, 0.05f), 0.14f, 0.0001f) && RightTrackpadSpecText.near(SemuRetroArchCoreAxis.column(&threeDs, 1, 0.95f), 0.86f, 0.0001f)
+            && RightTrackpadSpecText.near(SemuRetroArchCoreAxis.column(&threeDs, 0, 0.25f), 0.25f, 0.0001f),
+            "the bridge's walk: taps at 5 and 95 percent of the 3DS bottom screen reach the core at 0.14 and 0.86; the top screen maps unchanged");
+        contract.expect(RightTrackpadSpecText.near(SemuRetroArchCoreAxis.row(&threeDs, 1, 0.5f), 0.75f, 0.0001f) && RightTrackpadSpecText.near(SemuRetroArchCoreAxis.row(&threeDs, 0, 0.5f), 0.25f, 0.0001f),
+            "the bottom screen's middle row is three quarters down, the top screen's a quarter");
+        contract.expect(SemuRetroArchCoreAxis.column(&threeDs, 2, 0.5f) == 0.0f && SemuRetroArchCoreAxis.column(&threeDs, -1, 0.5f) == 0.0f && SemuRetroArchCoreAxis.row(null, 0, 0.5f) == 0.0f,
+            "an undeclared surface maps to 0");
     }
 
     class void bridge(Contract contract, Fixture fixture) {  // the compiled-in bridge uses that arithmetic and guards the index
         string surface = RightTrackpadSpecText.read(fixture, "src/renderer/retroarch/surface_contract.btrc");
         string coreX = RightTrackpadSpecText.between(surface, "class float coreX(", "class float coreY(");
+        string coreY = RightTrackpadSpecText.between(surface, "class float coreY(", "\n    }\n");
         string guard = RightTrackpadSpecText.between(surface, "class bool mappedSurface(", "class float coreX(");
         contract.contains(surface, "import ./surface_math.btrc;", "surface hook imports the header-free axis math");
-        contract.expect(coreX.contains("SemuRetroArchCoreAxis.x(") && coreX.contains("compositeWidth(contract)") && coreX.contains("SemuRetroArchSurfaceModel.mappedSurface(contract, result)"),
-            "coreX centres the narrower screen in the composite row, only for a declared surface");
+        contract.expect(coreX.contains("return SemuRetroArchCoreAxis.column(contract, result->surface_index, result->normalized_x);") && coreX.contains("SemuRetroArchSurfaceModel.mappedSurface(contract, result)"),
+            "coreX hands the tested column() the touched surface and x, only for a declared surface");
+        contract.expect(coreY.contains("return SemuRetroArchCoreAxis.row(contract, result->surface_index, result->normalized_y);"), "coreY hands the tested row() the touched surface and y");
+        contract.lacks(surface, "class unsigned int compositeWidth(", "the composite is computed once, in the header-free surface_math");
         contract.expect(guard.contains("result->surface_index >= 0") && guard.contains("result->surface_index < contract->count"),
             "a surface index outside the contract maps to 0");
     }
@@ -134,6 +152,16 @@ class RightTrackpadSpecCursor {  // Semu draws the pointer on touch systems and 
         contract.expect(!SemuRetroArchCursorPolicy.shown(-1, true, 10, 10, 1280, 800), "a system without a touch screen shows no cursor");
         contract.expect(!SemuRetroArchCursorPolicy.shown(1, false, 10, 10, 1280, 800), "no cursor while RetroArch keeps the pointer from the core (its menu)");
         contract.expect(!SemuRetroArchCursorPolicy.shown(1, true, 1280, 10, 1280, 800) && !SemuRetroArchCursorPolicy.shown(1, true, -1, 10, 1280, 800), "no cursor outside the window");
+        int visible = -1;
+        int cursorX = -1;
+        int cursorY = -1;
+        int cursorPressed = -1;
+        SemuRetroArchCursorPolicy.fill(1, true, 640, 400, true, 1280, 800, &visible, &cursorX, &cursorY, &cursorPressed);
+        contract.expect(visible == 1 && cursorX == 640 && cursorY == 400 && cursorPressed == 1, "the frame's cursor is the pointer where it shows, press included");
+        SemuRetroArchCursorPolicy.fill(1, true, 1280, 10, true, 1280, 800, &visible, &cursorX, &cursorY, &cursorPressed);
+        bool outside = visible == 0 && cursorX == 0 && cursorY == 0 && cursorPressed == 0;
+        SemuRetroArchCursorPolicy.fill(-1, true, 640, 400, false, 1280, 800, &visible, &cursorX, &cursorY, &cursorPressed);
+        contract.expect(outside && visible == 0 && cursorX == 0 && cursorY == 0 && cursorPressed == 0, "outside the window or off a touch system the frame's cursor is all zeros");
     }
 
     class void wiring(Contract contract, Fixture fixture) {  // the sources that carry the sample from RetroArch to the post-UI pass
@@ -148,8 +176,9 @@ class RightTrackpadSpecCursor {  // Semu draws the pointer on touch systems and 
         string build = RightTrackpadSpecText.between(runtime, "class bool build(", "class SemuRetroArchPointerBridge");
         contract.expect(RightTrackpadSpecText.before(build, "SemuRetroArchFrameBridge.cursor(frame);", "SemuRetroArchSurfaceModel.partition("), "every frame RetroArch builds carries the pointer sample");
         string cursor = RightTrackpadSpecText.between(runtime, "class void cursor(", "class bool build(");
-        contract.expect(cursor.contains("SemuRetroArchCursorPolicy.shown(") && cursor.contains("SemuRetroArchSurfaces.touch_index") && RightTrackpadSpecText.before(cursor, "semuRetroArchDisplayLock(", "frame->cursor.visible"),
-            "the bridge reports the cursor only on a touch system, under the display lock");
+        contract.expect(cursor.contains("SemuRetroArchCursorPolicy.fill(SemuRetroArchSurfaces.touch_index,") && cursor.contains("(int)SemuRetroArchPointer.hover_x, (int)SemuRetroArchPointer.hover_y,") && cursor.contains("&frame->cursor.visible, &frame->cursor.x, &frame->cursor.y, &frame->cursor.pressed);")
+            && RightTrackpadSpecText.before(cursor, "semuRetroArchDisplayLock(", "SemuRetroArchCursorPolicy.fill(") && RightTrackpadSpecText.before(cursor, "SemuRetroArchCursorPolicy.fill(", "semuRetroArchDisplayUnlock(") && !cursor.contains("frame->cursor.x ="),
+            "the bridge fills the cursor through the tested policy, from the pointer sample, under the display lock");
         string sample = RightTrackpadSpecText.between(runtime, "class void sample(", "class bool snapshot(");
         string locked = RightTrackpadSpecText.between(sample, "semuRetroArchDisplayLock(video_state_get_ptr());\n        bool stable = contextLocked", "semuRetroArchDisplayUnlock(");
         contract.expect(locked.contains("SemuRetroArchPointer.hover_x = screenX;") && locked.contains("SemuRetroArchPointer.hover_allowed = allowed ? 1 : 0;") && !locked.contains("if (stable) {\n            SemuRetroArchPointer.hover"),

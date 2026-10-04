@@ -6,6 +6,7 @@
 
 import ./renderer_gl_api.btrc;
 import ./renderer_config.btrc;
+import ./renderer_live_switch.btrc;
 import ./renderer_compositor.btrc;
 
 class RendererVariantImages {
@@ -78,6 +79,6 @@ class RendererVariantImages {
     }
 
     class bool due(struct RendererGlResources* resources) {  // a fresh context, or a live choice since the last load
-        return resources->ready != 0 && (resources->variant_images == 0 || resources->variant_images_stale != 0);
+        return RendererLiveSwitch.imagesDue(resources->ready, resources->variant_images, resources->variant_images_stale);
     }
 }

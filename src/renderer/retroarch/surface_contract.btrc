@@ -17,23 +17,6 @@ int SEMU_RETROARCH_GEOMETRY_POSITIVE = 1;
 int SEMU_RETROARCH_GEOMETRY_UNIFORM_INTEGER_SCALE = 2;
 int SEMU_RETROARCH_GEOMETRY_EXACT_NATIVE = 3;
 
-struct SemuRetroArchSurface {
-    char id[64];
-    unsigned int native_width;
-    unsigned int native_height;
-};
-
-struct SemuRetroArchSurfaceContract {
-    int loaded;
-    int valid;
-    int count;
-    int layout;
-    int native_width_policy;
-    int geometry_policy;
-    int touch_index;
-    struct SemuRetroArchSurface surfaces[2];
-};
-
 class SemuRetroArchSurfaceModel {
     class bool parseNative(char* value, unsigned int* width,
                            unsigned int* height) {
@@ -134,27 +117,6 @@ class SemuRetroArchSurfaceModel {
         return true;
     }
 
-    class unsigned int compositeWidth(
-            struct SemuRetroArchSurfaceContract* contract) {
-        if (contract == null || contract->count < 1) { return 0u; }
-        if (contract->count == 1
-                || contract->surfaces[0].native_width
-                    >= contract->surfaces[1].native_width) {
-            return contract->surfaces[0].native_width;
-        }
-        return contract->surfaces[1].native_width;
-    }
-
-    class unsigned int compositeHeight(
-            struct SemuRetroArchSurfaceContract* contract) {
-        if (contract == null || contract->count < 1) { return 0u; }
-        if (contract->count == 1) {
-            return contract->surfaces[0].native_height;
-        }
-        return contract->surfaces[0].native_height
-            + contract->surfaces[1].native_height;
-    }
-
     class bool scaledPair(unsigned int width, unsigned int height,
                           unsigned int nativeWidth,
                           unsigned int nativeHeight) {
@@ -173,8 +135,8 @@ class SemuRetroArchSurfaceModel {
                 || contract->layout != SEMU_RETROARCH_LAYOUT_VERTICAL) {
             return false;
         }
-        unsigned int width = SemuRetroArchSurfaceModel.compositeWidth(contract);
-        unsigned int height = SemuRetroArchSurfaceModel.compositeHeight(contract);
+        unsigned int width = SemuRetroArchComposite.width(contract);
+        unsigned int height = SemuRetroArchComposite.height(contract);
         if (contract->geometry_policy
                 == SEMU_RETROARCH_GEOMETRY_POSITIVE) {
             return geometry->base_width > 0u && geometry->base_height > 0u
@@ -241,7 +203,7 @@ class SemuRetroArchSurfaceModel {
                 frameWidth, frameHeight)) { return false; }
 
         unsigned int totalHeight =
-            SemuRetroArchSurfaceModel.compositeHeight(contract);
+            SemuRetroArchComposite.height(contract);
         int firstHeight = (int)((unsigned long long)viewportHeight
             * (unsigned long long)contract->surfaces[0].native_height
             / (unsigned long long)totalHeight);
@@ -250,7 +212,7 @@ class SemuRetroArchSurfaceModel {
 
         int top = frame->framebuffer_height - viewportY - viewportHeight;
         unsigned int compositeWidth =
-            SemuRetroArchSurfaceModel.compositeWidth(contract);
+            SemuRetroArchComposite.width(contract);
         frame->surface_count = 2;
         for (int index = 0; index < 2; index++) {  // a narrower screen sits centered in the composite row: take only its columns
             int width = (int)((unsigned long long)viewportWidth
@@ -280,10 +242,7 @@ class SemuRetroArchSurfaceModel {
         if (!SemuRetroArchSurfaceModel.mappedSurface(contract, result)) {
             return 0.0f;
         }
-        return SemuRetroArchCoreAxis.x(
-            (float)SemuRetroArchSurfaceModel.compositeWidth(contract),
-            (float)contract->surfaces[result->surface_index].native_width,
-            result->normalized_x);
+        return SemuRetroArchCoreAxis.column(contract, result->surface_index, result->normalized_x);
     }
 
     class float coreY(struct SemuRetroArchSurfaceContract* contract,
@@ -291,13 +250,6 @@ class SemuRetroArchSurfaceModel {
         if (!SemuRetroArchSurfaceModel.mappedSurface(contract, result)) {
             return 0.0f;
         }
-        unsigned int before = 0u;
-        for (int index = 0; index < result->surface_index; index++) {
-            before = before + contract->surfaces[index].native_height;
-        }
-        return SemuRetroArchCoreAxis.y((float)before,
-            (float)contract->surfaces[result->surface_index].native_height,
-            (float)SemuRetroArchSurfaceModel.compositeHeight(contract),
-            result->normalized_y);
+        return SemuRetroArchCoreAxis.row(contract, result->surface_index, result->normalized_y);
     }
 }

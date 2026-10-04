@@ -26,8 +26,10 @@ import ../../../src/renderer/renderer_config.btrc;
 import ../../../src/renderer/renderer_variants.btrc;
 import ../../../src/renderer/renderer_menu.btrc;
 import ../../../src/renderer/renderer_menu_raster.btrc;
+import ../../../src/renderer/renderer_live_switch.btrc;
 import ./render_env.btrc;
 import ./launch.btrc;
+import ./right_trackpad.btrc;
 
 class LiveVariantTools {
     class void fill(struct SemuActionRecord* record, int action, int slot, long long monotonic, unsigned long long sequence) {  // a record as the supervisor appends it
@@ -266,20 +268,86 @@ class LiveVariantRasterSpec {  // the toast band and the menu rows in the 384x46
     }
 }
 
-class LiveVariantSources {  // the GL-bound wiring the contracts cannot run: kept by source checks, proven by the render host
+class LiveVariantSwitchSpec {  // the GL-free core of the renderer's live switch, against the launch's nds file
+    class void select(struct RendererPostUiState* state, int action, int slot, unsigned long long sequence) {
+        struct SemuActionRecord record;
+        long long now = RendererClock.milliseconds();
+        LiveVariantTools.fill(&record, action, slot, now, sequence);
+        RendererMenuModel.apply(state, &record, now);
+    }
+
+    class int frames(struct RendererPostUiState* state, struct RendererConfig* config, struct RendererLiveChoice* live, int* stale) {  // two game frames: the first waits, the second applies
+        int first = RendererLiveSwitch.apply(state, config, live, stale);
+        int second = RendererLiveSwitch.apply(state, config, live, stale);
+        return first == SEMU_RENDER_SWITCH_NONE ? second : -9;
+    }
+
+    class void run(Contract contract) {
+        struct RendererPostUiState state;
+        memset(&state, 0, sizeof(struct RendererPostUiState));
+        RendererMenuModel.initialize(&state);
+        struct RendererConfig config;
+        memset(&config, 0, sizeof(struct RendererConfig));
+        struct RendererLiveChoice live;
+        RendererLiveSwitch.reset(&live);
+        int stale = 0;
+        contract.expect(RendererLiveSwitch.apply(&state, &config, &live, &stale) == SEMU_RENDER_SWITCH_NONE && live.bezel == -1 && live.shader == -1, "switch: nothing requested, nothing applied");
+        LiveVariantSwitchSpec.select(&state, SemuActions.bezelSelect(), 1, 1ULL);
+        int applied = LiveVariantSwitchSpec.frames(&state, &config, &live, &stale);
+        contract.expect(applied == SEMU_RENDER_SWITCH_APPLIED && config.variants[0].layout == SEMU_LAYOUT_MAIN_RIGHT && live.bezel == 1 && live.shader == 0 && stale == 1, "switch: a bezel select applies section [1,0] (main_right), becomes the live choice and marks the images stale");
+        stale = 0;
+        contract.expect(RendererLiveSwitch.apply(&state, &config, &live, &stale) == SEMU_RENDER_SWITCH_NONE && stale == 0 && live.bezel == 1, "switch: the next frame applies nothing again");
+        LiveVariantSwitchSpec.select(&state, SemuActions.shaderSelect(), 1, 2ULL);
+        applied = LiveVariantSwitchSpec.frames(&state, &config, &live, &stale);
+        contract.expect(applied == SEMU_RENDER_SWITCH_APPLIED && live.bezel == 1 && live.shader == 1 && stale == 0, "switch: a shader-only change applies [1,1] and leaves the images alone");
+        LiveVariantSwitchSpec.select(&state, SemuActions.bezelSelect(), 0, 3ULL);
+        applied = LiveVariantSwitchSpec.frames(&state, &config, &live, &stale);
+        unsigned long long images = RendererConfiguration.imageSignature(&config);
+        contract.expect(applied == SEMU_RENDER_SWITCH_APPLIED && live.bezel == 0 && live.shader == 1 && stale == 1 && config.variants[0].art.value[0] != 0, "switch: back to the launch's bezel from a live one applies [0,1], measured against the live choice");
+        memset(&config, 0, sizeof(struct RendererConfig));
+        RendererLiveSwitch.reapply(&config, &live);
+        contract.expect(RendererConfiguration.imageSignature(&config) == images && config.variants[0].art.value[0] != 0, "switch: a freshly loaded config (a context reset) starts on the live section");
+        contract.expect(RendererLiveSwitch.imagesDue(1, 0, 0) && RendererLiveSwitch.imagesDue(1, 1, 1) && !RendererLiveSwitch.imagesDue(1, 1, 0) && !RendererLiveSwitch.imagesDue(0, 0, 1), "switch: images load on a ready context that has none yet or a stale set, never otherwise");
+        state.visible = 0;
+        snprintf(state.toast, sizeof(state.toast), "%s", "BEZEL: ARCTIC");
+        long long now = RendererClock.milliseconds();
+        state.toast_until_ms = now + 1000LL;
+        bool toast = RendererToast.mode(&state, now) == SEMU_RENDER_POST_TOAST;
+        state.toast_until_ms = now - 1LL;
+        bool gone = RendererToast.mode(&state, now) == SEMU_RENDER_POST_NOTHING;
+        state.visible = 1;
+        contract.expect(toast && gone && RendererToast.mode(&state, now) == SEMU_RENDER_POST_MENU && RendererToast.mode(null, now) == SEMU_RENDER_POST_NOTHING, "toast: a closed menu draws a live toast alone, nothing once it expires, and the open menu draws the menu");
+        RendererVariantFile.discard(&live.overlay);
+        free(state.menu_pixels);
+    }
+}
+
+class LiveVariantSources {
+  // the GL-bound wiring the contracts cannot run: kept by source checks, proven by the render host
     class void run(Contract contract, Fixture fixture) {
         string compositor = LaunchSpecTools.source(fixture, "src/renderer/renderer_compositor.btrc");
         contract.contains(compositor, "false, true, true);  // librashader's disk cache on", "live: shader chains use librashader's disk cache");
         contract.lacks(compositor, "true, true, true)", "live: no chain is created with the cache disabled");
         contract.lacks(compositor, "variant->art.value, &resources->bezel_textures", "live: the variant images load in renderer_variant_images, not in initialize");
         string renderer = LaunchSpecTools.source(fixture, "src/renderer/libsemurenderer.btrc");
-        for line in ["SemuRendererLiveVariants.apply();", "if (fresh) { SemuRendererLiveVariants.reapply(); }", "SemuRendererLiveVariants.receipt(frame, contextGeneration, status);", "RendererVariantImages.due(&SemuRenderer.resources)", "SemuRenderer.live_bezel = -1;", "if (RendererConfiguration.imageSignature(&SemuRenderer.config) != images) { SemuRenderer.resources.variant_images_stale = 1; }"] {
+        for line in ["SemuRendererLiveVariants.apply();", "if (fresh) { SemuRendererLiveVariants.reapply(); }", "SemuRendererLiveVariants.receipt(frame, contextGeneration, status);", "RendererVariantImages.due(&SemuRenderer.resources)", "RendererLiveSwitch.reset(&SemuRenderer.live);"] {
             contract.contains(renderer, line, "live: libsemurenderer wires " + line);
         }
+        string apply = RightTrackpadSpecText.between(renderer, "class void apply(", "class void reapply(");
+        string reapply = RightTrackpadSpecText.between(renderer, "class void reapply(", "class void receipt(");
+        string receipt = RightTrackpadSpecText.between(renderer, "class void receipt(", "\n    }\n");
+        contract.expect(apply.contains("RendererLiveSwitch.apply(&SemuRenderer.post_ui, &SemuRenderer.config, &SemuRenderer.live, &SemuRenderer.resources.variant_images_stale);") && apply.contains("SemuRenderer.switch_started_ms = started;"), "live: the game phase applies a select through the tested switch and starts the receipt's clock");
+        contract.contains(reapply, "RendererLiveSwitch.reapply(&SemuRenderer.config, &SemuRenderer.live);", "live: a fresh config is put back on the live choice");
+        contract.contains(receipt, "RendererToast.finish(&SemuRenderer.post_ui, SemuRenderer.switch_started_ms, now);", "live: the switch receipt turns LOADING into the plain toast and gives a showing toast its time back");
+        string images = LaunchSpecTools.source(fixture, "src/renderer/renderer_variant_images.btrc");
+        contract.contains(RightTrackpadSpecText.between(images, "class bool due(", "\n    }\n"), "return RendererLiveSwitch.imagesDue(resources->ready, resources->variant_images, resources->variant_images_stale);", "live: images reload by the tested predicate");
+        string post = LaunchSpecTools.source(fixture, "src/renderer/renderer_post_ui.btrc");
+        string draw = RightTrackpadSpecText.between(post, "class bool draw(", "class bool drawCursor(");
+        contract.expect(draw.contains("int mode = RendererToast.mode(state, now);") && draw.contains("if (mode == SEMU_RENDER_POST_NOTHING) { return true; }") && draw.contains("bool toastOnly = mode == SEMU_RENDER_POST_TOAST;"), "live: the post phase draws what RendererToast.mode says, a toast alone over a closed menu");
         int reset = Strings.find(renderer, "class void reset(", 0);
         int activate = Strings.find(renderer, "class void activate(", 0);
-        contract.expect(reset > 0 && activate > reset && !renderer.substring(reset, activate - reset).contains("live_"), "live: a context reset keeps the live choice");
-        for name in ["renderer_config", "renderer_variants", "renderer_menu", "renderer_menu_raster", "variant_keys"] {
+        contract.expect(reset > 0 && activate > reset && !renderer.substring(reset, activate - reset).contains("SemuRenderer.live"), "live: a context reset keeps the live choice");
+        for name in ["renderer_config", "renderer_variants", "renderer_live_switch", "renderer_menu", "renderer_menu_raster", "variant_keys"] {
             string text = LaunchSpecTools.source(fixture, "src/renderer/" + name + ".btrc");
             bool plain = !text.isEmpty() && !text.contains("renderer_compositor.btrc") && !text.contains("renderer_gl_api.btrc") && !text.contains("librashader") && !text.contains("stb_image");
             contract.expect(plain, "live: src/renderer/" + name + ".btrc stays GL-free, so the contracts import it");
@@ -325,6 +393,7 @@ class LiveVariantSpecContract {
         LiveVariantReloadSpec.run(contract, path);
         LiveVariantMenuSpec.run(contract);
         LiveVariantRasterSpec.run(contract);
+        LiveVariantSwitchSpec.run(contract);
         LiveVariantTools.clear();
         LiveVariantSources.run(contract, fixture);
         LiveVariantLaunchSpec.run(contract, fixture);

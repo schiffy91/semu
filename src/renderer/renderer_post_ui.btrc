@@ -212,8 +212,9 @@ class RendererPostUiCompositor {
                     struct SemuRenderFrameGl* frame,
                     struct RendererPostUiState* state) {  // the open menu, else a toast in the same texture and pass, at the top
         long long now = RendererClock.milliseconds();
-        bool toastOnly = state->visible == 0 && RendererToast.active(state, now);
-        if (state->visible == 0 && !toastOnly) { return true; }
+        int mode = RendererToast.mode(state, now);
+        if (mode == SEMU_RENDER_POST_NOTHING) { return true; }
+        bool toastOnly = mode == SEMU_RENDER_POST_TOAST;
         if (toastOnly ? !RendererMenuRaster.renderToast(state) : !RendererMenuRaster.render(state, now)) { return false; }
         if (!RendererPostUiCompositor.upload(gl, resources, state->menu_pixels, SEMU_RENDER_MENU_WIDTH, SEMU_RENDER_MENU_HEIGHT)) { return false; }
         int width = 0;

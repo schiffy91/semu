@@ -9,6 +9,7 @@ import ./renderer_abi.btrc;
 import ./renderer_gl_api.btrc;
 import ./renderer_config.btrc;
 import ./renderer_variants.btrc;
+import ./renderer_live_switch.btrc;
 import ./renderer_compositor.btrc;
 import ./renderer_variant_images.btrc;
 import ./renderer_menu.btrc;
@@ -37,9 +38,7 @@ struct SemuRendererRuntime {
     struct RendererCompositionGeometry geometry;
     struct SemuRenderPendingFrame pending;
     struct RendererPostUiState post_ui;
-    int live_bezel;  // the variants-file section a select applied, -1 before any; a context reset keeps it
-    int live_shader;
-    struct RendererVariantOverlay live_overlay;  // that section's keys, re-applied over a freshly loaded config
+    struct RendererLiveChoice live;  // the variants-file section a select applied; a context reset keeps it
     long long switch_started_ms;  // a switch this frame: when it began, 0 otherwise
     long long switch_images_ms;
     struct RendererCursorState cursor;  // the touch cursor follows the frame's pointer sample
@@ -127,32 +126,15 @@ class SemuRendererInitialization {  // a failed initialize backs off instead of 
 
 class SemuRendererLiveVariants {  // a select from the journal: its section replaces the variant keys, then only the images reload
     class void apply() {  // in the game phase, once the toast has been on screen for two frames
-        int bezel = -1;
-        int shader = -1;
-        if (!RendererVariantRequests.due(&SemuRenderer.post_ui, SemuRenderer.live_bezel, SemuRenderer.live_shader, &bezel, &shader)) { return; }
-        char path[8192];
-        struct RendererVariantOverlay next;
         long long started = RendererClock.milliseconds();
-        if (!RendererStatePaths.path(path, sizeof(path), RendererActionJournal.variantsFileName())
-                || !RendererVariantFile.section(path, bezel, shader, &next)) {
-            fprintf(stderr, "semu-renderer: the variants file has no section [%d,%d]; the picture stays\n", bezel, shader);
-            return;
-        }
-        RendererVariantFile.discard(&SemuRenderer.live_overlay);
-        memcpy(&SemuRenderer.live_overlay, &next, sizeof(struct RendererVariantOverlay));  // the live overlay owns the text now
-        unsigned long long images = RendererConfiguration.imageSignature(&SemuRenderer.config);
-        RendererConfiguration.reloadVariants(&SemuRenderer.config, &SemuRenderer.live_overlay);
-        if (RendererConfiguration.imageSignature(&SemuRenderer.config) != images) { SemuRenderer.resources.variant_images_stale = 1; }  // a shader-only change decodes nothing
-        SemuRenderer.live_bezel = bezel;
-        SemuRenderer.live_shader = shader;
-        SemuRenderer.switch_started_ms = started;
+        int switched = RendererLiveSwitch.apply(&SemuRenderer.post_ui, &SemuRenderer.config, &SemuRenderer.live, &SemuRenderer.resources.variant_images_stale);
+        if (switched != SEMU_RENDER_SWITCH_APPLIED) { return; }
+        SemuRenderer.switch_started_ms = started;  // the receipt and the toast count the switch from here
         SemuRenderer.switch_images_ms = 0LL;
     }
 
     class void reapply() {  // a freshly loaded config (a new context) starts on the live choice
-        if (SemuRenderer.live_bezel >= 0 && SemuRenderer.live_overlay.text != null) {
-            RendererConfiguration.reloadVariants(&SemuRenderer.config, &SemuRenderer.live_overlay);
-        }
+        RendererLiveSwitch.reapply(&SemuRenderer.config, &SemuRenderer.live);
     }
 
     class void receipt(struct SemuRenderFrameGl* frame, unsigned long long contextGeneration, int status) {  // phase=switch with the new art, layout and lanes, and what the switch cost
@@ -161,10 +143,10 @@ class SemuRendererLiveVariants {  // a select from the journal: its section repl
         long long images = SemuRenderer.switch_images_ms != 0LL ? SemuRenderer.switch_images_ms : now;
         char extra[160];
         snprintf(extra, sizeof(extra), " bezel_index=%d shader_index=%d reload_ms=%lld frame_ms=%lld",
-            SemuRenderer.live_bezel, SemuRenderer.live_shader, images - SemuRenderer.switch_started_ms, now - SemuRenderer.switch_started_ms);
+            SemuRenderer.live.bezel, SemuRenderer.live.shader, images - SemuRenderer.switch_started_ms, now - SemuRenderer.switch_started_ms);
         RendererStateFiles.appendReceiptWith("switch", frame, contextGeneration, 1, status, 0, 0ULL, -1,
             &SemuRenderer.config, &SemuRenderer.resources, &SemuRenderer.geometry, null, extra);
-        if (getenv("SEMU_RENDER_DEBUG") != null) { fprintf(stderr, "semu-renderer: switched to [%d,%d]:%s\n", SemuRenderer.live_bezel, SemuRenderer.live_shader, extra); }
+        if (getenv("SEMU_RENDER_DEBUG") != null) { fprintf(stderr, "semu-renderer: switched to [%d,%d]:%s\n", SemuRenderer.live.bezel, SemuRenderer.live.shader, extra); }
         RendererToast.finish(&SemuRenderer.post_ui, SemuRenderer.switch_started_ms, now);  // LOADING becomes the plain toast; a showing toast outlasts the stall
         SemuRenderer.switch_started_ms = 0LL;
         SemuRenderer.switch_images_ms = 0LL;
@@ -176,8 +158,7 @@ class SemuRendererCalls {
         if (SemuRenderer.initialized != 0) { return; }
         memset(&SemuRenderer, 0, sizeof(struct SemuRendererRuntime));
         SemuRenderer.initialized = 1;
-        SemuRenderer.live_bezel = -1;
-        SemuRenderer.live_shader = -1;
+        RendererLiveSwitch.reset(&SemuRenderer.live);
         RendererPhaseOwnership.clear(&SemuRenderer.pending);
     }
 

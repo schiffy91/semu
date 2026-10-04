@@ -1721,6 +1721,19 @@ Update this block whenever a milestone criterion changes state.
   when adopt stops swapping Steam's pad or tagging keyboards, classify drops EVIOCGID's vendor, the
   menu grabs a keyboard, the echo is no longer armed by typing or is consumed from evdev, keyboard
   Left/Right stop stepping the menu's rows, or two pads share one identity.
+  2026-10-04, review follow-ups on the renderer and the RetroArch bridge (offline). The GL-free core
+  of the live switch moved into `src/renderer/renderer_live_switch.btrc` (the due check, the section
+  load, reloadVariants, the image-signature staleness, the live choice and its re-apply after a
+  context reset, and the image-reload predicate); the post phase draws what `RendererToast.mode`
+  says; the bridge's surface walk (`SemuRetroArchCoreAxis.column`/`row`, the composite size, the
+  surface structs) and its cursor fill (`SemuRetroArchCursorPolicy.fill`) moved into the
+  header-free `surface_math.btrc`. Contracts run them against the launch's own nds variants file and a
+  400/320 3DS contract and fail under each of 15 mutations: reloadVariants, the stale mark, the live
+  update or the re-apply dropped from the switch; the images-due predicate ignoring staleness; the
+  renderer no longer calling the switch, the re-apply or `RendererToast.finish`; the toast never
+  drawn over a closed menu; coreX's width arguments swapped or its surface index pinned to 0; the
+  cursor's x zeroed in the fill or after it in the bridge; and the image reload bypassing the
+  predicate. `nix build .#semu-renderer` and `.#retroarch` (macOS) build with the moved code.
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a

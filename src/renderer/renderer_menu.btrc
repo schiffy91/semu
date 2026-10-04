@@ -20,6 +20,9 @@ int SEMU_RENDER_CAPTURE_READBACK_FAILED = 1;
 int SEMU_RENDER_CAPTURE_BLANK = 2;
 int SEMU_RENDER_CAPTURE_WRITTEN = 3;
 int SEMU_RENDER_CAPTURE_WRITE_FAILED = 4;
+int SEMU_RENDER_POST_NOTHING = 0;  // what the post phase draws: nothing,
+int SEMU_RENDER_POST_MENU = 1;  // the open menu, a toast taking its header,
+int SEMU_RENDER_POST_TOAST = 2;  // or the toast alone at the top of the screen
 
 struct RendererPostUiState {
     int initialized;
@@ -75,6 +78,12 @@ class RendererToast {
 
     class bool active(struct RendererPostUiState* state, long long now) {
         return state != null && state->toast[0] != 0 && now < state->toast_until_ms;
+    }
+
+    class int mode(struct RendererPostUiState* state, long long now) {  // SEMU_RENDER_POST_*: a closed menu still shows a live toast
+        if (state == null) { return SEMU_RENDER_POST_NOTHING; }
+        if (state->visible != 0) { return SEMU_RENDER_POST_MENU; }
+        return RendererToast.active(state, now) ? SEMU_RENDER_POST_TOAST : SEMU_RENDER_POST_NOTHING;
     }
 
     class void shader(struct RendererPostUiState* state, int index, long long now) {  // LOADING while a new chain will compile, else the plain toast
