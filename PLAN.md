@@ -667,7 +667,9 @@ sequential implementation, review and fixes), each item done only when observed.
 
 Status (2026-10-04): every item built and observed in the podman VM or the render host; on the Deck
 (release b1bf425) item 0's mods load and parts of items 2 and 3 work (below); the review of the series is
-fixed; the Deck reruns of cases 4, 14 and 16, the Wii IR, the players page and Steam's own radials remain.
+fixed and its Deck reruns (cases 4, 14, 16 on release 5f55703) pass; the owner's mods were moved into the
+central library on the Deck SD and on the Mac's Drive library; what remains needs the owner in Game Mode:
+the Wii IR, the players page by eye, Steam's own radials and icons.
 
 - Item 0 (mods), the core: built 2026-10-04 and observed in the podman VM; the migration (`semu mods
   migrate`, below) is built; the Deck is open. Rulings taken as reversible defaults:
@@ -1173,7 +1175,12 @@ fixed; the Deck reruns of cases 4, 14 and 16, the Wii IR, the players page and S
     bytes there, which hid every action line of the Wii case), reads any cursor-arrow.sh status but 0 or 1
     as unchecked, and refuses to start without inject.sh and cursor-arrow.sh beside it (the Deck's copy
     lacked cursor-arrow.sh, so every arrow read FAIL; on the fetched shots arrow-2 and arrow-4 pass).
-    Rerun on the next release: cases 4, 14 and 16.
+    Rerun on the Deck with release 5f55703 (2026-10-04, input-check.sh + inject.sh + cursor-arrow.sh
+    from that commit): case 4 draws the 276-pixel arrow at the first move's target (cursor-1 box
+    18x32+1096+532 for the move to 1094,528) and none 5 s later; case 14's players page is steered by
+    Ctrl+Down, Ctrl+Up, Ctrl+Space and Ctrl+Backspace (ui.menu.down/up/confirm/back each from the
+    keyboard); case 16 runs controller.layout.next, ui.players, visual.output.next x2 and
+    visual.placement.next, saving wii placement "bezel".
   - Reset to Default removes `input.systems.<id>.players`, not the whole subtree, so the Switch's
     play_mode (docked on a TV) survives it.
   - Fit while the bezel is switched off journals 81/-1 with the unavailable toast, now FIT: NO BEZEL (it
@@ -2533,8 +2540,10 @@ Update this block whenever a milestone criterion changes state.
   library after `semu mods migrate`; Semu's arrow shows on standalone Azahar after a tap; the radial v2
   chords reach the supervisor, Fit on the Wii places the picture in the bezel and its Aspect double press reboots the game. The series' review is fixed
   (Azahar's first move, the harness's keysyms and greps, Reset keeping play_mode, Fit with the bezel off,
-  Dolphin's SDL names on the desktop, the missing contracts). Open on the Deck: cases 4, 14 and 16 rerun,
-  the Wii IR, the players page, Steam's radial pages, item 1's glow and item 5's PSP by eye.
+  Dolphin's SDL names on the desktop, the missing contracts); cases 4, 14 and 16 pass on the Deck with
+  release 5f55703. `semu mods migrate` moved the Mac's Drive library too (6 renames, the 5 Lime3DS
+  duplicates and 2 empty folders left in place). Open, needing the owner in Game Mode: the Wii IR, the
+  players page, Steam's radial pages and icons, item 1's glow and item 5's PSP by eye.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,
