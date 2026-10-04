@@ -1,0 +1,58 @@
+// A bezel or shader select applied to the renderer's config without GL: the section the request
+// names replaces the variant keys, the image signature says whether the bezel images must reload,
+// and the live choice is kept, so a context reset starts on it and the next select compares to it.
+
+#include <stdio.h>
+#include <string.h>
+
+import ./renderer_config.btrc;
+import ./renderer_variants.btrc;
+import ./renderer_menu.btrc;
+import ./action_abi.btrc;
+
+int SEMU_RENDER_SWITCH_NONE = 0;  // nothing due this frame
+int SEMU_RENDER_SWITCH_APPLIED = 1;
+int SEMU_RENDER_SWITCH_MISSING = -1;  // the variants file lacks the requested section: the picture stays
+
+struct RendererLiveChoice {  // the variants-file section a select applied
+    int bezel;  // -1 before any select
+    int shader;
+    struct RendererVariantOverlay overlay;  // that section's keys, re-applied over a freshly loaded config
+};
+
+class RendererLiveSwitch {
+    class void reset(struct RendererLiveChoice* live) {  // no select applied yet: the launch's own section
+        memset(live, 0, sizeof(struct RendererLiveChoice));
+        live->bezel = -1;
+        live->shader = -1;
+    }
+
+    class int apply(struct RendererPostUiState* state, struct RendererConfig* config, struct RendererLiveChoice* live, int* imagesStale) {  // SEMU_RENDER_SWITCH_*, once the request's countdown ends
+        int bezel = -1;
+        int shader = -1;
+        if (!RendererVariantRequests.due(state, live->bezel, live->shader, &bezel, &shader)) { return SEMU_RENDER_SWITCH_NONE; }
+        char path[8192];
+        struct RendererVariantOverlay next;
+        if (!RendererStatePaths.path(path, sizeof(path), RendererActionJournal.variantsFileName())
+                || !RendererVariantFile.section(path, bezel, shader, &next)) {
+            fprintf(stderr, "semu-renderer: the variants file has no section [%d,%d]; the picture stays\n", bezel, shader);
+            return SEMU_RENDER_SWITCH_MISSING;
+        }
+        RendererVariantFile.discard(&live->overlay);
+        memcpy(&live->overlay, &next, sizeof(struct RendererVariantOverlay));  // the live choice owns the text now
+        unsigned long long images = RendererConfiguration.imageSignature(config);
+        RendererConfiguration.reloadVariants(config, &live->overlay);
+        if (RendererConfiguration.imageSignature(config) != images) { *imagesStale = 1; }  // a shader-only change decodes nothing
+        live->bezel = bezel;
+        live->shader = shader;
+        return SEMU_RENDER_SWITCH_APPLIED;
+    }
+
+    class void reapply(struct RendererConfig* config, struct RendererLiveChoice* live) {  // a freshly loaded config (a new context) starts on the live choice
+        if (live->bezel >= 0 && live->overlay.text != null) { RendererConfiguration.reloadVariants(config, &live->overlay); }
+    }
+
+    class bool imagesDue(int ready, int loaded, int stale) {  // a fresh context's first load, or a live choice since the last one
+        return ready != 0 && (loaded == 0 || stale != 0);
+    }
+}

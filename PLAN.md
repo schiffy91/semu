@@ -616,6 +616,49 @@ Progress (2026-09-25):
 - Open: those two inspected pictures on real Linux hardware, and the Deck
   (gamescope's WSI layer alongside ours).
 
+### M13. Owner feedback from the Deck (2026-10-04)
+
+The owner tested the 70a5d9a release on the Deck (restarted it, played) and asked
+for the following; tackled with subagents (investigation, design, critique, then
+sequential implementation, review and fixes), each item done only when observed.
+
+0. **Mods, done properly.** The owner's mods sit in an older per-emulator tree on the
+   SD card (`Emulation/{Azahar,Cemu,Dolphin,PCSX2,RetroArch,Ryujinx}`): OoT 3D and
+   Majora's Mask 3D LayeredFS patches, 7.8 GB of 3DS HD texture packs (4 titles), a
+   Tears of the Kingdom mod, RetroArch cheats; Semu never installed any of them. Build a
+   modular, declarative system: one centralized mods library under the emulation root
+   where the user places mods for every emulator in its native format; each
+   emulator.json declares its mod kinds, where they install in its state root and the
+   settings that make the emulator use them (safe defaults: async texture loading, no
+   multi-GB preload); Semu installs them without copying large data or writing into
+   the library. Migrate the existing mods into the central library with `mv` (same
+   filesystem, a rename; the owner authorised moving mods only, nothing deleted),
+   running in the background on the Deck. Done when OoT 3D shows its patch and HD
+   textures and TotK loads its mod on the Deck, installed from the central library.
+1. **N64 TV edge glow** is missing (other TV systems have it). Done when the N64 TV
+   bezel draws the same edge glow as the others, inspected in render-host pictures and
+   on the Deck.
+2. **Right trackpad is the pointer by default** on 3DS, DS and Wii, in addition to
+   touch (Wii: the Wii remote's IR pointer follows the trackpad cursor). Done when a
+   trackpad move and click point and tap on each, on the Deck.
+3. **Radial, version 2.** For every system the radial changes and turns off bezels,
+   changes and turns off shaders, resets to defaults, and switches between bezel fit
+   and screen fit (always integer scale); systems with two outputs (Wii) switch 4:3 and
+   16:9. Systems with several controller layouts (Wii) change layout from the radial,
+   and a multiplayer part of the radial assigns pads to players (data-driven per
+   emulator, never hard-coded to one player). Done when each slot works live in Game
+   Mode and persists per system.
+4. **Wii and Wii U were laggy.** Make sure every emulator is a release (optimised)
+   build, Semu's forced settings and renderer backends are the fast ones, and measure
+   the SD card. Done when the cause is shown with numbers and Wii/Wii U run at full
+   speed in the matrix games, or the remaining limit is named.
+5. **PSP background** is off-centre and a black carbon-fibre plate: use the same
+   centred background as the other handhelds. Done when render-host pictures and the
+   Deck show it.
+
+Status: being designed (workflow mods-design, with critique) while the radial series
+(M8) finishes its review fixes; implementation follows in the main checkout.
+
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
 The review ran on the Mac (mbp21, aarch64-darwin, macOS 27). FRACTAL-NORTH did not resolve
