@@ -1,0 +1,192 @@
+// Steam Controller spec: the quick ring from button 1 with an empty centre, the menu radial's centre,
+// the Deck layout on the new Steam Controller, the 2015 controller's own layout (left pad = the quick
+// radial, d-pad and right stick behind its grips), every emitted name in its controller's vocabulary,
+// the icons and their recipe, and one definition shared by both Linux targets.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/steam/input_document.btrc;
+import ../../../src/steam/input_rules.btrc;
+import ../../../src/steam/input_template.btrc;
+import ../../../src/steam/input_vdf.btrc;
+
+class SteamControllerSpecText {  // pieces of a rendered template
+    class string group(string vdf, string identifier) {  // one group's text, found by its id
+        for piece in Strings.split(vdf, "\n\t\"group\"") {
+            string body = Strings.split(piece, "\n\t\"preset\"").get(0);  // preset lines carry ids too
+            if (body.contains("\"id\" \"" + identifier + "\"")) { return body; }
+        }
+        return "";
+    }
+
+    class string preset(string vdf, int index) {
+        for line in Strings.split(vdf, "\n") { if (line.contains("\"preset\" { \"id\" \"" + Strings.fromInt(index) + "\"")) { return line; } }
+        return "";
+    }
+
+    class Vector<string> icons(string group) {  // the icon each radial button shows, in ring order
+        Vector<string> icons = [];
+        for line in Strings.split(group, "\n") {
+            if (!line.contains("\"touch_menu_button_")) { continue; }
+            for part in Strings.split(line, ", ") { if (part.endsWith(".png")) { icons.push(part); break; } }
+        }
+        return icons;
+    }
+
+    class bool distinct(Vector<string> values) {
+        for (int index = 0; index < values.size(); index++) { for (int other = index + 1; other < values.size(); other++) { if (values.get(index).equals(values.get(other))) { return false; } } }
+        return true;
+    }
+
+    class JSONValue template(SteamInputDocument document, string identifier) {
+        JSONValue templates = document.templates();
+        for (int index = 0; index < templates.size(); index++) { if (SemuJson.textAt(templates.at(index), "id").equals(identifier)) { return templates.at(index); } }
+        return JSONValue.makeObject();
+    }
+}
+
+class SteamControllerSpecRadial {  // the quick ring, the menu radial and how a slot fires
+    class void run(Contract contract, SteamInputDocument document) {
+        string vdf = SteamInputVdf.render(document, SteamControllerSpecText.template(document, "neptune_full"));
+        Vector<string> ring = ["state.save", "state.load", "state.prev", "state.next", "visual.bezel.next", "visual.shader.next", "ui.menu", "ui.screenshot", "app.quit"];
+        contract.expect(document.slots("quick_slots").join(",").equals(ring.join(",")), "the quick ring is save, load, previous and next slot, bezel, shader, menu, screenshot, quit");
+        string quick = SteamControllerSpecText.group(vdf, "20");
+        for (int index = 0; index < ring.size(); index++) {
+            string head = "\"touch_menu_button_" + Strings.fromInt(index + 1) + "\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"key_press LEFT_CONTROL, ";
+            contract.contains(quick, head + document.label(ring.get(index)) + ", " + document.icon(ring.get(index)), "ring slot " + Strings.fromInt(index + 1) + " sends " + ring.get(index));
+        }
+        contract.lacks(quick, "touch_menu_button_0", "the quick radial's centre is empty, so a click released there fires nothing");
+        contract.lacks(quick, "touch_menu_button_10", "the quick ring has exactly nine slots");
+        string menu = SteamControllerSpecText.group(vdf, "21");
+        contract.contains(menu, "\"touch_menu_button_0\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"key_press LEFT_CONTROL, Open Menu, semu-menu.png", "the menu radial's centre opens and closes the menu");
+        Vector<string> steer = ["Menu Up", "Menu Down", "Menu Confirm", "Menu Back"];
+        for (int index = 0; index < steer.size(); index++) { contract.contains(menu, "\"touch_menu_button_" + Strings.fromInt(index + 1) + "\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"key_press LEFT_CONTROL, " + steer.get(index), "the menu ring steers the Semu menu"); }
+        for identifier in ["20", "21", "22"] {
+            string radial = SteamControllerSpecText.group(vdf, identifier);
+            contract.contains(radial, "\"touchmenu_button_fire_type\" \"1\"", "a slot fires when the pad click on its icon is released (Steam's button release)");
+            contract.contains(radial, "\"settings\" { \"haptic_intensity\" \"2\" }", "each radial button ticks as Steam's own radials do");
+            contract.expect(SteamControllerSpecText.icons(radial).size() >= 4 && SteamControllerSpecText.distinct(SteamControllerSpecText.icons(radial)), "radial " + identifier + " shows a different icon on every button: " + SteamControllerSpecText.icons(radial).join(" "));
+        }
+        for needle in ["key_press LEFT_SHIFT, Next Bezel, semu-bezel.png", "key_press B, Next Bezel, semu-bezel.png", "key_press LEFT_SHIFT, Next Shader, semu-shader.png", "key_press V, Next Shader, semu-shader.png"] { contract.contains(quick, needle, "Next Bezel and Next Shader press Ctrl+Shift+B and Ctrl+Shift+V"); }
+        JSONValue templates = document.templates();
+        for (int index = 0; index < templates.size(); index++) { contract.lacks(SteamInputVdf.render(document, templates.at(index)), "key_press ESCAPE", "no template presses Esc, which exits RetroArch"); }
+    }
+}
+
+class SteamControllerSpecLayouts {  // the new controller carries the Deck layout; the 2015 one its own
+    class void run(Contract contract, SteamInputDocument document) {
+        string neptune = SteamInputVdf.render(document, SteamControllerSpecText.template(document, "neptune_full"));
+        string triton = SteamInputVdf.render(document, SteamControllerSpecText.template(document, "triton_full"));
+        string gordon = SteamInputVdf.render(document, SteamControllerSpecText.template(document, "gordon_full"));
+        contract.contains(triton, "\"controller_type\"\t\t\"controller_triton\"", "the new Steam Controller template names controller_triton");
+        contract.expect(triton.replace("controller_triton", "X").replace("Semu: Steam Controller - FULL", "T").equals(neptune.replace("controller_neptune", "X").replace("Semu: Steam Deck - Neptune FULL", "T")), "the new Steam Controller gets exactly the Deck layout");
+        contract.contains(gordon, "\"controller_type\"\t\t\"controller_steamcontroller_gordon\"", "the 2015 template names controller_steamcontroller_gordon");
+        for missing in ["dpad active", "right_joystick active", "Wii Controller Mode", "_upper"] { contract.lacks(gordon, missing, "the 2015 controller has no d-pad, right stick or upper grips"); }
+        contract.contains(SteamControllerSpecText.preset(gordon, 0), "\"20\" \"left_trackpad active\"", "the 2015 left pad is the quick radial");
+        contract.contains(SteamControllerSpecText.preset(gordon, 0), "\"6\" \"right_trackpad active\"", "the 2015 right pad is the pointer");
+        contract.contains(SteamControllerSpecText.group(gordon, "6"), "\"absolute_mouse\" \"inputs\" { \"click\" { \"activators\" { \"Soft_Press\" { \"bindings\" { \"binding\" \"mouse_button LEFT", "clicking the right pad taps");
+        string gamepadSwitches = SteamControllerSpecText.group(gordon, "7");
+        contract.contains(gamepadSwitches, "\"button_back_left\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 3 0 0, D-Pad", "holding the left grip enters the d-pad preset");
+        contract.contains(SteamControllerSpecText.preset(gordon, 2), "\"1\" \"left_trackpad active\"", "in it the left pad is the d-pad");
+        contract.contains(SteamControllerSpecText.group(gordon, "32"), "\"button_back_left\" { \"activators\" { \"release\"", "letting go of the left grip returns to the radial");
+        contract.contains(gamepadSwitches, "\"button_back_right\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 4 0 0, Right Stick", "holding the right grip enters the right-stick preset");
+        contract.contains(SteamControllerSpecText.preset(gordon, 3), "\"8\" \"right_trackpad active\"", "in it the right pad drives group 8");
+        contract.contains(SteamControllerSpecText.group(gordon, "8"), "JOYSTICK_RIGHT, , \" } } } } } \"settings\" { \"output_joystick\" \"1\" }", "group 8 is the right stick, as in Valve's gordon template");
+        contract.contains(SteamControllerSpecText.group(gordon, "33"), "\"button_back_right\" { \"activators\" { \"release\"", "letting go of the right grip returns to the pointer");
+        contract.contains(SteamControllerSpecText.preset(gordon, 1), "\"21\" \"left_trackpad active\"", "holding View makes the left pad the menu radial");
+        for vdf in [neptune, gordon] {
+            contract.contains(SteamControllerSpecText.group(vdf, "4"), "TRIGGER_LEFT, , \" } } } } } \"settings\" { \"output_trigger\" \"1\" }", "the left trigger stays analog, as in Valve's templates");
+            contract.contains(SteamControllerSpecText.group(vdf, "5"), "TRIGGER_RIGHT, , \" } } } } } \"settings\" { \"output_trigger\" \"2\" }", "the right trigger stays analog, as in Valve's templates");
+        }
+        JSONValue templates = document.templates();
+        for (int index = 0; index < templates.size(); index++) {
+            SteamInputController controller = SteamInputController(document, SemuJson.textAt(templates.at(index), "controller"));
+            Vector<string> problems = SteamInputVocabulary.problems(controller, SteamInputVdf.render(document, templates.at(index)), "");
+            contract.expect(problems.isEmpty() && !SteamInputVocabulary.inputs(gordon).isEmpty(), "every input and source " + SemuJson.textAt(templates.at(index), "id") + " emits is in its controller's vocabulary: " + problems.join("; "));
+        }
+    }
+}
+
+class SteamControllerSpecRules {  // definitions the rules refuse before any VDF is written
+    class bool rejected(Fixture fixture, string parent, string key, JSONValue value, string fragment) {
+        JSONValue root = SemuJson.readFile(SteamInputTemplates.source(fixture.plan));
+        SemuJson.get(root, parent).set(key, value);
+        for problem in SteamInputRules.problems(SteamInputDocument(root)) { if (problem.contains(fragment)) { return true; } }
+        return false;
+    }
+
+    class JSONValue strings(Vector<string> values) {
+        JSONValue array = JSONValue.makeArray();
+        for value in values { array.push(JSONValue.makeString(value)); }
+        return array;
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        Vector<string> crowded = [];
+        for (int index = 0; index < 21; index++) { crowded.push(index % 2 == 0 ? "state.save" : "state.load"); }
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "radial", "quick_slots", SteamControllerSpecRules.strings(crowded), "1 to 20 ring slots"), "a ring of 21 slots is refused");
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "radial", "quick_slots", SteamControllerSpecRules.strings(["state.save", "state.load", "state.save"]), "twice"), "an icon shown twice in one radial is refused");
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "radial", "menu_center", JSONValue.makeString("ui.escape"), "without a modifier"), "a centre that would send bare Esc is refused");
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "hotkey_bindings.12", "action", JSONValue.makeString("ui.escape"), "without a modifier"), "a hotkey that would send bare Esc is refused");
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "radial", "menu_center", JSONValue.makeString("state.nothing"), "undeclared action"), "a centre naming no action is refused");
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "radial", "fire_type", JSONValue.makeInt(5), "0..3"), "a fire type Steam does not have is refused");
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "templates.2", "controller", JSONValue.makeString("unknown"), "names controller unknown"), "a template on an undeclared controller is refused");
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "templates.2", "default", JSONValue.makeBool(true), "exactly one template"), "a second default is refused");
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "layouts.gordon.presets.0.sources", "dpad", JSONValue.makeString("dpad"), "drives source dpad, which controller_steamcontroller_gordon does not have"), "a 2015 preset driving a d-pad it lacks is refused");
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "layouts.gordon.presets.2.held_by.0", "input", JSONValue.makeString("button_back_left_upper"), "binds input button_back_left_upper"), "a 2015 hold on an upper grip it lacks is refused");
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "layouts.deck.presets.0.sources", "left_trackpad", JSONValue.makeString("wheel"), "unknown group wheel"), "a group kind the renderer does not draw is refused");
+    }
+}
+
+class SteamControllerSpecIcons {  // every icon has a provenance row, and the rows are what the recipe renders
+    class void run(Contract contract, Fixture fixture, SteamInputDocument document) {
+        string directory = PathTools.join(PathTools.dirname(SteamInputTemplates.source(fixture.plan)), "icons");
+        string provenance = FileSystem.readText(PathTools.join(directory, "PROVENANCE.md"));
+        Vector<string> declared = SemuJson.strings(SemuJson.get(document.root, "binding_icons.files"));
+        for name in declared { contract.contains(provenance, "| `" + name + "` |", "every binding icon has a provenance row"); }
+        for line in Strings.split(provenance, "\n") {
+            if (!line.startsWith("| `semu-")) { continue; }
+            string name = Strings.split(line.substring(3, line.len() - 3), "`").get(0);
+            contract.expect(declared.contains(name) && FileSystem.isFile(PathTools.join(directory, name)), "every provenance row is a shipped, declared icon: " + name);
+        }
+        contract.contains(provenance, "| `semu-bezel.png` | `picture-in-picture-2` |", "Next Bezel's icon is Lucide picture-in-picture-2");
+        contract.contains(provenance, "| `semu-shader.png` | `sparkles` |", "Next Shader's icon is Lucide sparkles");
+        Vector<string> icons = [];
+        for action in document.root.get("actions").keys() { if (!action.equals("ui.escape")) { icons.push(document.icon(action)); } }
+        contract.expect(SteamControllerSpecText.distinct(icons), "every action a binding may send has its own icon (the toggles no longer borrow the menu's)");
+        string script = FileSystem.readText(PathTools.join(fixture.project, "packaging/steam/render-icons.sh"));
+        contract.contains(script, "PROVENANCE.md", "the icon script reads the provenance table");
+        contract.contains(script, "magick -background none -density 384 - -filter Mitchell -resize 192x192 -gravity center -extent 256x256 -strip", "the icon script is the recipe that reproduces the committed icons");
+        contract.contains(script, "-metric RMSE", "the icon script checks re-renders at RMSE 0");
+    }
+}
+
+class SteamControllerSpecShared {  // one Steam Input definition for both Linux targets, none for macOS
+    class void run(Contract contract) {
+        Fixture desktop = Fixture("linux-desktop");
+        Fixture deck = Fixture("steam-deck");
+        Fixture mac = Fixture("macos");
+        string shared = SteamInputTemplates.source(desktop.plan);
+        contract.expect(shared.endsWith("config/input/steam/steam_input.json") && FileSystem.isFile(shared) && shared.equals(SteamInputTemplates.source(deck.plan)), "linux-desktop and steam-deck share config/input/steam/steam_input.json");
+        string output = PathTools.join(desktop.scratch, "desktop-steam-templates");
+        contract.expect(SteamInputTemplates.publish(desktop.plan, output, "") == 0 && FileSystem.isFile(PathTools.join(output, "gordon-full.vdf")), "the desktop publishes the Steam Controller templates too");
+        contract.expect(SteamInputTemplates.source(mac.plan).isEmpty() && SteamInputTemplates.publish(mac.plan, PathTools.join(mac.scratch, "mac-templates"), "") != 0, "macOS declares no Steam Input definition and publishes none");
+    }
+}
+
+class SteamControllerSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        SteamInputDocument document = SteamInputDocument(SemuJson.readFile(SteamInputTemplates.source(fixture.plan)));
+        SteamControllerSpecRadial.run(contract, document);
+        SteamControllerSpecLayouts.run(contract, document);
+        SteamControllerSpecRules.run(contract, fixture);
+        SteamControllerSpecIcons.run(contract, fixture, document);
+        SteamControllerSpecShared.run(contract);
+    }
+}

@@ -24,6 +24,7 @@
   "steam": {
     "name": "Semu",
     "launcher": "/run/current-system/sw/bin/semu-es-de",
-    "start_dir": "${home}"
+    "start_dir": "${home}",
+    "input": "input/steam/steam_input.json"
   }
 }

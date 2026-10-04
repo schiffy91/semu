@@ -10,7 +10,10 @@ import ../../../src/lib/json.btrc;
 import ../../../src/lib/paths.btrc;
 import ../../../src/model.btrc;
 import ../../../src/resolve.btrc;
+import ../../../src/steam/input_document.btrc;
+import ../../../src/steam/input_rules.btrc;
 import ../../../src/steam/input_template.btrc;
+import ../../../src/steam/input_vdf.btrc;
 import ../../../src/renderer/action_abi.btrc;
 
 class SteamInputSpecFiles {
@@ -71,15 +74,14 @@ class SteamInputSpecAutoconfig {  // the SDL index-0 pad RetroArch sees on the D
     }
 }
 
-class SteamInputSpecTable {  // the rendered Neptune template: semantic radials, isolated gamepad, Start+Select quit
-    class void semanticBindings(Contract contract, string vdf) {
+class SteamInputSpecTable {  // every rendered template: semantic radials, isolated gamepad, Start+Select quit
+    class void semanticBindings(Contract contract, string vdf, bool wii) {
         Vector<string> bindings = [
-            "Save State, semu-save.png", "Load State, semu-load.png", "Quit Emulator, semu-quit.png",
+            "Save State, semu-save.png", "Load State, semu-load.png", "Quit Emulator, semu-quit.png", "Next Bezel, semu-bezel.png", "Next Shader, semu-shader.png",
             "Open Menu, semu-menu.png", "Take Screenshot, semu-screenshot.png", "Previous State Slot, semu-previous.png", "Next State Slot, semu-next.png", "Menu Up, semu-up.png",
-            "Menu Down, semu-down.png", "Menu Confirm, semu-confirm.png", "Menu Back, semu-back.png",
-            "Wiimote, semu-wiimote.png", "Wiimote + Nunchuk, semu-wiimote-nunchuk.png",
-            "Classic Controller, semu-classic-controller.png", "GameCube Controller, semu-gamecube-controller.png"
+            "Menu Down, semu-down.png", "Menu Confirm, semu-confirm.png", "Menu Back, semu-back.png"
         ];
+        if (wii) { for binding in ["Wiimote, semu-wiimote.png", "Wiimote + Nunchuk, semu-wiimote-nunchuk.png", "Classic Controller, semu-classic-controller.png", "GameCube Controller, semu-gamecube-controller.png"] { bindings.push(binding); } }
         for binding in bindings { contract.contains(vdf, binding + ", #232323 #FFFFFF", "radial slot carries its semantic icon"); }
     }
 
@@ -90,7 +92,7 @@ class SteamInputSpecTable {  // the rendered Neptune template: semantic radials,
         contract.contains(vdf, "\"1\" \"dpad active\"", "default preset uses the plain d-pad");
         contract.contains(vdf, "\"2\" \"joystick active\"", "default preset uses the plain left stick");
         contract.contains(vdf, "\"3\" \"right_joystick active\"", "default preset uses the plain right stick");
-        contract.contains(vdf, "\"Long_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 2 0 0, Hotkey, , \"", "holding View enters the hotkey preset");
+        contract.contains(vdf, "\"Long_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 2 0 0, Hotkeys, , \"", "holding View enters the hotkey preset");
         contract.contains(vdf, "\"release\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 1 0 0, , \"", "releasing returns to the gamepad preset");
     }
 
@@ -118,7 +120,9 @@ class SteamInputSpecTable {  // the rendered Neptune template: semantic radials,
         contract.contains(vdf, "\"name\" \"Wii Controller Mode\"", "the Wii controller-mode radial exists");
         contract.contains(vdf, "\"title\" \"Wii Controller Mode\"", "the Wii controller-mode preset exists");
         for key in ["F9", "F10", "F11", "F12"] { contract.contains(vdf, "key_press " + key + ", ", "Wii mode chord key is pressed"); }
-        contract.contains(vdf, "\"button_back_left_lower\" { \"activators\" { \"Full_Press\"", "a lower grip holds the Wii layer");
+        contract.contains(vdf, "\"button_back_left\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 3 0 0, Wii Controller Mode", "the lower grip L5 holds the Wii layer");
+        contract.contains(vdf, "\"button_back_right\" { \"activators\" { \"release\"", "letting go of R5 leaves the Wii layer");
+        contract.lacks(vdf, "_lower\"", "no grip uses a name Steam does not have");
         contract.expect(RendererActionJournal.systemRadial() == 3, "the journal names the system radial 3");
     }
 
@@ -131,13 +135,15 @@ class SteamInputSpecTable {  // the rendered Neptune template: semantic radials,
             if (SemuJson.boolAt(templates.at(index), "default", false)) { defaults++; }
             string vdf = SteamInputVdf.render(document, templates.at(index));
             contract.contains(vdf, "\"title\"\t\t\"" + SemuJson.textAt(templates.at(index), "title") + "\"", "each template carries its own title");
-            SteamInputSpecTable.semanticBindings(contract, vdf);
-            SteamInputSpecTable.gamepad(contract, vdf);
+            bool deck = SemuJson.textAt(document.entry("controllers", SemuJson.textAt(templates.at(index), "controller")), "layout").equals("deck");
+            SteamInputSpecTable.semanticBindings(contract, vdf, deck);
             SteamInputSpecTable.labels(contract, vdf);
             SteamInputSpecTable.quit(contract, vdf);
+            if (!deck) { continue; }  // gordon has no d-pad or right stick: SteamControllerSpec
+            SteamInputSpecTable.gamepad(contract, vdf);
             SteamInputSpecTable.wiiLayer(contract, vdf);
         }
-        contract.expect(templates.size() == 2 && defaults == 1, "simple and full templates, exactly one default");
+        contract.expect(templates.size() == 4 && defaults == 1 && SemuJson.textAt(document.defaultTemplate(), "id").equals("neptune_full"), "two Deck templates and one per Steam Controller, the Deck FULL one the default");
         contract.expect(SteamInputRules.problems(document).isEmpty(), "the shipped definition passes its own rules");
     }
 }
@@ -223,7 +229,7 @@ class SteamInputSpecIcons {  // every action shows a Semu PNG, and publishing co
         string output = PathTools.join(fixture.scratch, "steam-spec/templates");
         string installed = PathTools.join(fixture.scratch, "steam-spec/binding_icons");
         contract.expect(SteamInputTemplates.publish(fixture.plan, output, installed) == 0, "templates and icons publish");
-        contract.expect(FileSystem.isFile(PathTools.join(output, "neptune-simple.vdf")) && FileSystem.isFile(PathTools.join(output, "neptune-full.vdf")), "both declared templates are written");
+        for name in ["neptune-simple.vdf", "neptune-full.vdf", "triton-full.vdf", "gordon-full.vdf"] { contract.expect(FileSystem.isFile(PathTools.join(output, name)), "every declared template is written: " + name); }
         for name in declared {
             contract.expect(SteamInputSpecFiles.sameBytes(PathTools.join(icons, name), PathTools.join(installed, name)), "published icon matches its source byte for byte: " + name);
         }
@@ -240,11 +246,13 @@ class SteamInputSpecIcons {  // every action shows a Semu PNG, and publishing co
 
 class SteamInputSpecSources {  // declarative data stays data: no action, device or Wii identity in code
     class void run(Contract contract, Fixture fixture) {
-        string template = SteamInputSpecFiles.source(fixture, "src/steam/input_template.btrc");
+        string template = "";
+        for file in ["input_document", "input_presets", "input_groups", "input_vdf", "input_rules", "input_template"] { template = template + SteamInputSpecFiles.source(fixture, "src/steam/" + file + ".btrc"); }
         string supervisor = SteamInputSpecFiles.source(fixture, "src/launch/supervisor.btrc");
         string actionAbi = SteamInputSpecFiles.source(fixture, "src/renderer/action_abi.btrc");
         contract.expect(!template.isEmpty() && !supervisor.isEmpty() && !actionAbi.isEmpty(), "the input sources are readable");
         for needle in ["Ctrl+S", "F13", "steamdeck.skm", "quitExtraBindings", "alt_f4"] { contract.lacks(template, needle, "the Steam template generator hard-codes no configured action"); }
+        for needle in ["controller_neptune", "controller_triton", "controller_steamcontroller_gordon", "button_back_", "trackpad active", "joystick active", "touch_menu_button_1\""] { contract.lacks(template, needle, "controllers, grips, sources and ring slots come from the definition"); }
         for needle in ["28de:11ff", "28de:1205"] {
             contract.lacks(template, needle, "Deck device identities stay in target data");
             contract.lacks(supervisor, needle, "Deck device identities stay in target data");

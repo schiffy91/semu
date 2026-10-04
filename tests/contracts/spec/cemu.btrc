@@ -153,7 +153,7 @@ class CemuSpecContract {
     }
 
     class void steamDeckPolicy(Contract contract, string project) {  // Start+Select and the radial reach cemu's quit
-        JSONValue steam = SemuJson.readFile(PathTools.join(project, "config/input/steam-deck/steam_input.json"));
+        JSONValue steam = SemuJson.readFile(PathTools.join(project, "config/input/steam/steam_input.json"));
         JSONValue actions = steam.get("actions");
         contract.expect(SemuJson.strings(SemuJson.get(steam, "quit_chord.buttons")).join(" ").equals("select start"), "Deck quit chord is Select+Start");
         contract.expect(SemuJson.intAt(steam, "quit_chord.window_ms", 0) == 250, "Deck quit chord window is 250 ms");

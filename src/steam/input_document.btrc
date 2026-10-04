@@ -1,0 +1,149 @@
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+
+class SteamInputDocument {  // the shared Steam Input definition: actions, radials, controllers, layouts
+    public JSONValue root;
+    public string iconColors;
+    public Vector<string> quitButtons;
+
+    public SteamInputDocument(JSONValue root) {
+        self.root = root;
+        self.iconColors = "#232323 #FFFFFF";
+        self.quitButtons = SemuJson.strings(SemuJson.get(root, "quit_chord.buttons"));
+        if (self.quitButtons.isEmpty()) { self.quitButtons = ["start", "select"]; }
+    }
+
+    public JSONValue action(string identifier) {
+        JSONValue actions = self.root.get("actions");
+        return actions != null && actions.isObject() && actions.has(identifier) ? actions.get(identifier) : JSONValue.makeObject();
+    }
+
+    public string label(string identifier) { return SemuJson.textAt(self.action(identifier), "label"); }
+    public string icon(string identifier) { return SemuJson.textAt(self.action(identifier), "icon"); }
+    public string chord(string identifier) { return SemuJson.textAt(self.action(identifier), "chord"); }
+
+    public string hotkeyAction(string button) {
+        JSONValue bindings = self.root.get("hotkey_bindings");
+        if (bindings == null || !bindings.isArray()) { return ""; }
+        for (int index = 0; index < bindings.size(); index++) {
+            if (SemuJson.textAt(bindings.at(index), "button").equals(button)) { return SemuJson.textAt(bindings.at(index), "action"); }
+        }
+        return "";
+    }
+
+    public Vector<string> slots(string name) { return SemuJson.strings(SemuJson.get(self.root, "radial." + name)); }
+    public string center(string name) { return SemuJson.textAt(self.root, "radial." + name); }  // empty leaves the centre unbound
+    public JSONValue layers() { return SemuJson.get(self.root, "radial.system_layers"); }
+    public bool showLabels() { return SemuJson.boolAt(self.root, "radial.show_labels", false); }
+    public int fireType() { return SemuJson.intAt(self.root, "radial.fire_type", 1); }
+    public int haptics() { return SemuJson.intAt(self.root, "radial.haptic_intensity", 2); }
+    public JSONValue templates() { return SemuJson.get(self.root, "templates"); }
+
+    public JSONValue entry(string table, string identifier) {  // controllers, layouts or vocabularies.<id>; null when undeclared
+        JSONValue entries = self.root.get(table);
+        return entries != null && entries.isObject() && entries.has(identifier) ? entries.get(identifier) : null;
+    }
+
+    public JSONValue defaultTemplate() {  // the one template installed as every user's profile
+        JSONValue templates = self.templates();
+        for (int index = 0; templates.isArray() && index < templates.size(); index++) {
+            if (SemuJson.boolAt(templates.at(index), "default", false)) { return templates.at(index); }
+        }
+        return null;
+    }
+
+    public Vector<string> boundActions() {  // all a binding can send: hotkeys, rings, centres
+        Vector<string> actions = [];
+        JSONValue bindings = self.root.get("hotkey_bindings");
+        for (int index = 0; bindings != null && bindings.isArray() && index < bindings.size(); index++) { actions.push(SemuJson.textAt(bindings.at(index), "action")); }
+        for radial in ["quick", "menu"] {
+            for slot in self.slots(radial + "_slots") { actions.push(slot); }
+            if (!self.center(radial + "_center").isEmpty()) { actions.push(self.center(radial + "_center")); }
+        }
+        JSONValue layers = self.layers();
+        for (int index = 0; layers.isArray() && index < layers.size(); index++) {
+            for slot in SemuJson.strings(layers.at(index).get("slots")) { actions.push(slot); }
+            if (!SemuJson.textAt(layers.at(index), "center").isEmpty()) { actions.push(SemuJson.textAt(layers.at(index), "center")); }
+        }
+        return actions;
+    }
+}
+
+class SteamInputChordNames {  // Semu chord text -> Steam key_press names
+    class string key(string name) {
+        string lower = name.toLower();
+        if (lower.len() == 1 && lower.charAt(0) >= 'a' && lower.charAt(0) <= 'z') { return name.toUpper(); }
+        if (lower.len() == 1 && lower.charAt(0) >= '0' && lower.charAt(0) <= '9') { return name; }
+        if (lower.equals("up")) { return "UP_ARROW"; }
+        if (lower.equals("down")) { return "DOWN_ARROW"; }
+        if (lower.equals("left")) { return "LEFT_ARROW"; }
+        if (lower.equals("right")) { return "RIGHT_ARROW"; }
+        if (lower.equals("enter") || lower.equals("return")) { return "RETURN"; }
+        if (lower.equals("space")) { return "SPACE"; }
+        if (lower.equals("backspace")) { return "BACKSPACE"; }
+        if (lower.equals("esc") || lower.equals("escape")) { return "ESCAPE"; }
+        if (lower.equals("tab")) { return "TAB"; }
+        if (lower.equals("+")) { return "KEYPAD_PLUS"; }
+        if (lower.equals("-")) { return "DASH"; }
+        return name.toUpper();  // F-keys and other names: Steam spells them upper-case
+    }
+
+    class string modifier(string name) {
+        string lower = name.toLower();
+        if (lower.equals("ctrl")) { return "LEFT_CONTROL"; }
+        if (lower.equals("shift")) { return "LEFT_SHIFT"; }
+        if (lower.equals("alt")) { return "LEFT_ALT"; }
+        if (lower.equals("meta")) { return "LEFT_WINDOWS"; }
+        return "";
+    }
+
+    class Vector<string> keys(string chord) {  // Steam presses every listed key together
+        Vector<string> parts = Strings.split(chord, "+");
+        if (chord.endsWith("++")) { parts = Strings.split(chord.substring(0, chord.len() - 2), "+"); parts.push("+"); }
+        Vector<string> keys = [];
+        for (int index = 0; index < parts.size(); index++) {
+            string part = parts.get(index).trim();
+            if (part.isEmpty()) { continue; }
+            if (index < parts.size() - 1) {
+                string modifier = SteamInputChordNames.modifier(part);
+                if (!modifier.isEmpty()) { keys.push(modifier); continue; }
+            }
+            keys.push(SteamInputChordNames.key(part));
+        }
+        return keys;
+    }
+
+    class bool modified(string chord) {  // a bare key reaches the game too: Esc exits RetroArch
+        for key in SteamInputChordNames.keys(chord) { if (key.startsWith("LEFT_") && !key.equals("LEFT_ARROW")) { return true; } }
+        return false;
+    }
+}
+
+class SteamInputController {  // one controller_type: its Steam names and Semu layout
+    public string identifier;
+    public JSONValue definition;
+    public JSONValue layout;
+    public JSONValue vocabulary;
+
+    public SteamInputController(SteamInputDocument document, string identifier) {
+        self.identifier = identifier;
+        self.definition = document.entry("controllers", identifier);
+        self.layout = self.definition == null ? null : document.entry("layouts", SemuJson.textAt(self.definition, "layout"));
+        self.vocabulary = self.definition == null ? null : document.entry("vocabularies", SemuJson.textAt(self.definition, "vocabulary"));
+    }
+
+    public bool declared() { return self.definition != null && self.layout != null && self.vocabulary != null; }
+    public string type() { return SemuJson.textAt(self.definition, "controller_type"); }
+    public string file(string field) { return self.definition == null ? "" : SemuJson.textAt(self.definition, field); }  // controller_file or configset_file, empty when undeclared
+    public string grip(string logical) { return SemuJson.textAt(self.layout.get("grips"), logical); }  // a layer activator to the Steam input name
+
+    public bool knows(string kind, string name) {  // kind is sources or inputs; radial buttons 0..radial_buttons count too
+        if (SemuJson.strings(self.vocabulary.get(kind)).contains(name)) { return true; }
+        string prefix = "touch_menu_button_";
+        if (!kind.equals("inputs") || !name.startsWith(prefix) || name.len() == prefix.len()) { return false; }
+        string number = name.substring(prefix.len(), name.len() - prefix.len());
+        return Strings.isDigitStr(number) && Strings.toInt(number) <= SemuJson.intAt(self.vocabulary, "radial_buttons", 0);
+    }
+}

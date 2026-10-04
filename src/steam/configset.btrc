@@ -1,0 +1,140 @@
+import Library.Datetime;
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../lib/paths.btrc;
+
+class SteamVdfToken {  // a text VDF token and its byte span
+    public string text;
+    public int start;
+    public int end;
+    public bool quoted;
+
+    public SteamVdfToken(string text, int start, int end, bool quoted) {
+        self.text = text;
+        self.start = start;
+        self.end = end;
+        self.quoted = quoted;
+    }
+
+    public bool brace(string which) { return !self.quoted && self.text.equals(which); }
+}
+
+class SteamVdfScanner {  // reads Steam's text KeyValues without rewriting a byte of it
+    public string text;
+    public int position;
+
+    public SteamVdfScanner(string text) {
+        self.text = text;
+        self.position = 0;
+    }
+
+    public SteamVdfToken next() {  // null at the end of the text
+        while (self.position < self.text.len()) {
+            char character = self.text.charAt(self.position);
+            if (character == '/' && self.position + 1 < self.text.len() && self.text.charAt(self.position + 1) == '/') {
+                while (self.position < self.text.len() && self.text.charAt(self.position) != '\n') { self.position++; }
+            } else if (character == ' ' || character == '\t' || character == '\r' || character == '\n') {
+                self.position++;
+            } else {
+                break;
+            }
+        }
+        if (self.position >= self.text.len()) { return null; }
+        int start = self.position;
+        char first = self.text.charAt(start);
+        if (first == '{' || first == '}') {
+            self.position++;
+            return SteamVdfToken(self.text.substring(start, 1), start, self.position, false);
+        }
+        if (first == '"') {
+            self.position++;
+            while (self.position < self.text.len() && self.text.charAt(self.position) != '"') { self.position += self.text.charAt(self.position) == '\\' ? 2 : 1; }
+            if (self.position >= self.text.len()) { return null; }  // an unterminated string: the caller refuses the file
+            self.position++;
+            return SteamVdfToken(self.text.substring(start + 1, self.position - start - 2), start, self.position, true);
+        }
+        while (self.position < self.text.len() && !SteamVdfScanner.separator(self.text.charAt(self.position))) { self.position++; }
+        return SteamVdfToken(self.text.substring(start, self.position - start), start, self.position, false);
+    }
+
+    class bool separator(char character) { return character == ' ' || character == '\t' || character == '\r' || character == '\n' || character == '"' || character == '{' || character == '}'; }
+
+    public int skipBlock() {  // past the matching close brace, or -1 if none
+        int depth = 1;
+        while (depth > 0) {
+            SteamVdfToken token = self.next();
+            if (token == null) { return -1; }
+            if (token.brace("{")) { depth++; }
+            if (token.brace("}")) { depth--; }
+            if (depth == 0) { return token.end; }
+        }
+        return -1;
+    }
+}
+
+class SteamConfigset {  // which profile Steam loads per app; Semu owns one
+    class string block(string key) { return "\t\"" + key + "\"\n\t{\n\t\t\"autosave\"\t\t\"1\"\n\t}\n"; }  // Steam then loads config/<key>/<controller file>
+
+    class int lineStart(string text, int offset) {  // widen to the line when only blanks sit before offset
+        int index = offset;
+        while (index > 0 && (text.charAt(index - 1) == ' ' || text.charAt(index - 1) == '\t')) { index--; }
+        return index == 0 || text.charAt(index - 1) == '\n' ? index : offset;
+    }
+
+    class int lineEnd(string text, int offset) {  // widen past the newline when only blanks follow offset
+        int index = offset;
+        while (index < text.len() && (text.charAt(index) == ' ' || text.charAt(index) == '\t' || text.charAt(index) == '\r')) { index++; }
+        return index < text.len() && text.charAt(index) == '\n' ? index + 1 : offset;
+    }
+
+    class string upserted(string text, string key, string* error) {  // every byte outside the one entry kept
+        if (text.trim().isEmpty()) { return "\"controller_config\"\n{\n" + SteamConfigset.block(key) + "}\n"; }
+        SteamVdfScanner scanner = SteamVdfScanner(text);
+        SteamVdfToken root = scanner.next();
+        SteamVdfToken open = scanner.next();
+        if (root == null || !root.quoted || open == null || !open.brace("{")) { *error = "not a text KeyValues file"; return ""; }
+        Vector<int> spans = [];  // start, end pairs of every existing entry for key
+        int close = -1;
+        while (close < 0) {
+            SteamVdfToken name = scanner.next();
+            if (name == null) { *error = "the root block never closes"; return ""; }
+            if (name.brace("}")) { close = name.start; break; }
+            SteamVdfToken value = scanner.next();
+            if (!name.quoted || value == null || value.brace("}")) { *error = "a key without a value at byte " + Strings.fromInt(name.start); return ""; }
+            int end = value.brace("{") ? scanner.skipBlock() : value.end;
+            if (end < 0) { *error = "a block never closes"; return ""; }
+            if (name.text.toLower().equals(key.toLower())) { spans.push(SteamConfigset.lineStart(text, name.start)); spans.push(SteamConfigset.lineEnd(text, end)); }
+        }
+        if (spans.isEmpty()) {
+            int insertAt = SteamConfigset.lineStart(text, close);
+            bool ownLine = insertAt == 0 || text.charAt(insertAt - 1) == '\n';  // the closing brace starts its line
+            return text.substring(0, insertAt) + (ownLine ? "" : "\n") + SteamConfigset.block(key) + text.substring(insertAt, text.len() - insertAt);
+        }
+        string result = text.substring(0, spans.get(0)) + SteamConfigset.block(key);  // the first entry is replaced, any repeat dropped
+        for (int index = 0; index < spans.size(); index += 2) {
+            int resume = spans.get(index + 1);
+            int stop = index + 2 < spans.size() ? spans.get(index + 2) : text.len();
+            result = result + text.substring(resume, stop - resume);
+        }
+        return result;
+    }
+
+    class string stamp() { return DateTime.now().format().replace(" ", "-").replace(":", ""); }  // like 2026-10-04-051203, sortable and colon-free
+
+    class int write(string steamRoot, string path, string key, string* outcome) {  // 1 written, 0 already there, -1 refused
+        if (FileSystem.isSymlink(path)) { *outcome = "refusing a symlinked " + path; return -1; }
+        bool existed = FileSystem.isFile(path);
+        string before = existed ? FileSystem.readText(path) : "";
+        if (existed && before.trim().isEmpty()) { *outcome = path + " reads as empty; left as it was"; return -1; }  // unreadable or truncated: never replace it
+        string error = "";
+        string after = SteamConfigset.upserted(before, key, &error);
+        if (!error.isEmpty()) { *outcome = path + ": " + error + "; left as it was"; return -1; }
+        if (existed && after.equals(before)) { *outcome = path + " (already loads " + key + ")"; return 0; }
+        string backup = path + ".semu-" + SteamConfigset.stamp() + ".bak";  // Steam's own habit: a dated copy beside it
+        if (existed && !FileSystem.isFile(backup) && !SemuPaths.writeOwned(steamRoot, backup, before)) { *outcome = "could not write " + backup; return -1; }
+        if (!SemuPaths.writeOwned(steamRoot, path, after)) { *outcome = "could not write " + path; return -1; }
+        *outcome = path + " (" + key + " loads its autosaved profile)";
+        return 1;
+    }
+}

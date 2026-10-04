@@ -1,0 +1,125 @@
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ./input_document.btrc;
+import ./input_presets.btrc;
+import ./input_groups.btrc;
+import ./input_vdf.btrc;
+
+class SteamInputVocabulary {  // every emitted name must exist on that controller
+    class Vector<string> before(string vdf, string marker) {  // the quoted name right before each marker
+        Vector<string> names = [];
+        Vector<string> pieces = Strings.split(vdf, marker);
+        for (int index = 0; index + 1 < pieces.size(); index++) {
+            string piece = pieces.get(index);
+            int quote = Strings.rfind(piece, "\"");
+            if (quote >= 0 && !names.contains(piece.substring(quote + 1, piece.len() - quote - 1))) { names.push(piece.substring(quote + 1, piece.len() - quote - 1)); }
+        }
+        return names;
+    }
+
+    class Vector<string> inputs(string vdf) { return SteamInputVocabulary.before(vdf, "\" { \"activators\""); }
+    class Vector<string> sources(string vdf) { return SteamInputVocabulary.before(vdf, " active\""); }
+
+    class Vector<string> problems(SteamInputController controller, string vdf, string where) {
+        Vector<string> problems = [];
+        for name in SteamInputVocabulary.inputs(vdf) { if (!controller.knows("inputs", name)) { problems.push(where + " binds input " + name + ", which " + controller.type() + " does not have"); } }
+        for name in SteamInputVocabulary.sources(vdf) { if (!controller.knows("sources", name)) { problems.push(where + " drives source " + name + ", which " + controller.type() + " does not have"); } }
+        return problems;
+    }
+}
+
+class SteamInputRules {  // what a definition must satisfy before it becomes VDF text
+    class bool safeChord(string chord) {  // letters, digits and plus or minus only
+        if (chord.isEmpty()) { return false; }
+        for (int index = 0; index < chord.len(); index++) {
+            char character = chord.charAt(index);
+            bool allowed = (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9') || character == '+' || character == '-';
+            if (!allowed) { return false; }
+        }
+        return true;
+    }
+
+    class bool safeText(string value) {  // a comma or quote would split the VDF binding
+        return !value.trim().isEmpty() && !value.contains("\"") && !value.contains(",") && !value.contains("\\") && !value.contains("\n");
+    }
+
+    class bool modifierLabel(string label) {
+        string lower = label.trim().toLower();
+        return lower.equals("control") || !SteamInputChordNames.modifier(lower).isEmpty();
+    }
+
+    class void radial(Vector<string> problems, SteamInputDocument document, Vector<string> slots, string center, string where) {
+        if (slots.size() < 1 || slots.size() > 20) { problems.push(where + " needs 1 to 20 ring slots (touch_menu_button_1..20)"); }
+        Vector<string> all = [];
+        for slot in slots { all.push(slot); }
+        if (!center.isEmpty()) { all.push(center); }
+        Vector<string> icons = [];
+        for action in all {
+            if (document.label(action).isEmpty()) { problems.push(where + " names undeclared action " + action); continue; }
+            if (icons.contains(document.icon(action))) { problems.push(where + " shows " + document.icon(action) + " twice: an icon-only radial needs distinct icons"); }
+            icons.push(document.icon(action));
+        }
+    }
+
+    class void radials(Vector<string> problems, SteamInputDocument document) {
+        if (document.showLabels()) { problems.push("radial.show_labels must be false so Steam never draws key glyphs"); }
+        if (document.fireType() < 0 || document.fireType() > 3) { problems.push("radial.fire_type must be Steam's 0..3"); }
+        if (document.haptics() < 0 || document.haptics() > 3) { problems.push("radial.haptic_intensity must be Steam's 0..3"); }
+        SteamInputRules.radial(problems, document, document.slots("quick_slots"), document.center("quick_center"), "radial.quick_slots");
+        SteamInputRules.radial(problems, document, document.slots("menu_slots"), document.center("menu_center"), "radial.menu_slots");
+        JSONValue layers = document.layers();
+        for (int index = 0; layers.isArray() && index < layers.size(); index++) {
+            SteamInputRules.radial(problems, document, SemuJson.strings(layers.at(index).get("slots")), SemuJson.textAt(layers.at(index), "center"), "radial.system_layers");
+        }
+        for action in document.boundActions() {
+            if (!document.label(action).isEmpty() && !SteamInputChordNames.modified(document.chord(action))) {
+                problems.push("a binding sends " + action + " (" + document.chord(action) + "), a key without a modifier the game receives too");
+            }
+        }
+    }
+
+    class void templates(Vector<string> problems, SteamInputDocument document) {
+        JSONValue templates = document.templates();
+        if (!templates.isArray() || templates.size() == 0) { problems.push("templates must declare at least one template"); return; }
+        int defaults = 0;
+        for (int index = 0; index < templates.size(); index++) {
+            JSONValue template = templates.at(index);
+            string where = "template " + SemuJson.textAt(template, "id");
+            SteamInputController controller = SteamInputController(document, SemuJson.textAt(template, "controller"));
+            if (SemuJson.boolAt(template, "default", false)) {
+                defaults++;
+                if (controller.file("controller_file").isEmpty() || controller.file("configset_file").isEmpty()) { problems.push(where + " is the default, so its controller must name controller_file and configset_file"); }
+            }
+            if (!controller.declared() || controller.type().isEmpty()) { problems.push(where + " names controller " + controller.identifier + " without a controller_type, layout and vocabulary"); continue; }
+            for preset in SteamInputPresets.ordered(document, controller) {
+                for source in preset.sourceNames() {
+                    if (SteamInputGroups.identifier(SteamInputGroups.resolved(document, preset.kind(source)), preset).isEmpty()) { problems.push(where + " preset " + preset.title + " drives " + source + " with unknown group " + preset.kind(source)); }
+                }
+            }
+            for problem in SteamInputVocabulary.problems(controller, SteamInputVdf.render(document, template), where) { problems.push(problem); }
+        }
+        if (defaults != 1) { problems.push("exactly one template carries default:true"); }
+    }
+
+    class Vector<string> problems(SteamInputDocument document) {
+        Vector<string> problems = [];
+        int window = SemuJson.intAt(document.root, "quit_chord.window_ms", 250);
+        if (window < 50 || window > 1000) { problems.push("quit_chord.window_ms must be within 50..1000 ms"); }
+        JSONValue actions = document.root.get("actions");
+        if (actions == null || !actions.isObject() || actions.size() == 0) {
+            problems.push("actions must declare the input vocabulary");
+            return problems;
+        }
+        for identifier in actions.keys() {
+            if (!SteamInputRules.safeChord(document.chord(identifier))) { problems.push(identifier + ": chord is not a safe key chord"); }
+            string label = document.label(identifier);
+            if (!SteamInputRules.safeText(label) || SteamInputRules.modifierLabel(label)) { problems.push(identifier + ": needs a semantic Semu icon and label"); }
+            if (!SteamInputRules.safeText(document.icon(identifier)) || !document.icon(identifier).endsWith(".png")) { problems.push(identifier + ": needs a semantic Semu icon and label"); }
+        }
+        SteamInputRules.radials(problems, document);
+        SteamInputRules.templates(problems, document);
+        return problems;
+    }
+}

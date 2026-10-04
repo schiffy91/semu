@@ -248,10 +248,11 @@ ryujinx. For each:
   switch a stable symlink, keep one previous release, `rollback` swaps back.
   ES-DE and the launchers resolve through the stable path. FUSE is not
   required.
-- `config/input/steam-deck/`: Steam Input profile for the Deck controller
-  with the binding table from `steam_input_contract_test.btrc`, published
-  into Steam's directories with the existing atomic publish logic trimmed to
-  what is needed.
+- `config/input/steam/`: Steam Input templates for the Deck and the Steam
+  Controllers (shared with linux-desktop) with the binding table from
+  `steam_input_contract_test.btrc`, published into Steam's directories with
+  the existing atomic publish logic trimmed to what is needed, plus the
+  configset entry that makes Steam load the Semu profile.
 - Deck harness: SSH deploy, gamescope screenshot type 3, uinput driver. Keep
   it under 1k lines.
 - Accept on hardware in the M3 then M4 order, one system at a time, gated by
@@ -662,9 +663,33 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   and previous slot (its btn_next_slot/btn_prev_slot). melonDS binds slot 1 only to its compiled
   Shift+F1 and F1, never Ctrl+S and Ctrl+A as the old package claimed, so its rows carry
   `native_chord` and the supervisor types Shift+F1 or F1 for a save or load from any source.
-- Steam Input (2026-10-03): the hotkey set's R3 is Menu Back instead of Esc, and the quick radial
-  is Save, Load, Previous Slot, Next Slot, Menu, Screenshot, Quit (no Escape). The ring still starts
-  at touch_menu_button_0, the centre, until the Steam Input task renumbers it.
+- Steam Input (2026-10-03, completed 2026-10-04). One definition, `config/input/steam/steam_input.json`
+  (with its icons), is named by both Linux targets as `steam.input`; macOS has none. Radial rings
+  are touch_menu_button_1..20 and button 0 is the centre: the quick radial is Save, Load, Previous
+  Slot, Next Slot, Next Bezel, Next Shader, Menu, Screenshot, Quit with an empty centre, and the
+  menu radial is Up, Down, Confirm, Back with Open Menu in the centre. A slot fires the way Steam's
+  fire type 1 (button release) does: click the pad on the icon and it fires when the click is
+  released; lifting the thumb without clicking fires nothing. Every radial button ticks
+  (haptic_intensity 2), icons within one radial differ, and every action a binding may send has its
+  own icon (Next Bezel picture-in-picture-2, Next Shader sparkles; the On/Off toggles stop
+  borrowing the menu's). No binding may send a key without a modifier, so Esc (which exits
+  RetroArch) is never sent and R3 in the hotkey set is Menu Back. The lower grips are Steam's
+  button_back_left/right (the old *_lower names do not exist, so the Wii layer was unreachable).
+  Controllers are data: each declares its controller_type, the vocabulary Steam accepts on it
+  (from Valve's own templates) and a layout of presets mapping sources to group kinds, which
+  `SteamInputVdf.render` walks; a contract fails on any emitted name outside the vocabulary. The
+  new Steam Controller (controller_triton) gets exactly the Deck layout. The 2015 Steam Controller
+  (gordon), as the owner asked of the left trackpad: left pad = the quick radial, right pad = the
+  pointer with click to tap, holding the left grip turns the left pad into a d-pad, holding the
+  right grip turns the right pad into the right stick (Valve's gordon joystick_move with
+  output_joystick 1), long-press View = the menu radial; it has no Wii layer (no spare grips).
+  Both ship as templates only (picked once under Controller Settings), since their per-user file
+  names were never observed. `semu steam input` also upserts `"semu" { "autosave" "1" }` into each
+  user's configset_controller_neptune.vdf (`src/steam/configset.btrc`): every other byte kept, a
+  dated `.semu-*.bak` first, nothing written when the entry is there, an existing file that
+  reads as empty left alone, and it refuses while Steam runs unless `--steam-root` names a root;
+  without that entry Steam ignored Semu's profile and used its Last Resort template (55 loads
+  observed on the Deck). Trigger groups carry output_trigger 1/2 as every Valve template does.
 - Menu pause (2026-10-03): the compositor draws the Semu menu at the emulator's own present, so
   the menu pauses an emulator only where it was seen to keep presenting while paused
   (`emulator.json` `menu.pause` emulator: RetroArch, PPSSPP). Azahar, Dolphin and PCSX2 stop
@@ -1389,6 +1414,22 @@ Update this block whenever a milestone criterion changes state.
   DS layout's two chains 1.7 s; with the toast counted again after the stall, BEZEL: ARCTIC still
   showed over the new shell 2 s after the chord. Not observable offline: Steam's radial in Game
   Mode, and the Deck's own decode and compile times.
+  2026-10-04, Steam Input (offline, Deck read only; ruling above). `semu steam input --target
+  steam-deck --steam-root <mktemp>` with a configset holding two other apps wrote neptune-simple,
+  neptune-full, triton-full and gordon-full, 25 icons byte for byte, the per-user profile (equal to
+  neptune-full) and the configset with `"semu" { "autosave" "1" }` added before the closing brace,
+  every other byte kept, one `.semu-<date>.bak` equal to the old file; a second run printed
+  "already loads semu" and wrote nothing. Read: the quick ring is touch_menu_button_1..9 with no
+  button 0, the menu radial's button 0 is Open Menu, the Wii layer is held with button_back_left/
+  right, triton-full equals neptune-full apart from controller_type and title, and gordon-full has
+  no dpad or right_joystick source (left pad radial, grip-held d-pad and right stick). The same
+  command for linux-desktop wrote the same files, macOS has no definition, and with a live
+  `~/.steam/steam.pid` and no `--steam-root` it refused before writing anything.
+  `packaging/steam/render-icons.sh --check` re-rendered all 21 Lucide icons (17 old, 4 new) from
+  Lucide b442632 at RMSE 0 against the committed files; the four new ones were inspected on a dark
+  background. Still for the Deck: Steam loading the profile through the configset (controller_ui.txt
+  naming config/semu/controller_neptune.vdf as the Local Selection Path), the ring's feel and icons
+  in Game Mode, and both Steam Controllers on hardware.
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a

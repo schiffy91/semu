@@ -48,7 +48,7 @@ class SemuCli {
         help.item("settings get PATH | put PATH VALUE [--apply] | ui | reset", "Read, write, describe (ES-DE menu document) or reset $SEMU_HOME/semu.json.");
         help.item("sync start | stop | run | status | device-id | enabled", "Syncthing for saves: detach, run in the foreground, inspect, print this device's id.");
         help.item("steam shortcuts [--steam-root DIR] [--force] | status", "Add or refresh the Semu non-Steam shortcut in every Steam profile.");
-        help.item("steam input [--steam-root DIR]", "Write the target's Steam Input templates (Deck trackpad radials), their icons and each Steam user's default Semu profile.");
+        help.item("steam input [--steam-root DIR]", "With Steam stopped: write the Steam Input templates (Deck, Steam Controllers), their icons, each user's Semu profile and the configset entry that makes Steam load it.");
         help.item("bezel resolve | emit | edit [--packages a,b] [--port N]", "Mega Bezel presets: print their resolved chains, write the packages' layers and screens, or serve the bezel editor.");
         help.item("version", "Print the Semu version.");
         help.section("Common options");
@@ -249,7 +249,7 @@ class SemuCli {
         if (action.equals("status")) { return SteamShortcuts.status(plan, root); }
         if (action.equals("input")) {
             string steamRoot = root.isEmpty() ? PathTools.join(SemuPaths.home(), ".local/share/Steam") : SemuPaths.expandHome(root);
-            return SteamInputTemplates.install(plan, steamRoot);  // every destination derives from this one root
+            return SteamInputTemplates.install(plan, steamRoot, !root.isEmpty());  // every destination derives from this one root
         }
         return self.usage(64);
     }

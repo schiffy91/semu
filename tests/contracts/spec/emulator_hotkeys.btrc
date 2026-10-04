@@ -39,7 +39,7 @@ class EmulatorHotkeyTools {
     }
 
     class Vector<string> steamChords(Fixture fixture) {  // every chord a Steam Input binding of the Deck sends
-        JSONValue root = SemuJson.readFile(PathTools.join(fixture.project, "config/input/steam-deck/steam_input.json"));
+        JSONValue root = SemuJson.readFile(PathTools.join(fixture.project, "config/input/steam/steam_input.json"));
         Vector<string> actions = [];
         JSONValue bindings = root.get("hotkey_bindings");
         for (int index = 0; index < bindings.size(); index++) { actions.push(SemuJson.textAt(bindings.at(index), "action")); }
@@ -172,7 +172,7 @@ class EmulatorHotkeyQuoting {  // QSettings reads an unquoted comma value as a l
 
 class EmulatorHotkeySteam {  // Esc quits RetroArch on macOS and leaves Cemu's fullscreen: no Steam binding sends it
     class void run(Contract contract, Fixture fixture) {
-        JSONValue root = SemuJson.readFile(PathTools.join(fixture.project, "config/input/steam-deck/steam_input.json"));
+        JSONValue root = SemuJson.readFile(PathTools.join(fixture.project, "config/input/steam/steam_input.json"));
         JSONValue bindings = root.get("hotkey_bindings");
         string rightStick = "";
         for (int index = 0; index < bindings.size(); index++) {

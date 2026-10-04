@@ -220,7 +220,7 @@ class GameBoySpecInput {
     class void run(Contract contract, Fixture fixture) {
         string input = PathTools.join(fixture.project, "config/input/steam-deck");
         contract.expect(!FileSystem.isFile(PathTools.join(input, "systems/gb.json")), "gb has no per-system Deck input file: its actions are RetroArch's");
-        JSONValue global = SemuJson.readFile(PathTools.join(input, "steam_input.json"));
+        JSONValue global = SemuJson.readFile(PathTools.join(fixture.project, "config/input/steam/steam_input.json"));
         JSONValue autoconfig = SemuJson.readFile(PathTools.join(input, "retroarch_autoconfig.json"));
         JSONValue emulatorActions = SemuJson.get(fixture.model.emulator("retroarch").definition, "input.actions");
         Vector<string> actions = ["ui.pause", "ui.screenshot", "ui.fullscreen", "ui.escape", "app.quit", "state.prev", "state.next", "state.load", "state.save", "speed.rewind", "speed.fast"];

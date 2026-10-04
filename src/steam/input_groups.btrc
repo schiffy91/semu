@@ -1,0 +1,135 @@
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ./input_document.btrc;
+import ./input_presets.btrc;
+
+class SteamInputBindings {  // what Steam parses: command, label, icon, two colours
+    class string binding(SteamInputDocument document, string command, string action) {
+        return "\"binding\" \"" + command + ", " + document.label(action) + ", " + document.icon(action) + ", " + document.iconColors + "\"";
+    }
+
+    class string xinput(string button) { return "\"binding\" \"xinput_button " + button + ", , \""; }
+    class string backToGamepad() { return "\"binding\" \"controller_action CHANGE_PRESET 1 0 0, , \""; }
+    class string enter(SteamInputPreset preset) { return "\"binding\" \"" + preset.enter() + ", " + preset.title + ", , \""; }
+
+    class string action(SteamInputDocument document, string action) {  // every key of the chord, plus Select+Start for quit
+        Vector<string> parts = [];
+        for key in SteamInputChordNames.keys(document.chord(action)) { parts.push(SteamInputBindings.binding(document, "key_press " + key, action)); }
+        if (action.equals("app.quit")) {
+            for button in document.quitButtons { parts.push(SteamInputBindings.binding(document, "xinput_button " + button.toUpper(), action)); }
+        }
+        return parts.join(" ");
+    }
+
+    class string activator(string name, string bindings) { return "\"" + name + "\" { \"bindings\" { " + bindings + " } }"; }
+
+    class string input(string name, string activator, string bindings) {
+        return "\t\t\t\"" + name + "\" { \"activators\" { " + SteamInputBindings.activator(activator, bindings) + " } }";
+    }
+
+    class string felt(string name, string bindings, int haptics) {  // a radial button: Full_Press with Steam's haptic tick
+        return "\t\t\t\"" + name + "\" { \"activators\" { \"Full_Press\" { \"bindings\" { " + bindings + " } \"settings\" { \"haptic_intensity\" \""
+            + Strings.fromInt(haptics) + "\" } } } }";
+    }
+}
+
+class SteamInputButtons {  // hotkey_bindings button names -> the input each group kind reads
+    class Vector<string> face() { return ["A", "B", "X", "Y"]; }
+    class Vector<string> dpad() { return ["D-Pad Up", "D-Pad Down", "D-Pad Right", "D-Pad Left"]; }
+    class string faceInput(string button) { return "button_" + button.toLower(); }
+    class string xinputDirection(string button) { return "DPAD_" + button.substring(6, button.len() - 6).toUpper(); }
+
+    class string dpadInput(string button) {
+        string direction = button.substring(6, button.len() - 6).toLower();
+        if (direction.equals("up")) { return "dpad_north"; }
+        if (direction.equals("down")) { return "dpad_south"; }
+        if (direction.equals("right")) { return "dpad_east"; }
+        return "dpad_west";
+    }
+
+    class string switchButton(string input) {  // the hotkey button a switch input stands for
+        if (input.equals("button_escape")) { return "Start"; }
+        if (input.equals("left_bumper")) { return "L1"; }
+        if (input.equals("right_bumper")) { return "R1"; }
+        return "";
+    }
+
+    class bool any(SteamInputDocument document, Vector<string> buttons) {
+        for button in buttons { if (!document.hotkeyAction(button).isEmpty()) { return true; } }
+        return false;
+    }
+}
+
+class SteamInputGroups {  // one body per kind; presets only name the kind
+    class string resolved(SteamInputDocument document, string kind) {  // a hotkey kind with nothing bound draws the plain one
+        if (kind.equals("hotkey_face")) { return SteamInputButtons.any(document, SteamInputButtons.face()) ? kind : "face"; }
+        if (kind.equals("hotkey_dpad")) { return SteamInputButtons.any(document, SteamInputButtons.dpad()) ? kind : "dpad"; }
+        if (kind.equals("hotkey_left_trigger")) { return document.hotkeyAction("L2").isEmpty() ? "left_trigger" : kind; }
+        if (kind.equals("hotkey_right_trigger")) { return document.hotkeyAction("R2").isEmpty() ? "right_trigger" : kind; }
+        if (kind.equals("hotkey_left_stick")) { return document.hotkeyAction("L3").isEmpty() ? "left_stick" : kind; }
+        if (kind.equals("hotkey_right_stick")) { return document.hotkeyAction("R3").isEmpty() ? "right_stick" : kind; }
+        return kind;
+    }
+
+    class string identifier(string kind, SteamInputPreset preset) {  // fixed per kind; switches and layer radials per preset
+        Vector<string> kinds = ["face", "dpad", "left_stick", "right_stick", "left_trigger", "right_trigger", "pointer", "", "trackpad_stick", "",  // each kind's index is its group id
+                                "hotkey_face", "hotkey_left_trigger", "hotkey_right_trigger", "hotkey_dpad", "", "hotkey_left_stick", "hotkey_right_stick"];
+        for (int index = 0; index < kinds.size(); index++) { if (!kinds.get(index).isEmpty() && kinds.get(index).equals(kind)) { return Strings.fromInt(index); } }
+        if (kind.equals("switches")) { return preset.index == 0 ? "7" : Strings.fromInt(30 + preset.index); }
+        if (kind.equals("quick_radial")) { return "20"; }
+        if (kind.equals("menu_radial")) { return "21"; }
+        if (kind.equals("layer_radial") && preset.layer >= 0) { return Strings.fromInt(22 + preset.layer); }
+        return "";
+    }
+
+    class void head(Vector<string> lines, string identifier, string mode, string name) {
+        lines.push("\t\"group\"");
+        lines.push("\t{");
+        lines.push("\t\t\"id\" \"" + identifier + "\"");
+        lines.push("\t\t\"mode\" \"" + mode + "\"");
+        if (!name.isEmpty()) { lines.push("\t\t\"name\" \"" + name + "\""); }
+        lines.push("\t\t\"inputs\"");
+        lines.push("\t\t{");
+    }
+
+    class void tail(Vector<string> lines, string settings) {
+        lines.push("\t\t}");
+        if (!settings.isEmpty()) {
+            lines.push("\t\t\"settings\"");
+            lines.push("\t\t{");
+            lines.push(settings);
+            lines.push("\t\t}");
+        }
+        lines.push("\t}");
+    }
+
+    class string single(string identifier, string mode, string bindings, string settings) {  // a group with one click input
+        string tailText = settings.isEmpty() ? "" : " \"settings\" { " + settings + " }";
+        return "\t\"group\" { \"id\" \"" + identifier + "\" \"mode\" \"" + mode + "\" \"inputs\" { \"click\" { \"activators\" { \"Full_Press\" { \"bindings\" { "
+            + bindings + " } } } } }" + tailText + " }";
+    }
+
+    class void buttons(Vector<string> lines, SteamInputDocument document, string identifier, string mode, Vector<string> buttons, bool hotkeys) {
+        SteamInputGroups.head(lines, identifier, mode, "");
+        for button in buttons {
+            bool face = mode.equals("four_buttons");
+            string input = face ? SteamInputButtons.faceInput(button) : SteamInputButtons.dpadInput(button);
+            string action = document.hotkeyAction(button);
+            if (!hotkeys) { lines.push(SteamInputBindings.input(input, "Full_Press", SteamInputBindings.xinput(face ? button : SteamInputButtons.xinputDirection(button)))); }
+            if (hotkeys && !action.isEmpty()) { lines.push(SteamInputBindings.input(input, "Full_Press", SteamInputBindings.action(document, action))); }
+        }
+        SteamInputGroups.tail(lines, "");
+    }
+
+    class void radial(Vector<string> lines, SteamInputDocument document, string identifier, Vector<string> slots, string center, string name) {
+        SteamInputGroups.head(lines, identifier, "radial_menu", name);
+        if (!center.isEmpty()) { lines.push(SteamInputBindings.felt("touch_menu_button_0", SteamInputBindings.action(document, center), document.haptics())); }
+        for (int index = 0; index < slots.size(); index++) {  // the ring starts at 1; button 0 is the centre
+            lines.push(SteamInputBindings.felt("touch_menu_button_" + Strings.fromInt(index + 1), SteamInputBindings.action(document, slots.get(index)), document.haptics()));
+        }
+        SteamInputGroups.tail(lines, "\t\t\t\"touchmenu_button_fire_type\" \"" + Strings.fromInt(document.fireType()) + "\"\n\t\t\t\"touch_menu_show_labels\" \""
+            + (document.showLabels() ? "1" : "0") + "\"");
+    }
+}

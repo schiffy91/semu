@@ -8,6 +8,12 @@ Each upstream 24px SVG was rendered on a transparent canvas, scaled to 192px,
 centered in a 256x256 PNG, converted to a white stroke, and stripped of
 nonessential metadata. No RetroDECK artwork is copied.
 
+`packaging/steam/render-icons.sh` is that recipe (bash, curl and ImageMagick):
+it renders every row below whose source is a backticked Lucide name, from the
+commit above. `render-icons.sh --check` re-renders them all into a scratch
+directory and requires each committed file to match at RMSE 0; a new icon is a
+new row plus `render-icons.sh config/input/steam/icons semu-<name>.png`.
+
 The Wii controller-mode icons use original Semu-owned 24px line drawings. They
 follow the same 2px rounded white stroke and the same 192px-on-256px raster
 pipeline as the Lucide derivatives.
@@ -15,6 +21,8 @@ pipeline as the Lucide derivatives.
 | Semu file | Lucide source icon |
 | --- | --- |
 | `semu-back.png` | `undo-2` |
+| `semu-bezel-toggle.png` | `square-dashed` |
+| `semu-bezel.png` | `picture-in-picture-2` |
 | `semu-classic-controller.png` | Original Semu Classic Controller line drawing |
 | `semu-confirm.png` | `circle-check-big` |
 | `semu-down.png` | `circle-arrow-down` |
@@ -31,6 +39,8 @@ pipeline as the Lucide derivatives.
 | `semu-rewind.png` | `rewind` |
 | `semu-save.png` | `save` |
 | `semu-screenshot.png` | `camera` |
+| `semu-shader-toggle.png` | `wand-sparkles` |
+| `semu-shader.png` | `sparkles` |
 | `semu-swap.png` | `arrow-left-right` |
 | `semu-up.png` | `circle-arrow-up` |
 | `semu-wiimote-nunchuk.png` | Original Semu Wiimote and Nunchuk line drawing |

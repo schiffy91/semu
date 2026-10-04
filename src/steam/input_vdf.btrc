@@ -1,0 +1,110 @@
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ./input_document.btrc;
+import ./input_presets.btrc;
+import ./input_groups.btrc;
+
+class SteamInputVdf {  // one template's controller_mappings, walked from declared presets
+    class string holdEntries(Vector<SteamInputPreset> presets, string input) {  // the gamepad's ways into other presets on one input
+        Vector<string> entries = [];
+        for other in presets {
+            for hold in other.holds { if (hold.input.equals(input)) { entries.push(SteamInputBindings.activator(hold.activator, SteamInputBindings.enter(other))); } }
+        }
+        return entries.join(" ");
+    }
+
+    class bool replacesPress(Vector<SteamInputPreset> presets, string input) {  // a Full_Press hold leaves no plain press
+        for other in presets { for hold in other.holds { if (hold.input.equals(input) && hold.activator.equals("Full_Press")) { return true; } } }
+        return false;
+    }
+
+    class void switches(Vector<string> lines, SteamInputDocument document, SteamInputController controller, Vector<SteamInputPreset> presets, SteamInputPreset preset, string identifier) {
+        JSONValue plain = controller.layout.get("switches");  // input -> the xinput button it passes through
+        Vector<string> plainInputs = [];
+        if (plain != null && plain.isObject()) { plainInputs = plain.keys(); }
+        SteamInputGroups.head(lines, identifier, "switches", "");
+        for input in plainInputs {
+            string pass = SteamInputBindings.activator("Full_Press", SteamInputBindings.xinput(SemuJson.textAt(plain, input)));
+            string action = document.hotkeyAction(SteamInputButtons.switchButton(input));
+            if (preset.hotkeys && !action.isEmpty()) { lines.push(SteamInputBindings.input(input, "Full_Press", SteamInputBindings.action(document, action))); continue; }
+            if (preset.index > 0 && preset.heldBy(input)) { lines.push(SteamInputBindings.input(input, "release", SteamInputBindings.backToGamepad())); continue; }
+            if (preset.hotkeys) { continue; }  // the hotkey set passes nothing through
+            string entries = preset.index == 0 ? SteamInputVdf.holdEntries(presets, input) : "";
+            bool pressed = !(preset.index == 0 && SteamInputVdf.replacesPress(presets, input));
+            string activators = (pressed ? pass : "") + (pressed && !entries.isEmpty() ? " " : "") + entries;
+            lines.push("\t\t\t\"" + input + "\" { \"activators\" { " + activators + " } }");
+        }
+        for other in presets {  // holds on inputs that pass nothing through: grips
+            for hold in other.holds {
+                if (plainInputs.contains(hold.input)) { continue; }
+                if (preset.index == 0) { lines.push(SteamInputBindings.input(hold.input, hold.activator, SteamInputBindings.enter(other))); }
+                if (preset.index > 0 && other.index == preset.index) { lines.push(SteamInputBindings.input(hold.input, "release", SteamInputBindings.backToGamepad())); }
+            }
+        }
+        SteamInputGroups.tail(lines, "");
+    }
+
+    class void group(Vector<string> lines, SteamInputDocument document, SteamInputController controller, JSONValue template, Vector<SteamInputPreset> presets, SteamInputPreset preset, string kind, string identifier) {
+        if (kind.equals("face") || kind.equals("hotkey_face")) { SteamInputGroups.buttons(lines, document, identifier, "four_buttons", SteamInputButtons.face(), kind.equals("hotkey_face")); }
+        if (kind.equals("dpad") || kind.equals("hotkey_dpad")) { SteamInputGroups.buttons(lines, document, identifier, "dpad", SteamInputButtons.dpad(), kind.equals("hotkey_dpad")); }
+        if (kind.equals("left_stick")) { lines.push(SteamInputGroups.single(identifier, "joystick_move", SteamInputBindings.xinput("JOYSTICK_LEFT"), "")); }
+        if (kind.equals("right_stick")) { lines.push(SteamInputGroups.single(identifier, "joystick_move", SteamInputBindings.xinput("JOYSTICK_RIGHT"), "")); }
+        if (kind.equals("trackpad_stick")) { lines.push(SteamInputGroups.single(identifier, "joystick_move", SteamInputBindings.xinput("JOYSTICK_RIGHT"), "\"output_joystick\" \"1\"")); }
+        if (kind.equals("left_trigger")) { lines.push(SteamInputGroups.single(identifier, "trigger", SteamInputBindings.xinput("TRIGGER_LEFT"), "\"output_trigger\" \"1\"")); }
+        if (kind.equals("right_trigger")) { lines.push(SteamInputGroups.single(identifier, "trigger", SteamInputBindings.xinput("TRIGGER_RIGHT"), "\"output_trigger\" \"2\"")); }
+        if (kind.equals("pointer")) {  // Steam's mouse; a soft click taps DS and 3DS screens
+            lines.push("\t\"group\" { \"id\" \"" + identifier + "\" \"mode\" \"absolute_mouse\" \"inputs\" { \"click\" { \"activators\" { \"Soft_Press\" { \"bindings\" { \"binding\" \"mouse_button LEFT, , \" } } } } } }");
+        }
+        if (kind.equals("hotkey_left_trigger")) { lines.push(SteamInputGroups.single(identifier, "trigger", SteamInputBindings.action(document, document.hotkeyAction("L2")), "")); }
+        if (kind.equals("hotkey_right_trigger")) { lines.push(SteamInputGroups.single(identifier, "trigger", SteamInputBindings.action(document, document.hotkeyAction("R2")), "")); }
+        if (kind.equals("hotkey_left_stick")) { lines.push(SteamInputGroups.single(identifier, "joystick_move", SteamInputBindings.action(document, document.hotkeyAction("L3")), "")); }
+        if (kind.equals("hotkey_right_stick")) { lines.push(SteamInputGroups.single(identifier, "joystick_move", SteamInputBindings.action(document, document.hotkeyAction("R3")), "")); }
+        if (kind.equals("switches")) { SteamInputVdf.switches(lines, document, controller, presets, preset, identifier); }
+        if (kind.equals("quick_radial")) { SteamInputGroups.radial(lines, document, identifier, document.slots("quick_slots"), document.center("quick_center"), SemuJson.textAt(template, "quick_radial_name")); }
+        if (kind.equals("menu_radial")) { SteamInputGroups.radial(lines, document, identifier, document.slots("menu_slots"), document.center("menu_center"), SemuJson.textAt(template, "menu_radial_name")); }
+        if (kind.equals("layer_radial")) {
+            JSONValue layer = document.layers().at(preset.layer);
+            SteamInputGroups.radial(lines, document, identifier, SemuJson.strings(layer.get("slots")), SemuJson.textAt(layer, "center"), SemuJson.textAt(layer, "name"));
+        }
+    }
+
+    class string render(SteamInputDocument document, JSONValue template) {
+        SteamInputController controller = SteamInputController(document, SemuJson.textAt(template, "controller"));
+        Vector<string> lines = [];
+        lines.push("\"controller_mappings\"");
+        lines.push("{");
+        lines.push("\t\"version\"\t\t\"3\"");
+        lines.push("\t\"revision\"\t\t\"1\"");
+        lines.push("\t\"title\"\t\t\"" + SemuJson.textAt(template, "title") + "\"");
+        lines.push("\t\"description\"\t\t\"Semu gamepad, radial actions, and Start+Select quit.\"");
+        lines.push("\t\"creator\"\t\t\"Semu\"");
+        lines.push("\t\"controller_type\"\t\t\"" + controller.type() + "\"");
+        if (!controller.declared()) { return lines.join("\n") + "\n}\n"; }  // the rules refuse it before anything is written
+        Vector<SteamInputPreset> presets = SteamInputPresets.ordered(document, controller);
+        lines.push("\t\"actions\"");
+        lines.push("\t{");
+        for preset in presets { lines.push("\t\t\"" + preset.name() + "\" { \"title\" \"" + preset.title + "\" \"legacy_set\" \"1\" }"); }
+        lines.push("\t}");
+        Vector<string> drawn = [];
+        Vector<string> bindings = [];
+        for preset in presets {
+            Vector<string> pairs = [];
+            for source in preset.sourceNames() {
+                string kind = SteamInputGroups.resolved(document, preset.kind(source));
+                string identifier = SteamInputGroups.identifier(kind, preset);
+                if (identifier.isEmpty()) { continue; }  // an unknown kind: the rules name it
+                pairs.push("\"" + identifier + "\" \"" + source + " active\"");
+                if (drawn.contains(identifier)) { continue; }
+                drawn.push(identifier);
+                SteamInputVdf.group(lines, document, controller, template, presets, preset, kind, identifier);
+            }
+            bindings.push("\t\"preset\" { \"id\" \"" + Strings.fromInt(preset.index) + "\" \"name\" \"" + preset.name() + "\" \"group_source_bindings\" { " + pairs.join(" ") + " } }");
+        }
+        for binding in bindings { lines.push(binding); }
+        lines.push("\t\"settings\" { \"left_trackpad_mode\" \"0\" \"right_trackpad_mode\" \"0\" }");
+        lines.push("}");
+        return lines.join("\n") + "\n";
+    }
+}

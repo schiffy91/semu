@@ -29,6 +29,8 @@ import ./spec/emulator_runtime.btrc;
 import ./spec/standalone.btrc;
 import ./spec/cemu.btrc;
 import ./spec/steam_input.btrc;
+import ./spec/steam_configset.btrc;
+import ./spec/steam_controllers.btrc;
 import ./spec/frame_layout.btrc;
 import ./spec/esde.btrc;
 import ./spec/gameboy.btrc;
@@ -521,7 +523,7 @@ class SteamInputInstallContract {  // one Steam root holds the templates, icons 
         FileSystem.mkdirp(PathTools.join(configs, "semu-x86_64appimage"));
         FileSystem.writeText(PathTools.join(configs, "semu-x86_64appimage/controller_neptune.vdf"), "stale");
         FileSystem.writeText(PathTools.join(configs, "semu-x86_64appimage/notes.txt"), "the user's");
-        contract.expect(SteamInputTemplates.install(fixture.plan, steam) == 0, "steam input installs into a Steam root");
+        contract.expect(SteamInputTemplates.install(fixture.plan, steam, true) == 0, "steam input installs into a Steam root");
         contract.expect(FileSystem.isFile(PathTools.join(steam, "controller_base/templates/neptune-full.vdf")) && FileSystem.isFile(PathTools.join(steam, "tenfoot/resource/images/library/controller/binding_icons/semu-save.png")), "templates and icons land in Steam's own directories");
         string profile = PathTools.join(configs, "semu/controller_neptune.vdf");
         contract.expect(FileSystem.isFile(profile) && FileSystem.readText(profile).contains("controller_mappings") && FileSystem.readText(profile).contains("Semu Full Radial"), "each Steam user gets the default FULL template as the Semu profile");
@@ -948,6 +950,8 @@ int main() {
     HarnessSpecContract.run(contract);
     CemuSpecContract.run(contract);
     SteamInputSpecContract.run(contract);
+    SteamConfigsetSpecContract.run(contract);
+    SteamControllerSpecContract.run(contract);
     EsDeSpecContract.run(contract);
     GameBoySpecContract.run(contract);
     TouchSpecContract.run(contract);

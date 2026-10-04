@@ -1,0 +1,112 @@
+// Configset spec: Steam loads the Semu profile only when configset_controller_neptune.vdf names "semu"
+// with autosave 1. The upsert keeps every other byte, backs the old file up once, changes nothing on
+// a second run, and Steam's own root is refused while Steam runs (it rewrites the file on exit).
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+import Library.FileSystem;
+import Library.Platform;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/steam/configset.btrc;
+import ../../../src/steam/input_template.btrc;
+
+class SteamConfigsetSpecText {  // the text upsert alone
+    class string twoApps() {  // Steam's own layout: tabs, one key per line, sorted, a final newline
+        return "\"controller_config\"\n{\n\t\"1336490\"\n\t{\n\t\t\"autosave\"\t\t\"1\"\n\t}\n\t\"22320\"\n\t{\n\t\t\"template\"\t\t\"controller_xboxone_wasd.vdf\"\n\t}\n}\n";
+    }
+
+    class string upserted(string text) {
+        string error = "";
+        string result = SteamConfigset.upserted(text, "semu", &error);
+        return error.isEmpty() ? result : "ERROR " + error;
+    }
+
+    class void run(Contract contract) {
+        string block = SteamConfigset.block("semu");
+        string fixture = SteamConfigsetSpecText.twoApps();
+        string kept = fixture.substring(0, fixture.len() - 2);  // all but the closing brace line
+        contract.expect(block.equals("\t\"semu\"\n\t{\n\t\t\"autosave\"\t\t\"1\"\n\t}\n"), "the entry is Steam's autosave form for semu");
+        contract.expect(SteamConfigsetSpecText.upserted(fixture).equals(kept + block + "}\n"), "a new entry goes in before the closing brace and both other apps stay byte for byte");
+        string templated = kept + "\t\"semu\"\n\t{\n\t\t\"template\"\t\t\"neptune-full-fixed2.vdf\"\n\t}\n}\n";
+        contract.expect(SteamConfigsetSpecText.upserted(templated).equals(kept + block + "}\n"), "an old template entry for semu becomes autosave");
+        contract.expect(SteamConfigsetSpecText.upserted(kept + block + "}\n").equals(kept + block + "}\n"), "an existing autosave entry is left exactly as it is");
+        string middle = "\"controller_config\"\n{\n\t\"Semu\"\n\t{\n\t\t\"template\"\t\t\"x.vdf\"\n\t}\n\t\"zz\"\n\t{\n\t\t\"autosave\"\t\t\"1\"\n\t}\n\t\"semu\" { \"autosave\" \"0\" }\n}\n";
+        contract.expect(SteamConfigsetSpecText.upserted(middle).equals("\"controller_config\"\n{\n" + block + "\t\"zz\"\n\t{\n\t\t\"autosave\"\t\t\"1\"\n\t}\n}\n"), "the key matches without case, in place, and a repeated entry is dropped");
+        string windows = "// written by hand\r\n\"controller_config\"\r\n{\r\n\t\"413080\"\t{ \"autosave\" \"1\" } // a comment\r\n}\r\n";
+        contract.expect(SteamConfigsetSpecText.upserted(windows).equals("// written by hand\r\n\"controller_config\"\r\n{\r\n\t\"413080\"\t{ \"autosave\" \"1\" } // a comment\r\n" + block + "}\r\n"), "comments and CRLF line ends survive");
+        contract.expect(SteamConfigsetSpecText.upserted("").equals("\"controller_config\"\n{\n" + block + "}\n"), "an empty or missing file gets a fresh controller_config root");
+        contract.expect(SteamConfigsetSpecText.upserted("\"controller_config\"\n{\n}\n").equals("\"controller_config\"\n{\n" + block + "}\n"), "Steam's empty configset gains just the entry");
+        contract.expect(SteamConfigsetSpecText.upserted("\"controller_config\" { \"a\" { \"b\" \"c\" }").startsWith("ERROR"), "a root that never closes is refused, not repaired");
+        contract.expect(SteamConfigsetSpecText.upserted("\"controller_config\" { \"a\" }").startsWith("ERROR"), "a key without a value is refused");
+        contract.expect(SteamConfigsetSpecText.upserted("{ }").startsWith("ERROR"), "text that is not KeyValues is refused");
+    }
+}
+
+class SteamConfigsetSpecInstall {  // semu steam input into scratch Steam roots
+    class int backups(string directory) {
+        int count = 0;
+        for name in SemuModel.sortedEntries(directory) { if (name.startsWith("configset_controller_neptune.vdf.semu-") && name.endsWith(".bak")) { count++; } }
+        return count;
+    }
+
+    class string backup(string directory) {
+        for name in SemuModel.sortedEntries(directory) { if (name.endsWith(".bak")) { return FileSystem.readText(PathTools.join(directory, name)); } }
+        return "";
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        string steam = PathTools.join(fixture.scratch, "configset-steam");
+        string configs = PathTools.join(steam, "steamapps/common/Steam Controller Configs");
+        FileSystem.mkdirp(PathTools.join(steam, "userdata/111/config"));
+        FileSystem.mkdirp(PathTools.join(steam, "userdata/222/config"));
+        FileSystem.mkdirp(PathTools.join(configs, "111/config"));
+        string configset = PathTools.join(configs, "111/config/configset_controller_neptune.vdf");
+        string fixtureText = SteamConfigsetSpecText.twoApps();
+        FileSystem.writeText(configset, fixtureText);
+        contract.expect(SteamInputTemplates.install(fixture.plan, steam, true) == 0, "steam input installs into a scratch root with an existing configset");
+        string expected = fixtureText.substring(0, fixtureText.len() - 2) + SteamConfigset.block("semu") + "}\n";
+        contract.expect(FileSystem.readText(configset).equals(expected), "the configset gains semu autosave 1 and keeps both other apps byte for byte");
+        string directory = PathTools.dirname(configset);
+        contract.expect(SteamConfigsetSpecInstall.backups(directory) == 1 && SteamConfigsetSpecInstall.backup(directory).equals(fixtureText), "exactly one dated backup, holding the file as it was");
+        string fresh = PathTools.join(configs, "222/config/configset_controller_neptune.vdf");
+        contract.expect(FileSystem.readText(fresh).equals("\"controller_config\"\n{\n" + SteamConfigset.block("semu") + "}\n") && SteamConfigsetSpecInstall.backups(PathTools.dirname(fresh)) == 0, "a user without a configset gets a new one and no backup");
+        contract.expect(SteamInputTemplates.install(fixture.plan, steam, true) == 0 && FileSystem.readText(configset).equals(expected) && SteamConfigsetSpecInstall.backups(directory) == 1, "a second run changes nothing and makes no second backup");
+        string outcome = "";
+        contract.expect(SteamConfigset.write(steam, configset, "semu", &outcome) == 0 && outcome.contains("already loads semu"), "with the entry there, the configset is not written at all");
+        string real = PathTools.join(fixture.scratch, "someone-elses-configset.vdf");
+        FileSystem.writeText(real, fixtureText);
+        string linked = PathTools.join(directory, "configset_controller_triton.vdf");
+        FileSystem.symlink(real, linked);
+        contract.expect(SteamConfigset.write(steam, linked, "semu", &outcome) < 0 && FileSystem.readText(real).equals(fixtureText), "a symlinked configset is refused and its target left alone");
+        string blank = PathTools.join(directory, "configset_controller_ps5.vdf");
+        FileSystem.writeText(blank, "\n");
+        contract.expect(SteamConfigset.write(steam, blank, "semu", &outcome) < 0 && FileSystem.readText(blank).equals("\n"), "an existing file that reads as empty is never replaced");
+        string home = Environment.get("HOME", "");
+        string fakeHome = PathTools.join(fixture.scratch, "running-steam-home");
+        FileSystem.mkdirp(PathTools.join(fakeHome, ".steam"));
+        FileSystem.writeText(PathTools.join(fakeHome, ".steam/steam.pid"), Strings.fromInt((int)getpid()) + "\n");  // a live pid: Steam looks running
+        setenv("HOME", fakeHome, 1);
+        string untouched = PathTools.join(fixture.scratch, "steam-while-running");
+        FileSystem.mkdirp(PathTools.join(untouched, "userdata/111/config"));
+        int refused = SteamInputTemplates.install(fixture.plan, untouched, false);
+        bool wroteNothing = !FileSystem.isDir(PathTools.join(untouched, "controller_base")) && !FileSystem.isDir(PathTools.join(untouched, "steamapps"));
+        int chosen = SteamInputTemplates.install(fixture.plan, untouched, true);
+        setenv("HOME", home, 1);
+        contract.expect(refused != 0 && wroteNothing, "Steam's own root is refused while Steam runs, before anything is written");
+        contract.expect(chosen == 0 && FileSystem.isFile(PathTools.join(untouched, "controller_base/templates/neptune-full.vdf")), "an explicit --steam-root is written even then");
+    }
+}
+
+class SteamConfigsetSpecContract {
+    class void run(Contract contract) {
+        SteamConfigsetSpecText.run(contract);
+        SteamConfigsetSpecInstall.run(contract);
+    }
+}
