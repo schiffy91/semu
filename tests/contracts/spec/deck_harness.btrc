@@ -1,0 +1,166 @@
+// Deck harness spec: the radial check's timelines, which input-check.sh --plan prints on any host, and
+// the injector's display rule, which never lets it type into a display it has not proven private.
+
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Process;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/renderer/action_abi.btrc;
+
+class DeckHarnessShell {  // the Deck scripts under bash, as the Deck runs them: stdout and the exit status
+    class ExecResult run(string script, Vector<string> arguments) {
+        Vector<string> command = [script];
+        for argument in arguments { command.push(argument); }
+        return ChildProcess.run("bash", command);
+    }
+
+    class ExecResult runWith(string assignment, string script, Vector<string> arguments) {  // NAME=VALUE in the script's environment
+        Vector<string> command = [assignment, "bash", script];
+        for argument in arguments { command.push(argument); }
+        return ChildProcess.run("env", command);
+    }
+
+    class int count(string text, string needle) {
+        int found = 0;
+        for line in Strings.split(text, "\n") { if (line.contains(needle)) { found++; } }
+        return found;
+    }
+}
+
+class DeckHarnessSockets {  // display sockets as gamescope's wlroots leaves them: bound Unix sockets named X<n>
+    class bool create(string path) {
+        int handle = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (handle < 0) { return false; }
+        struct sockaddr_un address;
+        memset(&address, 0, sizeof(address));
+        address.sun_family = AF_UNIX;
+        size_t capacity = sizeof(address.sun_path);
+        snprintf(address.sun_path, capacity, "%s", path);
+        socklen_t length = (socklen_t)sizeof(address);
+        bool bound = path.len() < (int)capacity && bind(handle, (struct sockaddr*)&address, length) == 0;
+        close(handle);
+        return bound;
+    }
+}
+
+class DeckHarnessScripts {  // read as text: the parts of a run that only the Deck can execute
+    class void run(Contract contract, Fixture fixture) {
+        string check = FileSystem.readText(PathTools.join(fixture.project, "tests/deck/input-check.sh"));
+        string injector = FileSystem.readText(PathTools.join(fixture.project, "tests/deck/inject.sh"));
+        string cases = FileSystem.readText(PathTools.join(fixture.project, "tests/deck/radial-check.cases"));
+        contract.contains(check, "gamescope --backend headless -W 1280 -H 800 -w 1280 -h 800 --xwayland-count 2 --hide-cursor-delay 3000 --", "the private gamescope has a second Xwayland to type from and Game Mode's cursor delay");
+        contract.contains(check, "SEMU_RENDER_DEBUG=1 SEMU_RENDER_CAPTURE_FRAME=60 SEMU_INJECT_START_MS=\"$start_ms\"", "the launch logs input and writes a receipt of the drawn screens, on the shared clock");
+        contract.contains(check, "jq -n --arg content \"$content\" '{paths: {content_root: $content}}'", "the run's own semu.json moves only the content root");
+        contract.contains(check, "--semu-home \"%s\"", "every case launches with the run's own Semu home");
+        contract.contains(check, "( bash \"%s\" %s %s %s > \"%s/inject.log\" 2>&1 & echo $! > \"%s/inject.pid\" )", "inner.sh starts the injector as a grandchild, never a child of semu-btrc");
+        contract.contains(check, "gamescopectl screenshot \"$shot\" ${3:+\"$3\"}", "a capture passes its screenshot type");
+        contract.contains(check, "echo \"$((at + 500)) shot cursor-$((step + 1)) 3\"", "the shot after a move or tap includes gamescope's cursor plane");
+        contract.contains(check, "The state root stays the owner's", "the isolation note says what it does not isolate");
+        int refusal = injector.indexOf("|| { echo \"inject: $injector; nothing sent\"; exit 3; }");
+        int firstKey = injector.indexOf("send key --delay 80");
+        contract.expect(refusal > 0 && firstKey > refusal, f"the injector exits on a refused display before it can type ({refusal} < {firstKey})");
+        contract.contains(injector, "injector=\"$(choose /proc/self/mountinfo /tmp/.X11-unix \"${DISPLAY:-}\" $found)\"", "a run applies the display rule to its own mount table and socket directory");
+        contract.contains(injector, "[ \"/proc/$1/ns/mnt\" -ef /proc/self/ns/mnt ] || return 1", "only processes in the case's own mount namespace count");
+        contract.contains(injector, "grep -q -x \"SEMU_INJECT_START_MS=$start_ms\"", "and only those carrying the case's clock");
+        contract.contains(injector, "for pid in $(pgrep -x Xwayland); do", "the displays are found among Xwaylands, whoever their parent is");
+        Vector<string> legends = [f"{SemuActions.menuToggle()} menu", f"{SemuActions.menuBack()} back", f"{SemuActions.screenshot()} screenshot", f"{SemuActions.stateNext()} next slot", f"{SemuActions.statePrev()} previous slot", f"{SemuActions.bezelSelect()} bezel", f"{SemuActions.shaderSelect()} shader"];
+        for legend in legends {
+            contract.contains(check, legend, "input-check.sh names journal codes as action_abi does");
+            contract.contains(cases, legend, "radial-check.cases names journal codes as action_abi does");
+        }
+        JSONValue input = SemuJson.readFile(PathTools.join(fixture.project, "config/input/linux-desktop/input.json"));
+        for action in ["visual.bezel.next", "visual.shader.next", "state.next", "state.prev", "ui.menu", "ui.screenshot", "visual.shaders.toggle"] {
+            JSONValue entry = SemuJson.get(input, "actions").get(action);  // ids hold dots, so not one path
+            string chord = entry == null ? "" : SemuJson.textAt(entry, "chord");
+            contract.expect(!chord.isEmpty() && cases.contains("key:" + chord.toLower() + " "), f"radial-check.cases types {action} with its input.json chord {chord}");
+        }
+    }
+}
+
+class DeckHarnessPlan {  // input-check.sh --plan: the same functions a run schedules with, and inject.sh's own parser
+    class void run(Contract contract, Fixture fixture) {
+        string script = PathTools.join(fixture.project, "tests/deck/input-check.sh");
+        string cases = PathTools.join(fixture.project, "tests/deck/radial-check.cases");
+        ExecResult planned = DeckHarnessShell.run(script, ["--plan", cases]);
+        string text = planned.stdout();
+        contract.expect(planned.ok(), "input-check.sh --plan radial-check.cases succeeds: " + planned.stderr());
+        int declared = 0;
+        for line in Strings.split(FileSystem.readText(cases), "\n") { if (!line.isEmpty() && !line.startsWith("#")) { declared++; } }
+        contract.expect(declared >= 13 && DeckHarnessShell.count(text, "== ") == declared, f"every radial case is planned ({DeckHarnessShell.count(text, "== ")} of {declared})");
+        contract.lacks(text, "not run", "no radial case is malformed");
+        contract.contains(text, "== gba-retroarch-mgba: gba/Legend of Zelda, The - The Minish Cap (USA).zip\n", "a case is named as its results directory");
+        contract.contains(text, "pad    virtual_pad --steam-virtual-pad 30 sleep:6 sleep:6 sleep:6 sleep:6 sleep:6\n", "the pad sleeps through every X token");
+        contract.contains(text, "inject inject.sh 30 6 key:ctrl+shift+b key:ctrl+shift+v key:ctrl+k key:ctrl+j key:ctrl+x\n", "inject.sh gets the case's clock and tokens");
+        contract.contains(text, "    30.0  inject key:ctrl+shift+b: xdotool key --delay 80 ctrl+shift+b\n", "token 0 fires at FIRST");
+        contract.contains(text, "    35.0  shot   after-1-key-ctrl+shift+b\n    36.0  inject key:ctrl+shift+v:", "each token is captured a second before the next fires GAP later");
+        contract.contains(text, "pad    virtual_pad --steam-virtual-pad 30 hold:select press:north release:select sleep:5.6 press:dpad_down sleep:5.8", "a chord holds its modifier, and a press's own time comes off its pause");
+        contract.contains(text, "inject none (no key, move or tap token)", "a pad-only case starts no injector");
+        contract.contains(text, "    40.0  inject move:0.5,0.5: park the pointer, then mousemove_relative to 0.5,0.5 of the touch screen\n    40.5  shot   cursor-1 (type 3)\n    44.0  shot   idle-1 (type 3)\n    45.0  shot   after-1-move-0.5_0.5\n", "a move is captured with the cursor, then after the hide delay");
+        contract.contains(text, "inject tap:0.05,0.9: park, mousemove_relative to 0.05,0.9 of the touch screen, mousedown 1, 0.15 s, mouseup 1\n", "a tap clicks where it moved");
+        contract.contains(text, "inject inject.sh 50 6 key:ctrl+m dpad_down dpad_up south\n", "a mixed case hands inject.sh the pad tokens as pauses");
+        contract.contains(text, "    56.0  pad    dpad_down: press:dpad_down\n", "and the pad's press keeps its slot on the shared clock");
+        string bad = PathTools.join(fixture.scratch, "malformed.cases");
+        FileSystem.writeText(bad, "gba retroarch mgba 30 key: -- x.zip\ngba retroarch mgba 30 tap:2,0.5 -- x.zip\ngba retroarch mgba 30 jump -- x.zip\ngba retroarch mgba 30 select++north -- x.zip\ngba retroarch mgba 30 key:ctrl+k;id -- x.zip\ngba retroarch mgba 30 dpad_* -- x.zip\ngba retroarch mgba 30 south tap:0.5,0.5 -- x.zip\n");
+        ExecResult refused = DeckHarnessShell.run(script, ["--plan", bad]);
+        contract.expect(refused.code == 2 && DeckHarnessShell.count(refused.stdout(), "not run: a token above is malformed") == 6, f"six malformed cases are refused and the plan fails ({refused.code}): " + refused.stdout());
+        contract.contains(refused.stdout(), "inject inject.sh 30 6 south tap:0.5,0.5\n", "the well-formed case among them is still planned");
+    }
+}
+
+class DeckHarnessDisplays {  // inject.sh --choose: two displays of the case's own, numbered 2 and up, sockets in a private tmpfs
+    class void expect(Contract contract, ExecResult result, string wanted, string label) {
+        bool accepted = wanted.startsWith(":");
+        string printed = result.stdout();
+        bool matched = result.ok() && printed.equals(wanted + "\n");
+        if (!accepted) { matched = !result.ok() && printed.startsWith("refused: ") && printed.contains(wanted); }
+        contract.expect(matched, f"{label}: want {wanted}, got exit {result.code} '{result.stdout().trim()}'");
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        string script = PathTools.join(fixture.project, "tests/deck/inject.sh");
+        string sockets = PathTools.join(fixture.scratch, "x11");
+        string owners = PathTools.join(fixture.scratch, "x11-owner");
+        FileSystem.mkdirp(sockets);
+        FileSystem.mkdirp(owners);
+        bool made = DeckHarnessSockets.create(PathTools.join(sockets, "X2")) && DeckHarnessSockets.create(PathTools.join(sockets, "X3"));
+        for number in ["X1", "X2", "X3"] { made = DeckHarnessSockets.create(PathTools.join(owners, number)) && made; }
+        FileSystem.writeText(PathTools.join(sockets, "X4"), "");  // a plain file is no display
+        contract.expect(made, "socket fixtures are bound in " + fixture.scratch);
+        string mountinfo = PathTools.join(fixture.scratch, "mountinfo");
+        FileSystem.writeText(mountinfo, "22 1 0:21 / /proc rw,nosuid - proc proc rw\n36 25 0:44 / " + sockets + " rw,nosuid,nodev,relatime shared:5 - tmpfs tmpfs rw,uid=1000\n37 25 0:45 / " + owners + " rw - tmpfs tmpfs rw\n");
+        string disk = PathTools.join(fixture.scratch, "mountinfo-disk");
+        FileSystem.writeText(disk, "36 25 259:2 / " + sockets + " rw,relatime - ext4 /dev/nvme0n1p8 rw\n");
+        DeckHarnessDisplays.expect(contract, DeckHarnessShell.run(script, ["--choose", mountinfo, sockets, ":2", ":2", ":3"]), ":3", "the game on :2 is typed into from :3");
+        DeckHarnessDisplays.expect(contract, DeckHarnessShell.run(script, ["--choose", mountinfo, sockets, ":3.0", ":2", ":3"]), ":2", "a screen suffix on the game's display is ignored");
+        DeckHarnessDisplays.expect(contract, DeckHarnessShell.runWith("SEMU_INJECT_ON=game", script, ["--choose", mountinfo, sockets, ":2", ":2", ":3"]), ":2", "SEMU_INJECT_ON=game types into the game's own display");
+        DeckHarnessDisplays.expect(contract, DeckHarnessShell.run(script, ["--choose", mountinfo, sockets, ":2", ":2"]), "shows 1 X displays", "one display is refused");
+        DeckHarnessDisplays.expect(contract, DeckHarnessShell.run(script, ["--choose", mountinfo, sockets, ":2", ":2", ":3", ":5"]), "shows 3 X displays", "three displays are refused");
+        DeckHarnessDisplays.expect(contract, DeckHarnessShell.run(script, ["--choose", mountinfo, sockets, ":0", ":0", ":3"]), "below :2", "Game Mode's :0 is refused");
+        DeckHarnessDisplays.expect(contract, DeckHarnessShell.run(script, ["--choose", mountinfo, sockets, ":2", ":1", ":2"]), "below :2", "Game Mode's :1 is refused");
+        DeckHarnessDisplays.expect(contract, DeckHarnessShell.run(script, ["--choose", mountinfo, sockets, ":2", ":2", ":4"]), "no socket X4", "a display without a socket is refused");
+        DeckHarnessDisplays.expect(contract, DeckHarnessShell.run(script, ["--choose", mountinfo, sockets, ":5", ":2", ":3"]), "is not one of", "a game display outside the pair is refused");
+        DeckHarnessDisplays.expect(contract, DeckHarnessShell.run(script, ["--choose", mountinfo, sockets, ":2", ":2", ":2"]), "both displays are the game's", "the game's display twice is refused");
+        DeckHarnessDisplays.expect(contract, DeckHarnessShell.run(script, ["--choose", mountinfo, owners, ":2", ":2", ":3"]), "holds X1", "a socket directory holding Game Mode's X1 is refused");
+        DeckHarnessDisplays.expect(contract, DeckHarnessShell.run(script, ["--choose", disk, sockets, ":2", ":2", ":3"]), "not a tmpfs", "a socket directory that is not a tmpfs mounted here is refused");
+        DeckHarnessDisplays.expect(contract, DeckHarnessShell.run(script, ["--choose", mountinfo, fixture.scratch, ":2", ":2", ":3"]), "no mount there", "a socket directory that is not a mount point is refused");
+    }
+}
+
+class DeckHarnessSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        DeckHarnessScripts.run(contract, fixture);
+        DeckHarnessPlan.run(contract, fixture);
+        DeckHarnessDisplays.run(contract, fixture);
+    }
+}

@@ -47,7 +47,7 @@ class HarnessSpecStyle {  // no one- or two-letter names in the multi-disc and c
 
     class void run(Contract contract) {
         string project = Fixture("linux-desktop").project;
-        for name in ["src/check.btrc", "src/launch/playlist.btrc", "tests/contracts/spec/playlist.btrc", "tests/contracts/spec/content.btrc", "tests/contracts/spec/flycast_config.btrc"] {
+        for name in ["src/check.btrc", "src/launch/playlist.btrc", "tests/contracts/spec/playlist.btrc", "tests/contracts/spec/content.btrc", "tests/contracts/spec/flycast_config.btrc", "tests/contracts/spec/deck_harness.btrc"] {
             Vector<string> found = HarnessSpecStyle.shortNames(FileSystem.readText(PathTools.join(project, name)));
             contract.expect(found.isEmpty(), name + " binds no one- or two-letter name: " + found.join(" "));
         }

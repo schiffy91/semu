@@ -1,0 +1,55 @@
+# The radial, the right trackpad and live bezel and shader switching on the Deck, off-screen:
+#   input-check.sh PAD radial-check.cases OUT     (input-check.sh --plan radial-check.cases shows every timeline)
+# SYSTEM EMULATOR CORE|- FIRST TOKEN... -- ROM-GLOB; see input-check.sh. A key: token is a radial slot,
+# typed as XTest from the private gamescope's second Xwayland; move: and tap: are the right
+# trackpad (relative pointer motion and a click, at fractions of the touch screen as drawn); bare
+# names are Steam's virtual pad (the replica). The chords are input.json's (config/input/
+# linux-desktop): Next Bezel Ctrl+Shift+B, Next Shader Ctrl+Shift+V, Next Slot Ctrl+K, Previous
+# Slot Ctrl+J, Menu Ctrl+M, Screenshot Ctrl+X, Shader On/Off Ctrl+H. No case saves or loads a state
+# (a standalone emulator keeps its states in the owner's state root); the choices land in
+# OUT/home/semu.json and later cases start from them, so keep the order. Journal codes (result
+# "journal", action/slot): 1 menu, 2 up, 3 down, 5 back, 9 screenshot, 77 next slot,
+# 78 previous slot, 79 bezel (slot = the index into the variants file), 80 shader.
+#
+# 1. "listening for keys on X display"; visual.bezel.next, visual.shader.next, state.next,
+#    state.prev and ui.screenshot each once "(keyboard)", nothing deduplicated; journal 79/1 80/1
+#    77/1 78/0 9/0; switch receipts naming the arctic shell (bezel_index=1) and the AGB-001 preset
+#    (shader_index=1); BEZEL: ARCTIC in after-1, the arctic shell from then on; the game still moving
+#    after Ctrl+K (frame advance is cleared); choices gba {"bezel_variant":"arctic","shader_variant":"agb001"}.
+gba retroarch mgba 30 key:ctrl+shift+b key:ctrl+shift+v key:ctrl+k key:ctrl+j key:ctrl+x -- Legend of Zelda, The - The Minish Cap (USA).zip
+# 2. The launch receipt already draws the arctic shell and AGB-001 (the saved choice); ui.menu
+#    "(gamepad)" for Select plus the top face button, which Steam's pad sends as BTN_WEST; the menu
+#    shot reads BEZEL ARCTIC; A on BEZEL steps to OFF behind the open menu, B closes it; journal 1 3
+#    3 3 3 79/2 5; choices gba bezel_variant "none".
+gba retroarch mgba 30 select+north dpad_down dpad_down dpad_down dpad_down south east -- Legend of Zelda, The - The Minish Cap (USA).zip
+# 3. Taps reach the melonDS core where they land: touch lines "-> surface 1 native" about 128,96
+#    and 12.8,172.8; after Next Bezel (large main, second right) the centre tap is again about
+#    128,96 (the touch map follows the live layout); cursor-1 shows Semu's arrow, idle-1 none.
+nds retroarch melonds 40 move:0.5,0.5 tap:0.5,0.5 tap:0.05,0.9 key:ctrl+shift+b tap:0.5,0.5 -- Legend of Zelda, The - Phantom Hourglass*.zip
+# 4. Standalone Azahar through the Vulkan layer: "semu-vulkan: touch X,Y -> 1 160,120" before and
+#    after Next Bezel; the toast and the new layout composed; cursor-1 (type 3) shows Azahar's own
+#    X cursor, idle-1 none (Azahar blanks it 2.5 s after the last motion).
+n3ds azahar - 50 move:0.5,0.5 tap:0.5,0.5 key:ctrl+shift+b tap:0.5,0.5 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+# 5. The Semu menu over a standalone that keeps running under it (Azahar menu.pause none): Ctrl+M
+#    opens it (journal 1, ui.menu "(keyboard)", Azahar's own Ctrl+M mute is blanked), the pad moves
+#    it (3, 2) and A on RESUME closes it (5). Until the menu holds the pad for itself (follow-up F1),
+#    the same A also reaches the game: a title that advances in after-4 is that known limitation.
+n3ds azahar - 50 key:ctrl+m dpad_down dpad_up south -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+# 6. The Azahar core reads x as 0.1 + 0.8 f of its 400-wide frame: core x about 0.14, 0.50, 0.86.
+n3ds retroarch azahar 50 tap:0.05,0.5 tap:0.5,0.5 tap:0.95,0.5 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+# 7. The Citra core reads the pointer as its touch screen (citra_touch_touchscreen): the tap registers.
+n3ds retroarch citra 50 tap:0.5,0.5 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+# 8. DeSmuME takes the tap at the pointer (desmume_pointer_type touch), not at its own relative cursor.
+nds retroarch desmume 40 tap:0.5,0.5 -- Legend of Zelda, The - Phantom Hourglass*.zip
+# 9. Ctrl+H steps the shader to OFF (80/2) and no longer resets the game (the shots keep moving);
+#    Ctrl+M opens and closes the menu (1, 5) and loads no RetroArch shader.
+psx retroarch mednafen_psx 45 key:ctrl+h key:ctrl+m key:ctrl+m -- Crash Bandicoot (USA).m3u
+# 10-12. Standalone emulators act on the radial's slot chords themselves (their own selected-slot
+#    hotkeys: Dolphin and PCSX2 show slot 2 then 1, PPSSPP its slot) while Semu journals 77/1 78/0 and
+#    toasts SLOT 2 / SLOT 1; then Next Bezel or Next Shader switches live (79/1 or 80/1).
+gc dolphin - 50 key:ctrl+k key:ctrl+j key:ctrl+shift+b -- Legend of Zelda, The - The Wind Waker (USA).rvz
+ps2 pcsx2 - 60 key:ctrl+k key:ctrl+j key:ctrl+shift+v -- Devil May Cry (USA).iso
+psp ppsspp - 45 key:ctrl+k key:ctrl+j key:ctrl+shift+b -- Daxter*.iso
+# 13. A system without bezels: visual.bezel.next "(keyboard)" then "no bezel to choose for wiiu
+#     here"; nothing journaled; Cemu keeps running.
+wiiu cemu - 100 key:ctrl+shift+b -- MARIO KART 8 (US).wua

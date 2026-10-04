@@ -362,7 +362,19 @@ Semu executing the actions itself.
   navigates it with the D-pad, saves a state from it (state file observed),
   toggles the bezel live, and Start+Select still quits, all captured
   headlessly through a truthfully named virtual gamepad; on the Deck the
-  same through the trackpad radial (hardware pending).
+  same through the trackpad radial, in two parts. Off-screen, on the release
+  that carries the radial (`tests/deck/input-check.sh PAD
+  tests/deck/radial-check.cases OUT`): each radial chord, typed as XTest from
+  the second Xwayland of a private gamescope, runs its action once (`semu:
+  action <id> (keyboard)` and its journal record), Next Bezel and Next Shader
+  switch live with their toast and are saved for that system, Select+Y on the
+  replica of Steam's pad opens the menu, and right-trackpad taps reach every
+  DS and 3DS route where the touch screen is drawn, before and after a layout
+  switch. Then the owner, once in Game Mode: Steam loads Semu's profile
+  (controller_ui.txt names config/semu/controller_neptune.vdf for App ID
+  2162992320), the radial's ring, icons and click-to-fire, Steam's own key
+  timing, the trackpad's feel and cursor, and Semu's uinput typing into
+  standalone emulators, none of which an off-screen run can reach.
 
 ### M9. Bezel and shader fidelity
 
@@ -777,6 +789,29 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   compositor on any platform, so its window is unframed and maps its own clicks (no Semu cursor);
   Switch touch (Ryujinx keeps `enable_mouse` false) and the Wii U GamePad (wiiu declares one screen
   with no touch surface) have no touch surface in Semu's model yet.
+- The Deck harness for the radial (2026-10-04). `tests/deck/inject.sh` types a case's radial chords
+  and moves and clicks its pointer with xdotool from the second Xwayland of the case's private
+  headless gamescope (`--xwayland-count 2`; the game runs on the first). That XTest reaches the game
+  only through gamescope's libei server, the route Steam's XTest takes (Game Mode's Xwaylands carry
+  `LIBEI_SOCKET=gamescope-0-ei`, read on the Deck). It never types into a display it has not proven
+  private. Its displays are the Xwaylands in its own mount namespace whose environment holds the
+  case's clock (`SEMU_INJECT_START_MS`). The design said "the private gamescope's descendants", but
+  wlroots double-forks Xwayland: on the Deck, Game Mode's Xwayland :0 and :1 are children of
+  `systemd --user` (pid 1392), not of gamescope-wl (pid 1593). The rule (`inject.sh --choose`):
+  exactly two displays, the game's DISPLAY one of them, both numbered 2 or higher, both sockets present
+  in `/tmp/.X11-unix`, which must be a tmpfs mounted in that namespace with no X0 or X1 in it.
+  Otherwise it notes the reason and sends nothing. `--unshare-net` was not added to the harness's
+  bubblewrap: it would change the environment of every existing input case, and the rule already
+  confines typing. Every input-check case, the old pad-only ones too, now runs with
+  `--xwayland-count 2`, Game Mode's `--hide-cursor-delay 3000`, `SEMU_RENDER_DEBUG=1`,
+  `SEMU_RENDER_CAPTURE_FRAME=60` (a receipt of the drawn screens before the first token) and the
+  run's own `--semu-home OUT/home`, whose semu.json moves only `paths.content_root`. Isolation
+  stops there: the state root stays the owner's (the journal, the variants file, receipts, the
+  frame-60 capture, compiled configs that the owner's next launch rewrites, and each standalone
+  emulator's own saves and states), so no case saves or loads a state on a standalone emulator.
+  Only the shots right after a move or tap use gamescope screenshot type 3 (full composition, the
+  cursor plane included; gamescope 3.16.30, which the Deck runs, takes the type as the screenshot
+  command's third argument, steamcompmgr.cpp:1594-1600); the rest keep the base plane as before.
 
 ### G1. Build and tests run on one host only — done on the Mac
 
@@ -1057,7 +1092,8 @@ Still open on the Mac:
   survival (M2-M4); `menu-e2e.sh` with the BTRC pad; captures of wii, ps2 and n3ds through real
   emulators; a 16:9 title for the widescreen switch; Azahar and Cemu GL after a reboot; Steam
   launching the shortcut; `nix flake check` built on x86_64-linux.
-- On the Deck: all of M5 and the Deck halves of M6 and M8.
+- On the Deck: all of M5 and the Deck halves of M6 and M8 (M8: `tests/deck/radial-check.cases`
+  off-screen, then the owner's Game Mode checks listed in its status).
 - Inspected Mac captures are retained under `build/verification/mbp21/2026-09-23/` (M9 matrix,
   gallery with verification table and overlays).
 
@@ -1497,6 +1533,71 @@ Update this block whenever a milestone criterion changes state.
   Still for the Deck: Steam's real trackpad through gamescope (the cursor over RetroArch, Azahar's
   own cursor under gamescope's hide delay), a soft-press tap in a real game on each core, and the
   remap files taking R2/L3/R3 away on the virtual pad.
+  2026-10-04, the Deck harness for the radial (offline, Deck read only; ruling above). Built:
+  `tests/deck/input-check.sh` takes radial and trackpad tokens beside pad buttons, all on one clock
+  that the pad and the new `tests/deck/inject.sh` share. Token i fires FIRST + i*GAP seconds after
+  launch, a press's own time comes off its pause, and `a+b` is a pad chord. `key:CHORD` types the
+  chord as XTest from the private gamescope's second Xwayland. `move:FX,FY` parks the pointer, then
+  moves it relatively to that fraction of the touch screen as the newest receipt of the launch draws
+  it (a switch receipt included); `tap:` adds a 0.15 s click. Shots 0.5 s and 4 s after a move or tap
+  keep gamescope's cursor plane (type 3). A case's result now also lists the X key adapter's
+  display, each action by source, deduplicated chords, the touch lines, the journal (`journal.od`
+  plus action/slot pairs), this launch's receipts (art, preset, layout, switch indices) and the
+  choices saved in OUT/home. `input-check.sh --plan CASES` prints every case's pad argv, injector argv
+  and merged timeline without launching anything. `tests/deck/radial-check.cases` holds 13 cases:
+  RetroArch gba with Next Bezel, Next Shader, Next and Previous Slot and Screenshot; gba again with
+  the menu from Select+Y (BEZEL to OFF behind it); melonDS-core taps before and after a layout
+  switch; standalone Azahar taps and a switch; the menu over running Azahar from Ctrl+M (the F1
+  probe: until the menu holds the pad, its A also reaches the game); taps on the Azahar, Citra and
+  DeSmuME cores; psx Ctrl+H and Ctrl+M twice; slot chords and a live switch on Dolphin, PCSX2 and
+  PPSSPP; Next Bezel on Cemu (no bezels). Each case's expected evidence is written above it, and no
+  case saves or loads a state. Observed on the Mac: `bash -n` on both scripts under bash 5.3 and macOS
+  bash 3.2, and `--plan tests/deck/radial-check.cases` printing all 13 timelines, the same under both
+  shells. The contracts (`tests/contracts/spec/deck_harness.btrc`) run that plan and the display
+  rule against bound socket fixtures (3 accepted, 10 refused cases), tie the cases' chords to
+  input.json and their journal codes to action_abi. They fail under each of 10 mutations of the
+  scripts and the cases (no :2 floor, no tmpfs check, X1 allowed, any namespace, typing on after a
+  refusal, one Xwayland, a press's time left in its pause, the cursor shots without type 3, the old
+  On/Off chord, the owner's Semu home). The nix contracts check's source now includes tests/deck,
+  which the older harness spec also reads and the fileset left out; the aarch64-darwin check passes
+  with all 5221 checks (unsandboxed, as this Mac builds). In the podman VM (scratch runs, not
+  committed), a stubbed run of input-check.sh (gamescope, the CLI, semu-btrc, the emulator,
+  gamescopectl and the pad replaced; bubblewrap, xdotool and inject.sh real) wrote the planned
+  inner.sh, passed the gamescope flags and the compensated pad argv, captured within 0.2 s of each
+  time with type 3 on the cursor shots, and parsed the listener, actions, touch lines, journal and
+  this launch's receipts while skipping an older session's. It also found two harness faults,
+  now fixed: a capture without a display waited 10 s for a file, and an unsilenced /proc read.
+  inject.sh itself ran inside a real bubblewrap, with Xvfb copies named Xwayland standing in for
+  gamescope's (XTest stays local there: no gamescope, no EI). It found
+  only its namespace's :12 and :13, ignoring two "owner" displays outside that carried the same
+  clock. It typed 5 keys and 2 clicks into :13 alone, put the pointer at exactly the computed
+  640,560, 665,661 (from the switch receipt written meanwhile) and 1151,699, and fired each token
+  within 85 ms of its time under Rosetta. It refused outside a bubblewrap, beside an X0, and with one
+  display.
+  The Deck run, still to come: build one release with every radial commit (`build-release.sh
+  --delta`), deploy it once, and run `semu-deck-cli steam input` in the Steam-stopped window. Then run
+  `input-check.sh PAD tests/deck/radial-check.cases OUT` with tests/deck copied over and PAD the
+  x86_64 virtual_pad. It must show:
+  - result lines `inject: typing into :N`, `x-listener: :M` and each chord's `action: <id> keyboard
+    x1`, which proves XTest from another Xwayland goes through gamescope's EI to the game's display
+    and the XI2 raw listener, once;
+  - journal records 79/80/77/78/9 as each case lists, and switch receipts naming the new art and
+    preset;
+  - choices in OUT/home/semu.json, and gba's second launch starting on them;
+  - `ui.menu gamepad` for Select plus the top face button;
+  - `semu-retroarch: touch ... -> surface 1 native` near 128,96 on the DS cores and core x near
+    0.14/0.50/0.86 on the Azahar core, plus `semu-vulkan: touch ... -> 1` on standalone Azahar, the
+    same after a layout switch;
+  - toasts and bezels in the shots, Semu's cursor in cursor-n and none in idle-n;
+  - Ctrl+H not resetting psx, and nothing journaled on Cemu.
+  Only the owner can check, once in Game Mode: Steam loading the profile through the configset
+  (controller_ui.txt naming config/semu/controller_neptune.vdf instead of Last Resort); the ring's
+  layout, icon-only drawing, click-and-release firing, the empty centre and the haptics; Steam's
+  own XTest process and key timing; the trackpad's sensitivity, soft-press threshold, drag and the
+  cursor's look under gamescope; gamepad chords that Semu types through uinput into standalone
+  emulators (melonDS Shift+F1, Azahar's pause), with their echo suppression, which headless gamescope
+  cannot see (no libinput); the Deck touchscreen, Dolphin's Wii remotes and the lower-grip Wii layer;
+  both Steam Controllers; and how a shell-bezel decode stall feels.
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a

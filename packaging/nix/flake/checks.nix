@@ -11,7 +11,7 @@ forAllSystems (system:
       name = "semu-contracts";
       src = lib.fileset.toSource {
         root = repositoryRoot;
-        fileset = lib.fileset.unions [ ../../../src ../../../tests/contracts ../../../config ../../../packaging ];  # the specs read the ES-DE patch and package
+        fileset = lib.fileset.unions [ ../../../src ../../../tests/contracts ../../../tests/deck ../../../config ../../../packaging ];  # the specs read the ES-DE patch and package, and run the Deck scripts' plan and display rule
       };
       nativeBuildInputs = [ packages.btrcpy ];
       SEMU_BEZEL_TREE = "${packages.bezel-tree}/share/semu/bezel/shaders";  # the placement and layer contracts run from pinned inputs

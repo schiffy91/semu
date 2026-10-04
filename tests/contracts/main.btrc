@@ -45,6 +45,7 @@ import ./spec/bezel_emit.btrc;
 import ./spec/playlist.btrc;
 import ./spec/content.btrc;
 import ./spec/harness.btrc;
+import ./spec/deck_harness.btrc;
 import ./spec/input_delivery.btrc;
 import ./spec/retroarch_keyboard.btrc;
 import ./spec/emulator_hotkeys.btrc;
@@ -949,6 +950,7 @@ int main() {
     PlaylistSpecContract.run(contract);
     ContentSpecContract.run(contract);
     HarnessSpecContract.run(contract);
+    DeckHarnessSpecContract.run(contract);
     CemuSpecContract.run(contract);
     SteamInputSpecContract.run(contract);
     SteamConfigsetSpecContract.run(contract);
