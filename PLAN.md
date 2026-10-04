@@ -1253,6 +1253,24 @@ Status: tackled in three parallel tracks (performance, picture, controls), then 
   host) and as the players page's RESTART GAME. It restarts once when anything differs from the
   launch, else toasts RESTART: NO CHANGES. radial-check.cases case 16 now cycles Classic, GameCube
   and Wii Remote without a restart, then applies 16:9 with one Restart Game.
+- Item 1 (performance, N64): built and checked in the VM with Super Mario 64; the Deck run is open
+  (speed and the picture). The lag: Semu forced angrylion, a software RDP, with cxd4, an interpreted
+  LLE RSP. The geometry: angrylion's Hide overscan handed over a frame whose size depended on the game.
+  The Deck log shows 582x222 for SM64, which RetroArch stretched 1.53x across into an 888x666 viewport
+  before Semu read it back. Every placement's rect was on the TV's opening (fit 686x515 at 297,187,
+  bezel 592x444), so the off-centre look came from that crop, not the placement. RetroArch's
+  mupen64plus_next now runs upstream's performance defaults, GLideN64 and the HLE RSP, held at native:
+  EnableNativeResFactor 1 and 43screensize 320x240, in both slices, with no angrylion option. The N64
+  ignores visual.render_resolution, so the frame is always the core's declared 320x240, and RetroArch's
+  integer viewport is an exact 3x that Semu reads back pixel for pixel. In the VM (Xvfb, llvmpipe,
+  dynarec) the renderer read native 320x240 in every placement: game 960x720 at 160,40 (screen-centred),
+  bezel 640x480 at 320,202 (on the opening, 2x), fit 686x515 at 297,187. All three were judged by eye.
+  Under Rosetta, 4 of 8 dynarec runs with the HLE RSP segfaulted at boot, angrylion+HLE among them. With
+  cxd4 or the cached interpreter 0 of 3 did. This is logged as a VM artifact, since it is upstream's
+  default x86 configuration. Bezel placement now steps in 240s, not 222s: 2x (480) at 1280x800 in the
+  covered TV. Contracts: the core-options fixture (n64-core-options.cfg), no angrylion or cxd4 in either
+  slice, the N64 at 320x240 whatever render_resolution says, and the TV at whole steps of 240, centred,
+  at 1280x800 and 1920x1080. Each fails under its mutation.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
