@@ -1793,6 +1793,15 @@ Update this block whenever a milestone criterion changes state.
   commit), drew nds shell>main_right and gba>arctic: each switched frame equals a fresh render of the
   target below the toast band (ImageMagick AE 0), the toast frame shows BEZEL: ARCTIC over the closed
   menu, and a context reset after the switch reproduces the switched frame (AE 0).
+  The podman VM on e399744 (the whole review series): `tests/integration/touch-x11.sh` PASS with RetroArch
+  rebuilt around the moved bridge code (3DS taps at 5/50/95% reach the core at 0.1397/0.5000/0.8576,
+  DS at 0.0498/0.5000/0.9484, 0.75 down, a bezel tap presses nothing, the cursor shows after motion
+  and is gone 4.5 s later); `tests/integration/input-x11.sh` PASS (the pair's duplicate Select+north
+  dropped once, journal as above); `tests/integration/live-switch.sh` on RetroArch gba (240p Test
+  Suite) and nds (DLDI benchmark) logged both chords, journalled `79 1; 80 1`, wrote two switch
+  receipts each and saved `arctic`/`agb001` and `main_right`/`grid`; the nds captures, judged by eye,
+  show the toast over the shell, then the large main right layout with the LCD grid, and the menu
+  naming both. `nix build .#semu-renderer` (macOS) builds the split config.
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a
