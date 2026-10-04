@@ -660,7 +660,7 @@ Status: being designed (workflow mods-design, with critique) while the radial se
 (M8) finishes its review fixes; implementation follows in the main checkout.
 
 - Item 0 (mods), the core: built 2026-10-04 and observed in the podman VM; the migration (`semu mods
-  migrate`), `semu mods list` and the Deck are open. Rulings taken as reversible defaults:
+  migrate`) and the Deck are open. Rulings taken as reversible defaults:
   - One library per machine, `paths.mods` = `<emulation_root>/mods` on every target (an override in semu.json
     moves it; empty turns mods off), organised by emulator then native kind:
     `azahar/{mods,textures}/<title id>`, `ryujinx/contents/<title id>/<mod>` (or romfs.bin/exefs.nsp
@@ -697,8 +697,30 @@ Status: being designed (workflow mods-design, with critique) while the radial se
     Loaded: ... v1.2.1", the update the owner's save and mod are on (lavapipe stops at its boot frames).
     The library listing was identical before and after.
   - Open: the GPU cost of resolution_factor 2 and the texture streaming time from the SD (measure on the Deck);
-    Cemu packs install but run only once settings.xml lists them, which Semu does not write yet; Continue
-    in TotK and the Deck pictures wait for the migration and a release.
+    Continue in TotK and the Deck pictures wait for the migration and a release.
+  - The owner's view and Cemu's packs: built 2026-10-04 and observed in the podman VM.
+    `semu mods list [--json] [--roms]` shows each entry per emulator and kind with its status (installed,
+    pending until the next launch, shadowed by something in the emulator's state, invalid with the reason,
+    parked, duplicate), the names the emulator never reads (MM3D's code_faster_aim.bps) and its game: a
+    Switch dump by its bracketed id, a 3DS ROM by the NCSD media id at 0x108, declared in system.json
+    `titles`; ROM headers are read only with `--roms` (one short read per ROM; on the Deck's SD about 50 ms
+    each, so 172 3DS ROMs would cost seconds). It warns when ES-DE starts the system in another emulator,
+    which would not see the mods: Semu's first command, unless the gamelist pins one by label (on Linux the
+    3DS default is the libretro core; the Deck's gamelist pins Azahar (Standalone), which silences it).
+    Listing writes nothing; `semu doctor` sums it per emulator. `semu mods layout` prints the folders per
+    kind; `semu mods init` creates them with a README.txt each (an edited one is kept), only below a mounted
+    emulation folder and never in state. Ruling (reversible): the libretro routes stay documented exceptions
+    with no kind (RetroArch's emulator.json says why), so 3DS mods apply in standalone Azahar only.
+    Cemu: a kind may declare `entry_lines`, one settings line per installed entry, written with
+    `@lines:mods.<kind>`; settings.xml lists each installed pack by its absolute rules.txt path under
+    graphicPacks, since Cemu matches the path it walked through the link and its relative form canonicalises
+    into the library (GraphicPack2.cpp:90-97, helpers.cpp:313-321). Observed in the podman VM
+    (`tests/integration/mods.sh`, the owner's downloaded CaptainToad_Resolution mounted read-only as
+    `cemu/graphicpacks`): Captain Toad (US) logged "Activate graphic pack: Captain Toad: Treasure
+    Tracker/Graphics/Resolution [Presets: 1280x720 (Default)]"; with the relative path the first try logged
+    no activation. The library was unchanged. The owner's downloaded packs (154 game folders under
+    Cemu/data/graphicPacks/downloadedGraphicPacks) are not moved or enabled: that is the migration's call
+    (they are folders of packs, which Cemu does not walk through a link, so each pack would go in on its own).
 - Item 1 (N64 glow): built 2026-10-04 and checked in the render host; the Deck is open. Two causes:
   angrylion handed over its black overscan columns, so the lip mirrored black, and the package had the
   weakest reflection of the TVs (0.2, from upstream's HSM_REFLECT_GLOBAL_AMOUNT 20). RetroArch now sets
