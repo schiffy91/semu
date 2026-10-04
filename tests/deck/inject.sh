@@ -97,6 +97,11 @@ own() {  # PID: is this process in this case (this mount namespace, this case's 
   { tr '\0' '\n' < "/proc/$1/environ"; } 2>/dev/null | grep -q -x "SEMU_INJECT_START_MS=$start_ms"
 }
 
+own_case() {  # PID: does this process carry this case's clock? The emulator runs inside Semu's own bubblewrap, a
+  # nested mount namespace, so only the inherited SEMU_INJECT_START_MS can tell it belongs to this case
+  { tr '\0' '\n' < "/proc/$1/environ"; } 2>/dev/null | grep -q -x "SEMU_INJECT_START_MS=$start_ms"
+}
+
 displays() {  # this case's Xwaylands, by the display each serves (argv 1)
   local pid
   for pid in $(pgrep -x Xwayland); do
@@ -114,7 +119,7 @@ wait_for() {  # MS on the shared clock
 touch_rect() {  # prints "LEFT TOP WIDTH HEIGHT FRAME_W FRAME_H SURFACE" for the touch screen as drawn now, or a reason and fails
   local path environment="" index state line
   for path in /proc/[0-9]*; do
-    own "${path#/proc/}" || continue
+    own_case "${path#/proc/}" || continue
     environment="$({ tr '\0' '\n' < "$path/environ"; } 2>/dev/null)"
     case "$environment" in *SEMU_RENDER_STATE_DIR=*) break ;; esac
     environment=""
