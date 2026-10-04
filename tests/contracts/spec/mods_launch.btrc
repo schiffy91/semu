@@ -79,13 +79,13 @@ class ModsSpecLaunch {
             Vector<string> field = Strings.split(row, "|");
             StandaloneSpecBed bed = StandaloneSpecBed();
             SemuEmulator emulator = bed.fixture.model.emulator(field.get(0));
-            contract.contains(ModsSpecLaunch.rendered(bed, emulator, field.get(4)), field.get(5) + field.get(7) + "\n", field.get(0) + " keeps its texture switch off with no pack");
+            contract.contains(ModsSpecLaunch.rendered(bed, emulator, field.get(4)), "\n" + field.get(5) + field.get(7) + "\n", field.get(0) + " keeps its texture switch off with no pack");
             ModsSpecTree.write(PathTools.join(bed.fixture.plan.path("mods"), field.get(0) + "/textures/" + field.get(2) + "/" + field.get(3)), "pack");
             bed.fixture.plan.tokens.put("state_root", bed.stateRoot(field.get(0)));
             SemuModInstallReport report = SemuModInstaller.install(bed.fixture.plan, emulator, bed.fixture.model.system(field.get(1)));
             string target = SemuModKind.declared(bed.fixture.plan, emulator).get(0).target;
             contract.expect(FileSystem.readLink(PathTools.join(target, field.get(2))).equals(PathTools.join(bed.fixture.plan.path("mods"), field.get(0) + "/textures/" + field.get(2))), field.get(0) + " links the game's pack folder into its state: " + report.lines.join("; "));
-            contract.contains(ModsSpecLaunch.rendered(bed, emulator, field.get(4)), field.get(5) + field.get(6) + "\n", field.get(0) + " turns its texture switch on while a pack is installed");
+            contract.contains(ModsSpecLaunch.rendered(bed, emulator, field.get(4)), "\n" + field.get(5) + field.get(6) + "\n", field.get(0) + " turns its texture switch on while a pack is installed");
         }
     }
 

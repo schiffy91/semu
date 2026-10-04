@@ -659,6 +659,46 @@ sequential implementation, review and fixes), each item done only when observed.
 Status: being designed (workflow mods-design, with critique) while the radial series
 (M8) finishes its review fixes; implementation follows in the main checkout.
 
+- Item 0 (mods), the core: built 2026-10-04 and observed in the podman VM; the migration (`semu mods
+  migrate`), `semu mods list` and the Deck are open. Rulings taken as reversible defaults:
+  - One library per machine, `paths.mods` = `<emulation_root>/mods` on every target (an override in semu.json
+    moves it; empty turns mods off), organised by emulator then native kind:
+    `azahar/{mods,textures}/<title id>`, `ryujinx/contents/<title id>/<mod>` (or romfs.bin/exefs.nsp
+    beside the mods), `dolphin/textures/<game id>`, `pcsx2/textures/<serial>`, `ppsspp/textures/<disc id>`,
+    `flycast/textures/<game id>`, `cemu/graphicpacks/<pack>`. Every emulator.json declares
+    `platforms.<os>.state.mods`; Dolphin, PCSX2, PPSSPP, Flycast and Cemu are dormant until a pack is placed;
+    RetroArch and melonDS declare none and say why (libretro packs live in RetroArch's Syncthing-carried save
+    folder behind per-core options, and RetroArch rewrites a loaded .cht). The checker refuses an unknown
+    field, a target outside `${state_root}/`, two kinds sharing a library folder or a target (or nesting), a
+    target over a seed or profile file, a profile `${mods.<group>}` with no group, and a library inside
+    content_root, state_root, roms or bios.
+  - A launch links before it writes the profiles: one symlink per entry at the declared depth inside real
+    state folders, never a copy and never a write into the library; real ancestors are required before any
+    link, unlink or rmdir; the emulator's empty title folder is replaced, its own folders and other links
+    win (reported as shadowed); case twins, `.semu-off` entries and headers Azahar refuses (IPS without PATCH,
+    BPS with metadata, an exheader not 2048 bytes) are reported and not linked. `${state_root}/semu-mods.tsv`
+    lists what Semu made, and only that is removed: an entry gone from the library loses its link, an empty
+    `paths.mods` removes them all, an unmounted library changes nothing.
+  - Settings follow what is installed. A settings group is on while a kind of it is installed: Dolphin
+    HiresTextures (CacheHiresTextures False), PCSX2 LoadTextureReplacements (async, no precache), PPSSPP
+    ReplaceTextures, Flycast rend.CustomTextures (no preload); with no pack these emulators check one folder
+    name, so the switch is global. Azahar is per title, since its switch costs every game a hash per texture:
+    qt-config.ini keeps custom_textures off (async on, preload off, F7 unbound, each with `\default=false`),
+    and a title with a pack gets `config/azahar-emu/custom/<TID>.ini` with custom textures on and
+    resolution_factor at the composed top screen's whole step (2 at 1280x800, 3 at 1920x1080,
+    `SemuComposedScale`, the compositor's arithmetic without GL). Ryujinx needs no switch (an unlisted mod is
+    on) and gets `games/<tid>/updates.json` choosing the highest `[<id>800][vN]` in ROMs/switch/updates.
+  - Observed in the podman VM (`tests/integration/mods.sh`, 028b2a4, the Mac's Azahar load/{mods,textures},
+    Ryujinx mods, updates, keys and bis mounted read-only as the library): OoT 3D (Europe) logged "Loading per
+    application config file for title 0004000000033600", Utility_CustomTextures true and "load/mods/
+    0004000000033600/code.ips patching code.bin", and its title screen draws the pack's "OCARINA OF TIME 4K"
+    logo and HD grass at resolution_factor 2; Tears of the Kingdom logged "Found enabled mod '!!!TOTK
+    Optimizer'", "NSO 'subsdk3' replaced", "main.npdm replaced", "Using modded RomFS" and "Application
+    Loaded: ... v1.2.1", the update the owner's save and mod are on (lavapipe stops at its boot frames).
+    The library listing was identical before and after.
+  - Open: the GPU cost of resolution_factor 2 and the texture streaming time from the SD (measure on the Deck);
+    Cemu packs install but run only once settings.xml lists them, which Semu does not write yet; Continue
+    in TotK and the Deck pictures wait for the migration and a release.
 - Item 1 (N64 glow): built 2026-10-04 and checked in the render host; the Deck is open. Two causes:
   angrylion handed over its black overscan columns, so the lip mirrored black, and the package had the
   weakest reflection of the TVs (0.2, from upstream's HSM_REFLECT_GLOBAL_AMOUNT 20). RetroArch now sets

@@ -88,12 +88,13 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
     echo "manifest:"; indent "  " < "$state/semu-mods.tsv" 2>/dev/null || true
     echo "title_files:"; for file in "$state"/config/*/custom/*.ini "$state"/config/Ryujinx/games/*/updates.json; do [ -f "$file" ] && { echo "  $file"; indent "    " < "$file"; } || true; done
     echo "emulator_log:"; cat "$state"/data/*/log/*.txt "$state"/config/Ryujinx/Logs/*.log "$out/$label.log" 2>/dev/null \
-      | grep -E 'patching code.bin|per application config|custom_tex|Custom|textures|Found (enabled|disabled) mod|NSO .* replaced|npdm replaced|update|Update' | sort -u | head -40 | indent "  "
+      | grep -aE 'patching code.bin|per application config|Utility_CustomTextures|pack config|Found (enabled|disabled) mod|NSO .* replaced|npdm replaced|modded RomFS|Application Loaded' | sort -u | head -40 | indent "  "  # -a: Ryujinx's log holds escape bytes
   } > "$out/$label.result"
   cat "$out/$label.result"
 done < "$out/cases"
 find /library > "$out/library-after.txt" 2>/dev/null || true
-if cmp -s "$out/library-before.txt" "$out/library-after.txt"; then echo "library: unchanged ($(wc -l < "$out/library-after.txt") entries)" | tee "$out/library.result"; else echo "library: CHANGED" | tee "$out/library.result"; fi
+# sha256sum, not cmp: the nix image has no diffutils
+if [ "$(sha256sum < "$out/library-before.txt")" = "$(sha256sum < "$out/library-after.txt")" ]; then echo "library: unchanged ($(wc -l < "$out/library-after.txt") entries)" | tee "$out/library.result"; else echo "library: CHANGED" | tee "$out/library.result"; fi
 kill "$xvfb_pid" 2>/dev/null || true
 cat "$out"/*.result > "$out/result"
 echo "mods: done; read $out/result and judge the captures"
