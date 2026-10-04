@@ -672,8 +672,13 @@ Status: being designed (workflow mods-design, with critique) while the radial se
   bridge reports the frame's own size as the surface's native size (surface_contract.btrc:193, positive
   geometry policy), so game and bezel placement step in 237s: 711 (3x) at 1280x800, 948 (4x) at 1080p,
   474 (2x) in bezel placement (render host with SEMU_RENDER_SURFACE_0_NATIVE=625x237, and the placement
-  contract). Logged, as only a RetroArch patch would avoid it: RetroArch's own integer scale works from
-  the core's declared geometry, 640x480, which the core forces for angrylion (libretro.c:1449-1456), so
+  contract). Observed with the real core in the podman VM on a3d0dc6 (`tests/integration/live-switch.sh`,
+  mupen64plus_next booting PeterLemon's HelloWorldCPU32BPP320X240.N64 at 1280x800): the renderer read
+  native 625x237 (Hide overscan in force; without it vi.c:464-468 sends 640x240) and drew 948x711 in
+  game placement and 686x515 in fit, and both live switches still applied. The test program draws on
+  black, so the lip glow itself waits for a real game on the Deck. Logged, as only a RetroArch patch
+  would avoid it: RetroArch's own integer scale works from the core's declared geometry, 640x480,
+  which the core forces for angrylion (libretro.c:1449-1456), so
   inside RetroArch's viewport the 237 lines are point-stretched 480/237 = 2.03x before Semu reads them
   back at native size (a linear blit to 625x237, `RendererShaderPasses.extract`). Fit placement, the
   default, is fractional by design either way.
