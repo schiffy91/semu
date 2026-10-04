@@ -56,9 +56,12 @@
 # states and settings there. So no case saves or loads a state on a standalone emulator.
 #
 # OUT/<case>/ gets before.png, after-<n>-<token>.png (':' written '-', ',' written '_'), and for a
-# move or tap cursor-<n>.png 0.5 s after it and idle-<n>.png 4 s after it, both gamescope screenshot
+# move or tap cursor-<n>.png 1.5 s after it and idle-<n>.png 5 s after it, both gamescope screenshot
 # type 3 (every layer, gamescope's cursor plane included; gamescope 3.16.30 takes the type as the
-# screenshot command's third argument, the other shots keep the default base plane); schedule;
+# screenshot command's third argument, the other shots keep the default base plane), and the result
+# line arrow-<n>: ok when cursor-arrow.sh finds Semu's whole arrow with its tip where inject.sh put
+# the pointer in cursor-<n> and not in idle-<n> (unchecked without ImageMagick: run cursor-arrow.sh
+# on the fetched shots), with renderer-cursor: lines for each show and hide on the shared clock; schedule;
 # cmdline (the emulator argv, read the moment it is first seen); run.log; inject.log; touch.log
 # (Semu's touch lines); journal.od (the action journal, od -A d -t d4, one 56-byte record a line);
 # evidence.log (this launch's receipts); and result. OUT/summary collects every result; OUT/done
@@ -107,8 +110,8 @@ schedule() {  # FIRST TOKEN...: "MS pad TOKEN: STEPS" and "MS shot NAME [TYPE]" 
     case "$token" in
       key:*) ;;
       move:*|tap:*)
-        echo "$((at + 500)) shot cursor-$((step + 1)) 3"
-        awk -v gap="$gap" 'BEGIN { exit !(gap >= 6) }' && echo "$((at + 4000)) shot idle-$((step + 1)) 3" ;;
+        echo "$((at + 1500)) shot cursor-$((step + 1)) 3"  # the move lands about 0.2 s after its time, a tap's release 0.5 s
+        awk -v gap="$gap" 'BEGIN { exit !(gap >= 6) }' && echo "$((at + 5000)) shot idle-$((step + 1)) 3" ;;  # three idle seconds after the last motion and a frame
       *) echo "$at pad $token: $(pad_steps "$token" | cut -d' ' -f2-)" ;;
     esac
     echo "$(at_ms "$first" $((step + 1)) -1) shot after-$((step + 1))-$(label "$token")"
@@ -168,6 +171,17 @@ wait_until() {  # MS after launch on the shared clock
   [ "$left" -gt 0 ] && sleep "$(awk -v left="$left" 'BEGIN { printf "%.3f", left / 1000 }')"
   return 0
 }
+arrows() {  # each move or tap inject.sh sent: Semu's whole arrow at the pointer in cursor-N, not in idle-N
+  local step point shown hidden shown_status hidden_status verdict
+  grep -o 'step [0-9]* [a-z]*:[0-9.,]* -> [0-9]*,[0-9]*' "$dir/inject.log" 2>/dev/null | while read -r _ step _ _ point; do
+    shown="$(bash "$here/cursor-arrow.sh" "$dir/cursor-$step.png" "${point%,*}" "${point#*,}")"; shown_status=$?
+    hidden="$(bash "$here/cursor-arrow.sh" "$dir/idle-$step.png" "${point%,*}" "${point#*,}")"; hidden_status=$?
+    if [ "$shown_status" -eq 2 ] || [ "$hidden_status" -eq 2 ]; then verdict=unchecked
+    elif [ "$shown_status" -eq 0 ] && [ "$hidden_status" -eq 1 ]; then verdict=ok
+    else verdict=FAIL; fi
+    note "arrow-$step: $verdict (cursor-$step $shown; idle-$step $hidden)"
+  done
+}
 evidence() {  # what the case left: the X key adapter, each action by source, the touches, the journal, the receipts, the saved choices
   note "x-listener: $(grep -o 'semu: listening for keys on X display [^ ]*' "$dir/run.log" | sed 's/.* //' | tr '\n' ' ')($(grep -c 'semu: listening for keys on X display' "$dir/run.log") lines)"
   grep -o 'semu: action [^ ]* ([a-z]*)' "$dir/run.log" | sort | uniq -c | while read -r count _ _ action source; do note "action: $action $source x$count"; done
@@ -176,6 +190,9 @@ evidence() {  # what the case left: the X key adapter, each action by source, th
   grep -E 'semu-retroarch: touch|semu-vulkan: touch' "$dir/run.log" > "$dir/touch.log"
   note "touch: $(grep -c 'semu-retroarch: touch' "$dir/touch.log") retroarch, $(grep -c 'semu-vulkan: touch' "$dir/touch.log") vulkan"
   head -12 "$dir/touch.log" | sed 's/^/touch-line: /' >> "$dir/result"
+  grep -o 'semu-renderer: cursor [a-z]* [0-9-]*,[0-9-]* ms=[0-9]*' "$dir/run.log" | head -20 \
+    | awk -v zero="$start_ms" '{ split($5, pair, "="); printf "renderer-cursor: %s at %s t=%.3f\n", $3, $4, (pair[2] - zero) / 1000 }' >> "$dir/result"
+  arrows
   if [ -n "$game" ] && [ -f "$state/semu-render-actions.bin" ]; then  # emptied when this session started
     od -A d -t d4 -w56 -v "$state/semu-render-actions.bin" > "$dir/journal.od"
     note "journal (action/slot; 1 menu, 2 up, 3 down, 4 confirm, 5 back, 6 save, 7 load, 9 screenshot, 77 next slot, 78 previous slot, 79 bezel, 80 shader): $(awk 'NF >= 10 { printf "%s%s/%s", separator, $8, $10; separator = " " }' "$dir/journal.od")"

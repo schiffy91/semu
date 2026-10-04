@@ -271,3 +271,9 @@ int semu_vkQueuePresentKHR(void* queue, const struct VkPresentInfoKHR* info) {
 int semu_touch_unmap(float x, float y, int clamp, float* emulatorX, float* emulatorY) {
     return SemuVulkanCore.unmapTouch(x, y, clamp, emulatorX, emulatorY);
 }
+
+// The emulator's window pointer for the cursor Semu draws (Azahar's semu-touch patch finds it as it
+// finds semu_touch_unmap).
+void semu_pointer_sample(float pointerX, float pointerY, int pressed, int inside) {
+    SemuVulkanCore.samplePointer(pointerX, pointerY, pressed, inside);
+}

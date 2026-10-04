@@ -1,7 +1,7 @@
 // The pointer cursor Semu draws over a touch screen system, without GL: Steam's trackpad mouse is
 // relative, so the player aims with this arrow. It follows the emulator's pointer sample in the
-// frame, shows on motion or a press, and hides after three idle seconds. The post-UI pass uploads
-// the arrow and draws it last, above the bezel and the menu.
+// frame, shows on motion or a press (held ones too), and hides after three idle seconds. The
+// post-UI pass uploads the arrow and draws it last, above the bezel and the menu.
 
 #include <string.h>
 
@@ -16,7 +16,8 @@ struct RendererCursorState {
     int x;
     int y;
     int pressed;
-    long long active_ms;  // the last motion or press, 0 before any
+    long long active_ms;  // the last motion or held press, 0 before any
+    int shown;  // what the debug line last reported
     unsigned char pixels[12 * 19 * 4];
 };
 
@@ -65,13 +66,19 @@ class RendererCursor {
             return false;
         }
         bool moved = state->known != 0 && (cursor->x != state->x || cursor->y != state->y || cursor->pressed != state->pressed);
-        bool arrivedPressed = state->known == 0 && cursor->pressed != 0;  // a first sample shows only when pressed
-        if (moved || arrivedPressed) { state->active_ms = now; }
+        bool held = cursor->pressed != 0;  // a held press is activity: a drag that pauses keeps its arrow, and a first sample shows only when pressed
+        if (moved || held) { state->active_ms = now; }
         state->known = 1;
         state->x = cursor->x;
         state->y = cursor->y;
         state->pressed = cursor->pressed;
         return RendererCursor.visible(state, now);
+    }
+
+    class bool changed(struct RendererCursorState* state, bool visible) {  // true once per show and once per hide, for the debug line
+        if (state == null || state->shown == (visible ? 1 : 0)) { return false; }
+        state->shown = visible ? 1 : 0;
+        return true;
     }
 
     class bool visible(struct RendererCursorState* state, long long now) {

@@ -3,11 +3,14 @@
 # private Xvfb, so no real display is touched. Azahar runs with Semu's own compiled qt-config.ini.
 # Captures the composed 3DS shell, then holds a click at TOUCH_X,TOUCH_Y on the composed picture and
 # captures again; the layer logs where the click was mapped in Azahar's own layout (semu-touch.patch).
-# Then Azahar's own X cursor: moved over a static corner of the plate, a capture with the cursor
-# (maim) and one without (maim -u) must differ there; 4 s later Azahar has blanked it
-# (hideInactiveMouse), so they must not. HIDE_INACTIVE_MOUSE=false overrides Semu's pin to show the
-# baseline. The ROM is mounted read-only; the container is left exited.
-# usage: vm-azahar-layer.sh REPOSITORY ROM OUT_DIR   (env: WAIT seconds before the capture, TOUCH_X, TOUCH_Y,
+# Then the cursor, as the Steam Deck's right trackpad moves it (parked at the top left, then moved
+# relatively to ARROW_X,ARROW_Y over a static corner of the plate): 1.5 s later xwd, which sees the
+# frame and never the X cursor, must hold Semu's whole arrow there (tests/deck/cursor-arrow.sh,
+# from semu_pointer_sample), and a capture with the X cursor (maim) must equal one without (maim -u),
+# Azahar's own cursor being blank; 5 s after the move the arrow is gone. HIDE_INACTIVE_MOUSE
+# replaces Semu's hideInactiveMouse pin (Azahar's own hiding, for a run without Semu's layer).
+# The ROM is mounted read-only; the container is left exited.
+# usage: vm-azahar-layer.sh REPOSITORY ROM OUT_DIR   (env: WAIT seconds before the capture, TOUCH_X, TOUCH_Y, ARROW_X, ARROW_Y (40,44),
 #   WIDTH and HEIGHT of the virtual screen, 1280x720 unless set; 1280x800 is the Steam Deck)
 set -euo pipefail
 repository="$(cd "$1" && pwd)"; rom="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; out="$(mkdir -p "$3" && cd "$3" && pwd)"
@@ -42,22 +45,30 @@ $XWD/bin/xwd -root -silent -display :97 | $IM/bin/magick xwd:- /out/azahar.png
 DISPLAY=:97 $XDO/bin/xdotool mousemove ${TOUCH_X:-1100} ${TOUCH_Y:-400} mousedown 1 sleep 2 mouseup 1
 sleep 20
 $XWD/bin/xwd -root -silent -display :97 | $IM/bin/magick xwd:- /out/azahar-after-touch.png
-cursor() {  # NAME: pixels where the X cursor differs at the plate's corner, with it (maim) and without (maim -u)
+xcursor() {  # NAME: pixels where the X cursor differs at the arrow, with it (maim) and without (maim -u)
   DISPLAY=:97 $MAIM/bin/maim /out/$1-with.png; DISPLAY=:97 $MAIM/bin/maim -u /out/$1-without.png
-  $IM/bin/magick /out/$1-with.png -crop 64x64+16+16 +repage /out/$1-with-crop.png
-  $IM/bin/magick /out/$1-without.png -crop 64x64+16+16 +repage /out/$1-without-crop.png
-  $IM/bin/magick /out/$1-with-crop.png -scale 400% /out/$1-zoom.png
+  $IM/bin/magick /out/$1-with.png -crop 64x80+$((ARROW_X - 16))+$((ARROW_Y - 16)) +repage /out/$1-with-crop.png
+  $IM/bin/magick /out/$1-without.png -crop 64x80+$((ARROW_X - 16))+$((ARROW_Y - 16)) +repage /out/$1-without-crop.png
   $IM/bin/magick /out/$1-with-crop.png /out/$1-without-crop.png -compose difference -composite -alpha off -separate -evaluate-sequence max -threshold 0 -format '%[fx:round(mean*w*h)]' info:
 }
-DISPLAY=:97 $XDO/bin/xdotool mousemove 30 30; sleep 0.3; DISPLAY=:97 $XDO/bin/xdotool mousemove 32 32; sleep 0.5
-moving=$(cursor cursor-moving)
-sleep 4
-idle=$(cursor cursor-idle)
-echo "azahar cursor: $moving pixels while moving, $idle after 4 s idle" | tee /out/cursor.result
+arrow() {  # NAME: xwd's frame (never the X cursor), and whether Semu's whole arrow has its tip on ARROW_X,ARROW_Y
+  $XWD/bin/xwd -root -silent -display :97 | $IM/bin/magick xwd:- /out/$1.png
+  $IM/bin/magick /out/$1.png -crop 64x80+$((ARROW_X - 16))+$((ARROW_Y - 16)) +repage -scale 400% /out/$1-zoom.png
+  PATH="$IM/bin:$PATH" bash /src/tests/deck/cursor-arrow.sh /out/$1.png $ARROW_X $ARROW_Y
+}
+DISPLAY=:97 $XDO/bin/xdotool mousemove_relative -- -4000 -4000; sleep 0.05  # as Steam's trackpad mouse: parked, then relative
+DISPLAY=:97 $XDO/bin/xdotool mousemove_relative -- $ARROW_X $ARROW_Y; moved=$(date +%s%3N)
+sleep 1.5
+shown=$(arrow cursor-moving); shown_status=$?
+blank=$(xcursor cursor-moving)
+while [ $(( $(date +%s%3N) - moved )) -lt 5000 ]; do sleep 0.1; done
+hidden=$(arrow cursor-idle); hidden_status=$?
+{ echo "moved at $moved; 1.5 s later: $shown (exit $shown_status), X cursor pixels $blank; 5 s later: $hidden (exit $hidden_status)"
+  grep 'semu-renderer: cursor' /out/azahar.log | tail -4; } | tee /out/cursor.result
 kill $A; sleep 2; kill $X
 grep -E "touch|swapchain" /out/azahar.log | head -20
-if [ "${moving:-0}" -gt 0 ] && [ "${idle:-1}" -eq 0 ]; then echo "azahar cursor: shown while moving, hidden when idle" | tee -a /out/cursor.result; else echo "azahar cursor: FAIL" | tee -a /out/cursor.result; fi
+if [ "$shown_status" -eq 0 ] && [ "${blank:-1}" -eq 0 ] && [ "$hidden_status" -eq 1 ]; then echo "azahar cursor: Semu's arrow shown after the move, Azahar's own cursor blank, the arrow gone 5 s later" | tee -a /out/cursor.result; else echo "azahar cursor: FAIL" | tee -a /out/cursor.result; fi
 INSIDE
-podman run --name "semu-azahar-layer-$(date +%Y%m%d%H%M%S)" --platform linux/amd64 --privileged -e WAIT="${WAIT:-240}" -e WIDTH="${WIDTH:-1280}" -e HEIGHT="${HEIGHT:-720}" -e TOUCH_X="${TOUCH_X:-1100}" -e TOUCH_Y="${TOUCH_Y:-400}" -e HIDE_INACTIVE_MOUSE="${HIDE_INACTIVE_MOUSE:-}" \
+podman run --name "semu-azahar-layer-$(date +%Y%m%d%H%M%S)" --platform linux/amd64 --privileged -e WAIT="${WAIT:-240}" -e WIDTH="${WIDTH:-1280}" -e HEIGHT="${HEIGHT:-720}" -e TOUCH_X="${TOUCH_X:-1100}" -e TOUCH_Y="${TOUCH_Y:-400}" -e ARROW_X="${ARROW_X:-40}" -e ARROW_Y="${ARROW_Y:-44}" -e HIDE_INACTIVE_MOUSE="${HIDE_INACTIVE_MOUSE:-}" \
   -e ROM_NAME="$(basename "$rom")" -v semu-nix-x86:/nix -v "$repository":/src:ro -v "$out":/out -v "$(dirname "$rom")":/rom:ro \
   docker.io/nixos/nix:latest bash /out/inside.sh

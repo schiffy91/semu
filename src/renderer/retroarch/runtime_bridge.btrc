@@ -9,6 +9,7 @@
 #include "video_driver.h"
 
 import ./surface_contract.btrc;
+import ./cursor_policy.btrc;
 #define semuRetroArchGeometry() (&video_state_get_ptr()->av_info.geometry)
 
 void semuRetroArchDisplayLock(video_driver_state_t* video) {
@@ -117,7 +118,7 @@ class SemuRetroArchGeneration {
 class SemuRetroArchFrameBridge {
     class void cursor(struct SemuRenderFrameGl* frame) {  // the window pointer for Semu's cursor, on touch systems only
         semuRetroArchDisplayLock(video_state_get_ptr());
-        SemuRetroArchCursorPolicy.fill(SemuRetroArchSurfaces.touch_index,
+        SemuCursorPolicy.fill(SemuRetroArchSurfaces.touch_index,
             SemuRetroArchPointer.hover_allowed != 0,
             (int)SemuRetroArchPointer.hover_x, (int)SemuRetroArchPointer.hover_y,
             SemuRetroArchPointer.hover_pressed != 0,

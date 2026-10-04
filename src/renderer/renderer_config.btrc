@@ -247,4 +247,10 @@ class RendererClock {
         clock_gettime(CLOCK_MONOTONIC, &now);
         return (long long)now.tv_sec * 1000LL + (long long)(now.tv_nsec / 1000000L);
     }
+
+    class long long epochMilliseconds() {  // wall clock, for debug lines a harness lines up with its own date +%s%3N
+        struct timespec now;
+        clock_gettime(CLOCK_REALTIME, &now);
+        return (long long)now.tv_sec * 1000LL + (long long)(now.tv_nsec / 1000000L);
+    }
 }

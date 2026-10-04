@@ -54,6 +54,20 @@ class DeckHarnessSockets {  // display sockets as gamescope's wlroots leaves the
 }
 
 class DeckHarnessScripts {  // read as text: the parts of a run that only the Deck can execute
+    class void pointer(Contract contract, string check, string injector) {  // a move lands on time and the arrow is judged where it landed
+        contract.contains(injector, "carriers=\"$(grep -l -z -x \"SEMU_INJECT_START_MS=$start_ms\" /proc/[0-9]*/environ 2>/dev/null)\"", "one grep over every process's environment finds the case's processes");
+        contract.lacks(injector, "for path in /proc/[0-9]*; do", "no fork per process to find the emulator (a second on the Deck)");
+        int ahead = injector.indexOf("wait_for \"$((due - 1000))\"\n        rect=\"$(touch_rect)\" && resolved=yes ;;");
+        int due = injector.indexOf("    wait_for \"$due\"\n    began=");
+        int moved = injector.indexOf("send mousemove_relative -- \"$column\" \"$row\"");
+        contract.expect(ahead > 0 && due > ahead && moved > due, f"the touch screen is read a second before a move is due, then the move waits for its time ({ahead} < {due} < {moved})");
+        contract.expect(injector.contains("moved=$?; times=\"moved at $(elapsed)\"") && injector.contains("times=\"$times, down at $(elapsed)\"") && injector.contains("times=\"$times, up at $(elapsed)\"")
+            && injector.contains("echo \"inject: $when step $((step + 1)) $token -> $column,$row"), "each move or tap note names its step and when it moved, pressed and released");
+        contract.contains(check, "grep -o 'step [0-9]* [a-z]*:[0-9.,]* -> [0-9]*,[0-9]*' \"$dir/inject.log\"", "input-check.sh reads where each step put the pointer from those notes");
+        contract.contains(check, "shown=\"$(bash \"$here/cursor-arrow.sh\" \"$dir/cursor-$step.png\" \"${point%,*}\" \"${point#*,}\")\"; shown_status=$?", "and looks for Semu's arrow there in cursor-N");
+        contract.contains(check, "elif [ \"$shown_status\" -eq 0 ] && [ \"$hidden_status\" -eq 1 ]; then verdict=ok", "arrow-N is ok only with the whole arrow in cursor-N and not in idle-N");
+    }
+
     class void run(Contract contract, Fixture fixture) {
         string check = FileSystem.readText(PathTools.join(fixture.project, "tests/deck/input-check.sh"));
         string injector = FileSystem.readText(PathTools.join(fixture.project, "tests/deck/inject.sh"));
@@ -64,7 +78,7 @@ class DeckHarnessScripts {  // read as text: the parts of a run that only the De
         contract.contains(check, "--semu-home \"%s\"", "every case launches with the run's own Semu home");
         contract.contains(check, "( bash \"%s\" %s %s %s > \"%s/inject.log\" 2>&1 & echo $! > \"%s/inject.pid\" )", "inner.sh starts the injector as a grandchild, never a child of semu-btrc");
         contract.contains(check, "gamescopectl screenshot \"$shot\" ${3:+\"$3\"}", "a capture passes its screenshot type");
-        contract.contains(check, "echo \"$((at + 500)) shot cursor-$((step + 1)) 3\"", "the shot after a move or tap includes gamescope's cursor plane");
+        contract.contains(check, "echo \"$((at + 1500)) shot cursor-$((step + 1)) 3\"", "the shot 1.5 s after a move or tap, once the pointer has landed, includes gamescope's cursor plane");
         contract.contains(check, "The state root stays the owner's", "the isolation note says what it does not isolate");
         string matrix = FileSystem.readText(PathTools.join(fixture.project, "tests/deck/system-matrix.sh"));
         contract.contains(matrix, "%s ${SEMU_MATRIX_SETTINGS:+--settings-json \"$SEMU_MATRIX_SETTINGS\"} --rom \"$SEMU_MATRIX_ROM\"", "a matrix launch takes SEMU_MATRIX_SETTINGS as its highest overlay, so the owner's semu.json is never written");
@@ -77,6 +91,7 @@ class DeckHarnessScripts {  // read as text: the parts of a run that only the De
         contract.contains(injector, "[ \"/proc/$1/ns/mnt\" -ef /proc/self/ns/mnt ] || return 1", "only processes in the case's own mount namespace count");
         contract.contains(injector, "grep -q -x \"SEMU_INJECT_START_MS=$start_ms\"", "and only those carrying the case's clock");
         contract.contains(injector, "for pid in $(pgrep -x Xwayland); do", "the displays are found among Xwaylands, whoever their parent is");
+        DeckHarnessScripts.pointer(contract, check, injector);
         Vector<string> legends = [f"{SemuActions.menuToggle()} menu", f"{SemuActions.menuBack()} back", f"{SemuActions.screenshot()} screenshot", f"{SemuActions.stateNext()} next slot", f"{SemuActions.statePrev()} previous slot", f"{SemuActions.bezelSelect()} bezel", f"{SemuActions.shaderSelect()} shader"];
         for legend in legends {
             contract.contains(check, legend, "input-check.sh names journal codes as action_abi does");
@@ -109,7 +124,7 @@ class DeckHarnessPlan {  // input-check.sh --plan: the same functions a run sche
         contract.contains(text, "    35.0  shot   after-1-key-ctrl+shift+b\n    36.0  inject key:ctrl+shift+v:", "each token is captured a second before the next fires GAP later");
         contract.contains(text, "pad    virtual_pad --steam-virtual-pad 30 hold:select press:north release:select sleep:5.6 press:dpad_down sleep:5.8", "a chord holds its modifier, and a press's own time comes off its pause");
         contract.contains(text, "inject none (no key, move or tap token)", "a pad-only case starts no injector");
-        contract.contains(text, "    40.0  inject move:0.5,0.5: park the pointer, then mousemove_relative to 0.5,0.5 of the touch screen\n    40.5  shot   cursor-1 (type 3)\n    44.0  shot   idle-1 (type 3)\n    45.0  shot   after-1-move-0.5_0.5\n", "a move is captured with the cursor, then after the hide delay");
+        contract.contains(text, "    40.0  inject move:0.5,0.5: park the pointer, then mousemove_relative to 0.5,0.5 of the touch screen\n    41.5  shot   cursor-1 (type 3)\n    45.0  shot   idle-1 (type 3)\n    45.0  shot   after-1-move-0.5_0.5\n", "a move is captured with the cursor 1.5 s after it, then 5 s after it, past the hide delay");
         contract.contains(text, "inject tap:0.05,0.9: park, mousemove_relative to 0.05,0.9 of the touch screen, mousedown 1, 0.15 s, mouseup 1\n", "a tap clicks where it moved");
         contract.contains(text, "inject inject.sh 50 6 key:ctrl+m dpad_down dpad_up south\n", "a mixed case hands inject.sh the pad tokens as pauses");
         contract.contains(text, "    56.0  pad    dpad_down: press:dpad_down\n", "and the pad's press keeps its slot on the shared clock");

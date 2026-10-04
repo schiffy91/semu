@@ -1,0 +1,117 @@
+// Standalone cursor spec: Semu draws its touch cursor over standalone Azahar too. The Azahar patch
+// hands every render-window mouse move, press, release and leave to semu_pointer_sample, which the
+// Vulkan layer and the macOS stand-in export; SemuCompose turns the last sample into each frame's
+// cursor through the policy RetroArch's bridge uses, gated on the touch screen; Azahar's own cursor
+// is blank so one arrow shows. The Deck's arrow check draws the renderer's own arrow.
+
+#include <string.h>
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+import ../../../src/renderer/renderer_cursor.btrc;
+import ../../../src/renderer/retroarch/cursor_policy.btrc;
+
+class StandaloneCursorText {
+    class string read(Fixture fixture, string relative) {
+        string path = PathTools.join(fixture.project, relative);
+        return FileSystem.isFile(path) ? FileSystem.readText(path) : "";
+    }
+
+    class string between(string text, string startMarker, string endMarker) {  // from one marker to the next after it
+        int start = text.indexOf(startMarker);
+        if (start < 0) { return ""; }
+        string rest = text.substring(start, text.len() - start);
+        int end = rest.indexOf(endMarker);
+        return end <= 0 ? "" : rest.substring(0, end);
+    }
+
+    class bool ordered(string text, Vector<string> markers) {  // each marker found after the one before it
+        string rest = text;
+        for marker in markers {
+            int found = rest.indexOf(marker);
+            if (found < 0) { return false; }
+            int after = found + marker.len();
+            rest = rest.substring(after, rest.len() - after);
+        }
+        return true;
+    }
+
+    class int count(string text, string needle) {
+        int found = 0;
+        for line in Strings.split(text, "\n") { if (line.equals(needle)) { found++; } }
+        return found;
+    }
+}
+
+class StandaloneCursorSpec {
+    class void index(Contract contract) {  // SEMU_RENDER_TOUCH_SURFACE_INDEX gates the cursor: a number, or no touch screen
+        contract.expect(SemuCursorPolicy.touchIndex("1") == 1 && SemuCursorPolicy.touchIndex("0") == 0, "the touch screen's index is read as a number");
+        contract.expect(SemuCursorPolicy.touchIndex(null) == -1 && SemuCursorPolicy.touchIndex("") == -1, "without SEMU_RENDER_TOUCH_SURFACE_INDEX there is no touch screen, so no cursor");
+        contract.expect(SemuCursorPolicy.touchIndex("1x") == -1 && SemuCursorPolicy.touchIndex("-1") == -1 && SemuCursorPolicy.touchIndex("12345") == -1, "anything but a short number is no touch screen");
+    }
+
+    class void compose(Contract contract, Fixture fixture) {  // the sample becomes the frame's cursor through the shared policy
+        string compose = StandaloneCursorText.read(fixture, "src/renderer/preload/semu_compose.btrc");
+        contract.contains(compose, "import ../retroarch/cursor_policy.btrc;", "the standalone compositor uses the cursor policy RetroArch's bridge uses");
+        contract.contains(compose, "SemuComposition.touch_index = SemuCursorPolicy.touchIndex(getenv(\"SEMU_RENDER_TOUCH_SURFACE_INDEX\"));", "the touch screen's index gates the cursor");
+        string build = StandaloneCursorText.between(compose, "class void compose(", "class int unmap(");
+        contract.expect(StandaloneCursorText.ordered(build, ["memset(&frame, 0, sizeof(struct SemuRenderFrameGl));", "SemuCompose.cursor(&frame);", "int status = semu_render_game_gl(&frame);", "semu_render_post_ui_gl(&frame)"]),
+            "every composed frame carries the last pointer sample before the renderer reads it");
+        string cursor = StandaloneCursorText.between(compose, "class void cursor(", "\n    }\n");
+        contract.expect(StandaloneCursorText.ordered(cursor, ["pthread_mutex_lock(&SemuComposeSampleLock);", "memcpy(&pointer, &SemuComposeSample, sizeof(struct SemuComposePointerSample));", "pthread_mutex_unlock(&SemuComposeSampleLock);",
+                "SemuCursorPolicy.fill(SemuComposition.touch_index, pointer.known && pointer.inside,", "(int)pointer.pointer_x, (int)pointer.pointer_y, pointer.pressed,", "&frame->cursor.visible, &frame->cursor.x, &frame->cursor.y, &frame->cursor.pressed);"]),
+            "the frame's cursor is the sample copied under its lock, through the policy, shown only inside the window");
+        string sample = StandaloneCursorText.between(compose, "class void sample(", "\n    }\n");
+        contract.expect(StandaloneCursorText.ordered(sample, ["pthread_mutex_lock(&SemuComposeSampleLock);", "SemuComposeSample.known = true;", "SemuComposeSample.inside = inside;", "SemuComposeSample.pressed = pressed;",
+                "SemuComposeSample.pointer_x = pointerX;", "SemuComposeSample.pointer_y = pointerY;", "pthread_mutex_unlock(&SemuComposeSampleLock);"]),
+            "a sample from the toolkit's input thread is written whole under its lock");
+    }
+
+    class void exports(Contract contract, Fixture fixture) {  // the layer and the stand-in hand Azahar's sample to the compositor
+        string export = "void semu_pointer_sample(float pointerX, float pointerY, int pressed, int inside) {\n    SemuVulkanCore.samplePointer(pointerX, pointerY, pressed, inside);\n}";
+        contract.contains(StandaloneCursorText.read(fixture, "src/renderer/vulkan/semu_vulkan_layer.btrc"), export, "the Linux Vulkan layer exports semu_pointer_sample");
+        contract.contains(StandaloneCursorText.read(fixture, "src/renderer/vulkan/semu_vulkan_metal.btrc"), export, "the macOS stand-in for MoltenVK exports semu_pointer_sample");
+        string core = StandaloneCursorText.between(StandaloneCursorText.read(fixture, "src/renderer/vulkan/semu_vulkan_core.btrc"), "class void samplePointer(", "\n    }\n");
+        contract.contains(core, "SemuCompose.sample(pointerX, pointerY, pressed != 0, inside != 0);", "the layer keeps the sample for the next composed frame");
+        contract.contains(StandaloneCursorText.read(fixture, "src/renderer/package.nix"), "{ global: semu_vkGetInstanceProcAddr; semu_vkGetDeviceProcAddr; semu_touch_unmap; semu_pointer_sample; local: *; };", "the layer's version script keeps semu_pointer_sample visible to dlsym");
+    }
+
+    class void patch(Contract contract, Fixture fixture) {  // Azahar's render window forwards its pointer and blanks its own cursor
+        string patch = StandaloneCursorText.read(fixture, "config/emulators/azahar/semu-touch.patch");
+        contract.contains(patch, "+bool SemuPointerSample(unsigned framebuffer_x, unsigned framebuffer_y, bool pressed, bool inside) {\n+    using Sample = void (*)(float, float, int, int);", "the patch calls semu_pointer_sample with the layer's own signature");
+        contract.contains(patch, "+        sample = reinterpret_cast<Sample>(SemuSymbol(\"semu_pointer_sample\"));", "and finds it as it finds semu_touch_unmap, until the layer has loaded");
+        contract.contains(patch, "+    static const Unmap unmap = reinterpret_cast<Unmap>(SemuSymbol(\"semu_touch_unmap\"));", "both lookups share one resolver");
+        contract.expect(StandaloneCursorText.count(patch, "     emit MouseActivity();") == 3 && patch.contains("     emit MouseActivity();\n+    SemuPointer(pos, event->buttons(), true);\n }\n \n void GRenderWindow::mouseMoveEvent(")
+                && patch.contains("     emit MouseActivity();\n+    SemuPointer(pos, event->buttons(), true);\n }\n \n void GRenderWindow::mouseReleaseEvent(")
+                && patch.contains("     emit MouseActivity();\n+    SemuPointer(event->pos(), event->buttons(), true);\n+}\n+\n+void GRenderWindow::leaveEvent(QEvent* event) {\n+    QWidget::leaveEvent(event);\n+    SemuPointer(QPointF{}, Qt::NoButton, false);\n+}"),
+            "a press, a move and a release hand Semu the pointer after Azahar's own handling, and leaving the window hides the arrow");
+        contract.contains(patch, "+    if (!Frontend::SemuPointerSample(x, y, (buttons & Qt::LeftButton) != 0, inside))\n+        return;\n+    if (child_widget && !child_widget->testAttribute(Qt::WA_SetCursor))\n+        child_widget->setCursor(QCursor(Qt::BlankCursor));",
+            "while Semu draws the arrow, the render widget's own cursor is blank, beyond GMainWindow's show and hide");
+        contract.contains(patch, "+    void leaveEvent(QEvent* event) override;", "GRenderWindow declares the leave handler");
+        contract.contains(patch, "+    void SemuPointer(const QPointF& pos, Qt::MouseButtons buttons, bool inside);", "and the forwarder");
+    }
+
+    class void arrow(Contract contract, Fixture fixture) {  // the Deck's arrow check looks for the arrow the renderer draws
+        string script = StandaloneCursorText.read(fixture, "tests/deck/cursor-arrow.sh");
+        string block = StandaloneCursorText.between(script, "rows=(\n", "\n)\n");
+        Vector<string> rows = [];
+        for part in Strings.split(block, "\"") { if (part.len() == SEMU_RENDER_CURSOR_WIDTH) { rows.push(part); } }
+        bool same = rows.size() == SEMU_RENDER_CURSOR_HEIGHT;
+        for (int line = 0; same && line < SEMU_RENDER_CURSOR_HEIGHT; line++) { same = strcmp(rows.get(line), RendererCursor.row(line)) == 0; }
+        contract.expect(same, f"cursor-arrow.sh's rows are renderer_cursor.btrc's arrow ({rows.size()} rows)");
+        contract.contains(script, "scale=$((height / 400)); [ \"$scale\" -ge 1 ] || scale=1; [ \"$scale\" -le 8 ] || scale=8", "at the renderer's scale: one whole step per 400 rows, 1 to 8");
+        contract.contains(script, "[ \"$white\" = \"$fill_total\" ] && [ \"$outline\" = \"$outline_total\" ]", "the whole arrow is there only when every fill pixel is white and every outline pixel black");
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        StandaloneCursorSpec.index(contract);
+        StandaloneCursorSpec.compose(contract, fixture);
+        StandaloneCursorSpec.exports(contract, fixture);
+        StandaloneCursorSpec.patch(contract, fixture);
+        StandaloneCursorSpec.arrow(contract, fixture);
+    }
+}

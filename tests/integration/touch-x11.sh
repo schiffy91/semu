@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # The right trackpad on RetroArch's DS and 3DS routes, checked on Linux on a private Xvfb: xdotool
 # moves and clicks the X pointer (XTest, the way Steam's trackpad mouse reaches Game Mode's
-# Xwayland) over a real RetroArch with Semu's renderer, the synthetic core standing in for the
-# Azahar core (n3ds) and the melonDS core (nds) under their library names. The launch is exactly
+# Xwayland, by relative motion from the top left as inject.sh does on the Deck) over a real
+# RetroArch with Semu's renderer, the synthetic core standing in for the Azahar core (n3ds) and the
+# melonDS core (nds) under their library names. The launch is exactly
 # `semu launch retroarch` (its --print-plan argv, environment and written files) plus --verbose.
 # Asserts, per system, from the bottom screen's drawn rectangle in semu-render-evidence.log:
 #   taps at 5, 50 and 95 percent across it, half way down, reach the core within 1 percent of
 #   where that core reads them (3DS: 0.1 + 0.8 f across its 400-wide frame; DS: f), and 0.75 down;
 #   a tap on the bezel presses nothing; RetroArch loads Semu's remap file for that library name;
-#   Semu's cursor shows where the pointer moved (xwd sees it, as it is drawn into the frame) and
-#   is gone after three idle seconds.
+#   Semu's whole arrow is drawn with its tip where the pointer moved 1.5 s after the move (xwd sees
+#   it, as it is drawn into the frame; tests/deck/cursor-arrow.sh judges it) and is gone 5 s after.
 # On a Mac it runs inside the podman VM (x86_64 under Rosetta, the release builder's Nix store) and
 # never touches the Mac display. Scratch lives in mktemp -d directories, the container is left
 # exited, and nothing is removed.
@@ -58,6 +59,7 @@ width=1280; height=800
 "$xvfb/bin/Xvfb" "$display" -screen 0 ${width}x${height}x24 >"$out/xvfb.log" 2>&1 & xvfb_pid=$!
 sleep 2
 x() { DISPLAY="$display" "$xdotool/bin/xdotool" "$@"; }
+glide() { x mousemove_relative -- -4000 -4000; sleep 0.05; x mousemove_relative -- "$1" "$2"; }  # X Y: as Steam's trackpad mouse moves the pointer (and inject.sh on the Deck): parked at the top left, then relative
 shot() { DISPLAY="$display" "$xwd/bin/xwd" -root -silent | "$magick" xwd:- "$1"; }
 presses() { grep -c 'synthetic: pointer press' "$1" || true; }
 inside() {  # X Y LEFT TOP W H: is the point on that rectangle
@@ -111,7 +113,7 @@ EOF
   for percent in 5 50 95; do
     tap_x=$((touch_left + touch_width * percent / 100))
     before="$(presses "$log")"
-    x mousemove "$tap_x" "$middle"; sleep 0.5; x mousedown 1; sleep 0.8; x mouseup 1; sleep 1.2
+    glide "$tap_x" "$middle"; sleep 0.5; x mousedown 1; sleep 0.8; x mouseup 1; sleep 1.2
     line="$(grep 'synthetic: pointer press' "$log" | tail -1)"
     [ "$(presses "$log")" -gt "$before" ] || line="none"
     printf '%s %s %s\n' "$percent" "$tap_x,$middle" "$line" >> "$out/$label.taps"
@@ -127,18 +129,18 @@ EOF
   bezel_presses=unknown
   if [ -n "$bezel" ]; then
     before="$(presses "$log")"
-    x mousemove "${bezel%,*}" "${bezel#*,}"; sleep 0.5; x mousedown 1; sleep 0.8; x mouseup 1; sleep 1.2
+    glide "${bezel%,*}" "${bezel#*,}"; sleep 0.5; x mousedown 1; sleep 0.8; x mouseup 1; sleep 1.2
     bezel_presses=$(($(presses "$log") - before))
   fi
-  x mousemove 40 44; sleep 0.3; x mousemove 41 44; sleep 1.2  # a static corner of the plate: the cursor alone differs
+  glide 40 44; moved="$(date +%s%3N)"  # a static corner of the plate, captured as input-check.sh does on the Deck
+  sleep 1.5
   shot "$out/$label-1-cursor.png"
-  sleep 4.5
+  while [ $(( $(date +%s%3N) - moved )) -lt 5000 ]; do sleep 0.1; done
   shot "$out/$label-2-idle.png"
-  "$magick" "$out/$label-1-cursor.png" -crop 64x80+30+34 +repage "$out/$label-1-cursor-crop.png"
-  "$magick" "$out/$label-2-idle.png" -crop 64x80+30+34 +repage "$out/$label-2-idle-crop.png"
-  cursor_pixels="$("$magick" "$out/$label-1-cursor-crop.png" "$out/$label-2-idle-crop.png" -compose difference -composite -alpha off -separate \
-    -evaluate-sequence max -threshold 0 -format '%[fx:round(mean*w*h)]' info:)"  # pixels that differ in any channel, the same on every ImageMagick
-  "$magick" "$out/$label-1-cursor-crop.png" -scale 400% "$out/$label-1-cursor-zoom.png"
+  arrow_shown=0; arrow_idle=0
+  shown_text="$(PATH="$(dirname "$magick"):$PATH" bash /src/tests/deck/cursor-arrow.sh "$out/$label-1-cursor.png" 40 44)" || arrow_shown=$?
+  idle_text="$(PATH="$(dirname "$magick"):$PATH" bash /src/tests/deck/cursor-arrow.sh "$out/$label-2-idle.png" 40 44)" || arrow_idle=$?
+  "$magick" "$out/$label-1-cursor.png" -crop 64x80+30+34 +repage -scale 400% "$out/$label-1-cursor-zoom.png"
   alive=yes; kill -0 "$game" 2>/dev/null || alive=no
   kill -TERM "$game" 2>/dev/null || true
   wait "$game" 2>/dev/null || true
@@ -152,7 +154,9 @@ EOF
     echo "bezel_logged=$(grep -c 'semu-retroarch: touch .* -> no surface' "$log" || true)"
     echo "bridge_presses=$(grep -c 'semu-retroarch: touch .* -> surface 1' "$log" || true)"
     echo "remap=$(grep -o "Core-specific remap found at \"[^\"]*\"" "$log" | head -1)"
-    echo "cursor_pixels=$cursor_pixels"
+    echo "arrow_shown=$arrow_shown arrow_idle=$arrow_idle"
+    echo "arrow_text=$shown_text / $idle_text" | tr " " "_"
+    echo "renderer_cursor=$(grep -o 'semu-renderer: cursor [a-z]* [0-9,-]*' "$log" | head -6 | cut -d" " -f3,4 | tr " \n" ":;")"
   } > "$out/$label.result"
   grep 'semu-retroarch: touch\|synthetic: pointer' "$log" > "$out/$label.touch-lines" || true
   cat "$out/$label.result"
@@ -191,8 +195,8 @@ kill "$xvfb_pid" 2>/dev/null || true
       *"/remaps/$library/$library.rmp\"") echo "ok   $label: RetroArch loads Semu's remaps/$library/$library.rmp" ;;
       *) echo "FAIL $label: no remaps/$library/$library.rmp load in RetroArch's log" ;;
     esac
-    cursor="$(value "$label" cursor_pixels)"
-    if [ -n "$cursor" ] && [ "$cursor" -ge 276 ] 2>/dev/null; then echo "ok   $label: the cursor shows after motion and is gone 4.5 s later ($cursor pixels differ; its white fill alone is 276 at 800 rows)"; else echo "FAIL $label: cursor pixels $cursor"; fi
+    expect "$label: Semu's whole arrow at the pointer 1.5 s after a relative move (cursor-arrow.sh: $(value "$label" arrow_text))" "$(value "$label" arrow_shown)" 0
+    expect "$label: and gone 5 s after it" "$(value "$label" arrow_idle)" 1
     expect "$label: RetroArch ran to the end" "$(value "$label" alive)" yes
   done
 } | tee "$out/result"

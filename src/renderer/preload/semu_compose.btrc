@@ -11,12 +11,15 @@
 // The last composition's pointer map is kept, so a touch hook can turn a click on the composed
 // picture back into the point the emulator drew there. The map is written at present on the render
 // thread and read by the toolkit's input thread (Qt's GUI thread for Azahar), so one mutex guards it.
+// That thread also reports the window pointer (semu_pointer_sample), and each composed frame carries
+// it as the cursor Semu draws on a touch system, under its own mutex.
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "semu_renderer.h"
 import ./semu_frame_layout.btrc;
+import ../retroarch/cursor_policy.btrc;
 
 struct SemuComposeState {
     bool initialized;
@@ -36,10 +39,21 @@ struct SemuComposeState {
     bool mapped;
     struct SemuRenderPointerMap pointer_map;
     __fn_ptr<int, struct SemuRenderPointerMap*, struct SemuRenderPointerQuery*, struct SemuRenderPointerResult*> map_pointer;
+    int touch_index;  // SEMU_RENDER_TOUCH_SURFACE_INDEX, -1 without a touch screen: gates the cursor
+};
+
+struct SemuComposePointerSample {  // the window pointer the emulator last reported, framebuffer pixels from the top left
+    bool known;
+    bool inside;
+    bool pressed;
+    float pointer_x;
+    float pointer_y;
 };
 
 struct SemuComposeState SemuComposition;
 pthread_mutex_t SemuComposePointerLock = PTHREAD_MUTEX_INITIALIZER;  // the map, its callback, the drawn rects, the size
+struct SemuComposePointerSample SemuComposeSample;
+pthread_mutex_t SemuComposeSampleLock = PTHREAD_MUTEX_INITIALIZER;  // written on the toolkit's input thread, read at present
 
 class SemuCompose {
     class bool size(const char* name, int* width, int* height) {
@@ -64,7 +78,31 @@ class SemuCompose {
             && SemuCompose.size("SEMU_RENDER_SURFACE_1_NATIVE", &SemuComposition.second_native_width, &SemuComposition.second_native_height);
         char* integer = getenv("SEMU_RENDER_FRAME_INTEGER");
         SemuComposition.integer = integer != null && strcmp(integer, "1") == 0;
+        SemuComposition.touch_index = SemuCursorPolicy.touchIndex(getenv("SEMU_RENDER_TOUCH_SURFACE_INDEX"));
         SemuComposition.enabled = getenv("SEMU_RENDER_SYSTEM_ID") != null;
+    }
+
+    // The emulator's window pointer (Azahar's semu-touch patch, from its render window's mouse
+    // events): kept for the next composed frame's cursor.
+    class void sample(float pointerX, float pointerY, bool pressed, bool inside) {
+        pthread_mutex_lock(&SemuComposeSampleLock);
+        SemuComposeSample.known = true;
+        SemuComposeSample.inside = inside;
+        SemuComposeSample.pressed = pressed;
+        SemuComposeSample.pointer_x = pointerX;
+        SemuComposeSample.pointer_y = pointerY;
+        pthread_mutex_unlock(&SemuComposeSampleLock);
+    }
+
+    class void cursor(struct SemuRenderFrameGl* frame) {  // the frame's cursor from the last sample, through the policy RetroArch's bridge uses
+        pthread_mutex_lock(&SemuComposeSampleLock);
+        struct SemuComposePointerSample pointer;
+        memcpy(&pointer, &SemuComposeSample, sizeof(struct SemuComposePointerSample));
+        pthread_mutex_unlock(&SemuComposeSampleLock);
+        SemuCursorPolicy.fill(SemuComposition.touch_index, pointer.known && pointer.inside,
+            (int)pointer.pointer_x, (int)pointer.pointer_y, pointer.pressed,
+            frame->framebuffer_width, frame->framebuffer_height,
+            &frame->cursor.visible, &frame->cursor.x, &frame->cursor.y, &frame->cursor.pressed);
     }
 
     class bool enabled() {
@@ -110,6 +148,7 @@ class SemuCompose {
         frame.layout_variant = SEMU_RENDER_LAYOUT_AUTO;
         frame.get_proc = getProc;
         frame.context_generation = 1ULL;
+        SemuCompose.cursor(&frame);
         struct SemuComposeRect drawn[2];
         memset(drawn, 0, sizeof(drawn));
         if (SemuComposition.stacked) {

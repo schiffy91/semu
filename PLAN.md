@@ -824,6 +824,41 @@ Status: being designed (workflow mods-design, with critique) while the radial se
     JoyconPair on Player1 and Handheld, and in 3 minutes no controller applet and no "No matching
     controllers" line followed. Docked logged "EnableDockedMode set to: True" and the Pro Controller at
     Player1. Lavapipe does not take the game past its boot frames, so its picture waits for the Deck.
+- Item 2 (right trackpad pointer), the cursor (radial follow-up F3): built 2026-10-04 and observed in the
+  podman VM; the Deck rerun of radial-check cases 3, 4 and 6-8 is open. Standalone Azahar had no Semu arrow
+  (semu_compose zeroed the frame's cursor; only Azahar's Qt cursor showed). Now semu-touch.patch hands every
+  GRenderWindow mouse move, press, release and leave to `semu_pointer_sample`, which the Vulkan layer and
+  the macOS stand-in export (found as semu_touch_unmap is, retried until the layer has loaded); SemuCompose
+  keeps the last sample under its own mutex and fills each frame's cursor through `SemuCursorPolicy`
+  (src/renderer/retroarch/cursor_policy.btrc: header-free, the one RetroArch's bridge uses, gated on
+  SEMU_RENDER_TOUCH_SURFACE_INDEX, kept beside the bridge because only that directory reaches RetroArch's
+  build). While Semu draws, the render widget's own cursor is blank (on the child widget, so GMainWindow's
+  show and hide of render_window's cursor never bring it back): one arrow. Without Semu the patch changes
+  nothing. A held press is now activity (a drag that pauses keeps the arrow; it hides 3 s after the
+  release), and SEMU_RENDER_DEBUG logs `semu-renderer: cursor shown|hidden X,Y ms=<epoch ms>` once per show
+  and hide. Harness: the Deck's cursor-N was shot at +0.5 s while inject.sh's move landed 0.9-1.16 s after
+  its time (touch_rect forked per process over /proc); inject.sh now finds the emulator with one
+  `grep -l -z` over /proc/*/environ, reads the touch rectangle a second before the move is due and notes
+  each step's move, press and release times; input-check.sh shoots cursor-N at +1.5 s and idle-N at +5.0 s
+  and writes `arrow-N: ok` when tests/deck/cursor-arrow.sh finds the whole arrow (at 800 rows 276 white
+  fill and 196 black outline pixels) with its tip where inject.sh put the pointer in cursor-N and not in
+  idle-N; without ImageMagick on the Deck the verdict reads unchecked and the script runs on the fetched
+  shots. On the F3 Deck captures it reads 276/276 and 196/196 in nds idle-2 at 954,369 and in idle-3 at
+  701,537, and nothing in the early cursor-1 and cursor-2.
+  Observed in the podman VM (Rosetta, lavapipe and llvmpipe, Xvfb at 1280x800), this tree on 034d62d:
+  `tests/visual/vm-azahar-layer.sh` with OoT 3D (a scratch copy of the ROM) and Azahar rebuilt with the
+  patch: 1.5 s after a relative move to 40,44 xwd held the whole arrow there (276/276, 196/196), maim with
+  and without the X cursor were identical (Azahar's own cursor blank), and 5 s after the move the arrow was
+  gone; the renderer logged shown at the move and hidden 3.2 s later, and a 2 s held click kept it shown
+  until 3 s after its release. `tests/integration/touch-x11.sh`, its moves now relative from the top left as
+  on the Deck: PASS on both RetroArch routes (the taps within 1 percent, the bezel tap pressing nothing, the
+  arrow whole at 1.5 s and gone at 5 s). macOS builds the stand-in with `_semu_pointer_sample` exported; its
+  picture is not checked (no window on the Mac display). Contracts: right_trackpad (held press, the debug
+  transitions and line, the shared policy), standalone_cursor (the index gate, compose's cursor under the
+  sample lock before the renderer reads the frame, both exports and the version script, the patch's
+  forwarders and blank cursor, cursor-arrow.sh's rows equal renderer_cursor's arrow) and deck_harness (the
+  capture times, the one-grep lookup ahead of the due time, the step notes, the arrow verdict); 11 mutations
+  each failed their checks.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 

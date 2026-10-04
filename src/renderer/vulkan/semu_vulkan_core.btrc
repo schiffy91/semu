@@ -573,4 +573,10 @@ class SemuVulkanCore {
         if (SemuVulkan.debug) { fprintf(stderr, "semu-vulkan: touch %.0f,%.0f -> %d %.0f,%.0f\n", x, y, result, result > 0 ? *emulatorX : 0.0f, result > 0 ? *emulatorY : 0.0f); }
         return result;
     }
+
+    // The emulator's window pointer on every mouse move, press, release and leave (Azahar's
+    // semu-touch patch), for the cursor Semu draws on the next composed frame.
+    class void samplePointer(float pointerX, float pointerY, int pressed, int inside) {
+        SemuCompose.sample(pointerX, pointerY, pressed != 0, inside != 0);
+    }
 }

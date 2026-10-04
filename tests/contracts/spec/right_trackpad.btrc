@@ -15,6 +15,8 @@ import ../../../src/launch/plan.btrc;
 import ../../../src/renderer/renderer_abi.btrc;
 import ../../../src/renderer/renderer_cursor.btrc;
 import ../../../src/renderer/retroarch/surface_math.btrc;
+import ../../../src/renderer/retroarch/cursor_policy.btrc;
+import ./standalone_cursor.btrc;
 
 class RightTrackpadSpecText {
     class string read(Fixture fixture, string relative) {
@@ -108,6 +110,11 @@ class RightTrackpadSpecCursor {  // Semu draws the pointer on touch systems and 
         contract.expect(!RendererCursor.update(&state, &sample, 4100LL), "it hides after three idle seconds");
         sample.pressed = 1;
         contract.expect(RendererCursor.update(&state, &sample, 9000LL), "a press shows it again");
+        contract.expect(RendererCursor.update(&state, &sample, 12500LL) && RendererCursor.update(&state, &sample, 15999LL), "a held press keeps it shown past three seconds, as a drag that pauses");
+        sample.pressed = 0;
+        contract.expect(RendererCursor.update(&state, &sample, 16000LL) && RendererCursor.update(&state, &sample, 18999LL) && !RendererCursor.update(&state, &sample, 19000LL), "the release is the last activity: hidden three seconds after it");
+        sample.pressed = 1;
+        RendererCursor.update(&state, &sample, 19500LL);
         sample.visible = 0;
         contract.expect(!RendererCursor.update(&state, &sample, 9001LL) && state.known == 0, "a frame without a pointer hides it and forgets the position");
         sample.visible = 1;
@@ -119,6 +126,11 @@ class RightTrackpadSpecCursor {  // Semu draws the pointer on touch systems and 
         sample.pressed = 1;
         contract.expect(RendererCursor.update(&state, &sample, 9004LL), "a press as the pointer comes back shows it at once");
         contract.expect(!RendererCursor.update(&state, null, 9003LL), "a frame from an older emulator build carries no cursor");
+        struct RendererCursorState reported;
+        memset(&reported, 0, sizeof(struct RendererCursorState));
+        bool shownOnce = RendererCursor.changed(&reported, true) && !RendererCursor.changed(&reported, true);
+        bool hiddenOnce = RendererCursor.changed(&reported, false) && !RendererCursor.changed(&reported, false);
+        contract.expect(shownOnce && hiddenOnce && !RendererCursor.changed(null, true), "the debug line is due once per show and once per hide");
         RendererCursor.raster(state.pixels);
         int opaque = 0;
         for (int index = 0; index < SEMU_RENDER_CURSOR_WIDTH * SEMU_RENDER_CURSOR_HEIGHT; index++) { if (state.pixels[index * 4 + 3] == 255) { opaque++; } }
@@ -148,19 +160,19 @@ class RightTrackpadSpecCursor {  // Semu draws the pointer on touch systems and 
     }
 
     class void policy(Contract contract) {
-        contract.expect(SemuRetroArchCursorPolicy.shown(1, true, 10, 10, 1280, 800), "a touch system's pointer inside the window shows");
-        contract.expect(!SemuRetroArchCursorPolicy.shown(-1, true, 10, 10, 1280, 800), "a system without a touch screen shows no cursor");
-        contract.expect(!SemuRetroArchCursorPolicy.shown(1, false, 10, 10, 1280, 800), "no cursor while RetroArch keeps the pointer from the core (its menu)");
-        contract.expect(!SemuRetroArchCursorPolicy.shown(1, true, 1280, 10, 1280, 800) && !SemuRetroArchCursorPolicy.shown(1, true, -1, 10, 1280, 800), "no cursor outside the window");
+        contract.expect(SemuCursorPolicy.shown(1, true, 10, 10, 1280, 800), "a touch system's pointer inside the window shows");
+        contract.expect(!SemuCursorPolicy.shown(-1, true, 10, 10, 1280, 800), "a system without a touch screen shows no cursor");
+        contract.expect(!SemuCursorPolicy.shown(1, false, 10, 10, 1280, 800), "no cursor while RetroArch keeps the pointer from the core (its menu)");
+        contract.expect(!SemuCursorPolicy.shown(1, true, 1280, 10, 1280, 800) && !SemuCursorPolicy.shown(1, true, -1, 10, 1280, 800), "no cursor outside the window");
         int visible = -1;
         int cursorX = -1;
         int cursorY = -1;
         int cursorPressed = -1;
-        SemuRetroArchCursorPolicy.fill(1, true, 640, 400, true, 1280, 800, &visible, &cursorX, &cursorY, &cursorPressed);
+        SemuCursorPolicy.fill(1, true, 640, 400, true, 1280, 800, &visible, &cursorX, &cursorY, &cursorPressed);
         contract.expect(visible == 1 && cursorX == 640 && cursorY == 400 && cursorPressed == 1, "the frame's cursor is the pointer where it shows, press included");
-        SemuRetroArchCursorPolicy.fill(1, true, 1280, 10, true, 1280, 800, &visible, &cursorX, &cursorY, &cursorPressed);
+        SemuCursorPolicy.fill(1, true, 1280, 10, true, 1280, 800, &visible, &cursorX, &cursorY, &cursorPressed);
         bool outside = visible == 0 && cursorX == 0 && cursorY == 0 && cursorPressed == 0;
-        SemuRetroArchCursorPolicy.fill(-1, true, 640, 400, false, 1280, 800, &visible, &cursorX, &cursorY, &cursorPressed);
+        SemuCursorPolicy.fill(-1, true, 640, 400, false, 1280, 800, &visible, &cursorX, &cursorY, &cursorPressed);
         contract.expect(outside && visible == 0 && cursorX == 0 && cursorY == 0 && cursorPressed == 0, "outside the window or off a touch system the frame's cursor is all zeros");
     }
 
@@ -176,8 +188,8 @@ class RightTrackpadSpecCursor {  // Semu draws the pointer on touch systems and 
         string build = RightTrackpadSpecText.between(runtime, "class bool build(", "class SemuRetroArchPointerBridge");
         contract.expect(RightTrackpadSpecText.before(build, "SemuRetroArchFrameBridge.cursor(frame);", "SemuRetroArchSurfaceModel.partition("), "every frame RetroArch builds carries the pointer sample");
         string cursor = RightTrackpadSpecText.between(runtime, "class void cursor(", "class bool build(");
-        contract.expect(cursor.contains("SemuRetroArchCursorPolicy.fill(SemuRetroArchSurfaces.touch_index,") && cursor.contains("(int)SemuRetroArchPointer.hover_x, (int)SemuRetroArchPointer.hover_y,") && cursor.contains("&frame->cursor.visible, &frame->cursor.x, &frame->cursor.y, &frame->cursor.pressed);")
-            && RightTrackpadSpecText.before(cursor, "semuRetroArchDisplayLock(", "SemuRetroArchCursorPolicy.fill(") && RightTrackpadSpecText.before(cursor, "SemuRetroArchCursorPolicy.fill(", "semuRetroArchDisplayUnlock(") && !cursor.contains("frame->cursor.x ="),
+        contract.expect(cursor.contains("SemuCursorPolicy.fill(SemuRetroArchSurfaces.touch_index,") && cursor.contains("(int)SemuRetroArchPointer.hover_x, (int)SemuRetroArchPointer.hover_y,") && cursor.contains("&frame->cursor.visible, &frame->cursor.x, &frame->cursor.y, &frame->cursor.pressed);")
+            && RightTrackpadSpecText.before(cursor, "semuRetroArchDisplayLock(", "SemuCursorPolicy.fill(") && RightTrackpadSpecText.before(cursor, "SemuCursorPolicy.fill(", "semuRetroArchDisplayUnlock(") && !cursor.contains("frame->cursor.x ="),
             "the bridge fills the cursor through the tested policy, from the pointer sample, under the display lock");
         string sample = RightTrackpadSpecText.between(runtime, "class void sample(", "class bool snapshot(");
         string locked = RightTrackpadSpecText.between(sample, "semuRetroArchDisplayLock(video_state_get_ptr());\n        bool stable = contextLocked", "semuRetroArchDisplayUnlock(");
@@ -188,6 +200,8 @@ class RightTrackpadSpecCursor {  // Semu draws the pointer on touch systems and 
         string postUi = RightTrackpadSpecText.between(library, "int semu_render_post_ui_gl(", "\n}\n");
         contract.expect(postUi.contains("RendererCursor.update(&SemuRenderer.cursor,") && postUi.contains("RendererFrameContract.cursor(frame)") && postUi.contains("needsGl = needsGl || cursor;") && postUi.contains("cursor ? &SemuRenderer.cursor : null"),
             "the post-UI phase follows the frame's cursor and draws when it shows");
+        contract.expect(postUi.contains("if (RendererCursor.changed(&SemuRenderer.cursor, cursor) && getenv(\"SEMU_RENDER_DEBUG\") != null)") && postUi.contains("\"semu-renderer: cursor %s %d,%d ms=%lld\\n\", cursor ? \"shown\" : \"hidden\"")
+            && postUi.contains("SemuRenderer.cursor.x, SemuRenderer.cursor.y, RendererClock.epochMilliseconds());"), "SEMU_RENDER_DEBUG logs each show and hide of the cursor with the pointer and the wall clock");
         string apply = RightTrackpadSpecText.between(post, "class bool apply(", "\n    }\n");
         contract.expect(RightTrackpadSpecText.before(apply, "RendererFinalEvidence.capture(", "RendererPostUiCompositor.drawCursor("), "the cursor draws after the final-frame capture, so screenshots never hold it");
     }
@@ -233,7 +247,7 @@ class RightTrackpadSpecCores {  // every DS and 3DS core reads Semu's pointer an
         }
     }
 
-    class void azahar(Contract contract, Fixture fixture, string target) {  // standalone Azahar keeps its own cursor and hides it when idle
+    class void azahar(Contract contract, Fixture fixture, string target) {  // standalone Azahar without Semu's layer keeps its own cursor and hides it when idle
         string config = fixture.profile("azahar", "config/azahar-emu/qt-config.ini");
         string userInterface = RightTrackpadSpecText.between(config, "[UI]\n", "\n[");
         if (userInterface.isEmpty()) { userInterface = config.contains("[UI]\n") ? config.substring(config.indexOf("[UI]\n"), config.len() - config.indexOf("[UI]\n")) : ""; }
@@ -279,5 +293,6 @@ class RightTrackpadSpecContract {
         RightTrackpadSpecCores.azahar(contract, deck, "steam-deck");
         RightTrackpadSpecCores.azahar(contract, mac, "macos");
         RightTrackpadSpecCompose.run(contract, desktop);
+        StandaloneCursorSpec.run(contract, desktop);
     }
 }

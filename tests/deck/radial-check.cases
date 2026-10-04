@@ -24,11 +24,13 @@ gba retroarch mgba 30 key:ctrl+shift+b key:ctrl+shift+v key:ctrl+k key:ctrl+j ke
 gba retroarch mgba 30 select+north dpad_down dpad_down dpad_down dpad_down south east -- Legend of Zelda, The - The Minish Cap (USA).zip
 # 3. Taps reach the melonDS core where they land: touch lines "-> surface 1 native" about 128,96
 #    and 12.8,172.8; after Next Bezel (large main, second right) the centre tap is again about
-#    128,96 (the touch map follows the live layout); cursor-1 shows Semu's arrow, idle-1 none.
+#    128,96 (the touch map follows the live layout); arrow-1, -2, -3 and -5 ok: Semu's arrow at the
+#    pointer in cursor-N (1.5 s after the token), none in idle-N (5 s after).
 nds retroarch melonds 40 move:0.5,0.5 tap:0.5,0.5 tap:0.05,0.9 key:ctrl+shift+b tap:0.5,0.5 -- Legend of Zelda, The - Phantom Hourglass*.zip
 # 4. Standalone Azahar through the Vulkan layer: "semu-vulkan: touch X,Y -> 1 160,120" before and
-#    after Next Bezel; the toast and the new layout composed; cursor-1 (type 3) shows Azahar's own
-#    X cursor, idle-1 none (Azahar blanks it 2.5 s after the last motion).
+#    after Next Bezel; the toast and the new layout composed; arrow-1, -2 and -4 ok: Semu draws its
+#    arrow over Azahar too (semu_pointer_sample), and cursor-N (type 3, gamescope's cursor plane
+#    included) shows that one arrow, Azahar's own cursor blank on its render widget.
 n3ds azahar - 50 move:0.5,0.5 tap:0.5,0.5 key:ctrl+shift+b tap:0.5,0.5 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
 # 5. The Semu menu over a standalone that keeps running under it (Azahar menu.pause none): Ctrl+M
 #    opens it (journal 1, ui.menu "(keyboard)", Azahar's own Ctrl+M mute is blanked), the pad moves

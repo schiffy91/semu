@@ -28,7 +28,10 @@
 # byte SEMU_INJECT_EVIDENCE_FROM on (this launch's receipts, a bezel switch's included), N the
 # emulator's SEMU_RENDER_TOUCH_SURFACE_INDEX; the rectangle counts framebuffer pixels from the bottom
 # left, and the framebuffer is taken to be the game's window. SEMU_INJECT_ON=game types into the
-# game's own display instead, under the same rule. Notes go to stdout.
+# game's own display instead, under the same rule. The rectangle is read a second before a move
+# or tap is due (the emulator found with one grep over every process's environment), so the
+# pointer moves on time; each note names the token's step and when it moved, pressed and released
+# on the shared clock. Notes go to stdout.
 set -u
 
 fraction() {  # FX,FY: prints "FX FY" when both are numbers from 0 to 1
@@ -97,9 +100,16 @@ own() {  # PID: is this process in this case (this mount namespace, this case's 
   { tr '\0' '\n' < "/proc/$1/environ"; } 2>/dev/null | grep -q -x "SEMU_INJECT_START_MS=$start_ms"
 }
 
-own_case() {  # PID: does this process carry this case's clock? The emulator runs inside Semu's own bubblewrap, a
-  # nested mount namespace, so only the inherited SEMU_INJECT_START_MS can tell it belongs to this case
-  { tr '\0' '\n' < "/proc/$1/environ"; } 2>/dev/null | grep -q -x "SEMU_INJECT_START_MS=$start_ms"
+emulator_environ() {  # the environ file of this case's emulator. It runs inside Semu's own bubblewrap, a nested mount
+  # namespace, so only the inherited SEMU_INJECT_START_MS tells it belongs to this case: one grep over every process's
+  # environment finds the few that carry it (a fork per process took a second on the Deck), and the emulator is the one
+  # Semu gave a render state directory
+  local carriers
+  carriers="$(grep -l -z -x "SEMU_INJECT_START_MS=$start_ms" /proc/[0-9]*/environ 2>/dev/null)"
+  [ -n "$carriers" ] || return 1
+  printf '%s\n' "$carriers" | while IFS= read -r file; do
+    grep -q -z '^SEMU_RENDER_STATE_DIR=' "$file" 2>/dev/null && { echo "$file"; break; }
+  done
 }
 
 displays() {  # this case's Xwaylands, by the display each serves (argv 1)
@@ -117,13 +127,9 @@ wait_for() {  # MS on the shared clock
 }
 
 touch_rect() {  # prints "LEFT TOP WIDTH HEIGHT FRAME_W FRAME_H SURFACE" for the touch screen as drawn now, or a reason and fails
-  local path environment="" index state line
-  for path in /proc/[0-9]*; do
-    own_case "${path#/proc/}" || continue
-    environment="$({ tr '\0' '\n' < "$path/environ"; } 2>/dev/null)"
-    case "$environment" in *SEMU_RENDER_STATE_DIR=*) break ;; esac
-    environment=""
-  done
+  local file environment="" index state line
+  file="$(emulator_environ)"
+  [ -n "$file" ] && environment="$({ tr '\0' '\n' < "$file"; } 2>/dev/null)"
   [ -n "$environment" ] || { echo "no emulator of this case is running"; return 1; }
   index="$(printf '%s\n' "$environment" | sed -n 's/^SEMU_RENDER_TOUCH_SURFACE_INDEX=//p')"
   state="$(printf '%s\n' "$environment" | sed -n 's/^SEMU_RENDER_STATE_DIR=//p')"
@@ -161,6 +167,12 @@ for token in "$@"; do
   what="$(describe "$token")"
   if [ -n "$what" ]; then
     due="$(at_ms "$first" "$gap" "$step")"
+    resolved=no
+    case "$token" in
+      move:*|tap:*)  # the touch screen is found a second ahead, so the pointer moves on time
+        wait_for "$((due - 1000))"
+        rect="$(touch_rect)" && resolved=yes ;;
+    esac
     wait_for "$due"
     began="$(elapsed)"; when="$(awk -v due="$due" 'BEGIN { printf "%.3f", due / 1000 }') (began $began)"
     case "$token" in
@@ -169,17 +181,21 @@ for token in "$@"; do
         sent=$?
         echo "inject: $when $token sent to $injector (xdotool $sent)" ;;
       move:*|tap:*)
-        if rect="$(touch_rect)"; then
+        [ "$resolved" = yes ] || { rect="$(touch_rect)" && resolved=yes; }  # no receipt a second ago: one more look
+        if [ "$resolved" = yes ]; then
           read -r left top width height frame_width frame_height surface <<< "$rect"
           read -r across down <<< "$(fraction "${token#*:}")"
           read -r column row <<< "$(point "$across" "$down" "$left" "$top" "$width" "$height")"
           send mousemove_relative -- -4000 -4000; sleep 0.05
           send mousemove_relative -- "$column" "$row"
-          moved=$?
-          if [ "${token%%:*}" = tap ]; then sleep 0.1; send mousedown 1; sleep 0.15; send mouseup 1; fi
-          echo "inject: $when $token -> $column,$row (surface $surface at $left,$top ${width}x$height in ${frame_width}x$frame_height) sent to $injector (xdotool $moved)"
+          moved=$?; times="moved at $(elapsed)"
+          if [ "${token%%:*}" = tap ]; then
+            sleep 0.1; send mousedown 1; times="$times, down at $(elapsed)"
+            sleep 0.15; send mouseup 1; times="$times, up at $(elapsed)"
+          fi
+          echo "inject: $when step $((step + 1)) $token -> $column,$row (surface $surface at $left,$top ${width}x$height in ${frame_width}x$frame_height) sent to $injector (xdotool $moved), $times"
         else
-          echo "inject: $when $token skipped: $rect"
+          echo "inject: $when step $((step + 1)) $token skipped: $rect"
         fi ;;
     esac
   fi

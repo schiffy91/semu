@@ -71,7 +71,7 @@ stdenv.mkDerivation {
     btrcpy vulkan/semu_vulkan_layer.btrc -o semu_vulkan_layer.c --strict-imports --no-cache --no-stdlib --no-dce
     $CC -c semu_vulkan_layer.c -o semu_vulkan_layer.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function -Wno-incompatible-pointer-types -D_GNU_SOURCE -I. -Ipreload
     cat > vulkan.map <<'MAP'
-    { global: semu_vkGetInstanceProcAddr; semu_vkGetDeviceProcAddr; semu_touch_unmap; local: *; };
+    { global: semu_vkGetInstanceProcAddr; semu_vkGetDeviceProcAddr; semu_touch_unmap; semu_pointer_sample; local: *; };
     MAP
     $CC -shared -Wl,-soname,libsemuvulkan.so -Wl,--version-script=vulkan.map \
       semu_vulkan_layer.o -L. -Wl,-rpath,$out/lib -lsemurenderer -lEGL -ldl -o libsemuvulkan.so
