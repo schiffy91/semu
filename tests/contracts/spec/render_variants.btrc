@@ -231,6 +231,13 @@ class RenderVariantChoiceSpec {  // a system's own choice beats the global switc
         string labels = plain.get("sections").at(0).get("fields").stringify();
         contract.contains(labels, "\"BEZELS (UNLESS A SYSTEM CHOOSES)\"", "the global bezel switch says it is only the default");
         contract.contains(labels, "\"CRT SHADERS (UNLESS A SYSTEM CHOOSES)\"", "the global shader switch says it is only the default");
+        SemuPlan retired = RenderVariantTools.plan(fixture, "{\"visual\":{\"systems\":{\"gb\":{\"bezel_variant\":\"retired\",\"shader_variant\":\"retired\"}}}}");
+        contract.expect(SemuRenderEnvironment.bezelVariantId(retired, gb).equals("dmg") && SemuRenderEnvironment.shaderVariantId(retired, gb).equals("dmg"), "a stale per-system id (a renamed variant, a typo through semu settings) resolves to the manifest default, bezel and shader");
+        Vector<string> fallback = SemuRenderEnvironment.compile(retired, gb, "retroarch", "/state/retroarch", diagnostics);
+        Vector<string> plainCompile = SemuRenderEnvironment.compile(fixture.plan, gb, "retroarch", "/state/retroarch", diagnostics);
+        string defaultBezel = "";
+        for line in plainCompile { if (line.startsWith("SEMU_RENDER_BEZEL_ID=")) { defaultBezel = line; } }
+        contract.expect(!defaultBezel.isEmpty() && fallback.contains(defaultBezel) && fallback.contains("SEMU_RENDER_BEZELS=1") && fallback.contains("SEMU_RENDER_SHADERS=1"), "the launch then draws the default bezel (" + defaultBezel + ") and shader instead of nothing");
         SemuVariantChoice stale = SemuRenderVariants.choice(RenderVariantTools.plan(fixture, "{\"visual\":{\"systems\":{\"gb\":{\"bezel_variant\":\"retired\"}}}}"), gb, "bezel");
         contract.expect(stale.current().equals("dmg") && stale.lastReal == 0, "a stale per-system id starts on the default");
         SemuVariantChoice none = SemuRenderVariants.choice(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false}}"), gb, "bezel");

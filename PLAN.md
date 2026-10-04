@@ -1734,6 +1734,9 @@ Update this block whenever a milestone criterion changes state.
   drawn over a closed menu; coreX's width arguments swapped or its surface index pinned to 0; the
   cursor's x zeroed in the fill or after it in the bridge; and the image reload bypassing the
   predicate. `nix build .#semu-renderer` and `.#retroarch` (macOS) build with the moved code.
+  Two more contracts close review gaps in the choices: On/Off after Next Bezel returns to the bezel Next
+  chose (it returned to the launch's), and a stale per-system id resolves to the manifest default in
+  `bezelVariantId`/`shaderVariantId` and the launch draws that default (both caught by a mutation).
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a

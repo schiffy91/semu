@@ -90,6 +90,12 @@ class VisualCycleSwitches {  // the On/Off chords: none, then back to the last r
         JSONValue saved = VisualCycleBed.saved(launch);
         contract.expect(InputDeliveryTools.record(launch.stateDir, 1, SemuActions.bezelSelect(), 4) && SemuJson.textAt(saved, "visual.systems.nds.bezel_variant").equals("stacked"), "a second On/Off returns to stacked");
         contract.expect(SemuJson.get(saved, "visual.bezels").isNull() && launch.bezelsOn, "the On/Off chord never writes the global switch while the system has choices");
+        SemuLaunchPlan cycled = VisualCycleBed.launch(fixture, "toggle-after-next", "");
+        SemuActionExecutor.execute(cycled, "visual.bezel.next", SEMU_SOURCE_X11);  // from the shell to main_right, index 1
+        SemuActionExecutor.execute(cycled, "visual.bezels.toggle", SEMU_SOURCE_X11);
+        SemuActionExecutor.execute(cycled, "visual.bezels.toggle", SEMU_SOURCE_X11);  // one source: two presses, never a duplicate
+        contract.expect(InputDeliveryTools.records(cycled.stateDir) == 3 && InputDeliveryTools.record(cycled.stateDir, 1, SemuActions.bezelSelect(), 6) && InputDeliveryTools.record(cycled.stateDir, 2, SemuActions.bezelSelect(), 1), "On/Off after Next Bezel goes to none, then back to the bezel Next chose, not the launch's");
+        contract.expect(SemuJson.textAt(VisualCycleBed.saved(cycled), "visual.systems.nds.bezel_variant").equals("main_right"), "and saves that bezel again");
         memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
     }
 }
