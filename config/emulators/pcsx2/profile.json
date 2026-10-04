@@ -38,7 +38,7 @@
             "Ctrl": "Control"
           },
           "keys": {
-            "+": "Plus",
+            "+": "NumpadPlus",
             "-": "Minus",
             "Enter": "Return",
             "Esc": "Escape"
@@ -48,6 +48,12 @@
           "separator": " & "
         }
       }
+    },
+    "keyboard_guard": {
+      "platforms": [
+        "linux"
+      ],
+      "doc": "A pad block line given as {keyboard_key, line} is a game button's keyboard alternate. On Linux, where Steam types Semu's chords into the game, it is left out when a config/input chord ends on that key (keyboard_key spelt as the chords spell keys), because PCSX2 2.6.3 registers pad buttons as axis handlers that fire on every key event whatever the modifiers (InputManager.cpp:880-891, 1118-1122): Ctrl+A would also press Square. macOS keeps them, as RetroArch keeps its player keys there."
     }
   },
   "controller": {
@@ -59,7 +65,8 @@
     "purpose": "PCSX2 profile tree content (config/inis/PCSX2.ini plus config/inputprofiles/Steam Deck.ini) as data, substituted by Pcsx2Emitter. Variables: ${pad} is the packaged platform's first SDL gamepad identity, ${bios_directory} the resolved read-only firmware folder, ${renderer_key}/${renderer_value} the contract's required OpenGL setting, ${emulator_name} the contract name.",
     "grammar": "PCSX2's ini wire format: one '<device>/<control>' binding per line (SDL3 setting names: FaceSouth/FaceEast/FaceWest/FaceNorth by position; the SDL2 names A/B/X/Y are migrated only while that pad is already connected, so at startup PCSX2 rejects them), an alternative ('Keyboard/<key>') as the same key repeated on the next line (PCSX2 reads repeated keys as a list and rejects ' | ' as an invalid binding), 'Keyboard/Control & Keyboard/P' hotkey chords (translated by Pcsx2Emitter from the keymap).",
     "menu": "ui.menu is Semu's alone: OpenPauseMenu is not bound, or the radial's Ctrl+M would open PCSX2's pause menu under Semu's and the menu's pause would then unpause it.",
-    "hotkeys": "The keymap is written into PCSX2.ini [Hotkeys], the only hotkeys PCSX2 reads without a per-game input profile, and into the Steam Deck input profile as well. Seen in the podman VM 2026-10-03: with the hotkeys only in the profile, Ctrl+P and Ctrl+S did nothing in PCSX2 2.6.3."
+    "hotkeys": "The keymap is written into PCSX2.ini [Hotkeys], the only hotkeys PCSX2 reads without a per-game input profile, and into the Steam Deck input profile as well. Seen in the podman VM 2026-10-03: with the hotkeys only in the profile, Ctrl+P and Ctrl+S did nothing in PCSX2 2.6.3.",
+    "keyboard": "Keyboard/Enter is Qt's keypad Enter (QtKeyCodes.cpp:75-76; the main key is Return), so Start keeps it everywhere. Ctrl++ is written Keyboard/NumpadPlus: Steam types its + as KEYPAD_PLUS, which Qt reports as Key_Plus with the keypad modifier, named NumpadPlus (QtKeyCodes.cpp:514-517, 540-541, 595); main-row Plus would never match."
   },
   "blocks": {
     "pad_sections": [
@@ -78,25 +85,55 @@
       "[Pad1]",
       "Type = DualShock2",
       "Up = ${pad}/DPadUp",
-      "Up = Keyboard/Up",
+      {
+        "keyboard_key": "Up",
+        "line": "Up = Keyboard/Up"
+      },
       "Right = ${pad}/DPadRight",
-      "Right = Keyboard/Right",
+      {
+        "keyboard_key": "Right",
+        "line": "Right = Keyboard/Right"
+      },
       "Down = ${pad}/DPadDown",
-      "Down = Keyboard/Down",
+      {
+        "keyboard_key": "Down",
+        "line": "Down = Keyboard/Down"
+      },
       "Left = ${pad}/DPadLeft",
-      "Left = Keyboard/Left",
+      {
+        "keyboard_key": "Left",
+        "line": "Left = Keyboard/Left"
+      },
       "Triangle = ${pad}/FaceNorth",
-      "Triangle = Keyboard/I",
+      {
+        "keyboard_key": "I",
+        "line": "Triangle = Keyboard/I"
+      },
       "Circle = ${pad}/FaceEast",
-      "Circle = Keyboard/X",
+      {
+        "keyboard_key": "X",
+        "line": "Circle = Keyboard/X"
+      },
       "Cross = ${pad}/FaceSouth",
-      "Cross = Keyboard/Z",
+      {
+        "keyboard_key": "Z",
+        "line": "Cross = Keyboard/Z"
+      },
       "Square = ${pad}/FaceWest",
-      "Square = Keyboard/A",
+      {
+        "keyboard_key": "A",
+        "line": "Square = Keyboard/A"
+      },
       "Select = ${pad}/Back",
-      "Select = Keyboard/Backspace",
+      {
+        "keyboard_key": "Backspace",
+        "line": "Select = Keyboard/Backspace"
+      },
       "Start = ${pad}/Start",
-      "Start = Keyboard/Enter",
+      {
+        "keyboard_key": "KP_Enter",
+        "line": "Start = Keyboard/Enter"
+      },
       "L1 = ${pad}/LeftShoulder",
       "L2 = ${pad}/+LeftTrigger",
       "R1 = ${pad}/RightShoulder",

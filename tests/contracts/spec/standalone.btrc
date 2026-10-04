@@ -226,7 +226,8 @@ class StandaloneSpecContract {
         contract.contains(graphics, "[Settings]\nAspectRatio = 5\nCustomAspectRatioWidth = 4\nCustomAspectRatioHeight = 3", target + " dolphin draws 4:3 with no VI aspect");
         contract.contains(main, "[Semu Controller Modes]\nWiimoteProfile = Semu Wiimote\nNunchukProfile = Semu Nunchuk\nClassicProfile = Semu Classic\nGameCubeProfile = Semu GameCube", target + " dolphin names the mode profiles");
         contract.contains(pad, "[GCPad1]\nDevice = " + StandaloneSpecContract.identity(fixture, "dolphin_pad"), target + " dolphin GameCube pad is the target pad");
-        contract.contains(wiimote, "Device = " + StandaloneSpecContract.identity(fixture, "dolphin_wiimote"), target + " dolphin Wiimote is the target pad");
+        contract.contains(wiimote, "Device = " + StandaloneSpecContract.identity(fixture, "dolphin_pointer") + "\nButtons/A = (`Return` & !`Ctrl`)|`Click 1`|`" + StandaloneSpecContract.identity(fixture, "dolphin_pad") + ":Button S`", target + " dolphin Wiimote buttons read the target pad, beside the pointer");
+        contract.contains(wiimote, "IMUGyroscope/Pitch Up = `" + StandaloneSpecContract.identity(fixture, "dolphin_wiimote") + ":Gyro Pitch Up`", target + " dolphin Wiimote motion reads the motion device");
         contract.lacks(hotkeys, "General/Stop =", target + " dolphin leaves quit to the supervisor on Linux");
         contract.contains(hotkeys, "Save State/Save to Selected Slot = @(Ctrl+S)", target + " dolphin saves to the selected slot");
         contract.contains(hotkeys, "General/Toggle Pause = @(Ctrl+P)", target + " dolphin pause chord");
@@ -268,7 +269,7 @@ class StandaloneSpecContract {
         contract.contains(input, "SaveStateToSlot = Keyboard/Control & Keyboard/S", target + " pcsx2 save chord");
         contract.contains(input, "LoadStateFromSlot = Keyboard/Control & Keyboard/A", target + " pcsx2 load chord");
         contract.lacks(input, "OpenPauseMenu", target + " pcsx2 binds no pause menu: ui.menu is Semu's");
-        contract.contains(input, "ToggleTurbo = Keyboard/Control & Keyboard/Plus", target + " pcsx2 fast-forward chord");
+        contract.contains(input, "ToggleTurbo = Keyboard/Control & Keyboard/NumpadPlus", target + " pcsx2 fast-forward chord");
         // Seen in the VM: PCSX2 loads an input profile only through a per-game ini, so the profile's
         // [Hotkeys] alone left Ctrl+P and Ctrl+S dead. PCSX2.ini carries them, Return being the main Enter.
         contract.contains(main, "[Hotkeys]\nTogglePause = Keyboard/Control & Keyboard/P\nToggleFullscreen = Keyboard/Control & Keyboard/Return\n", target + " pcsx2 reads its hotkeys from PCSX2.ini");
@@ -320,7 +321,7 @@ class StandaloneSpecContract {
         contract.contains(main, "SaveFilePath = \"" + saves + "\"", target + " melonDS saves stay in the state root");
         contract.contains(main, "HK_Pause = 67108944", target + " melonDS pause chord");
         contract.contains(main, "HK_SwapScreens = 83886081", target + " melonDS swap chord");
-        contract.contains(main, "HK_FastForwardToggle = 67108907", target + " melonDS fast-forward chord");
+        contract.contains(main, "HK_FastForwardToggle = 603979819", target + " melonDS fast-forward chord");
     }
 
     class void azaharProfile(Contract contract, Fixture fixture, string target) {

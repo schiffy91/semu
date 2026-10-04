@@ -102,6 +102,32 @@ class SemuChords {
         return quoted ? "\"" + value + "\"" : value;
     }
 
+    class string spelling(string key) {  // one key as config/input chords name it: case-blind, Return is Enter, Escape is Esc
+        string lower = key.toLower();
+        if (lower.equals("return")) { return "enter"; }
+        if (lower.equals("escape")) { return "esc"; }
+        return lower;
+    }
+
+    class bool taken(JSONValue inputDefinition, string key) {  // some config/input chord ends on KEY
+        JSONValue actions = inputDefinition == null ? null : inputDefinition.get("actions");
+        if (actions == null || !actions.isObject() || key.isEmpty()) { return false; }
+        for action in actions.keys() {
+            string chord = SemuJson.textAt(actions.get(action), "chord");
+            if (!chord.isEmpty() && SemuChords.spelling(SemuChords.key(chord)).equals(SemuChords.spelling(key))) { return true; }
+        }
+        return false;
+    }
+
+    class string finalKey(JSONValue encoding, string chord) {  // the key a chord ends on, as this encoding names a key on its own
+        string key = SemuChords.key(chord);
+        JSONValue whole = encoding == null ? null : encoding.get("whole");
+        if (whole != null && whole.isObject() && whole.has(key)) { return SemuJson.text(whole.get(key)); }
+        string mapped = SemuChords.mapped(encoding == null ? null : encoding.get("keys"), key, false);
+        if (encoding != null && SemuJson.textAt(encoding, "key_case").equals("lower")) { mapped = mapped.toLower(); }
+        return SemuChords.formatted(encoding == null ? "" : SemuJson.textAt(encoding, "key_format"), mapped);
+    }
+
     class Vector<string> keys(JSONValue inputDefinition, JSONValue encoding) {  // every config/input chord as this encoding writes it
         Vector<string> result = [];
         JSONValue actions = inputDefinition == null ? null : inputDefinition.get("actions");
@@ -291,6 +317,12 @@ class SemuProfileContext {
     }
 
     public void renderLine(Vector<string> output, JSONValue value, SemuBindings bindings, SemuBindings groups) {
+        if (value.isObject() && value.has("keyboard_key")) {  // a game button's keyboard alternate: dropped where a Semu chord ends on its key
+            JSONValue guard = SemuJson.get(self.emulator.profile, "compiler.keyboard_guard.platforms");
+            bool guarded = SemuJson.strings(guard).contains(self.plan.platform);
+            if (!guarded || !SemuChords.taken(self.plan.input == null ? null : self.plan.input.definition, SemuJson.textAt(value, "keyboard_key"))) { output.push(bindings.render(SemuJson.textAt(value, "line"))); }
+            return;
+        }
         if (value.isObject()) {
             if (!bindings.get(SemuJson.textAt(value, "if")).isEmpty()) { output.push(bindings.render(SemuJson.textAt(value, "line"))); }
             return;

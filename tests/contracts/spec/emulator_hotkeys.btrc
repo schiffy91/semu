@@ -103,7 +103,12 @@ class EmulatorHotkeyDefaults {  // a native default that shares a Semu chord is 
             blanked++;
             contract.contains(main, "Shortcuts\\" + setting + "\\KeySeq=\nShortcuts\\" + setting + "\\KeySeq\\default=false\n", target + " azahar writes its colliding default empty");
         }
-        contract.expect(blanked >= 7, f"{target} azahar blanks Audio Mute, both 3D factors, Browse Rooms, Frame Advancing, Status Bar and Exit Fullscreen at least: {blanked}");
+        Vector<string> pinned = [];
+        for (int index = 0; defaults.isArray() && index < defaults.size(); index++) { pinned.push(SemuJson.textAt(defaults.at(index), "setting") + "=" + SemuJson.textAt(defaults.at(index), "key")); }
+        for pair in ["Main%20Window\\Audio%20Mute\\Unmute=Ctrl+M", "Main%20Window\\Decrease%203D%20Factor=Ctrl+-", "Main%20Window\\Increase%203D%20Factor=Ctrl++", "Main%20Window\\Multiplayer%20Browse%20Public%20Rooms=Ctrl+B", "Main%20Window\\Toggle%20Frame%20Advancing=Ctrl+A", "Main%20Window\\Toggle%20Status%20Bar=Ctrl+S", "Main%20Window\\Exit%20Fullscreen=Esc", "Main%20Window\\Exit%20Azahar=Ctrl+Q"] {
+            contract.expect(pinned.contains(pair), target + " azahar vendors config.cpp:59-102's colliding default " + pair);
+        }
+        contract.expect(blanked == 8, f"{target} azahar blanks exactly Audio Mute, both 3D factors, Browse Rooms, Frame Advancing, Status Bar, Exit Fullscreen and, on Linux, Exit Azahar: {blanked}");
         for layout in ["Swap%20Screens", "Toggle%20Screen%20Layout", "Rotate%20Screens%20Upright"] {
             contract.contains(main, "Shortcuts\\Main%20Window\\" + layout + "\\KeySeq=\n", target + " azahar never changes the screen layout SemuCompose re-derives");
         }

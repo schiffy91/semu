@@ -119,7 +119,7 @@ class EmulatorRuntimeSpecProfiles {
         contract.contains(fixture.profile("dolphin", "dolphin-user/Config/Hotkeys.ini"), "General/Toggle Pause = @(Ctrl+P)", f"{targetId}: dolphin pause chord");
         contract.contains(fixture.profile("ppsspp", "config/ppsspp/PSP/SYSTEM/controls.ini"), "Pause (no menu) = 1-113:1-44", f"{targetId}: ppsspp pause chord");
         contract.contains(fixture.profile("melonds", "config/melonDS/melonDS.toml"), "HK_Pause = 67108944", f"{targetId}: melonDS pause chord");
-        contract.contains(fixture.profile("pcsx2", "config/PCSX2/inputprofiles/Steam Deck.ini"), "ToggleTurbo = Keyboard/Control & Keyboard/Plus", f"{targetId}: pcsx2 turbo chord");
+        contract.contains(fixture.profile("pcsx2", "config/PCSX2/inputprofiles/Steam Deck.ini"), "ToggleTurbo = Keyboard/Control & Keyboard/NumpadPlus", f"{targetId}: pcsx2 turbo chord");
         contract.contains(fixture.profile("pcsx2", "config/PCSX2/inis/PCSX2.ini"), "Bios = " + fixture.plan.path("emulation_root") + "/PCSX2/config/bios", f"{targetId}: pcsx2 firmware is the read-only library BIOS folder");
     }
 }

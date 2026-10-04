@@ -31,7 +31,7 @@
             "Enter": "66",
             "Backspace": "67",
             "-": "69",
-            "+": "81",
+            "+": "157",
             "Tab": "61",
             "Space": "62",
             "Up": "19",
@@ -182,7 +182,8 @@
     "actions": "Pause without UI, screenshot, fullscreen, previous/next state slot, explicit load/save, and fast-forward are compiled from the shared Semu keymap into PPSSPP MultiInputMapping chords. PPSSPP's own Pause (its menu) is not bound: ui.menu is Semu's alone, or Ctrl+M would open both menus.",
     "rendering": "OpenGL, horizontal output, non-VR presentation, no stretch/crop/integer scaling, and an empty post-shader chain keep the managed presentation contract deterministic while PPSSPP's live rectangle still adapts to framebuffer size and aspect.",
     "storage": "Both generated INI files are deployed into the isolated XDG memstick. PPSSPP creates SAVEDATA, PPSSPP_STATE, screenshots, cache, and other writable content below that same Semu-owned root.",
-    "save_states": "ppsspp.ini pins StateSlot = 0 and SaveStateSlotCount = 5 (Core/Config.cpp:268,274, the defaults), so each launch starts on the slot Semu's counter starts on; Next/Previous Slot wrap over those five (Core/SaveState.cpp:353-359) and PPSSPP shows slot + 1 (SaveState.cpp:822)."
+    "save_states": "ppsspp.ini pins StateSlot = 0 and SaveStateSlotCount = 5 (Core/Config.cpp:268,274, the defaults), so each launch starts on the slot Semu's counter starts on; Next/Previous Slot wrap over those five (Core/SaveState.cpp:353-359) and PPSSPP shows slot + 1 (SaveState.cpp:822).",
+    "keypad_plus": "Ctrl++ (Fast-forward) is 1-113:1-157: Steam types its + as KEYPAD_PLUS, which SDL reports as SDLK_KP_PLUS and PPSSPP maps to NKCODE_NUMPAD_ADD 157 (SDL/NKCodeFromSDL.h:79 at v1.20.4); NKCODE_PLUS 81 is the main-row key and never arrived."
   },
   "actions": {
     "external": [

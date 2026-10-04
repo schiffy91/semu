@@ -51,6 +51,7 @@ import ./spec/menu_modal.btrc;
 import ./spec/input_devices.btrc;
 import ./spec/retroarch_keyboard.btrc;
 import ./spec/emulator_hotkeys.btrc;
+import ./spec/emulator_keyboard.btrc;
 import ./spec/save_slots.btrc;
 import ./spec/render_variants.btrc;
 import ./spec/visual_cycle.btrc;
@@ -967,6 +968,7 @@ int main() {
     InputDevicesSpecContract.run(contract);
     RetroArchKeyboardSpecContract.run(contract);
     EmulatorHotkeySpecContract.run(contract);
+    EmulatorKeyboardSpecContract.run(contract);
     SaveSlotSpecContract.run(contract);
     RenderVariantSpecContract.run(contract);
     VisualCycleSpecContract.run(contract);

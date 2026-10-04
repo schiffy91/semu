@@ -1,0 +1,199 @@
+// Emulator keyboard spec: a chord Steam types never also presses a game button, no emulator reads a
+// Deck grip Steam keeps for its presets, every Dolphin control names an input its device has, and
+// the + Steam types (KEYPAD_PLUS) is the key each emulator binds.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/emit/profiles.btrc;
+import ../../../src/steam/input_template.btrc;
+import ./emulator_hotkeys.btrc;
+
+class EmulatorKeyboardTools {
+    class Vector<string> finals(Fixture fixture, string emulatorId, string group) {  // the key each Steam-bound chord ends on, as EMULATOR_ID names keys
+        JSONValue encoding = SemuJson.get(fixture.model.emulator(emulatorId).profile, "compiler.line_groups." + group + ".chord_encoding");
+        Vector<string> result = [];
+        for chord in EmulatorHotkeyTools.steamChords(fixture) {
+            string key = SemuChords.finalKey(encoding, chord);
+            if (!chord.isEmpty() && !result.contains(key)) { result.push(key); }
+        }
+        return result;
+    }
+
+    class string value(string line) {  // what follows " = ", "" without one
+        int separator = line.indexOf(" = ");
+        return separator < 0 ? "" : line.substring(separator + 3, line.len() - separator - 3);
+    }
+
+    class string name(string line) {
+        int separator = line.indexOf(" = ");
+        return separator < 0 ? "" : line.substring(0, separator);
+    }
+}
+
+class EmulatorKeyboardPcsx2 {  // a pad button's Keyboard/<key> alternate never shares a key with a Steam chord
+    class void run(Contract contract, Fixture fixture, string target) {
+        Vector<string> finals = EmulatorKeyboardTools.finals(fixture, "pcsx2", "keymap_hotkeys");
+        JSONValue input = fixture.plan.input.definition;
+        contract.expect(SemuChords.taken(input, "A") && SemuChords.taken(input, "Return") && SemuChords.taken(input, "backspace") && !SemuChords.taken(input, "KP_Enter") && !SemuChords.taken(input, "I"), target + ": a key is taken when a config/input chord ends on it, Return being Enter; keypad Enter and I are free");
+        contract.expect(finals.contains("Keyboard/A") && finals.contains("Keyboard/X") && finals.contains("Keyboard/Up") && finals.contains("Keyboard/Return"), target + ": pcsx2 spells the Steam chords' keys Keyboard/A, Keyboard/X, Keyboard/Up, Keyboard/Return");
+        for file in ["config/PCSX2/inis/PCSX2.ini", "config/PCSX2/inputprofiles/Steam Deck.ini"] {
+            string section = "";
+            int alternates = 0;
+            for line in Strings.split(fixture.profile("pcsx2", file), "\n") {
+                if (line.startsWith("[")) { section = line; continue; }
+                string value = EmulatorKeyboardTools.value(line);
+                if (!section.startsWith("[Pad") || !value.startsWith("Keyboard/")) { continue; }
+                alternates++;
+                contract.expect(!finals.contains(value), target + " pcsx2 " + file + ": " + EmulatorKeyboardTools.name(line) + " = " + value + " shares its key with a chord Steam types");
+            }
+            contract.expect(alternates == 5, f"{target} pcsx2 {file}: {alternates} keyboard alternates kept (Left, Right, I, Z and keypad Enter)");
+        }
+    }
+}
+
+class EmulatorKeyboardDolphin {  // every control resolves on its device; a keyboard key a chord ends on is guarded by !Ctrl
+    class bool wordCharacter(char character) { return (character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') || character == '_'; }
+
+    class Vector<string> tokens(string value) {  // backticked controls keep their backticks; @(...) hotkeys give their keys
+        Vector<string> result = [];
+        int index = 0;
+        while (index < value.len()) {
+            char character = value.charAt(index);
+            if (character == '`') {
+                int end = Strings.find(value, "`", index + 1);
+                if (end < 0) { break; }
+                result.push(value.substring(index, end - index + 1));
+                index = end + 1;
+            } else if (character == '@' && index + 1 < value.len() && value.charAt(index + 1) == '(') {
+                int end = Strings.find(value, ")", index);
+                if (end < 0) { break; }
+                for part in Strings.split(value.substring(index + 2, end - index - 2), "+") { if (!part.isEmpty()) { result.push(part); } }
+                index = end + 1;
+            } else if (EmulatorKeyboardDolphin.wordCharacter(character)) {  // a bareword, or a number Dolphin reads as a constant
+                int start = index;
+                while (index < value.len() && (EmulatorKeyboardDolphin.wordCharacter(value.charAt(index)) || value.charAt(index) == '.')) { index++; }
+                result.push(value.substring(start, index - start));
+            } else {
+                index++;
+            }
+        }
+        return result;
+    }
+
+    class bool known(JSONValue controls, string backend, string control) {  // in the vendored list, or one of the patterns it names
+        if (SemuJson.strings(controls.get(backend)).contains(control)) { return true; }
+        Vector<string> words = Strings.split(control, " ");
+        bool numbered = words.size() >= 2 && words.get(1).len() > 0 && words.get(1).charAt(0) >= '0' && words.get(1).charAt(0) <= '9';
+        if (backend.equals("SDL")) { return numbered && (words.get(0).equals("Axis") || words.get(0).equals("Button") || words.get(0).equals("Hat")); }
+        if (!backend.equals("XInput2")) { return false; }
+        if (numbered && words.get(0).equals("Click")) { return true; }
+        if (control.len() == 1) { return (control.charAt(0) >= 'A' && control.charAt(0) <= 'Z') || (control.charAt(0) >= '0' && control.charAt(0) <= '9'); }
+        int functionKey = control.startsWith("F") && control.len() <= 3 ? Strings.toInt(control.substring(1, control.len() - 1)) : 0;
+        return functionKey >= 1 && functionKey <= 24;
+    }
+
+    class bool control(string name) {  // a line that binds a control, not a setting
+        if (!name.contains("/")) { return false; }
+        for setting in ["IR/Vertical", "IR/Total", "IR/Auto", "IMUIR/", "Options/"] { if (name.startsWith(setting)) { return false; } }
+        return true;
+    }
+
+    class void file(Contract contract, Fixture fixture, string target, string relative, bool game, Vector<string> finals) {
+        JSONValue controls = SemuJson.get(fixture.model.emulator("dolphin").profile, "native_controls");
+        string device = "";
+        for line in Strings.split(fixture.profile("dolphin", relative), "\n") {
+            string name = EmulatorKeyboardTools.name(line);
+            string value = EmulatorKeyboardTools.value(line);
+            if (name.equals("Device")) { device = value; }
+            if (!EmulatorKeyboardDolphin.control(name) || value.isEmpty()) { continue; }
+            for term in Strings.split(value, "|") {
+                for token in EmulatorKeyboardDolphin.tokens(term) {
+                    string bare = token.startsWith("`") ? token.substring(1, token.len() - 2) : token;
+                    int colon = bare.indexOf(":");
+                    string owner = colon < 0 ? device : bare.substring(0, colon);
+                    string named = colon < 0 ? bare : bare.substring(colon + 1, bare.len() - colon - 1);
+                    string backend = owner.indexOf("/") < 0 ? owner : owner.substring(0, owner.indexOf("/"));
+                    bool number = !token.startsWith("`") && !named.isEmpty() && named.charAt(0) >= '0' && named.charAt(0) <= '9';
+                    contract.expect(!number, target + " dolphin " + relative + ": " + name + " uses the bare number " + named + ", which Dolphin reads as a constant, never a key");
+                    contract.expect(number || EmulatorKeyboardDolphin.known(controls, backend, named), target + " dolphin " + relative + ": " + name + " names " + named + ", which " + backend + " does not have");
+                    bool guarded = term.contains("!`Ctrl`") || term.contains("!Ctrl");
+                    contract.expect(!game || !backend.equals("XInput2") || !finals.contains(named) || guarded, target + " dolphin " + relative + ": " + name + " presses " + named + " on a chord Steam types");
+                }
+            }
+        }
+    }
+
+    class void run(Contract contract, Fixture fixture, string target) {
+        Vector<string> finals = EmulatorKeyboardTools.finals(fixture, "dolphin", "keymap_hotkeys");
+        contract.expect(finals.contains("Return") && finals.contains("B") && finals.contains("BackSpace") && finals.contains("Up"), target + ": dolphin spells the Steam chords' keys as XInput2 does (Return, B, BackSpace, Up)");
+        string config = "dolphin-user/Config/";
+        for relative in ["WiimoteNew.ini", "GCPadNew.ini", "Profiles/Wiimote/Semu Wiimote.ini", "Profiles/Wiimote/Semu Nunchuk.ini", "Profiles/Wiimote/Semu Classic.ini", "Profiles/GCPad/Semu GameCube.ini"] {
+            contract.expect(!fixture.profile("dolphin", config + relative).isEmpty(), target + " dolphin writes " + relative);
+            EmulatorKeyboardDolphin.file(contract, fixture, target, config + relative, true, finals);
+        }
+        EmulatorKeyboardDolphin.file(contract, fixture, target, config + "Hotkeys.ini", false, finals);
+        contract.contains(fixture.profile("dolphin", config + "Hotkeys.ini"), "General/Toggle Fullscreen = @(Ctrl+Return)", target + " dolphin's fullscreen hotkey names the main Enter key Return");
+    }
+}
+
+class EmulatorKeyboardGrips {  // the Deck's grips switch Steam presets; no emulator reads them as a game control
+    class void run(Contract contract, Fixture fixture) {
+        JSONValue root = SemuJson.readFile(PathTools.join(fixture.project, "config/input/steam/steam_input.json"));
+        JSONValue presets = SemuJson.get(root, "layouts.deck.presets");
+        Vector<string> sources = ["button_back_left_upper", "button_back_right_upper", "button_back_left", "button_back_right"];
+        Vector<string> deckNames = ["L4", "R4", "L5", "R5"];
+        Vector<string> held = [];
+        for (int index = 0; presets.isArray() && index < presets.size(); index++) {
+            JSONValue holders = presets.at(index).get("held_by");
+            for (int holder = 0; holders != null && holders.isArray() && holder < holders.size(); holder++) {
+                int grip = sources.indexOf(SemuJson.textAt(holders.at(holder), "input"));
+                if (grip >= 0 && !held.contains(deckNames.get(grip))) { held.push(deckNames.get(grip)); }
+            }
+        }
+        JSONValue grips = SemuJson.get(root, "layouts.deck.grips");
+        JSONValue layers = SemuJson.get(root, "radial.system_layers");
+        for (int index = 0; layers.isArray() && index < layers.size(); index++) {  // a system layer is held on the grips its activators name
+            for activator in SemuJson.strings(layers.at(index).get("activators")) {
+                int grip = sources.indexOf(SemuJson.textAt(grips, activator));
+                if (grip >= 0 && !held.contains(deckNames.get(grip))) { held.push(deckNames.get(grip)); }
+            }
+        }
+        contract.expect(held.size() == 4
+, "the default Deck template holds a preset on all four grips: " + held.join(" "));
+        for emulatorId in EmulatorHotkeyTools.emulators() {
+            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            for file in SemuProfiles.render(fixture.model, fixture.plan, emulator, fixture.diagnostics) {
+                for name in held {
+                    contract.expect(!file.content.contains("`" + name + "`") && !file.content.contains(":" + name + "`"), "steam-deck " + emulatorId + " " + file.path + " reads the grip " + name + ", which Steam keeps for a preset");
+                }
+            }
+        }
+    }
+}
+
+class EmulatorKeyboardKeypad {  // Steam types + as KEYPAD_PLUS; the standalone emulators bind that key
+    class void run(Contract contract, Fixture fixture, string target) {
+        contract.expect(SteamInputChordNames.key("+").equals("KEYPAD_PLUS") && SteamInputChordNames.key("-").equals("DASH"), "Steam types + as KEYPAD_PLUS and - as the main-row DASH");
+        contract.contains(fixture.profile("pcsx2", "config/PCSX2/inis/PCSX2.ini"), "ToggleTurbo = Keyboard/Control & Keyboard/NumpadPlus\nToggleSlowMotion = Keyboard/Control & Keyboard/Minus", target + " pcsx2 binds the keypad + Steam types and the main-row -");
+        contract.contains(fixture.profile("ppsspp", "config/ppsspp/PSP/SYSTEM/controls.ini"), "Fast-forward = 1-113:1-157", target + " ppsspp binds NKCODE_NUMPAD_ADD, the keypad + Steam types");
+        contract.contains(fixture.profile("melonds", "config/melonDS/melonDS.toml"), "HK_FastForwardToggle = 603979819", target + " melonDS binds Ctrl, the keypad modifier and Key_Plus");
+    }
+}
+
+class EmulatorKeyboardSpecContract {
+    class void run(Contract contract) {
+        for target in ["linux-desktop", "steam-deck"] {  // macOS: no Steam radial types chords, and the guard keeps every alternate there
+            Fixture fixture = Fixture(target);
+            EmulatorKeyboardPcsx2.run(contract, fixture, target);
+            EmulatorKeyboardDolphin.run(contract, fixture, target);
+            EmulatorKeyboardKeypad.run(contract, fixture, target);
+        }
+        EmulatorKeyboardGrips.run(contract, Fixture("steam-deck"));
+    }
+}

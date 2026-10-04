@@ -897,6 +897,33 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   identity, ignored or not) is decided by `SemuInputDevices.admit`/`adopt` in
   `src/launch/input_devices.btrc` from `classify()`'s EVIOCGID and EVIOCGBIT answers, so contracts
   drive it with socketpairs. Reversible.
+- Emulator keyboards against Steam's chords (2026-10-04, review follow-up). Steam types Semu's
+  chords into the game's X display, so any game-button keyboard alternate on a chord's last key also
+  pressed that button. PCSX2 2.6.3 registers pad buttons as axis handlers that fire on every key
+  whatever the modifiers: Ctrl+A also pressed Square, Ctrl+X Circle, Ctrl+Up/Down the d-pad and
+  Ctrl+Backspace Select. Its pad block now writes each keyboard alternate as {keyboard_key, line}, and
+  on the platforms in `compiler.keyboard_guard` (Linux) the profile compiler leaves out every one a
+  config/input chord ends on (Up, Down, X, A, Backspace today; Left, Right, I, Z and keypad Enter stay;
+  macOS keeps all, as RetroArch keeps its player keys there). Dolphin has a native guard, so its Wii
+  keyboard alternates are written (`KEY` & !`Ctrl`): every Semu chord holds Ctrl. Reversible: keyboard
+  play in PCSX2 on Linux loses those five keys.
+- Dolphin's Wii controls read the SDL pad (2026-10-04, review follow-up). The Wii Remote, Nunchuk and
+  Classic Controller had read the Deck's own controller through Dolphin's SteamDeck backend, which
+  opens hidraw, so the Semu menu's EVIOCGRAB never covered them; the upper-right grip R4 was Wiimote B
+  while Steam's template holds the Hotkeys preset on it (Wiimote B turned A into Ctrl+P and the menu
+  button into Ctrl+Q plus Select+Start); and C, Z and IR Hide used SDL names the SteamDeck device does
+  not have (the desktop had the reverse). Now buttons, d-pad, sticks and triggers read `${pad}` with
+  Dolphin's SDL names, as GCPadNew does, and only motion reads `${wiimote}`; Wiimote1 and the three
+  mode profiles share one body, so the first launch has motion too. Dolphin lexes a bare digit as a
+  number, so `Buttons/1 = 1|...` and `Buttons/2 = 2|...` had held 1 and 2 down in every Wii game;
+  keys are backticked now. The main Enter key is Return to Dolphin (Toggle Fullscreen was the dead
+  `@(Ctrl+Enter)`). `native_controls` vendors each backend's names at 2606a and a contract resolves
+  every control token of every Dolphin file on both Linux targets. Rumble reads the pad's Strong motor.
+  Reversible.
+- Steam types + as KEYPAD_PLUS (main-row + needs Shift), so the standalone emulators bind the keypad
+  key for Ctrl++ (Fast Forward): PCSX2 Keyboard/NumpadPlus, PPSSPP 1-157 (NKCODE_NUMPAD_ADD), melonDS
+  with Qt's keypad modifier (603979819). Before, the supervisor read the chord and routed it nowhere
+  while no emulator matched it.
 
 ### G1. Build and tests run on one host only — done on the Mac
 
@@ -1737,6 +1764,17 @@ Update this block whenever a milestone criterion changes state.
   Two more contracts close review gaps in the choices: On/Off after Next Bezel returns to the bezel Next
   chose (it returned to the launch's), and a stale per-system id resolves to the manifest default in
   `bezelVariantId`/`shaderVariantId` and the launch draws that default (both caught by a mutation).
+  2026-10-04, emulator keyboards, Dolphin's Wii controls and the keypad + (offline; rulings above).
+  `tests/contracts/spec/emulator_keyboard.btrc` compiles both Linux targets and fails when a PCSX2 pad
+  alternate shares a Steam chord's last key, when a Dolphin game control presses such a key without
+  !Ctrl, uses a bare number, or names a control its device lacks (vendored SDL, SteamDeck and XInput2
+  names at 2606a), when any emulator reads a grip Steam's Deck template holds for a preset, and when
+  PCSX2, PPSSPP or melonDS bind main-row + for Fast Forward; Azahar's eight colliding defaults are
+  pinned row by row (blanked == 8). 11 mutations each fail it: Square = Keyboard/A restored, the
+  compiler guard off, Wiimote B on R4 again, an SDL name on the SteamDeck device, Dolphin's Enter
+  unmapped, its !Ctrl guard dropped, a bare digit, main-row + for each of the three emulators, and
+  Azahar's Audio Mute key changed. Not observed in a running Wii game yet: the Deck run should check
+  that Wiimote buttons follow Steam's pad, 1 and 2 are no longer held, and the menu holds them.
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a

@@ -27,7 +27,7 @@
           "keys": {
             "P": 80,
             "Q": 81,
-            "+": 43,
+            "+": 536870955,
             "Tab": 16777217,
             "Enter": 16777220
           }
@@ -177,7 +177,8 @@
     "quit": "Select and Start remain independent DS inputs. The target-owned evdev watcher observes the physical pair and terminates the emulator process group immediately; radial app.quit emits Qt's standard Ctrl+Q shortcut.",
     "hotkeys": "The emitter compiles four configurable Semu chords into melonDS's native hotkey table. melonDS saves and loads slot 1 only through its compiled menu shortcuts Shift+F1 and F1 (Window.cpp:318-343), never Ctrl+S and Ctrl+A, so those rows carry native_chord and the supervisor types Shift+F1 or F1 for a save or load from any source, the radial's Ctrl+S included. Ctrl+Q quits melonDS through its own Quit shortcut too, the same action the supervisor runs. Every declared action appears exactly once across native and external ownership lanes.",
     "geometry": "Horizontal layout id 2, even sizing id 0, zero gap, native 4:3 aspects, zero rotation, and no initial swap preserve two equal 256x192 LCD surfaces. Ctrl+Tab may swap positions without changing semantic tap order.",
-    "storage": "Relative writable asset paths are interpreted by the source patch from $XDG_CONFIG_HOME/melonDS and resolve into $XDG_DATA_HOME/melonDS. External BIOS and ROM-adjacent save sources stay read-only; only isolated copies/state are writable."
+    "storage": "Relative writable asset paths are interpreted by the source patch from $XDG_CONFIG_HOME/melonDS and resolve into $XDG_DATA_HOME/melonDS. External BIOS and ROM-adjacent save sources stay read-only; only isolated copies/state are writable.",
+    "keypad_plus": "Ctrl++ (HK_FastForwardToggle) carries Qt::KeypadModifier: Steam types its + as KEYPAD_PLUS, and melonDS matches a hotkey on key | modifiers, the keypad modifier included (EmuInstanceInput.cpp:307-341 at 906e9eb), so the value is Ctrl 67108864 + keypad 536870912 + Key_Plus 43."
   },
   "native_shortcuts": {
     "source": "melonds 906e9eb src/frontend/qt_sdl/Config.cpp:51 and src/frontend/qt_sdl/Window.cpp:247,318-349,363",
