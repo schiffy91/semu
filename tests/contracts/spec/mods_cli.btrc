@@ -1,0 +1,179 @@
+// Mods spec, the owner's view (M13 item 0, decisions M1 and M4): `semu mods list` shows every entry with its
+// game (a 3DS title id from the ROM header, a Switch id from the file name) and what the emulator sees of it,
+// the names an entry holds that the emulator never reads, and a warning when ES-DE starts the system in
+// another emulator (unless the gamelist pins this one); listing writes nothing. `semu mods init` lays out the
+// library with README files and keeps an edited one. Cemu's graphic packs run because settings.xml lists each
+// installed pack. The checker holds entry_lines, @lines:mods.<kind> and a system's titles to their vocabulary.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/check.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/mods/kind.btrc;
+import ../../../src/mods/install.btrc;
+import ../../../src/mods/listing.btrc;
+import ../../../src/mods/layout.btrc;
+import ./standalone.btrc;
+import ./render_variants.btrc;
+import ./mods_paths.btrc;
+import ./mods_launch.btrc;
+
+#include <stdio.h>
+
+class ModsSpecReport {
+    class string zelda() { return "Legend of Zelda, The - Ocarina of Time 3D (Europe) (En,Fr,De,Es,It).3ds"; }
+
+    class string tears() { return "The Legend of Zelda Tears of the Kingdom [0100F2C0115B6000][v0][US].nsp"; }
+
+    class StandaloneSpecBed bed() {  // the owner's library, a 3DS ROM with its NCSD header, a wrong-magic one, a Switch dump; ES-DE in scratch
+        StandaloneSpecBed bed = StandaloneSpecBed();
+        bed.fixture.plan.tokens.put("esde_home", PathTools.join(bed.fixture.scratch, "esde"));
+        ModsSpecOwner.library(bed.fixture.plan.path("mods"));
+        Vector<int> header = [];
+        for (int index = 0; index < 256; index++) { header.push(0); }
+        for value in [78, 67, 83, 68, 0, 0, 0, 0, 0, 54, 3, 0, 0, 0, 4, 0] { header.push(value); }
+        ModsSpecTree.writeBytes(bed.romPath("n3ds", ModsSpecReport.zelda()), header);
+        header.set(256, 88);
+        ModsSpecTree.writeBytes(bed.romPath("n3ds", "Wrong Magic (Europe).3ds"), header);
+        bed.write(bed.romPath("switch", ModsSpecReport.tears()), "");
+        return bed;
+    }
+
+    class JSONValue entry(JSONValue report, string emulatorId, string kindId, string relative) {  // null when absent
+        JSONValue emulators = report.get("emulators");
+        for (int index = 0; index < emulators.size(); index++) {
+            if (!SemuJson.textAt(emulators.at(index), "emulator").equals(emulatorId)) { continue; }
+            JSONValue kinds = emulators.at(index).get("kinds");
+            for (int which = 0; which < kinds.size(); which++) {
+                if (!SemuJson.textAt(kinds.at(which), "kind").equals(kindId)) { continue; }
+                JSONValue entries = kinds.at(which).get("entries");
+                for (int position = 0; position < entries.size(); position++) { if (SemuJson.textAt(entries.at(position), "entry").equals(relative)) { return entries.at(position); } }
+            }
+        }
+        return null;
+    }
+
+    class string field(JSONValue report, string emulatorId, string kindId, string relative, string name) {
+        JSONValue found = ModsSpecReport.entry(report, emulatorId, kindId, relative);
+        return found == null ? "(absent)" : (found.get(name).isArray() ? SemuJson.strings(found.get(name)).join(",") : SemuJson.textAt(found, name));
+    }
+
+    class string warnings(JSONValue report, string emulatorId) {
+        JSONValue emulators = report.get("emulators");
+        for (int index = 0; index < emulators.size(); index++) { if (SemuJson.textAt(emulators.at(index), "emulator").equals(emulatorId)) { return SemuJson.strings(emulators.at(index).get("warnings")).join("\n"); } }
+        return "(absent)";
+    }
+
+    class void listing(Contract contract) {
+        StandaloneSpecBed bed = ModsSpecReport.bed();
+        SemuPlan plan = bed.fixture.plan;
+        string mods = plan.path("mods");
+        string library = ModsSpecTree.snapshot(mods);
+        string state = ModsSpecTree.snapshot(plan.stateRoot());
+        JSONValue report = SemuModListing.report(bed.fixture.model, plan, true);
+        contract.expect(SemuJson.textAt(report, "library").equals("ok") && SemuJson.textAt(report, "mods").equals(mods), "the report names the scratch library and finds it: " + SemuJson.textAt(report, "library"));
+        contract.expect(ModsSpecReport.field(report, "azahar", "layeredfs", "0004000000033600", "game").equals(ModsSpecReport.zelda()), "the OoT 3D mod is matched to its ROM through the NCSD header: " + ModsSpecReport.field(report, "azahar", "layeredfs", "0004000000033600", "game"));
+        contract.expect(ModsSpecReport.field(report, "ryujinx", "contents", "0100f2c0115b6000/!!!TOTK Optimizer", "game").equals(ModsSpecReport.tears()), "the TotK mod is matched to its dump by the bracketed id");
+        contract.expect(ModsSpecReport.field(report, "azahar", "layeredfs", "0004000000033600", "status").equals("pending"), "before a launch the mod is pending");
+        contract.expect(ModsSpecReport.field(report, "azahar", "layeredfs", "0004000000125500", "ignored").equals("code_faster_aim.bps"), "the alternate patch Azahar never reads is listed as ignored: " + ModsSpecReport.field(report, "azahar", "layeredfs", "0004000000125500", "ignored"));
+        contract.expect(ModsSpecReport.field(report, "azahar", "layeredfs", "0004000000044400", "status").equals("invalid") && ModsSpecReport.field(report, "azahar", "layeredfs", "0004000000044400", "detail").contains("does not start with PATCH"), "a refused header is listed as invalid with its reason");
+        contract.expect(ModsSpecReport.field(report, "azahar", "textures", "00040000000AEB00", "status").equals("invalid") && ModsSpecReport.field(report, "azahar", "textures", "00040000000AEB00", "detail").equals("empty"), "an empty pack folder is listed as empty");
+        contract.expect(ModsSpecTree.snapshot(mods).equals(library) && ModsSpecTree.snapshot(plan.stateRoot()).equals(state), "listing changes nothing in the library or the state");
+        JSONValue quick = SemuModListing.report(bed.fixture.model, plan, false);
+        contract.expect(ModsSpecReport.field(quick, "azahar", "layeredfs", "0004000000033600", "game").isEmpty() && ModsSpecReport.field(quick, "ryujinx", "contents", "0100f2c0115b6000/!!!TOTK Optimizer", "game").equals(ModsSpecReport.tears()), "without --roms no ROM header is read, and file names still map");
+        contract.contains(ModsSpecReport.warnings(report, "azahar"), "n3ds games start in \"Azahar (libretro)\" (ES-DE's default)", "on linux ES-DE starts 3DS games in the libretro core, so the list warns");
+        contract.expect(ModsSpecReport.warnings(report, "ryujinx").isEmpty(), "Ryujinx is the only Switch emulator: no warning");
+        bed.write(PathTools.join(plan.path("esde_home"), "ES-DE/gamelists/n3ds/gamelist.xml"), "<?xml version=\"1.0\"?>\n<alternativeEmulator>\n\t<label>Azahar (Standalone)</label>\n</alternativeEmulator>\n<gameList>\n");
+        JSONValue pinned = SemuModListing.report(bed.fixture.model, plan, false);
+        contract.expect(ModsSpecReport.warnings(pinned, "azahar").isEmpty(), "a gamelist that pins Azahar (Standalone), as the Deck's does, silences the warning: " + ModsSpecReport.warnings(pinned, "azahar"));
+        bed.launch("azahar", "n3ds", "Zelda.3ds");
+        JSONValue after = SemuModListing.report(bed.fixture.model, plan, false);
+        contract.expect(ModsSpecReport.field(after, "azahar", "layeredfs", "0004000000033600", "status").equals("installed") && ModsSpecReport.field(after, "azahar", "textures", "0004000000033600", "status").equals("installed"), "after the launch the mod and the pack are installed");
+        Vector<string> doctor = SemuModListing.doctorLines(after, "azahar");
+        contract.expect(doctor.size() == 1 && doctor.get(0).contains("mods: layeredfs 3 installed, 3 invalid; textures 1 installed, 1 invalid"), "the doctor sums each kind by status: " + doctor.join(" | "));
+        contract.expect(SemuModListing.doctorLines(after, "dolphin").isEmpty(), "an emulator with nothing in the library gets no doctor line");
+        contract.contains(SemuModListing.text(after), "0004000000125500  installed  ignored: code_faster_aim.bps", "the text lists an entry, its status and what it ignores");
+        StandaloneSpecBed absent = StandaloneSpecBed();
+        JSONValue unmounted = SemuModListing.report(absent.fixture.model, absent.fixture.plan, false);
+        contract.expect(SemuJson.textAt(unmounted, "library").equals("absent") && SemuModListing.text(unmounted).contains("    (library absent)") && !SemuModListing.text(unmounted).contains("(empty)"), "an unmounted library is reported absent, never as empty kinds");
+    }
+
+    class void layout(Contract contract) {
+        StandaloneSpecBed bed = StandaloneSpecBed();
+        SemuPlan plan = bed.fixture.plan;
+        string mods = plan.path("mods");
+        string state = ModsSpecTree.snapshot(plan.stateRoot());
+        contract.expect(SemuModLayout.create(bed.fixture.model, plan) == 0, "init succeeds below a mounted folder");
+        for library in ["azahar/mods", "azahar/textures", "ryujinx/contents", "cemu/graphicpacks", "dolphin/textures"] { contract.expect(FileSystem.isFile(PathTools.join(mods, library + "/README.txt")), "init lays out " + library + " with its README"); }
+        contract.contains(FileSystem.readText(PathTools.join(mods, "azahar/mods/README.txt")), "<16 characters of 0123456789ABCDEFabcdef>", "the README gives the folder rule");
+        contract.expect(FileSystem.isFile(PathTools.join(mods, "README.txt")), "a README sits at the top of the library");
+        FileSystem.writeText(PathTools.join(mods, "azahar/mods/README.txt"), "my notes");
+        SemuModLayout.create(bed.fixture.model, plan);
+        contract.expect(FileSystem.readText(PathTools.join(mods, "azahar/mods/README.txt")).equals("my notes"), "a second init keeps an edited README");
+        contract.expect(ModsSpecTree.snapshot(plan.stateRoot()).equals(state), "init writes nothing in the emulators' state");
+        JSONValue listed = SemuModListing.report(bed.fixture.model, plan, false);
+        contract.expect(ModsSpecReport.field(listed, "ryujinx", "contents", "README.txt", "status").equals("(absent)") && ModsSpecReport.field(listed, "cemu", "graphicpacks", "README.txt", "status").equals("(absent)"), "a README beside the entries is not a mod");
+        plan.tokens.put("mods", PathTools.join(bed.fixture.scratch, "unmounted/Emulation/mods"));
+        contract.expect(SemuModLayout.create(bed.fixture.model, plan) == 1 && !FileSystem.exists(PathTools.join(bed.fixture.scratch, "unmounted")), "init refuses when the folder above the library is not mounted, creating nothing");
+        contract.contains(SemuModLayout.text(bed.fixture.model, plan), "ryujinx/contents/<16 characters of 0123456789ABCDEFabcdef>/<a plain name, or the file romfs.bin or exefs.nsp>", "layout prints each kind's folders");
+        contract.expect(SemuModCommand.run(bed.fixture.model, plan, "bogus", false, false) == 64, "an unknown mods action is a usage error");
+        Fixture fixture = bed.fixture;
+        string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(fixture.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(fixture.scratch, "content") + "\",\"mods\":\"" + mods + "\",\"roms\":\"" + bed.roms + "\",\"esde_home\":\"" + PathTools.join(fixture.scratch, "esde") + "\"}}";
+        Vector<string> words = ["semu", "mods", "list", "--target", "linux-desktop", "--project", fixture.project, "--asset-root", plan.assetRoot, "--semu-home", plan.semuHome, "--settings-json", overlay];
+        contract.expect(RenderVariantTools.cliQuietly(words), "semu mods list runs through the command line");
+        words.set(2, "bogus");
+        contract.expect(!RenderVariantTools.cliQuietly(words), "semu mods bogus fails");
+    }
+
+    class void graphicPacks(Contract contract) {  // Cemu runs a pack only when settings.xml names its rules.txt
+        StandaloneSpecBed bed = StandaloneSpecBed();
+        SemuEmulator cemu = bed.fixture.model.emulator("cemu");
+        string settings = ModsSpecLaunch.rendered(bed, cemu, "settings.xml");
+        contract.contains(settings, "\t<GraphicPack>\n\t</GraphicPack>\n</content>", "with no pack settings.xml lists none");
+        string packs = PathTools.join(bed.fixture.plan.path("mods"), "cemu/graphicpacks");
+        ModsSpecTree.write(PathTools.join(packs, "BotW & Res/rules.txt"), "[Definition]");
+        ModsSpecTree.write(PathTools.join(packs, "Notes/readme.md"), "no rules");
+        SemuLaunchPlan launch = bed.launch("cemu", "wiiu", "Zelda.wua");
+        string written = FileSystem.readText(PathTools.join(bed.stateRoot("cemu"), "config/Cemu/settings.xml"));
+        contract.expect(launch.ok(), "the cemu launch goes ahead: " + launch.error);
+        contract.contains(written, "\t<GraphicPack>\n\t\t<Entry filename=\"" + PathTools.join(bed.stateRoot("cemu"), "data/Cemu/graphicPacks") + "/BotW &amp; Res/rules.txt\"/>\n\t</GraphicPack>\n", "the installed pack is enabled by its rules.txt as Cemu walks it, through the link under graphicPacks, its name escaped");
+        contract.lacks(written, "Notes", "a folder without rules.txt is neither linked nor listed");
+        contract.expect(FileSystem.readLink(PathTools.join(bed.stateRoot("cemu"), "data/Cemu/graphicPacks/BotW & Res")).equals(PathTools.join(packs, "BotW & Res")), "the pack is linked into graphicPacks");
+        rename(PathTools.join(packs, "BotW & Res"), PathTools.join(bed.fixture.scratch, "taken-out"));
+        bed.launch("cemu", "wiiu", "Zelda.wua");
+        contract.contains(FileSystem.readText(PathTools.join(bed.stateRoot("cemu"), "config/Cemu/settings.xml")), "\t<GraphicPack>\n\t</GraphicPack>\n", "a pack taken out of the library is no longer listed");
+    }
+
+    class void checker(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        JSONValue kind = SemuJson.get(fixture.model.emulator("cemu").platform("linux"), "state.mods.kinds").at(0);
+        kind.set("entry_lines", JSONValue.parse("{\"format\":\"no entry here\",\"escape\":\"html\"}"));
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuChecker.check(fixture.model, fixture.plan, diagnostics);
+        contract.contains(diagnostics.render(), "state.mods.kinds.0.entry_lines: needs a format naming ${entry}", "the checker refuses entry_lines without ${entry} or with an unknown escape");
+        Fixture listed = Fixture("linux-desktop");
+        SemuJson.get(listed.model.emulator("cemu").profile, "files.1.lines").push(JSONValue.makeString("@lines:mods.nothing"));
+        diagnostics = SemuDiagnostics();
+        SemuChecker.check(listed.model, listed.plan, diagnostics);
+        contract.contains(diagnostics.render(), "@lines:mods.nothing names no kind with entry_lines", "a profile listing a kind's entries needs that kind to declare them");
+        Fixture titled = Fixture("linux-desktop");
+        titled.model.system("switch").definition.get("titles").set("from", JSONValue.makeString("guess"));
+        diagnostics = SemuDiagnostics();
+        SemuChecker.check(titled.model, titled.plan, diagnostics);
+        contract.contains(diagnostics.render(), "titles: from filename (open, close, length) or from header", "the checker refuses a titles declaration it cannot read");
+    }
+
+    class void run(Contract contract) {
+        ModsSpecReport.listing(contract);
+        ModsSpecReport.layout(contract);
+        ModsSpecReport.graphicPacks(contract);
+        ModsSpecReport.checker(contract);
+    }
+}

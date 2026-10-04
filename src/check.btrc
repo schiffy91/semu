@@ -5,6 +5,7 @@ import ./lib/json.btrc;
 import ./model.btrc;
 import ./resolve.btrc;
 import ./mods/declarations.btrc;
+import ./mods/titles.btrc;
 
 // What one binding opens, from emulator.json "content": a standalone emulator lists its own
 // extensions; a core-loading emulator lists each core's, plus the archives it unpacks for a core
@@ -82,6 +83,7 @@ class SemuChecker {
         if (system.extensions.isEmpty()) { diagnostics.add(system.file, "rom.extensions", "missing"); }
         if (system.esPlatforms.isEmpty()) { diagnostics.add(system.file, "es_de.platforms", "missing"); }
         if (system.theme.isEmpty()) { diagnostics.add(system.file, "es_de.theme", "missing"); }
+        SemuRomTitles.check(system, diagnostics);  // how a ROM names the title id its mods are filed under
         for binding in system.bindingsFor(plan.platform) {
             SemuEmulator emulator = model.emulator(binding.emulator);
             if (emulator == null) {

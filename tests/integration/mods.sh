@@ -87,8 +87,9 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
     echo "links:"; find "$state" -type l -printf '  %p -> %l\n' 2>/dev/null | grep -v '/lib/\|/nix/' || true
     echo "manifest:"; indent "  " < "$state/semu-mods.tsv" 2>/dev/null || true
     echo "title_files:"; for file in "$state"/config/*/custom/*.ini "$state"/config/Ryujinx/games/*/updates.json; do [ -f "$file" ] && { echo "  $file"; indent "    " < "$file"; } || true; done
-    echo "emulator_log:"; cat "$state"/data/*/log/*.txt "$state"/config/Ryujinx/Logs/*.log "$out/$label.log" 2>/dev/null \
-      | grep -aE 'patching code.bin|per application config|Utility_CustomTextures|pack config|Found (enabled|disabled) mod|NSO .* replaced|npdm replaced|modded RomFS|Application Loaded' | sort -u | head -40 | indent "  "  # -a: Ryujinx's log holds escape bytes
+    echo "graphic_packs:"; grep -a "<Entry\|GraphicPack" "$state"/config/Cemu/settings.xml 2>/dev/null | indent "  " || true
+    echo "emulator_log:"; cat "$state"/data/*/log/*.txt "$state"/config/Ryujinx/Logs/*.log "$state"/data/Cemu/log.txt "$state"/config/Cemu/log.txt "$state"/cache/Cemu/log.txt "$out/$label.log" 2>/dev/null \
+      | grep -aE 'Activate graphic pack|patching code.bin|per application config|Utility_CustomTextures|pack config|Found (enabled|disabled) mod|NSO .* replaced|npdm replaced|modded RomFS|Application Loaded' | sort -u | head -40 | indent "  "  # -a: Ryujinx's log holds escape bytes
   } > "$out/$label.result"
   cat "$out/$label.result"
 done < "$out/cases"

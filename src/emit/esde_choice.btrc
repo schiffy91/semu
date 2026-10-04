@@ -1,0 +1,52 @@
+// Which emulator ES-DE starts a system's games with: the first command Semu emits for the system (its
+// default), unless the system's gamelist pins another one by label (<alternativeEmulator><label>, which the
+// alternative-emulators menu writes at the top of gamelists/<system>/gamelist.xml). Only the head of the
+// gamelist is read, so a large gamelist on a slow card costs one short read. A game's own <altemulator>
+// can still override both; that is counted, not resolved.
+
+import Library.Bytes;
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+import ./esde.btrc;
+
+class SemuEsDeChoice {
+    public string emulator;  // "" when the system has no command on this platform
+    public string label;
+    public bool pinned;  // the gamelist names it, rather than Semu's first command
+
+    public SemuEsDeChoice(string emulator, string label, bool pinned) {
+        self.emulator = emulator;
+        self.label = label;
+        self.pinned = pinned;
+    }
+
+    class string gamelist(SemuPlan plan, SemuSystem system) { return PathTools.join(PathTools.join(plan.path("esde_home"), "ES-DE/gamelists"), system.id + "/gamelist.xml"); }
+
+    class string between(string text, string open, string close) {  // the text inside the first OPEN ... CLOSE, "" when absent
+        int start = text.indexOf(open);
+        if (start < 0) { return ""; }
+        string rest = text.substring(start + open.len(), text.len() - start - open.len());
+        int end = rest.indexOf(close);
+        return end < 0 ? "" : rest.substring(0, end);
+    }
+
+    class string unescape(string text) { return text.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&"); }
+
+    class string pinnedLabel(string head) { return SemuEsDeChoice.unescape(SemuEsDeChoice.between(SemuEsDeChoice.between(head, "<alternativeEmulator>", "</alternativeEmulator>"), "<label>", "</label>").trim()); }
+
+    class SemuEsDeChoice of(SemuModel model, SemuPlan plan, SemuSystem system) {
+        Vector<SemuSystemBinding> bindings = system.bindingsFor(plan.platform);
+        if (bindings.isEmpty()) { return SemuEsDeChoice("", "", false); }
+        string label = SemuEsDeChoice.pinnedLabel(SemuPaths.readPrefix(SemuEsDeChoice.gamelist(plan, system), 4096).toString());
+        for binding in bindings {
+            if (label.isEmpty()) { break; }
+            if (SemuEsDeDocuments.label(model, binding).equals(label) || binding.labelAliases.contains(label)) { return SemuEsDeChoice(binding.emulator, label, true); }
+        }
+        SemuSystemBinding first = bindings.get(0);
+        return SemuEsDeChoice(first.emulator, SemuEsDeDocuments.label(model, first), false);  // an unknown pinned label falls back to the first command, as ES-DE does
+    }
+}

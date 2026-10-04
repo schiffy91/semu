@@ -1,0 +1,81 @@
+// A system's "titles" declaration: how a ROM names the title id its mods are filed under, so `semu mods list`
+// can show the game beside each entry. "filename" takes the first bracketed token of the declared length (one
+// directory listing); "header" reads a few bytes at a fixed offset after a magic text (one short read per ROM,
+// which costs seconds on a slow SD card, so it runs only when asked). Only the top level of the ROM folder is
+// scanned, and nothing is written.
+
+import Library.Bytes;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Map;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+
+class SemuRomTitles {
+    class bool hexadecimal(string value) {
+        string digits = "0123456789abcdefABCDEF";
+        for (int position = 0; position < value.len(); position++) {
+            if (!digits.contains(value.substring(position, 1))) { return false; }
+        }
+        return !value.isEmpty();
+    }
+
+    class string fromName(JSONValue declaration, string name) {  // the first [<length hex characters>] token, uppercase; "" when none
+        int length = SemuJson.intAt(declaration, "length", 16);
+        for part in Strings.split(name, SemuJson.textAt(declaration, "open")) {
+            int close = part.indexOf(SemuJson.textAt(declaration, "close"));
+            if (close == length && SemuRomTitles.hexadecimal(part.substring(0, close))) { return part.substring(0, close).toUpper(); }
+        }
+        return "";
+    }
+
+    class string fromHeader(JSONValue declaration, string path) {  // LENGTH bytes at OFFSET as hex, little-endian when declared; "" without the magic
+        int offset = SemuJson.intAt(declaration, "offset", 0);
+        int length = SemuJson.intAt(declaration, "length", 0);
+        int magicOffset = SemuJson.intAt(declaration, "magic.offset", 0);
+        string magic = SemuJson.textAt(declaration, "magic.text");
+        Bytes head = SemuPaths.readPrefix(path, offset + length > magicOffset + magic.len() ? offset + length : magicOffset + magic.len());
+        if (length < 1 || head.length() < offset + length || !head.slice(magicOffset, magicOffset + magic.len()).equals(Bytes.fromString(magic))) { return ""; }
+        bool little = SemuJson.textAt(declaration, "byte_order").equals("little");
+        string digits = "0123456789ABCDEF";
+        string result = "";
+        for (int index = 0; index < length; index++) {
+            int octet = head.get(little ? offset + length - 1 - index : offset + index);
+            result = result + digits.substring((octet >> 4) & 15, 1) + digits.substring(octet & 15, 1);
+        }
+        return result;
+    }
+
+    class Map<string, string> index(SemuPlan plan, SemuSystem system, bool readHeaders) {  // uppercase title id -> ROM file name
+        Map<string, string> result = {};
+        JSONValue declaration = SemuJson.get(system.definition, "titles");
+        string from = SemuJson.textAt(declaration, "from");
+        string directory = PathTools.join(plan.romsRoot(), system.romDir);
+        if (!declaration.isObject() || plan.romsRoot().isEmpty() || !FileSystem.isDir(directory) || (from.equals("header") && !readHeaders)) { return result; }
+        Vector<string> extensions = SemuJson.strings(SemuJson.get(declaration, "extensions"));
+        Vector<string> names = FileSystem.listDir(directory);
+        names.sort();
+        for name in names {
+            bool listed = extensions.isEmpty();
+            for extension in extensions { if (name.toLower().endsWith(extension)) { listed = true; } }
+            if (!listed || name.startsWith(".")) { continue; }
+            string title = from.equals("header") ? SemuRomTitles.fromHeader(declaration, PathTools.join(directory, name)) : SemuRomTitles.fromName(declaration, name);
+            if (!title.isEmpty() && !result.has(title)) { result.put(title, name); }
+        }
+        return result;
+    }
+
+    class void check(SemuSystem system, SemuDiagnostics diagnostics) {  // the declaration's vocabulary
+        JSONValue declaration = SemuJson.get(system.definition, "titles");
+        if (declaration.isNull()) { return; }
+        string from = SemuJson.textAt(declaration, "from");
+        bool named = from.equals("filename") && !SemuJson.textAt(declaration, "open").isEmpty() && !SemuJson.textAt(declaration, "close").isEmpty() && SemuJson.intAt(declaration, "length", 0) > 0;
+        bool header = from.equals("header") && SemuJson.intAt(declaration, "length", 0) > 0 && SemuJson.intAt(declaration, "length", 0) <= 16 && SemuJson.intAt(declaration, "offset", -1) >= 0 && SemuJson.intAt(declaration, "offset", -1) <= 65536 && !SemuJson.textAt(declaration, "magic.text").isEmpty();
+        if (!declaration.isObject() || (!named && !header)) { diagnostics.add(system.file, "titles", "from filename (open, close, length) or from header (offset, length up to 16, magic.text) names the title id a ROM's mods are filed under"); }
+        if (SemuJson.textAt(declaration, "doc").isEmpty()) { diagnostics.add(system.file, "titles.doc", "missing: say where the id comes from"); }
+    }
+}

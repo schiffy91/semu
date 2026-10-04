@@ -282,6 +282,9 @@ class SemuProfileContext {
 
     public SemuBindings lineGroups(SemuBindings bindings) {  // a group may be limited to "platforms" and give "formats" per platform
         SemuBindings result = SemuBindings();
+        for kind in SemuModKind.declared(self.plan, self.emulator) {  // @lines:mods.<kind>: one line per installed entry, for an emulator that lists what it loads
+            if (!kind.entryFormat.isEmpty()) { result.put("mods." + kind.id, kind.entryLines()); }
+        }
         JSONValue groups = SemuJson.get(self.emulator.profile, "compiler.line_groups");
         if (!groups.isObject()) { return result; }
         for name in groups.keys().sorted() {

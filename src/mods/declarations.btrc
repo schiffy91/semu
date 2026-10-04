@@ -89,7 +89,7 @@ class SemuModDeclarations {
     }
 
     class void checkKind(JSONValue kind, JSONValue settings, string file, string field, SemuDiagnostics diagnostics) {
-        SemuModDeclarations.known(kind, ["id", "library", "target", "install", "levels", "reads", "checks", "setting", "title_settings", "about", "doc"], file, field, diagnostics);
+        SemuModDeclarations.known(kind, ["id", "library", "target", "install", "levels", "reads", "checks", "setting", "title_settings", "entry_lines", "about", "doc"], file, field, diagnostics);
         if (!SemuModDeclarations.validName(SemuJson.textAt(kind, "id"))) { diagnostics.add(file, field + ".id", "must be lowercase letters, digits, - or _"); }
         if (!SemuModDeclarations.validName(SemuJson.textAt(kind, "library"))) { diagnostics.add(file, field + ".library", "must be one folder name under <mods>/<emulator>/, lowercase"); }
         if (!SemuModDeclarations.stateTarget(SemuJson.textAt(kind, "target"))) { diagnostics.add(file, field + ".target", "must be a path under ${state_root}/ without .."); }
@@ -106,6 +106,13 @@ class SemuModDeclarations {
             bool valid = title.isObject() && SemuModDeclarations.stateTarget(path) && path.contains("${entry}") && SemuJson.get(title, "lines").isArray();
             if (!valid) { diagnostics.add(file, field + ".title_settings", "needs a path under ${state_root}/ naming ${entry} and an array of lines"); }
             if (title.isObject()) { SemuModDeclarations.known(title, ["path", "lines"], file, field + ".title_settings", diagnostics); }
+        }
+        if (kind.has("entry_lines")) {
+            JSONValue lines = kind.get("entry_lines");
+            string escape = SemuJson.textAt(lines, "escape");
+            bool valid = lines.isObject() && SemuJson.textAt(lines, "format").contains("${entry}") && (escape.isEmpty() || escape.equals("xml"));
+            if (!valid) { diagnostics.add(file, field + ".entry_lines", "needs a format naming ${entry}, and escape xml or none"); }
+            if (lines.isObject()) { SemuModDeclarations.known(lines, ["format", "escape"], file, field + ".entry_lines", diagnostics); }
         }
         for name in ["about", "doc"] { if (SemuJson.textAt(kind, name).isEmpty()) { diagnostics.add(file, field + "." + name, "missing: say what it is and why linking is safe"); } }
     }
@@ -161,6 +168,20 @@ class SemuModDeclarations {
         }
     }
 
+    class void checkEntryGroups(SemuEmulator emulator, JSONValue kinds, SemuDiagnostics diagnostics) {  // every @lines:mods.<kind> the profile writes is a kind with entry_lines
+        Vector<string> listed = [];
+        for (int index = 0; kinds.isArray() && index < kinds.size(); index++) {
+            if (SemuJson.get(kinds.at(index), "entry_lines").isObject()) { listed.push(SemuJson.textAt(kinds.at(index), "id")); }
+        }
+        Vector<string> parts = Strings.split(emulator.profile.stringify(), "\"@lines:mods.");
+        for (int index = 1; index < parts.size(); index++) {
+            string part = parts.get(index);
+            int close = part.indexOf("\"");
+            string kind = close < 0 ? part : part.substring(0, close);
+            if (!listed.contains(kind)) { diagnostics.add(emulator.profileFile, "files", "@lines:mods." + kind + " names no kind with entry_lines on this platform"); }
+        }
+    }
+
     class void checkUpdates(JSONValue updates, string file, string field, SemuDiagnostics diagnostics) {  // one choice file per title, from update files named [<id>][v<version>]
         if (updates.isNull()) { return; }
         if (!updates.isObject()) {
@@ -208,6 +229,7 @@ class SemuModDeclarations {
         JSONValue mods = SemuJson.get(emulator.platform(plan.platform), "state.mods");
         JSONValue settings = SemuJson.get(mods, "settings");
         SemuModDeclarations.checkProfile(emulator, settings, diagnostics);
+        SemuModDeclarations.checkEntryGroups(emulator, SemuJson.get(mods, "kinds"), diagnostics);
         SemuModDeclarations.checkUpdates(SemuJson.get(emulator.platform(plan.platform), "state.updates"), file, f"platforms.{plan.platform}.state.updates", diagnostics);
         if (mods.isNull()) { return; }
         JSONValue kinds = SemuJson.get(mods, "kinds");

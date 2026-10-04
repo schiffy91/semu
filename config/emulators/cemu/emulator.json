@@ -78,11 +78,15 @@
               "reads": [
                 "rules.txt"
               ],
-              "about": "Graphic packs: one folder per pack holding its rules.txt, as Cemu's graphicPacks/<pack>.",
-              "doc": "Cemu v2.6 walks graphicPacks and loads every folder holding rules.txt, testing each entry with is_directory and exists, which follow a link, and does not descend further (GraphicPack2.cpp:64-79), so each pack is linked on its own, never a folder of packs (a nested link is not followed). It writes there only from its downloader window, which a fullscreen launch never opens (DownloadGraphicPacksWindow.cpp:91-100). A pack runs once settings.xml names it in GraphicPack (CemuConfig.cpp:178-210), which Semu does not write yet."
+              "about": "Graphic packs: one folder per pack holding its rules.txt, as Cemu's graphicPacks/<pack> (a downloaded pack sits one or two folders deeper: place the folder that holds rules.txt). Every installed pack is switched on with its default presets.",
+              "doc": "Cemu v2.6 walks graphicPacks recursively, testing each folder with is_directory and exists, which follow a link, and loads a folder holding rules.txt without descending into it (GraphicPack2.cpp:64-79); the directory iterator does not follow a linked folder, so each pack is linked on its own, never a folder of packs. It writes there only from its downloader window, which a fullscreen launch never opens (DownloadGraphicPacksWindow.cpp:91-100). A pack runs only when settings.xml names its rules.txt in a GraphicPack Entry (CemuConfig.cpp:179-205); with no Preset its default presets apply. Cemu matches an entry first by the absolute rules path as it walked it, through the link (GraphicPack2.cpp:90-97), then by the path relative to its data folder, which fs::relative works out from the canonical path (GraphicPack2.cpp:522-525, helpers.cpp:313-321) and so points into the library for a linked pack. Semu therefore writes one Entry per installed pack with the absolute path under the target (entry_lines); a pack placed in the library runs on the next launch and a pack taken out stops. Observed in the podman VM: Captain Toad (US) logged Activate graphic pack for the linked CaptainToad_Resolution.",
+              "entry_lines": {
+                "format": "\t\t<Entry filename=\"${target}/${entry}/rules.txt\"/>",
+                "escape": "xml"
+              }
             }
           ],
-          "doc": "Dormant: the library is <paths.mods>/cemu/graphicpacks/<pack>, one link per pack into ${state_root}/data/Cemu/graphicPacks."
+          "doc": "Dormant until a pack is placed: the library is <paths.mods>/cemu/graphicpacks/<pack>, one link per pack into ${state_root}/data/Cemu/graphicPacks, each enabled in settings.xml while it is installed."
         }
       },
       "firmware": {

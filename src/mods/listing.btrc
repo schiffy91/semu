@@ -1,0 +1,208 @@
+// `semu mods list` and the doctor's mods lines: every library entry of every kind on this platform, the game it
+// belongs to, and what the emulator sees of it (installed, pending until the next launch, shadowed by
+// something in the emulator's state, invalid, parked, duplicate), with the names in an entry the emulator never
+// reads. It warns when ES-DE starts a system's games in another emulator, which would not see these mods.
+// Everything is read from the library and the targets: listing writes nothing.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Map;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+import ../emit/esde.btrc;
+import ../emit/esde_choice.btrc;
+import ./kind.btrc;
+import ./library.btrc;
+import ./manifest.btrc;
+import ./install.btrc;
+import ./titles.btrc;
+
+class SemuModState {  // one library entry as the emulator will see it
+    public string status;
+    public string detail;
+
+    public SemuModState(string status, string detail) {
+        self.status = status;
+        self.detail = detail;
+    }
+
+    class SemuModState of(SemuModKind kind, SemuModEntry entry, SemuModManifest manifest) {
+        if (entry.problem.startsWith("parked")) { return SemuModState("parked", entry.problem); }
+        if (entry.problem.startsWith("duplicate")) { return SemuModState("duplicate", entry.problem); }
+        if (!entry.problem.isEmpty()) { return SemuModState("invalid", entry.problem); }
+        string path = SemuModInstaller.linkPath(kind.target, entry.linkRelative);
+        if (FileSystem.isSymlink(path)) {
+            if (FileSystem.readLink(path).equals(entry.source)) { return SemuModState("installed", path); }
+            return manifest.owns(path) ? SemuModState("pending", "relinked at the next launch") : SemuModState("shadowed", "a link Semu did not make: " + path);
+        }
+        if (FileSystem.isDir(path) && SemuModKind.holdsAnything(path)) { return SemuModState("shadowed", "a folder in the emulator's state: " + path); }
+        if (!FileSystem.isDir(path) && FileSystem.exists(path)) { return SemuModState("shadowed", "a file in the emulator's state: " + path); }
+        return SemuModState("pending", "linked at the next launch");
+    }
+
+    class Vector<string> ignored(SemuModKind kind, SemuModEntry entry) {  // top-level names the emulator never reads, for kinds that name what they read
+        Vector<string> result = [];
+        if (entry.file || !entry.problem.isEmpty() || kind.reads.contains("*") || kind.reads.contains("/")) { return result; }
+        Vector<string> names = FileSystem.listDir(entry.source);
+        names.sort();
+        for name in names {
+            if (!name.startsWith(".") && !kind.readsName(name, FileSystem.isDir(PathTools.join(entry.source, name)))) { result.push(name); }
+        }
+        return result;
+    }
+}
+
+class SemuModListing {
+    class Vector<SemuSystem> systems(SemuModel model, SemuPlan plan, string emulatorId) {  // the systems ES-DE may start in this emulator
+        Vector<SemuSystem> result = [];
+        for systemId in plan.systems {
+            SemuSystem system = model.system(systemId);
+            bool bound = false;
+            for binding in system.bindingsFor(plan.platform) { if (binding.emulator.equals(emulatorId)) { bound = true; } }
+            if (bound) { result.push(system); }
+        }
+        return result;
+    }
+
+    class Vector<string> warnings(SemuModel model, SemuPlan plan, string emulatorId) {
+        Vector<string> result = [];
+        for system in SemuModListing.systems(model, plan, emulatorId) {
+            SemuEsDeChoice choice = SemuEsDeChoice.of(model, plan, system);
+            if (choice.emulator.equals(emulatorId)) { continue; }
+            string mine = emulatorId;
+            for binding in system.bindingsFor(plan.platform) { if (binding.emulator.equals(emulatorId)) { mine = SemuEsDeDocuments.label(model, binding); } }
+            string reason = choice.pinned ? "pinned in its gamelist" : "ES-DE's default";
+            result.push(f"{system.id} games start in \"{choice.label}\" ({reason}), which does not read these mods: choose \"{mine}\" under {system.id}'s alternative emulators in ES-DE");
+        }
+        return result;
+    }
+
+    class JSONValue kindReport(SemuPlan plan, SemuEmulator emulator, SemuModKind kind, SemuModManifest manifest, Map<string, string> games) {
+        JSONValue result = JSONValue.makeObject();
+        result.set("kind", JSONValue.makeString(kind.id));
+        result.set("library", JSONValue.makeString(kind.libraryPath(plan)));
+        result.set("target", JSONValue.makeString(kind.target));
+        if (!kind.setting.isEmpty()) { result.set("setting", JSONValue.makeString(kind.setting + "=" + SemuModKind.settingValue(plan, emulator, kind.setting))); }
+        JSONValue entries = JSONValue.makeArray();
+        Vector<SemuModEntry> found = [];
+        if (SemuModLibrary.available(plan)) { found = SemuModLibrary.entries(plan, kind); }
+        for entry in found {
+            SemuModState state = SemuModState.of(kind, entry, manifest);
+            JSONValue item = JSONValue.makeObject();
+            item.set("entry", JSONValue.makeString(entry.relative));
+            item.set("status", JSONValue.makeString(state.status));
+            item.set("detail", JSONValue.makeString(state.detail));
+            item.set("game", JSONValue.makeString(games.getOrDefault(entry.title().toUpper(), "")));
+            item.set("ignored", SemuJson.array(SemuModState.ignored(kind, entry)));
+            entries.push(item);
+        }
+        result.set("entries", entries);
+        return result;
+    }
+
+    class JSONValue report(SemuModel model, SemuPlan plan, bool readHeaders) {
+        JSONValue result = JSONValue.makeObject();
+        result.set("mods", JSONValue.makeString(plan.path("mods")));
+        result.set("library", JSONValue.makeString(!SemuModLibrary.configured(plan) ? "off" : (SemuModLibrary.available(plan) ? "ok" : "absent")));
+        JSONValue emulators = JSONValue.makeArray();
+        string saved = plan.tokens.get("state_root");
+        for emulatorId in plan.emulators {
+            SemuEmulator emulator = model.emulator(emulatorId);
+            string stateRoot = PathTools.join(plan.stateRoot(), emulatorId);
+            plan.tokens.put("state_root", stateRoot);  // each kind resolves inside this emulator's state
+            Vector<SemuModKind> kinds = SemuModKind.declared(plan, emulator);
+            if (kinds.isEmpty()) { continue; }
+            Map<string, string> games = {};
+            JSONValue systems = JSONValue.makeArray();
+            for system in SemuModListing.systems(model, plan, emulatorId) {
+                systems.push(JSONValue.makeString(system.id));
+                games.merge(SemuRomTitles.index(plan, system, readHeaders));
+            }
+            SemuModManifest manifest = SemuModManifest.read(stateRoot);
+            JSONValue item = JSONValue.makeObject();
+            item.set("emulator", JSONValue.makeString(emulatorId));
+            item.set("systems", systems);
+            JSONValue kindReports = JSONValue.makeArray();
+            int count = 0;
+            for kind in kinds {
+                JSONValue kindReport = SemuModListing.kindReport(plan, emulator, kind, manifest, games);
+                count += kindReport.get("entries").size();
+                kindReports.push(kindReport);
+            }
+            item.set("kinds", kindReports);
+            Vector<string> warnings = [];
+            if (count > 0) { warnings = SemuModListing.warnings(model, plan, emulatorId); }
+            item.set("warnings", SemuJson.array(warnings));
+            emulators.push(item);
+        }
+        if (saved.isEmpty()) { plan.tokens.remove("state_root"); } else { plan.tokens.put("state_root", saved); }
+        result.set("emulators", emulators);
+        return result;
+    }
+
+    class string text(JSONValue report) {
+        Vector<string> lines = [f"mods library: {SemuJson.textAt(report, "mods")} [{SemuJson.textAt(report, "library")}]"];
+        JSONValue emulators = report.get("emulators");
+        for (int index = 0; index < emulators.size(); index++) {
+            JSONValue emulator = emulators.at(index);
+            lines.push(f"{SemuJson.textAt(emulator, "emulator")} ({SemuJson.strings(emulator.get("systems")).join(", ")})");
+            JSONValue kinds = emulator.get("kinds");
+            for (int which = 0; which < kinds.size(); which++) {
+                JSONValue kind = kinds.at(which);
+                string setting = SemuJson.textAt(kind, "setting");
+                lines.push(f"  {SemuJson.textAt(kind, "kind")}: {SemuJson.textAt(kind, "library")}" + (setting.isEmpty() ? "" : f" ({setting})"));
+                JSONValue entries = kind.get("entries");
+                if (entries.size() == 0) { lines.push(SemuJson.textAt(report, "library").equals("ok") ? "    (empty)" : "    (library " + SemuJson.textAt(report, "library") + ")"); }
+                for (int entry = 0; entry < entries.size(); entry++) { lines.push(SemuModListing.entryLine(entries.at(entry))); }
+            }
+            for warning in SemuJson.strings(emulator.get("warnings")) { lines.push("  warning: " + warning); }
+        }
+        return lines.join("\n");
+    }
+
+    class string entryLine(JSONValue entry) {
+        string status = SemuJson.textAt(entry, "status");
+        string line = f"    {SemuJson.textAt(entry, "entry")}  {status}";
+        if (!SemuJson.textAt(entry, "game").isEmpty()) { line = line + "  " + SemuJson.textAt(entry, "game"); }
+        if (!status.equals("installed")) { line = line + "  (" + SemuJson.textAt(entry, "detail") + ")"; }
+        Vector<string> ignored = SemuJson.strings(entry.get("ignored"));
+        if (!ignored.isEmpty()) { line = line + "  ignored: " + ignored.join(", "); }
+        return line;
+    }
+
+    class Vector<string> doctorLines(JSONValue report, string emulatorId) {  // e.g. "mods: textures 3 installed, 1 pending"
+        Vector<string> result = [];
+        JSONValue emulators = report.get("emulators");
+        for (int index = 0; index < emulators.size(); index++) {
+            JSONValue emulator = emulators.at(index);
+            if (!SemuJson.textAt(emulator, "emulator").equals(emulatorId)) { continue; }
+            Vector<string> parts = [];
+            JSONValue kinds = emulator.get("kinds");
+            for (int which = 0; which < kinds.size(); which++) {
+                JSONValue entries = kinds.at(which).get("entries");
+                Vector<string> statuses = [];
+                Vector<int> counts = [];
+                for (int entry = 0; entry < entries.size(); entry++) {
+                    string status = SemuJson.textAt(entries.at(entry), "status");
+                    int position = statuses.indexOf(status);
+                    if (position < 0) {
+                        statuses.push(status);
+                        counts.push(1);
+                    } else {
+                        counts.set(position, counts.get(position) + 1);
+                    }
+                }
+                Vector<string> tallies = [];
+                for (int position = 0; position < statuses.size(); position++) { tallies.push(f"{counts.get(position)} {statuses.get(position)}"); }
+                if (!tallies.isEmpty()) { parts.push(SemuJson.textAt(kinds.at(which), "kind") + " " + tallies.join(", ")); }
+            }
+            if (!parts.isEmpty()) { result.push("    mods: " + parts.join("; ")); }
+            for warning in SemuJson.strings(emulator.get("warnings")) { result.push("    mods warning: " + warning); }
+        }
+        return result;
+    }
+}

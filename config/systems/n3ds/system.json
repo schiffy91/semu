@@ -94,5 +94,20 @@
     "hardware": "dual LCDs, 400x240 top and 320x240 bottom",
     "intent": "On Linux the n3ds system launches through RetroArch's Azahar libretro core by default (top/bottom layout, hardware shaders), with RetroArch's Citra core and the standalone Azahar build as alternates; standalone Azahar is the only macOS route. Semu owns the dual-screen presentation contract: the core stacks the 400x240 top and 320x240 bottom screens into one frame and the renderer partitions it by the declared native sizes.",
     "core": "The default core is Semu's own build of the Azahar tree's libretro target (config/emulators/retroarch/cores/azahar); its options keep the citra_ prefix upstream."
+  },
+  "titles": {
+    "from": "header",
+    "extensions": [
+      ".3ds",
+      ".cci"
+    ],
+    "magic": {
+      "offset": 256,
+      "text": "NCSD"
+    },
+    "offset": 264,
+    "length": 8,
+    "byte_order": "little",
+    "doc": "The NCSD media id (0x108, 8 bytes little-endian) is the title id Azahar files load/mods and load/textures under (<016X>); od -t x8 -j 264 -N 8 on the owner's Ocarina of Time 3D (Europe) gives 0004000000033600. Encrypted dumps keep this header in the clear."
   }
 }

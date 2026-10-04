@@ -23,6 +23,8 @@ import ./sync/syncthing.btrc;
 import ./steam/shortcuts.btrc;
 import ./steam/input_template.btrc;
 import ./bezel/editor.btrc;
+import ./mods/layout.btrc;
+import ./mods/listing.btrc;
 
 class SemuCli {
     public CLIArgs args;
@@ -49,6 +51,7 @@ class SemuCli {
         help.item("sync start | stop | run | status | device-id | enabled", "Syncthing for saves: detach, run in the foreground, inspect, print this device's id.");
         help.item("steam shortcuts [--steam-root DIR] [--force] | status", "Add or refresh the Semu non-Steam shortcut in every Steam profile.");
         help.item("steam input [--steam-root DIR]", "With Steam stopped: write the Steam Input templates (Deck, Steam Controllers), their icons, each user's Semu profile and the configset entry that makes Steam load it.");
+        help.item("mods list [--json] [--roms] | layout | init", "The mods library: each entry with its game and whether the emulator sees it (--roms reads ROM headers for the game names), the folder layout, or create that layout with README files.");
         help.item("bezel resolve | emit | edit [--packages a,b] [--port N]", "Mega Bezel presets: print their resolved chains, write the packages' layers and screens, or serve the bezel editor.");
         help.item("version", "Print the Semu version.");
         help.section("Common options");
@@ -285,6 +288,15 @@ class SemuCli {
         return self.usage(64);
     }
 
+    public int mods() {  // mods list [--json] [--roms] | layout | init
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
+        SemuPlan plan = self.resolve(model, diagnostics);
+        if (!SemuChecker.check(model, plan, diagnostics)) { return self.fail(diagnostics); }
+        int code = SemuModCommand.run(model, plan, self.line.operand(1, ""), self.line.has("--json"), self.line.has("--roms"));
+        return code == 64 ? self.usage(64) : code;
+    }
+
     public int doctor() {
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
@@ -303,11 +315,13 @@ class SemuCli {
         }
         Console.log(f"systems: {plan.systems.join(" ")}");
         Console.log(f"emulators: {plan.emulators.join(" ")}");
+        JSONValue mods = SemuModListing.report(model, plan, false);
         for emulatorId in plan.emulators {
             SemuEmulator emulator = model.emulator(emulatorId);
             string executable = plan.tokens.resolve(SemuJson.textAt(emulator.platform(plan.platform), "executable"));
             string state = FileSystem.isFile(executable) ? "ok" : "missing";
             Console.log(f"  {emulatorId}: {executable} [{state}]");
+            for line in SemuModListing.doctorLines(mods, emulatorId) { Console.log(line); }
         }
         if (!diagnostics.ok()) { Console.log("problems:\n" + diagnostics.render()); }
         return diagnostics.ok() ? 0 : 1;
@@ -339,6 +353,7 @@ class SemuCli {
         if (command.equals("sync")) { return self.sync(); }
         if (command.equals("steam")) { return self.steam(); }
         if (command.equals("bezel")) { return self.bezel(); }
+        if (command.equals("mods")) { return self.mods(); }
         if (command.equals("version")) {
             Console.log(SemuCli.version());
             return 0;

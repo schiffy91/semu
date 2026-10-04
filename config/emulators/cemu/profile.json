@@ -274,6 +274,9 @@
         "\t<use_discord_presence>false</use_discord_presence>",
         "\t<play_boot_sound>false</play_boot_sound>",
         "\t<check_update>false</check_update>",
+        "\t<GraphicPack>",
+        "@lines:mods.graphicpacks",
+        "\t</GraphicPack>",
         "</content>"
       ]
     }

@@ -49,5 +49,16 @@
     "intent": "Modern system: fullscreen first, optional cosmetic frame only when explicitly enabled.",
     "bios": "Ryujinx needs dumped Switch keys and firmware from the user's console.",
     "extensions": "Only what Ryujinx 1.3.3 loads (.xci, .nsp, .nca, .nro, .nso): it opens no archive, a .zip fails as unsupported homebrew, so neither is offered. None occurs in the library."
+  },
+  "titles": {
+    "from": "filename",
+    "extensions": [
+      ".nsp",
+      ".xci"
+    ],
+    "open": "[",
+    "close": "]",
+    "length": 16,
+    "doc": "Switch dumps carry their title id in brackets, e.g. The Legend of Zelda Tears of the Kingdom [0100F2C0115B6000][v0][US].nsp; updates live in switch/updates and end in 800, so a base game is the only match at the top level."
   }
 }

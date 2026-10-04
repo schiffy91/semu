@@ -22,6 +22,7 @@ import ./harness.btrc;
 import ./mods_paths.btrc;
 import ./mods_install.btrc;
 import ./mods_launch.btrc;
+import ./mods_cli.btrc;
 
 #include <stdio.h>
 
@@ -141,8 +142,8 @@ class ModsSpecProfile {  // the install runs before the render in one launch, so
 
 class ModsSpecSource {  // shared mods code: classes only, and no emulator, system or title in it
     class Vector<string> files() {
-        Vector<string> result = ["src/emit/composed_scale.btrc", "src/launch/seeds.btrc"];
-        for name in ["kind", "library", "manifest", "report", "install", "title_settings", "updates", "declarations"] { result.push("src/mods/" + name + ".btrc"); }
+        Vector<string> result = ["src/emit/composed_scale.btrc", "src/emit/esde_choice.btrc", "src/launch/seeds.btrc"];
+        for name in ["kind", "library", "manifest", "report", "install", "title_settings", "updates", "declarations", "titles", "listing", "layout"] { result.push("src/mods/" + name + ".btrc"); }
         return result;
     }
 
@@ -173,6 +174,7 @@ class ModsSpecContract {
         ModsSpecInstall.run(contract);
         ModsSpecLaunch.run(contract);
         ModsSpecProfile.run(contract);
+        ModsSpecReport.run(contract);
         ModsSpecSource.run(contract, Fixture("linux-desktop").project);
     }
 }

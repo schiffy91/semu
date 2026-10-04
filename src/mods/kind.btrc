@@ -40,7 +40,7 @@ class SemuModLevel {  // the names one folder level accepts, and how its link is
     }
 
     public string rule() {  // e.g. "16 characters of 0123456789ABCDEFabcdef"
-        string size = self.length > 0 ? f"{self.length} characters" : "a plain name";
+        string size = self.length > 0 ? f"{self.length} characters" : (self.characters.isEmpty() ? "a plain name" : "a name");
         return self.characters.isEmpty() ? size : size + " of " + self.characters;
     }
 
@@ -118,6 +118,8 @@ class SemuModKind {
     public string setting;  // the settings group this kind switches on, "" for none
     public string titlePath;  // title_settings.path, unresolved: one settings file per installed title
     public Vector<string> titleLines;
+    public string entryFormat;  // entry_lines.format: one settings line per installed entry, ${entry} its linked name and ${target} the resolved target
+    public string entryEscape;  // entry_lines.escape: xml, or "" to write the name as it is
     public JSONValue definition;
 
     public SemuModKind(string emulatorId, JSONValue definition, SemuTokens tokens) {
@@ -138,6 +140,8 @@ class SemuModKind {
         self.titleLines = [];
         JSONValue lines = SemuJson.get(definition, "title_settings.lines");
         for (int index = 0; lines.isArray() && index < lines.size(); index++) { self.titleLines.push(SemuJson.text(lines.at(index))); }
+        self.entryFormat = SemuJson.textAt(definition, "entry_lines.format");
+        self.entryEscape = SemuJson.textAt(definition, "entry_lines.escape");
     }
 
     class JSONValue declaration(SemuPlan plan, SemuEmulator emulator) { return SemuJson.get(emulator.platform(plan.platform), "state.mods"); }
@@ -233,4 +237,34 @@ class SemuModKind {
     }
 
     public bool active() { return !self.levels.isEmpty() && FileSystem.isDir(self.target) && self.populated(self.target, 0); }  // what the emulator will see; an empty folder it made does not count
+
+    public void collect(string directory, int level, string relative, Vector<string> result) {  // folders at the linked depth that hold what the emulator reads
+        Vector<string> names = FileSystem.listDir(directory);
+        names.sort();
+        for name in names {
+            string path = PathTools.join(directory, name);
+            if (SemuModLevel.reserved(name) || !FileSystem.isDir(path)) { continue; }
+            string entry = relative.isEmpty() ? name : relative + "/" + name;
+            if (level < self.deepest()) { self.collect(path, level + 1, entry, result); }
+            else if (self.problem(path).isEmpty()) { result.push(entry); }
+        }
+    }
+
+    public Vector<string> installed() {  // target-relative names the emulator will load, sorted: read from the target, like active()
+        Vector<string> result = [];
+        if (!self.levels.isEmpty() && FileSystem.isDir(self.target)) { self.collect(self.target, 0, "", result); }
+        return result;
+    }
+
+    class string xml(string text) { return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&apos;"); }
+
+    public string entryLines() {  // the @lines:mods.<id> group: one line per installed entry, for an emulator that lists what it loads
+        Vector<string> lines = [];
+        for entry in self.installed() {
+            if (entry.contains("$")) { continue; }  // a name the token pass would expand
+            bool xml = self.entryEscape.equals("xml");
+            lines.push(self.entryFormat.replace("${target}", xml ? SemuModKind.xml(self.target) : self.target).replace("${entry}", xml ? SemuModKind.xml(entry) : entry));
+        }
+        return lines.join("\n");
+    }
 }

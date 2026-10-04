@@ -1,0 +1,110 @@
+// The library's layout as the owner sees it: `semu mods layout` prints one line per kind on this platform
+// (<mods>/<emulator>/<library>/<one folder per level>, what goes there, and where it is linked), and
+// `semu mods init` creates those folders, each with a README.txt saying the same, plus one README.txt at the
+// top. Init writes only folders and README files that are absent (an edited README is kept), never inside an
+// entry and never in an emulator's state, and only below a mounted emulation folder. `semu mods` dispatches.
+
+import Library.Console;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+import ./kind.btrc;
+import ./library.btrc;
+import ./listing.btrc;
+
+class SemuModLayout {
+    class string levelRule(SemuModLevel level) {
+        if (!level.files.isEmpty()) { return "<" + level.rule() + ", or the file " + level.files.join(" or ") + ">"; }
+        return "<" + level.rule() + ">";
+    }
+
+    class string pattern(SemuPlan plan, SemuModKind kind) {  // e.g. <mods>/<emulator>/<library>/<16 characters of ...>/
+        string result = kind.libraryPath(plan);
+        for level in kind.levels { result = result + "/" + SemuModLayout.levelRule(level); }
+        return result;
+    }
+
+    class Vector<SemuModKind> kinds(SemuModel model, SemuPlan plan) {  // every kind on this platform, each resolved in its emulator's state
+        Vector<SemuModKind> result = [];
+        string saved = plan.tokens.get("state_root");
+        for emulatorId in plan.emulators {
+            plan.tokens.put("state_root", PathTools.join(plan.stateRoot(), emulatorId));
+            for kind in SemuModKind.declared(plan, model.emulator(emulatorId)) { result.push(kind); }
+        }
+        if (saved.isEmpty()) { plan.tokens.remove("state_root"); } else { plan.tokens.put("state_root", saved); }
+        return result;
+    }
+
+    class string text(SemuModel model, SemuPlan plan) {
+        Vector<string> lines = [];
+        for kind in SemuModLayout.kinds(model, plan) {
+            lines.push(SemuModLayout.pattern(plan, kind));
+            lines.push("  " + SemuJson.textAt(kind.definition, "about"));
+            lines.push("  linked into " + kind.target + (kind.setting.isEmpty() ? "" : f", switching {kind.setting} on while installed"));
+        }
+        return lines.join("\n");
+    }
+
+    class string readme(SemuPlan plan, SemuModKind kind) {
+        return SemuJson.textAt(kind.definition, "about") + "\n\nLayout: " + SemuModLayout.pattern(plan, kind) + "\nLinked into: " + kind.target + "\n\nSemu links each entry into the emulator at the next launch of a game and never copies or changes it. Take a folder out to remove a mod; put an empty file named .semu-off in it to park it.\n";
+    }
+
+    class string overview() {
+        return "Mods library: one folder per emulator, inside it one folder per kind of mod, in the emulator's own format.\nEach kind folder has a README.txt saying what goes there. Semu links every entry into the emulator's state when a game starts, never copies it and never writes inside it; `semu mods list` shows what is installed for each game.\n";
+    }
+
+    class bool writeReadme(string path, string content, Vector<string> created) {  // only when absent: an edited README is the owner's
+        if (FileSystem.exists(path) || FileSystem.isSymlink(path)) { return true; }
+        if (!SemuPaths.replace(path, content)) { return false; }
+        created.push(path);
+        return true;
+    }
+
+    class int create(SemuModel model, SemuPlan plan) {
+        string root = plan.path("mods");
+        if (root.isEmpty()) {
+            Console.error("semu: paths.mods is empty, so mods are off; set it to create the library");
+            return 1;
+        }
+        if (!FileSystem.isDir(PathTools.dirname(root))) {
+            Console.error("semu: " + PathTools.dirname(root) + " is not there (is the card or drive mounted?); nothing created");
+            return 1;
+        }
+        Vector<string> created = [];
+        bool complete = SemuModLayout.folder(root, created) && SemuModLayout.writeReadme(PathTools.join(root, "README.txt"), SemuModLayout.overview(), created);
+        for kind in SemuModLayout.kinds(model, plan) {
+            string library = kind.libraryPath(plan);
+            complete = complete && SemuModLayout.folder(library, created) && SemuModLayout.writeReadme(PathTools.join(library, "README.txt"), SemuModLayout.readme(plan, kind), created);
+        }
+        for path in created { Console.log("created " + path); }
+        if (!complete) { Console.error("semu: could not create the whole library layout under " + root); }
+        return complete ? 0 : 1;
+    }
+
+    class bool folder(string path, Vector<string> created) {
+        if (FileSystem.isDir(path)) { return true; }
+        if (!SemuPaths.prepareDirectory(path)) { return false; }
+        created.push(path + "/");
+        return true;
+    }
+}
+
+class SemuModCommand {
+    class int run(SemuModel model, SemuPlan plan, string action, bool json, bool readHeaders) {  // mods list [--json] [--roms] | layout | init
+        if (action.equals("list")) {
+            JSONValue report = SemuModListing.report(model, plan, readHeaders);
+            Console.log(json ? report.stringifyPretty(2) : SemuModListing.text(report));
+            return 0;
+        }
+        if (action.equals("layout")) {
+            Console.log(SemuModLayout.text(model, plan));
+            return 0;
+        }
+        if (action.equals("init")) { return SemuModLayout.create(model, plan); }
+        return 64;
+    }
+}
