@@ -665,8 +665,9 @@ sequential implementation, review and fixes), each item done only when observed.
    centred background as the other handhelds. Done when render-host pictures and the
    Deck show it.
 
-Status: being designed (workflow mods-design, with critique) while the radial series
-(M8) finishes its review fixes; implementation follows in the main checkout.
+Status (2026-10-04): every item built and observed in the podman VM or the render host; on the Deck
+(release b1bf425) item 0's mods load and parts of items 2 and 3 work (below); the review of the series is
+fixed; the Deck reruns of cases 4, 14 and 16, the Wii IR, the players page and Steam's own radials remain.
 
 - Item 0 (mods), the core: built 2026-10-04 and observed in the podman VM; the migration (`semu mods
   migrate`, below) is built; the Deck is open. Rulings taken as reversible defaults:
@@ -982,11 +983,11 @@ Status: being designed (workflow mods-design, with critique) while the radial se
     output, and a default bezel with no bezel for an output.
   - Reset to Default asks for a second press within 3 s (code 85 slot 0; reserved 2 when the running output
     is not the default: "RESET: AGAIN TO REBOOT GAME"), then removes `visual.systems.<id>`,
-    `visual.games.<id>` and `input.systems.<id>` from semu.json (SemuSettingsStore.remove, which leaves a
+    `visual.games.<id>` and `input.systems.<id>.players` from semu.json (SemuSettingsStore.remove, which leaves a
     malformed file untouched), journals the default bezel, shader and placement as absolute selects (live)
     and 85 slot 1 ("RESET TO DEFAULTS"), and restarts only to change the output back.
   - Nothing to choose says so: a select with slot -1 shows the action's unavailable toast (BEZEL: NONE
-    HERE, SHADER: NONE HERE, FIT: NO BEZEL HERE, ASPECT: ONE ONLY). Toasts stay data: any `NAME_toast` of
+    HERE, SHADER: NONE HERE, FIT: NO BEZEL, ASPECT: ONE ONLY). Toasts stay data: any `NAME_toast` of
     an input.json action reaches the renderer as `action:NAME` (loading, unavailable, confirm, restart, done).
   - Chords: Fit Ctrl+Shift+F, Aspect Ctrl+Shift+G, Reset Ctrl+Shift+R. Aspect is not Ctrl+Shift+A: Dolphin
     (ExpressionParser.cpp:565-590) and PCSX2 (InputManager.cpp:1080-1170) fire a binding when extra modifiers
@@ -1143,6 +1144,67 @@ Status: being designed (workflow mods-design, with critique) while the radial se
   tests/deck/radial-check.cases`: 16 timelines, identical under bash 5.3 and 3.2.
   Open, on the Deck: Steam honouring the preset switch and Close in Game Mode (only the binding's form is
   evidenced), the 10 + 10 + 9 + 4 icons and their look, and cases 14 to 16.
+- The Deck, release b1bf425 (2026-10-04, read-only checks over ssh; the owner ran `semu mods migrate`
+  there, so the mods sit in the SD card's Emulation/mods). Observed:
+  - Item 0: OoT 3D and Majora's Mask 3D load their 4K packs and patches from the central library (Azahar's
+    log: the per-application config for the title, Utility_CustomTextures true, code.ips patching code.bin);
+    Tears of the Kingdom logged "Found enabled mod '!!!TOTK Optimizer'", its exefs and RomFS replaced, on
+    v1.2.1. Item 0's criterion is met on the Deck for the patch and textures loading; the pictures by eye
+    and Continue in TotK stay for the owner's next play.
+  - Item 2, 3DS: Semu's arrow on standalone Azahar after a tap (the whole arrow, 276 px of fill, at the
+    tap's point plus 2,4) and none 5 s later. The very first move right after launch drew none ("cursor
+    shown 0,0" was logged after the shot, at the next token's park): fixed below. Not observed: the Wii
+    IR pointer (Dolphin's Wii Remotes read the Deck's controls through its SteamDeck backend, which the
+    off-screen harness cannot drive).
+  - Item 3: the radial v2 chords reach the supervisor (system.reset twice, visual.placement.next,
+    visual.output.next, controller.layout.next, ui.players); Fit on the Wii shrank the picture into the bezel;
+    the Wii's Aspect double press rebooted the game; GBA Fit pressed while the bezel was off showed no
+    change (the test order; fixed below). Not observed: the players page and per-player layouts (the
+    harness typed `ctrl+down`, `ctrl+up` and `ctrl+backspace`, which xdotool ignores in that case, so only
+    Ctrl arrived; fixed below), Steam's own radial UI and the settings page (the owner's eyes only).
+- Review of the M13 series (2026-10-04), fixed in 5f55703 and ff6e9df, each with contracts that
+  fail under their mutations (11 and 29):
+  - Azahar's first trackpad move: its patch reports a sample only on a mouse event, so the renderer's rule
+    for RetroArch's polled pointer (a first sample is only a position) swallowed it. The standalone
+    compositor now counts each event (a serial under the sample lock) and marks the first frame carrying
+    it visible 2, which the renderer counts as motion; RetroArch's bridge passes fresh=false.
+  - The Deck harness: inject.sh maps Semu's key names to X keysyms (down Down, backspace BackSpace, f5
+    F5) and prints them in --plan; input-check.sh greps run.log with -a (a restarted Dolphin leaves NUL
+    bytes there, which hid every action line of the Wii case), reads any cursor-arrow.sh status but 0 or 1
+    as unchecked, and refuses to start without inject.sh and cursor-arrow.sh beside it (the Deck's copy
+    lacked cursor-arrow.sh, so every arrow read FAIL; on the fetched shots arrow-2 and arrow-4 pass).
+    Rerun on the next release: cases 4, 14 and 16.
+  - Reset to Default removes `input.systems.<id>.players`, not the whole subtree, so the Switch's
+    play_mode (docked on a TV) survives it.
+  - Fit while the bezel is switched off journals 81/-1 with the unavailable toast, now FIT: NO BEZEL (it
+    covers no bezel here and the bezel off), and saves nothing; the menu's FIT row stays (rows are fixed
+    per launch) and says the same.
+  - Dolphin on linux-desktop: a pad Steam does not own is named as SDL names it (input.json
+    `players.sdl_names` by vendor:product, read from SDL 3 in the podman VM with uinput pads: 045e:028e
+    Xbox 360 Controller, 045e:02d1 Xbox One Controller, 045e:02ea Xbox One S Controller, 045e:0b12 Xbox
+    Series X Controller, 054c:05c4 and 054c:09cc PS4 Controller, 054c:0ce6 PS5 Controller; Nintendo's Pro
+    Controller, Logitech's F310, 8BitDo's Pro 2 and the DualSense Edge keep their kernel names), so players
+    2-4 get `SDL/<n>/Xbox 360 Controller` instead of a kernel name Dolphin never lists. The GUID keeps
+    the kernel name's CRC (SDL's own). Logged, not changed: linux-desktop's default device identity names
+    `SDL/0/Xbox Controller` for 045e:02ea, while SDL 3 names that id Xbox One S Controller over evdev; the
+    owner's xone pads on FRACTAL-NORTH decide which is right, and nothing here can check them.
+  - Style: paced_keys' `at` and `x` are offsetMs and xTestReady, and the style scan covers src/mods, the
+    new launch, emit, checker and renderer sources and the M13 specs.
+  - Contracts the review found missing, now in place: the case of updates.json's title folder and of the
+    per-title settings file (listDir, exact: APFS ignores case, the Deck's card does not), a per-title file
+    rewritten when its content changes, migrate refusing a linked library, a short copy never renamed in
+    (`SemuModMover.adopt`), a leftover `.semu-partial` never an entry, reverse's "left" outcome, the
+    pointer and touch screen diagnostics, the late XIQueryPointer bind, Left from the default fit, BPS
+    beat numbers over two bytes, an exheader over 2048 bytes, a .PNG pack, a title's first character, a
+    `$` in an entry name, a 17-character bracket token, two pads of one model (same_guid_index 0 and 1),
+    a saved player 1 without a pad, player 1 never moved to none, Dolphin's recursive any-case profile
+    listing, a padless player on GameCube at Reset, and the checkers' layout keys, single layout,
+    undeclared output and partner.
+  - Rulings (reversible, the owner being unattended): RESTART GAME after a layout already switched live
+    still restarts (the page saw a change; every file then comes from the saved choice). Fit stays a
+    two-way integer toggle (bezel and screen, the owner's "always integer scale"), so on TVs the default
+    fractional fit (686x515 on the Wii at 1280x800) is reached only by Reset, which also returns the
+    players' layouts and pads and, on a 16:9 Wii game, reboots it.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
@@ -2466,6 +2528,13 @@ Update this block whenever a milestone criterion changes state.
   lands on the composed bottom screen), Azahar (Ace Combat, Mac), Dolphin (Aggressive Inline,
   Mac), Ryujinx (Animal Crossing, Mac). Ryujinx and Cemu load the layer on Linux but need native
   hardware for a picture; the Mac touch check and the Deck remain.
+- M13 owner feedback from the Deck (2026-10-04): all six items built and observed off the Deck. On the
+  Deck (release b1bf425): OoT 3D and MM3D load their packs and patches and TotK its mod from the central
+  library after `semu mods migrate`; Semu's arrow shows on standalone Azahar after a tap; the radial v2
+  chords reach the supervisor, Fit on the Wii places the picture in the bezel and its Aspect double press reboots the game. The series' review is fixed
+  (Azahar's first move, the harness's keysyms and greps, Reset keeping play_mode, Fit with the bezel off,
+  Dolphin's SDL names on the desktop, the missing contracts). Open on the Deck: cases 4, 14 and 16 rerun,
+  the Wii IR, the players page, Steam's radial pages, item 1's glow and item 5's PSP by eye.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,
