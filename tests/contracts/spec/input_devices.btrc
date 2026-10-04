@@ -1,0 +1,222 @@
+// Input devices spec: what a device is to the supervisor is decided from classify()'s answers, a
+// physical pad and Steam's copy of it fire one action, the X key adapter is really wired, and
+// Semu's typing is swallowed only when it comes back through X.
+
+#include <fcntl.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include "semu_evdev.h"
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/launch/actions.btrc;
+import ../../../src/launch/input_devices.btrc;
+import ../../../src/launch/supervisor.btrc;
+import ../../../src/renderer/action_abi.btrc;
+import ./input_delivery.btrc;
+import ./menu_modal.btrc;
+import ./right_trackpad.btrc;
+
+class InputDevicesTools {
+    class int pair(int* writer) {  // a socketpair standing in for an evdev node: the read end, nonblocking
+        int ends[2];
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, ends) != 0) { return -1; }
+        int flags = fcntl(ends[0], F_GETFL, 0);
+        fcntl(ends[0], F_SETFL, flags | (int)O_NONBLOCK);
+        *writer = ends[1];
+        return ends[0];
+    }
+
+    class string source(Fixture fixture, string relative) { return FileSystem.readText(PathTools.join(fixture.project, relative)); }
+
+    class int count(string text, string needle) { return Strings.split(text, needle).size() - 1; }
+}
+
+class InputDevicesAdopt {  // the face layout, routing source and dedupe identity come from classify()'s answers
+    class void run(Contract contract, Fixture fixture) {
+        Vector<string> layouts = SemuJson.strings(SemuJson.get(fixture.plan.input.definition, "gamepad_chords.xpad_layout_ids"));
+        InputDeliveryTools.fresh();
+        SemuInputDevices.adopt(0, -1, 1, 0, 0x28de, 0x11ff, "/dev/input/event90", layouts);
+        SemuInputDevices.adopt(1, -1, 1, 0, 0x28de, 0x1205, "/dev/input/event91", layouts);
+        SemuInputDevices.adopt(2, -1, 0, 1, 0x28de, 0x11ff, "/dev/input/event99", layouts);
+        struct SemuInputDevice* steam = &SemuSupervisorRuntime.devices[0];
+        struct SemuInputDevice* deck = &SemuSupervisorRuntime.devices[1];
+        struct SemuInputDevice* keyboard = &SemuSupervisorRuntime.devices[2];
+        contract.expect(steam->face_swapped == 1 && steam->source == SEMU_SOURCE_GAMEPAD && steam->identity == SEMU_IDENTITY_PAD_BASE, "adopting Steam's virtual pad 28de:11ff swaps its face buttons; it routes as a pad and deduplicates as pad slot 0");
+        contract.expect(deck->face_swapped == 0 && deck->identity == SEMU_IDENTITY_PAD_BASE + 1, "the Deck's own controller 28de:1205 stays positional, with its own identity");
+        contract.expect(keyboard->face_swapped == 0 && keyboard->source == SEMU_SOURCE_KEYBOARD && keyboard->identity == SEMU_SOURCE_KEYBOARD && keyboard->keyboard == 1 && SemuSupervisorRuntime.device_count == 3, "a keyboard routes as a keyboard, whatever ids it reports, and never swaps");
+        string devices = InputDevicesTools.source(fixture, "src/launch/input_devices.btrc");
+        string classify = RightTrackpadSpecText.between(devices, "class bool classify(", "class int freeSlot(");
+        contract.expect(RightTrackpadSpecText.before(classify, "ioctl(handle, identityRequest, &identity);", "*vendor = (int)identity.vendor;") && classify.contains("*product = (int)identity.product;") && classify.contains("(unsigned long)EVIOCGID"), "classify copies the vendor and product EVIOCGID reports");
+        string scan = RightTrackpadSpecText.between(devices, "class void scan(", "class void remember(");
+        contract.expect(RightTrackpadSpecText.before(scan, "SemuInputDevices.classify(handle, &gamepad, &keyboard, &vendor, &product)", "SemuInputDevices.admit(handle, gamepad, keyboard, vendor, product, path, launch)"), "scan hands classify's answers to admit");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
+class InputDevicesIgnore {  // the pads Steam virtualises reach the game only as Steam's copy, and Semu reads them the same way
+    class void run(Contract contract, Fixture fixture) {
+        string steamList = "0x28DE/0x1205,0x054C/0x0CE6,0x057e/0x2009";
+        Vector<int> parsed = SemuSdlIgnore.identities(steamList);
+        contract.expect(parsed.size() == 3 && parsed.get(0) == 0x28de1205 && parsed.get(1) == 0x054c0ce6 && parsed.get(2) == 0x057e2009, "Steam's SDL_GAMECONTROLLER_IGNORE_DEVICES list reads as vendor/product pairs, either case");
+        contract.expect(SemuSdlIgnore.identities("0x28DE").isEmpty() && SemuSdlIgnore.identities("").isEmpty(), "a vendor without its product names nothing");
+        contract.expect(SemuSdlIgnore.ignored(0x054c, 0x0ce6, steamList, "") && !SemuSdlIgnore.ignored(0x28de, 0x11ff, steamList, ""), "the DualSense Steam virtualises is ignored; Steam's virtual pad is not");
+        contract.expect(SemuSdlIgnore.ignored(0x054c, 0x0ce6, "", "0x28DE/0x11FF") && !SemuSdlIgnore.ignored(0x28de, 0x11ff, steamList, "0x28DE/0x11FF"), "an _EXCEPT list ignores every pad it does not name, as SDL does");
+        Vector<string> layouts = SemuJson.strings(SemuJson.get(fixture.plan.input.definition, "gamepad_chords.xpad_layout_ids"));
+        SemuLaunchPlan launch = InputDeliveryTools.launch(PathTools.join(fixture.scratch, "devices/ignore"), InputDeliveryTools.none(), InputDeliveryTools.none());
+        launch.xpadLayoutIds = layouts;
+        InputDeliveryTools.fresh();
+        setenv("SDL_GAMECONTROLLER_IGNORE_DEVICES", steamList, 1);
+        int handles[3];
+        for (int index = 0; index < 3; index++) { handles[index] = open("/dev/null", O_RDONLY); }  // distinct open descriptors, so no slot looks free
+        bool physical = SemuInputDevices.admit(handles[0], 1, 0, 0x054c, 0x0ce6, "/dev/input/event40", launch);
+        bool virtualPad = SemuInputDevices.admit(handles[1], 1, 0, 0x28de, 0x11ff, "/dev/input/event41", launch);
+        bool keyboard = SemuInputDevices.admit(handles[2], 0, 1, 0x054c, 0x0ce6, "/dev/input/event42", launch);
+        contract.expect(!physical && virtualPad && keyboard && SemuSupervisorRuntime.device_count == 2 && SemuSupervisorRuntime.devices[0].face_swapped == 1, "with Steam's list set, admit skips the physical pad and takes Steam's copy (swapped) and any keyboard");
+        SemuSupervisor.end();
+        close(handles[0]);
+        unsetenv("SDL_GAMECONTROLLER_IGNORE_DEVICES");
+        InputDeliveryTools.fresh();
+        contract.expect(SemuInputDevices.admit(-1, 1, 0, 0x054c, 0x0ce6, "/dev/input/event40", launch) && SemuSupervisorRuntime.devices[0].face_swapped == 0, "without the list the same pad is admitted, positional");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
+class InputDevicesTwoPads {  // a physical PlayStation pad and Steam's copy of it, both read: each chord runs once
+    class void press(int writer, int code) { MenuModalTools.key(writer, code, 1); }
+
+    class void run(Contract contract, Fixture fixture) {
+        Vector<string> layouts = SemuJson.strings(SemuJson.get(fixture.plan.input.definition, "gamepad_chords.xpad_layout_ids"));
+        string journal = PathTools.join(fixture.scratch, "devices/two-pads");
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan launch = MenuModalTools.launch(journal);
+        launch.xpadLayoutIds = layouts;
+        launch.chordButtons = ["north", "dpad_right"];
+        launch.chordActions = ["ui.menu", "state.next"];
+        launch.emulatorActions.push("state.next");
+        launch.stateSlots = 10;
+        int physicalWriter = -1;
+        int steamWriter = -1;
+        int physical = InputDevicesTools.pair(&physicalWriter);
+        int steam = InputDevicesTools.pair(&steamWriter);
+        bool admitted = physical >= 0 && steam >= 0 && SemuInputDevices.admit(physical, 1, 0, 0x054c, 0x0ce6, "/dev/input/event50", launch) && SemuInputDevices.admit(steam, 1, 0, 0x28de, 0x11ff, "/dev/input/event51", launch);
+        InputDevicesTwoPads.press(physicalWriter, BTN_SELECT);
+        InputDevicesTwoPads.press(physicalWriter, BTN_NORTH);
+        InputDevicesTwoPads.press(steamWriter, BTN_SELECT);
+        InputDevicesTwoPads.press(steamWriter, BTN_WEST);  // Steam's copy names the same top button BTN_WEST
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(admitted && InputDeliveryTools.records(journal) == 1 && InputDeliveryTools.record(journal, 0, SemuActions.menuToggle(), 0) && SemuSupervisorRuntime.menu_visible == 1, "Select+Triangle read from both pads in one tick opens the menu once and it stays open");
+        for (int code = 0; code < 2; code++) {  // Select and the top button come up on both pads
+            MenuModalTools.key(physicalWriter, code == 0 ? BTN_NORTH : BTN_SELECT, 0);
+            MenuModalTools.key(steamWriter, code == 0 ? BTN_WEST : BTN_SELECT, 0);
+        }
+        InputDevicesTwoPads.press(physicalWriter, BTN_DPAD_DOWN);
+        InputDevicesTwoPads.press(steamWriter, BTN_DPAD_DOWN);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(SemuSupervisorRuntime.menu_selected == 1 && InputDeliveryTools.records(journal) == 2, "the menu moves one row, not two");
+        SemuActionExecutor.closeMenu(launch);
+        InputDevicesTwoPads.press(physicalWriter, BTN_SELECT);
+        InputDevicesTwoPads.press(steamWriter, BTN_SELECT);
+        InputDevicesTwoPads.press(physicalWriter, BTN_DPAD_RIGHT);
+        InputDevicesTwoPads.press(steamWriter, BTN_DPAD_RIGHT);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(SemuSupervisorRuntime.slot == 1, f"Select+Right from both pads steps one slot, not two (slot {SemuSupervisorRuntime.slot})");
+        SemuSupervisor.end();
+        close(physicalWriter);
+        close(steamWriter);
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
+class InputDevicesKeys {  // the open menu's keyboard arrows, and the echo swallowed only from X
+    class void run(Contract contract, Fixture fixture) {
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan launch = InputDeliveryTools.launch(PathTools.join(fixture.scratch, "devices/keys"), InputDeliveryTools.none(), InputDeliveryTools.none());
+        struct SemuInputDevice* keyboard = &SemuSupervisorRuntime.x11_keyboard;
+        SemuSupervisorRuntime.menu_visible = 1;
+        contract.expect(SemuInputEvents.keyboardAction(launch, keyboard, KEY_LEFT).equals("ui.menu.left") && SemuInputEvents.keyboardAction(launch, keyboard, KEY_RIGHT).equals("ui.menu.right"), "with the menu open the Left and Right keys step a BEZEL or SHADER row");
+        contract.expect(SemuInputEvents.keyboardAction(launch, keyboard, KEY_UP).equals("ui.menu.up") && SemuInputEvents.keyboardAction(launch, keyboard, KEY_ENTER).equals("ui.menu.confirm") && SemuInputEvents.keyboardAction(launch, keyboard, KEY_BACKSPACE).equals("ui.menu.back"), "and Up, Enter and Backspace move, confirm and close");
+        SemuSupervisorRuntime.menu_visible = 0;
+        contract.expect(SemuInputEvents.keyboardAction(launch, keyboard, KEY_LEFT).isEmpty(), "with the menu closed a bare Left is the game's");
+        string echoes = PathTools.join(fixture.scratch, "devices/echo-keyboard");
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan saving = InputDeliveryTools.launch(echoes, ["state.save=Ctrl+S"], ["state.save"]);
+        struct SemuInputDevice evdev;
+        memset(&evdev, 0, sizeof(evdev));
+        evdev.keyboard = 1;
+        evdev.source = SEMU_SOURCE_KEYBOARD;
+        long long now = SemuClock.milliseconds();
+        Vector<int> typed = [KEY_LEFTCTRL, KEY_S];
+        SemuKeyEcho.expect(typed, now + 750LL);
+        SemuInputEvents.key(saving, &evdev, KEY_LEFTCTRL, 1, now);
+        SemuInputEvents.key(saving, &evdev, KEY_S, 1, now);
+        contract.expect(InputDeliveryTools.records(echoes) == 1, "a real evdev Ctrl+S inside the echo window still saves: only X brings Semu's typing back");
+        string actions = InputDevicesTools.source(fixture, "src/launch/actions.btrc");
+        string type = RightTrackpadSpecText.between(actions, "class bool type(", "class void removeDevice(");
+        contract.expect(RightTrackpadSpecText.before(type, "SemuVirtualKeyboard.emit(keyType, code, 0);", "SemuKeyEcho.expect(codes, SemuClock.milliseconds() + (long long)SEMU_ECHO_MS);"), "typing a chord arms the echo for every code once the keys are up");
+        string supervisor = InputDevicesTools.source(fixture, "src/launch/supervisor.btrc");
+        contract.contains(supervisor, "if (device->source == SEMU_SOURCE_X11 && SemuKeyEcho.consume(code, now)) { return false; }", "only the X pseudo-device consumes an echo");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
+class InputDevicesAdapter {  // the X key adapter connects in begin and on every rescan, selects raw keys and decodes them
+    class void run(Contract contract, Fixture fixture) {
+        unsigned char masks[8];
+        memset(masks, 255, sizeof(masks));
+        SemuX11Events.rawKeyMask(masks);
+        unsigned short device = (unsigned short)0;
+        unsigned short words = (unsigned short)0;
+        unsigned int bits = 0u;
+        memcpy(&device, masks, sizeof(device));
+        memcpy(&words, masks + 2, sizeof(words));
+        memcpy(&bits, masks + 4, sizeof(bits));
+        contract.expect(device == (unsigned short)1 && words == (unsigned short)1 && bits == ((1u << 13) | (1u << 14)), "the raw key mask is XIAllMasterDevices, one word, XI_RawKeyPress and XI_RawKeyRelease");
+        char* display = getenv("DISPLAY");
+        char saved[256];
+        snprintf(saved, sizeof(saved), "%s", display == null ? "" : display);
+        unsetenv("DISPLAY");
+        InputDeliveryTools.fresh();
+        bool connected = SemuX11KeyListener.connect(&SemuSupervisorRuntime.key_source);
+        contract.expect(!connected && !SemuX11KeyListener.active(&SemuSupervisorRuntime.key_source) && SemuSupervisorRuntime.key_source.descriptor == -1, "without DISPLAY the adapter connects to nothing and stays idle");
+        if (saved[0] != 0) { setenv("DISPLAY", saved, 1); }
+        struct SemuKeySource live;
+        memset(&live, 0, sizeof(live));
+        live.descriptor = 7;
+        live.kind = SEMU_KEY_SOURCE_XCB;
+        contract.expect(SemuX11KeyListener.settled(&SemuSupervisorRuntime.key_source, "") && !SemuX11KeyListener.settled(&SemuSupervisorRuntime.key_source, ":1") && SemuX11KeyListener.settled(&live, ":1"), "an idle source connects only when DISPLAY names a display; a live one never reconnects");
+        string supervisor = InputDevicesTools.source(fixture, "src/launch/supervisor.btrc");
+        string call = "SemuX11KeyListener.connect(&SemuSupervisorRuntime.key_source);";
+        string begin = RightTrackpadSpecText.between(supervisor, "class void begin(", "class void keySource(");
+        string rescan = RightTrackpadSpecText.between(supervisor, "if (ticks % rescanTicks == 0) {", "SemuSupervisor.pollDevices(launch);");
+        contract.expect(InputDevicesTools.count(begin, call) == 1 && InputDevicesTools.count(rescan, call) == 1 && InputDevicesTools.count(supervisor, call) == 2, "the supervisor connects the X key source once in begin and again on every rescan tick");
+        string x11 = InputDevicesTools.source(fixture, "src/launch/x11_keys.btrc");
+        string connect = RightTrackpadSpecText.between(x11, "class bool connect(", "class void attachWire(");
+        contract.contains(connect, "if (SemuX11KeyListener.settled(source, display) || !SemuX11Library.load()) { return false; }", "connect asks settled() before it loads libxcb");
+        contract.expect(RightTrackpadSpecText.before(connect, "!SemuX11Library.supportsInputTwo(connection)", "SemuX11Library.selectRawKeys(connection, root);") && RightTrackpadSpecText.before(connect, "SemuX11Library.selectRawKeys(connection, root);", "source->kind = SEMU_KEY_SOURCE_XCB;"), "connect selects raw keys after the XInput 2 check, before the source goes live");
+        string select = RightTrackpadSpecText.between(x11, "class void selectRawKeys(", "class SemuX11KeyListener");
+        contract.expect(RightTrackpadSpecText.before(select, "SemuX11Events.rawKeyMask(masks);", "selection(connection, root, (unsigned short)1, (void*)masks);"), "the selection sends that mask for the root window");
+        string next = RightTrackpadSpecText.between(x11, "class bool nextConnection(", "class bool next(");
+        contract.expect(RightTrackpadSpecText.before(next, "bool key = SemuX11Events.decode(event, source->opcode, code, pressed);", "if (key) { return true; }"), "every xcb event is decoded as the wire seam decodes it");
+    }
+}
+
+class InputDevicesSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        InputDevicesAdopt.run(contract, fixture);
+        InputDevicesIgnore.run(contract, fixture);
+        InputDevicesTwoPads.run(contract, fixture);
+        InputDevicesKeys.run(contract, fixture);
+        InputDevicesAdapter.run(contract, fixture);
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}

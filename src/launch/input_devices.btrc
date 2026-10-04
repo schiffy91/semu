@@ -1,0 +1,140 @@
+// The evdev devices the supervisor reads, in reusable slots. classify() is the only part that asks
+// the kernel (EVIOCGID, EVIOCGBIT, EVIOCGNAME); what a device is to Semu, whether SDL is told to
+// ignore it, its face layout, its routing source and its dedupe identity, is decided by admit() and
+// adopt() from classify()'s answers, so the contracts drive them with socketpairs.
+
+#include <dirent.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include "semu_evdev.h"
+
+import Library.Platform;
+import Library.Strings;
+import Library.Vector;
+import ./input_state.btrc;
+import ./input_filters.btrc;
+import ./menu_modal.btrc;
+import ./plan.btrc;
+
+class SemuInputDevices {  // evdev gamepads and keyboards, opened into reusable slots
+    class bool bit(unsigned long* bits, int code) {
+        int word = code / 64;
+        int offset = code % 64;
+        if (word >= SEMU_BIT_WORDS) { return false; }
+        return ((bits[word] >> offset) & 1UL) != 0UL;
+    }
+
+    class bool classify(int handle, int* gamepad, int* keyboard, int* vendor, int* product) {  // what the kernel says the device is
+        struct input_id identity;
+        memset(&identity, 0, sizeof(identity));
+        unsigned long identityRequest = (unsigned long)EVIOCGID;
+        ioctl(handle, identityRequest, &identity);
+        *vendor = (int)identity.vendor;
+        *product = (int)identity.product;
+        unsigned long eventBits[SEMU_BIT_WORDS];
+        unsigned long keyBits[SEMU_BIT_WORDS];
+        memset(eventBits, 0, sizeof(eventBits));
+        memset(keyBits, 0, sizeof(keyBits));
+        unsigned long eventRequest = (unsigned long)EVIOCGBIT(0, sizeof(eventBits));
+        unsigned long keyRequest = (unsigned long)EVIOCGBIT(EV_KEY, sizeof(keyBits));
+        if (ioctl(handle, eventRequest, eventBits) < 0 || !SemuInputDevices.bit(eventBits, EV_KEY)) { return false; }
+        if (ioctl(handle, keyRequest, keyBits) < 0) { return false; }
+        char name[128];
+        memset(name, 0, sizeof(name));
+        unsigned long nameRequest = (unsigned long)EVIOCGNAME(127);
+        ioctl(handle, nameRequest, name);
+        if (strcmp(name, "Semu Virtual Keyboard") == 0) { return false; }  // never listen to our own typing
+        int south = BTN_SOUTH;
+        int start = BTN_START;
+        int leftControl = KEY_LEFTCTRL;
+        int keyS = KEY_S;
+        int enter = KEY_ENTER;
+        bool pad = SemuInputDevices.bit(keyBits, south) && SemuInputDevices.bit(keyBits, start);
+        bool keys = SemuInputDevices.bit(keyBits, leftControl) && SemuInputDevices.bit(keyBits, keyS) && SemuInputDevices.bit(keyBits, enter);
+        *gamepad = pad ? 1 : 0;
+        *keyboard = keys ? 1 : 0;
+        return *gamepad != 0 || *keyboard != 0;
+    }
+
+    class int freeSlot() {  // a slot closed by unplug first, then a new one; -1 when full
+        for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) {
+            if (SemuSupervisorRuntime.devices[index].descriptor < 0) { return index; }
+        }
+        return SemuSupervisorRuntime.device_count < SEMU_SUPERVISOR_DEVICES ? SemuSupervisorRuntime.device_count : -1;
+    }
+
+    class bool admit(int handle, int gamepad, int keyboard, int vendor, int product, char* path, SemuLaunchPlan launch) {  // classify()'s answer: a slot, or false for a pad SDL is told to ignore
+        string ignore = Environment.get("SDL_GAMECONTROLLER_IGNORE_DEVICES", "");
+        string except = Environment.get("SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT", "");
+        if (gamepad != 0 && keyboard == 0 && SemuSdlIgnore.ignored(vendor, product, ignore, except)) { return false; }  // the game reads Steam's copy of it, and so does Semu
+        int slot = SemuInputDevices.freeSlot();
+        if (slot < 0) { return false; }
+        SemuInputDevices.adopt(slot, handle, gamepad, keyboard, vendor, product, path, launch.xpadLayoutIds);
+        return true;
+    }
+
+    class void adopt(int slot, int handle, int gamepad, int keyboard, int vendor, int product, char* path, Vector<string> xpadLayoutIds) {  // fills a slot with a fresh device
+        struct SemuInputDevice* device = &SemuSupervisorRuntime.devices[slot];
+        memset(device, 0, sizeof(struct SemuInputDevice));
+        device->descriptor = handle;
+        device->gamepad = gamepad;
+        device->keyboard = keyboard;
+        device->source = gamepad != 0 ? SEMU_SOURCE_GAMEPAD : SEMU_SOURCE_KEYBOARD;  // a keyboard chord already reached the emulator
+        device->identity = gamepad != 0 ? (int)SEMU_IDENTITY_PAD_BASE + slot : (int)SEMU_SOURCE_KEYBOARD;  // each pad its own, so a physical pad and Steam's copy of it fire once
+        device->face_swapped = gamepad != 0 && SemuFaceLayout.swapped(vendor, product, xpadLayoutIds) ? 1 : 0;
+        memcpy(&device->quit_chord, &SemuSupervisorRuntime.quit_template, sizeof(struct SemuChordState));
+        SemuInputDevices.remember(slot, path);
+        if (slot == SemuSupervisorRuntime.device_count) { SemuSupervisorRuntime.device_count++; }
+        if (gamepad != 0) { SemuPadModal.calibrate(device, handle); }  // what it holds now, so the menu never grabs it mid-press
+    }
+
+    class void vacate(int slot) {  // unplugged: the slot becomes free again
+        struct SemuInputDevice* device = &SemuSupervisorRuntime.devices[slot];
+        if (device->descriptor >= 0) { close(device->descriptor); }  // closing also ends a grab
+        device->descriptor = -1;
+        device->grabbed = 0;
+        SemuDevicePaths[slot * 64] = 0;
+    }
+
+    class void scan(SemuLaunchPlan launch) {  // opens every gamepad and keyboard; safe to call repeatedly for hotplug
+        DIR* directory = opendir("/dev/input");
+        if (directory == null) { return; }
+        struct dirent* entry = readdir(directory);
+        while (entry != null && SemuInputDevices.freeSlot() >= 0) {
+            char* name = entry->d_name;
+            if (strncmp(name, "event", 5) == 0) {
+                char path[64];
+                size_t capacity = sizeof(path);
+                snprintf(path, capacity, "/dev/input/%s", name);
+                if (!SemuInputDevices.opened(path)) {
+                    int flags = (int)O_RDONLY | (int)O_NONBLOCK | (int)O_CLOEXEC;
+                    int handle = open(path, flags);
+                    if (handle >= 0) {
+                        int gamepad = 0;
+                        int keyboard = 0;
+                        int vendor = 0;
+                        int product = 0;
+                        bool known = SemuInputDevices.classify(handle, &gamepad, &keyboard, &vendor, &product);
+                        if (!known || !SemuInputDevices.admit(handle, gamepad, keyboard, vendor, product, path, launch)) { close(handle); }
+                    }
+                }
+            }
+            entry = readdir(directory);
+        }
+        closedir(directory);
+    }
+
+    class void remember(int index, char* path) {
+        snprintf(SemuDevicePaths + index * 64, 64, "%s", path);
+    }
+
+    class bool opened(char* path) {
+        for (int index = 0; index < SemuSupervisorRuntime.device_count; index++) {
+            if (strcmp(SemuDevicePaths + index * 64, path) == 0) { return SemuSupervisorRuntime.devices[index].descriptor >= 0; }
+        }
+        return false;
+    }
+}

@@ -19,6 +19,7 @@ import ../../../src/lib/paths.btrc;
 import ../../../src/launch/plan.btrc;
 import ../../../src/launch/actions.btrc;
 import ../../../src/launch/menu_modal.btrc;
+import ../../../src/launch/input_devices.btrc;
 import ../../../src/launch/supervisor.btrc;
 import ./input_delivery.btrc;
 
@@ -149,6 +150,10 @@ class MenuModalSeam {  // Select+Y on Steam's virtual pad through real pollDevic
             contract.expect(false, "a socketpair standing in for Steam's virtual pad");
             return;
         }
+        int keys[2];
+        bool keyboard = socketpair(AF_UNIX, SOCK_STREAM, 0, keys) == 0;
+        Vector<string> positional = [];
+        if (keyboard) { SemuInputDevices.adopt(1, keys[0], 0, 1, 0, 0, "/dev/input/event-keyboard", positional); }  // a keyboard the supervisor reads: never the menu's to hold
         MenuModalTools.key(writer, BTN_SOUTH, 1);
         MenuModalTools.key(writer, BTN_SELECT, 1);
         MenuModalTools.key(writer, BTN_WEST, 1);
@@ -161,6 +166,7 @@ class MenuModalSeam {  // Select+Y on Steam's virtual pad through real pollDevic
         MenuModalTools.key(writer, BTN_SOUTH, 0);
         SemuSupervisor.pollDevices(launch);
         contract.expect(MenuModalTools.grabbed(0) && MenuModalTools.phase(SEMU_MODAL_HELD), "the last release grabs the pad: only Semu sees it now");
+        contract.expect(keyboard && SemuSupervisorRuntime.devices[1].keyboard == 1 && !MenuModalTools.grabbed(1), "the keyboard beside it is never grabbed: only pads are held");
         MenuModalTools.send(writer, EV_ABS, ABS_HAT0Y, 1);
         MenuModalTools.send(writer, EV_ABS, ABS_HAT0Y, 0);
         MenuModalTools.send(writer, EV_ABS, ABS_Z, 255);
@@ -183,20 +189,20 @@ class MenuModalSeam {  // Select+Y on Steam's virtual pad through real pollDevic
         MenuModalTools.send(writer, EV_ABS, ABS_Z, 10);
         SemuSupervisor.pollDevices(launch);
         contract.expect(MenuModalTools.grabbed(0), "the trigger at rest lets the menu take the pad");
-        int second = MenuModalTools.pad(1, false);
+        int second = MenuModalTools.pad(2, false);
         SemuSupervisor.pollDevices(launch);
-        contract.expect(second >= 0 && MenuModalTools.grabbed(1), "a pad plugged in while the menu is open is held too");
+        contract.expect(second >= 0 && MenuModalTools.grabbed(2) && !MenuModalTools.grabbed(1), "a pad plugged in while the menu is open is held too, the keyboard still not");
         MenuModalTools.send(writer, EV_ABS, ABS_X, 20000);
         SemuSupervisor.pollDevices(launch);
         SemuActionExecutor.closeMenu(launch);  // Ctrl+M from the radial
         SemuSupervisor.pollDevices(launch);
-        contract.expect(MenuModalTools.phase(SEMU_MODAL_RELEASING) && MenuModalTools.grabbed(0) && MenuModalTools.grabbed(1), "a stick pushed when the menu closes keeps every pad held");
+        contract.expect(MenuModalTools.phase(SEMU_MODAL_RELEASING) && MenuModalTools.grabbed(0) && MenuModalTools.grabbed(2) && !MenuModalTools.grabbed(1), "a stick pushed when the menu closes keeps every pad held");
         MenuModalTools.send(writer, EV_ABS, ABS_X, 100);
         SemuSupervisor.pollDevices(launch);
-        contract.expect(!MenuModalTools.grabbed(0) && !MenuModalTools.grabbed(1), "the stick back at rest gives every pad back");
+        contract.expect(!MenuModalTools.grabbed(0) && !MenuModalTools.grabbed(2), "the stick back at rest gives every pad back");
         SemuActionExecutor.openMenu(launch);  // Ctrl+M with every pad at rest
         SemuSupervisor.pollDevices(launch);
-        contract.expect(MenuModalTools.grabbed(0) && MenuModalTools.grabbed(1), "a menu opened from the keyboard over resting pads takes them on the next tick");
+        contract.expect(MenuModalTools.grabbed(0) && MenuModalTools.grabbed(2) && !MenuModalTools.grabbed(1), "a menu opened from the keyboard over resting pads takes them on the next tick, never the keyboard");
         MenuModalTools.key(writer, BTN_TR, 1);
         SemuSupervisor.pollDevices(launch);
         SemuActionExecutor.closeMenu(launch);
@@ -204,15 +210,16 @@ class MenuModalSeam {  // Select+Y on Steam's virtual pad through real pollDevic
         contract.expect(MenuModalTools.phase(SEMU_MODAL_RELEASING) && MenuModalTools.grabbed(0), "R1 held through the close keeps the pads");
         SemuSupervisorRuntime.modal_since = SemuSupervisorRuntime.modal_since - 3000LL;
         SemuSupervisor.pollDevices(launch);
-        contract.expect(!MenuModalTools.grabbed(0) && !MenuModalTools.grabbed(1) && MenuModalTools.phase(SEMU_MODAL_FREE), "2 s later the pads are the game's again, R1 still down");
+        contract.expect(!MenuModalTools.grabbed(0) && !MenuModalTools.grabbed(2) && MenuModalTools.phase(SEMU_MODAL_FREE), "2 s later the pads are the game's again, R1 still down");
         MenuModalTools.key(writer, BTN_TR, 0);
         SemuActionExecutor.openMenu(launch);
         SemuSupervisor.pollDevices(launch);
         contract.expect(MenuModalTools.grabbed(0), "the menu holds the pad again");
         SemuSupervisor.end();
-        contract.expect(!MenuModalTools.grabbed(0) && !MenuModalTools.grabbed(1) && SemuSupervisorRuntime.devices[0].descriptor < 0 && MenuModalTools.phase(SEMU_MODAL_FREE), "the supervisor's end lets every pad go and closes it, the menu still open");
+        contract.expect(!MenuModalTools.grabbed(0) && !MenuModalTools.grabbed(2) && SemuSupervisorRuntime.devices[0].descriptor < 0 && MenuModalTools.phase(SEMU_MODAL_FREE), "the supervisor's end lets every pad go and closes it, the menu still open");
         close(writer);
         close(second);
+        if (keyboard) { close(keys[1]); }
         InputDeliveryTools.fresh();
         SemuLaunchPlan undrawn = MenuModalTools.launch(PathTools.join(fixture.scratch, "modal/undrawn"));
         undrawn.menuDrawn = false;
@@ -235,7 +242,10 @@ class MenuModalWiring {  // the kernel grab and every exit path, by source
         contract.contains(modal, "ioctl(device->descriptor, request, hold ? 1 : 0)", "the grab asks the kernel to hold and to let go");
         string supervisor = FileSystem.readText(PathTools.join(fixture.project, "src/launch/supervisor.btrc"));
         contract.expect(Strings.split(supervisor, "SemuPadModal.leave();").size() - 1 == 4, "the end, the emulator's exit, a stop signal and quit each let the pads go");
-        contract.contains(supervisor, "SemuPadModal.calibrate(&SemuSupervisorRuntime.devices[slot], handle)", "a pad's held buttons and axis ranges are read when it is opened");
+        string devices = FileSystem.readText(PathTools.join(fixture.project, "src/launch/input_devices.btrc"));
+        int adopt = Strings.find(devices, "class void adopt(", 0);
+        int vacate = Strings.find(devices, "class void vacate(", 0);
+        contract.expect(adopt > 0 && vacate > adopt && devices.substring(adopt, vacate - adopt).contains("if (gamepad != 0) { SemuPadModal.calibrate(device, handle); }"), "a pad's held buttons and axis ranges are read when it is adopted");
         contract.contains(modal, "semu: the menu holds {taken} pad(s)", "the supervisor logs each hold");
         contract.contains(modal, "semu: the menu gave {released} pad(s) back", "and each release");
         for harness in ["tests/deck/input-check.sh", "tests/integration/menu-modal.sh"] {

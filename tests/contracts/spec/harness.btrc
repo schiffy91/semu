@@ -4,6 +4,8 @@ import Library.FileSystem;
 import Library.Strings;
 import Library.Vector;
 import ../support.btrc;
+import ../../../src/renderer/action_abi.btrc;
+import ../../../src/renderer/variant_keys.btrc;
 
 class HarnessSpecDeckScripts {  // read as text: these run only on the Deck, never under make test
     class void run(Contract contract) {
@@ -21,6 +23,21 @@ class HarnessSpecDeckScripts {  // read as text: these run only on the Deck, nev
             contract.expect(early > 0 && look > 0 && early < look, f"{name} records the argv as soon as the emulator appears, before its first wait ({early} < {look})");
             contract.contains(source, "argv: the emulator was never seen", name + " says so when the emulator never appeared");
         }
+    }
+}
+
+class HarnessSpecInputX11 {  // the VM harness for the radial's input path expects what the supervisor journals today
+    class void run(Contract contract) {
+        string project = Fixture("linux-desktop").project;
+        string script = FileSystem.readText(PathTools.join(project, "tests/integration/input-x11.sh"));
+        int menu = SemuActions.menuToggle();
+        int back = SemuActions.menuBack();
+        string pads = f" {menu}:0 {back}:0 {menu}:0 {back}:0 {menu}:0 {back}:0\"";
+        string journal = f"\"{menu}:0 {back}:0 {SemuActions.stateNext()}:1 {SemuActions.shaderSelect()}:$(value shader_none)" + pads;
+        contract.contains(script, journal, "input-x11.sh expects Ctrl+H to journal a shader select of the none index, then three pads' menu and back");
+        contract.contains(script, "/^" + RendererVariantKeys.shadersKey() + "=/", "input-x11.sh reads the none index from the variants file's shaders list");
+        contract.contains(script, "$root/state/retroarch/" + RendererActionJournal.variantsFileName(), "input-x11.sh reads the variants file beside the journal");
+        contract.lacks(script, "77:1 12:0", "input-x11.sh no longer expects the old shader toggle record");
     }
 }
 
@@ -58,6 +75,7 @@ class HarnessSpecStyle {  // no one- or two-letter names in the multi-disc and c
 class HarnessSpecContract {
     class void run(Contract contract) {
         HarnessSpecDeckScripts.run(contract);
+        HarnessSpecInputX11.run(contract);
         HarnessSpecStyle.run(contract);
     }
 }

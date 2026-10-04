@@ -88,6 +88,15 @@ class SemuX11Events {  // pure readers of X wire bytes, shared by the adapter an
         *pressed = type == SEMU_X11_RAW_KEY_PRESS ? 1 : 0;
         return true;
     }
+
+    class void rawKeyMask(unsigned char* masks) {  // one xcb_input_event_mask_t of eight bytes: all master devices, one word, raw press and release
+        unsigned short device = (unsigned short)SEMU_X11_ALL_MASTER_DEVICES;
+        unsigned short words = (unsigned short)1;
+        unsigned int bits = SEMU_X11_RAW_KEY_MASK;
+        memcpy(masks, &device, sizeof(device));
+        memcpy(masks + 2, &words, sizeof(words));
+        memcpy(masks + 4, &bits, sizeof(bits));
+    }
 }
 
 class SemuX11Library {  // libxcb and libxcb-xinput through dlopen, as gamepad.btrc reaches GameController
@@ -151,14 +160,9 @@ class SemuX11Library {  // libxcb and libxcb-xinput through dlopen, as gamepad.b
         return supported;
     }
 
-    class void selectRawKeys(void* connection, unsigned int root) {  // one xcb_input_event_mask_t: all master devices, raw press and release
+    class void selectRawKeys(void* connection, unsigned int root) {  // selects the raw key mask on the root window
         unsigned char masks[8];
-        unsigned short device = (unsigned short)SEMU_X11_ALL_MASTER_DEVICES;
-        unsigned short words = (unsigned short)1;
-        unsigned int bits = SEMU_X11_RAW_KEY_MASK;
-        memcpy(masks, &device, sizeof(device));
-        memcpy(masks + 2, &words, sizeof(words));
-        memcpy(masks + 4, &bits, sizeof(bits));
+        SemuX11Events.rawKeyMask(masks);
         __fn_ptr<unsigned int, void*, unsigned int, unsigned short, void*> selection;
         memcpy(&selection, &SemuX11Loaded.selectEvents, sizeof(selection));
         selection(connection, root, (unsigned short)1, (void*)masks);
@@ -177,9 +181,13 @@ class SemuX11KeyListener {  // the supervisor's X key source: connect, yield dec
         Console.error("semu: no X key adapter: " + reason);
     }
 
+    class bool settled(struct SemuKeySource* source, string display) {  // nothing to connect: already connected, or no X display to read
+        return SemuX11KeyListener.active(source) || display.isEmpty();
+    }
+
     class bool connect(struct SemuKeySource* source) {  // the inherited DISPLAY is the emulator's own; idle without it
         string display = Environment.get("DISPLAY", "");
-        if (SemuX11KeyListener.active(source) || display.isEmpty() || !SemuX11Library.load()) { return false; }
+        if (SemuX11KeyListener.settled(source, display) || !SemuX11Library.load()) { return false; }
         int screen = 0;
         __fn_ptr<void*, void*, int*> connector;
         memcpy(&connector, &SemuX11Loaded.connect, sizeof(connector));

@@ -10,15 +10,18 @@ import Library.Vector;
 import ./input_state.btrc;
 
 class SemuFaceLayout {  // xpad-ordered pads report their top face button as BTN_WEST
-    class int hex(string text) {  // four lower- or upper-case hex digits; -1 otherwise
+    class int nibble(char digit) {  // one lower- or upper-case hex digit; -1 otherwise
+        if (digit >= '0' && digit <= '9') { return digit - '0'; }
+        if (digit >= 'a' && digit <= 'f') { return digit - 'a' + 10; }
+        if (digit >= 'A' && digit <= 'F') { return digit - 'A' + 10; }
+        return -1;
+    }
+
+    class int hex(string text) {  // four hex digits; -1 otherwise
         if (text.len() != 4) { return -1; }
         int value = 0;
         for (int index = 0; index < 4; index++) {
-            char digit = text.charAt(index);
-            int nibble = -1;
-            if (digit >= '0' && digit <= '9') { nibble = digit - '0'; }
-            if (digit >= 'a' && digit <= 'f') { nibble = digit - 'a' + 10; }
-            if (digit >= 'A' && digit <= 'F') { nibble = digit - 'A' + 10; }
+            int nibble = SemuFaceLayout.nibble(text.charAt(index));
             if (nibble < 0) { return -1; }
             value = value * 16 + nibble;
         }
@@ -45,6 +48,41 @@ class SemuFaceLayout {  // xpad-ordered pads report their top face button as BTN
         if (code == north) { return west; }
         if (code == west) { return north; }
         return code;
+    }
+}
+
+class SemuSdlIgnore {  // SDL_GAMECONTROLLER_IGNORE_DEVICES(_EXCEPT): Steam names the pads it virtualises, which the game sees only as Steam's copy
+    class int number(string text, int start, int* end) {  // the hex digits after "0x" at START; -1 without any
+        int value = 0;
+        int index = start + 2;
+        while (index < text.len() && SemuFaceLayout.nibble(text.charAt(index)) >= 0) {
+            value = (value % 4096) * 16 + SemuFaceLayout.nibble(text.charAt(index));  // the low sixteen bits, as SDL casts to Uint16
+            index++;
+        }
+        *end = index;
+        return index == start + 2 ? -1 : value;
+    }
+
+    class Vector<int> identities(string text) {  // vendor << 16 | product pairs, read as SDL_LoadVIDPIDListFromHint pairs "0x" numbers
+        Vector<int> result = [];
+        int position = Strings.find(text, "0x", 0);
+        while (position >= 0) {
+            int end = position;
+            int vendor = SemuSdlIgnore.number(text, position, &end);
+            int next = Strings.find(text, "0x", end);
+            if (next < 0) { break; }
+            int product = SemuSdlIgnore.number(text, next, &end);
+            if (vendor >= 0 && product >= 0) { result.push(vendor * 65536 + product); }
+            position = Strings.find(text, "0x", end);
+        }
+        return result;
+    }
+
+    class bool ignored(int vendor, int product, string ignore, string except) {  // as SDL decides: an allow list wins over the ignore list
+        int identity = vendor * 65536 + product;
+        Vector<int> allowed = SemuSdlIgnore.identities(except);
+        if (!allowed.isEmpty()) { return !allowed.contains(identity); }
+        return SemuSdlIgnore.identities(ignore).contains(identity);
     }
 }
 
@@ -76,7 +114,7 @@ class SemuKeyEcho {  // Semu's own uinput typing comes back through Xwayland as 
     }
 }
 
-class SemuActionDedupe {  // one chord seen by evdev and X at once executes once
+class SemuActionDedupe {  // one chord seen by evdev and X, or by two pads, at once executes once
     class int find(string action) {
         for (int index = 0; index < SemuSupervisorRuntime.dedupe_count; index++) {
             if (strcmp(SemuSupervisorRuntime.dedupe_actions + index * SEMU_DEDUPE_ACTION_BYTES, action) == 0) { return index; }
@@ -84,16 +122,16 @@ class SemuActionDedupe {  // one chord seen by evdev and X at once executes once
         return -1;
     }
 
-    class bool accept(string action, int source, long long now) {  // false for the same action from another source within the window
+    class bool accept(string action, int identity, long long now) {  // false for the same action from another input within the window
         int index = SemuActionDedupe.find(action);
-        if (index >= 0 && SemuSupervisorRuntime.dedupe_sources[index] != source && now - SemuSupervisorRuntime.dedupe_ms[index] < (long long)SEMU_DEDUPE_WINDOW_MS) { return false; }
+        if (index >= 0 && SemuSupervisorRuntime.dedupe_sources[index] != identity && now - SemuSupervisorRuntime.dedupe_ms[index] < (long long)SEMU_DEDUPE_WINDOW_MS) { return false; }
         if (index < 0) {
             if (SemuSupervisorRuntime.dedupe_count >= SEMU_DEDUPE_ACTIONS || action.len() >= SEMU_DEDUPE_ACTION_BYTES) { return true; }
             index = SemuSupervisorRuntime.dedupe_count;
             SemuSupervisorRuntime.dedupe_count++;
             snprintf(SemuSupervisorRuntime.dedupe_actions + index * SEMU_DEDUPE_ACTION_BYTES, (size_t)SEMU_DEDUPE_ACTION_BYTES, "%s", action);
         }
-        SemuSupervisorRuntime.dedupe_sources[index] = source;
+        SemuSupervisorRuntime.dedupe_sources[index] = identity;
         SemuSupervisorRuntime.dedupe_ms[index] = now;
         return true;
     }

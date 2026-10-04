@@ -13,6 +13,8 @@ import Library.Vector;
 #define SEMU_SOURCE_GAMEPAD 0  // evdev pads and macOS GameController pads
 #define SEMU_SOURCE_KEYBOARD 1  // evdev keyboards the supervisor can open
 #define SEMU_SOURCE_X11 2  // raw keys from the emulator's own X display
+#define SEMU_IDENTITY_PAD_BASE 16  // an evdev pad deduplicates as this plus its slot: one chord read from two pads runs once
+#define SEMU_IDENTITY_CONTROLLER_BASE 96  // a GameController pad, plus its slot
 #define SEMU_KEY_SOURCE_XCB 1  // a libxcb connection drained with xcb_poll_for_event
 #define SEMU_KEY_SOURCE_WIRE 2  // raw X event bytes read from the descriptor
 #define SEMU_ECHO_CODES 16
@@ -35,7 +37,8 @@ struct SemuInputDevice {
     int descriptor;
     int gamepad;
     int keyboard;
-    int source;  // SEMU_SOURCE_*, for deduplicating one chord across sources
+    int source;  // SEMU_SOURCE_*: a keyboard chord already reached the emulator, a pad press did not
+    int identity;  // which input this is to the dedupe: the source for keyboards and X, one per pad; 0 falls back to the source
     int face_swapped;  // an xpad-ordered pad: BTN_WEST is its top button
     unsigned char down[SEMU_SUPERVISOR_KEYS];
     int hat_x;

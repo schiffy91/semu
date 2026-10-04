@@ -2,7 +2,8 @@
 # Chords reach the supervisor however Steam sends them, checked on Linux on a private Xvfb: XTest
 # keys (xdotool, the way Steam types into Game Mode's Xwayland) through the X raw-key adapter into
 # a real RetroArch running the synthetic core, and Select chords from a virtual pad on /dev/uinput,
-# positional and as a replica of Steam's virtual pad (BTN_WEST is its top button). Asserts the
+# positional, as a replica of Steam's virtual pad (BTN_WEST is its top button) and both at once, as a
+# physical pad and Steam's copy of it, which must run each chord once. Asserts the
 # adapter listens, each chord runs exactly once, RetroArch's own keys no longer act on a chord
 # (frame advance on K, reset on H), the pads' face buttons and the journal records. On a Mac it
 # runs inside the podman VM (x86_64 under Rosetta, the release builder's Nix store) and never
@@ -126,12 +127,18 @@ session() {  # $1 label, $2 config root: one RetroArch session driven by keys, t
   key ctrl+shift+F9
   "$pad" 4 hold:select press:north release:select sleep:1.5 press:east > "$out/$label-pad.log" 2>&1 || true
   sleep 1
+  "$pad" 4 hold:select press:north release:select sleep:1.5 press:east sleep:1 > "$out/$label-pair-physical.log" 2>&1 &  # a physical pad and
+  pair=$!
+  "$pad" --steam-virtual-pad 4 hold:select press:north release:select sleep:1.5 press:east sleep:1 > "$out/$label-pair-steam.log" 2>&1 || true  # Steam's copy of it, together
+  wait "$pair" 2>/dev/null || true
+  sleep 1
   "$pad" --steam-virtual-pad 4 hold:select press:north release:select sleep:1.5 press:east sleep:1.5 \
     hold:select press:west release:select sleep:1.5 hold:select hold:start release:start release:select > "$out/$label-steam-pad.log" 2>&1 || true
   for _ in $(seq 1 20); do kill -0 "$launcher" 2>/dev/null || break; sleep 0.5; done
   if kill -0 "$launcher" 2>/dev/null; then kill -TERM "$launcher"; quit=no; else quit=yes; fi
   wait "$launcher" 2>/dev/null || true
   cp "$root/state/retroarch/semu-render-actions.bin" "$out/$label-journal.bin" 2>/dev/null || true
+  shader_none="$("$awk" -F'[=|]' '/^shaders=/ { for (field = 2; field <= NF; field++) if ($field == "none") print field - 2 }' "$root/state/retroarch/semu-render-variants.env" 2>/dev/null)"  # Ctrl+H selects this index (D5)
   {
     echo "label=$label"
     echo "listening=$(count "$log" 'semu: listening for keys on X display')"
@@ -148,6 +155,7 @@ session() {  # $1 label, $2 config root: one RetroArch session driven by keys, t
     echo "core_resets=$(count "$log" 'synthetic: reset')"  # the core writes to RetroArch's stderr, which is the launcher's
     echo "quit_by_pad=$quit"
     echo "journal=$(journal "$out/$label-journal.bin")"
+    echo "shader_none=$shader_none"
   } > "$out/$label.result"
   cat "$out/$label.result"
 }
@@ -167,10 +175,12 @@ value() { "$awk" -v key="$1" 'index($0, key "=") == 1 { print substr($0, length(
   expect "RetroArch keeps running after Ctrl+K (frame advance cleared)" "$(value running_after_ctrl_k)" yes
   expect "RetroArch keeps running after Ctrl+H" "$(value running_after_ctrl_h)" yes
   expect "Ctrl+H does not reset the core" "$(value core_resets)" 0
-  expect "Select+north opens the menu on the positional pad and on Steam's pad (BTN_WEST), Select+west on Steam's pad does not" "$(value menu_gamepad)" 2
-  expect "B closes the menu from both pads" "$(value back_gamepad)" 2
+  expect "Select+north opens the menu on the positional pad, on the pair once, and on Steam's pad (BTN_WEST); Select+west on Steam's pad does not" "$(value menu_gamepad)" 3
+  expect "B closes the menu from each pad, the pair once" "$(value back_gamepad)" 3
+  expect "the pair's second reading of Select+north is dropped (its B finds the menu already closed)" "$(value duplicates_dropped)" 1
   expect "Start+Select on Steam's pad quits" "$(value quit_by_pad)" yes
-  expect "journal: menu, back, slot 1, shader switch, then each pad's menu and back" "$(value journal)" "1:0 5:0 77:1 12:0 1:0 5:0 1:0 5:0"
+  expect "the variants file offers a none shader for Ctrl+H to select" "$([ -n "$(value shader_none)" ] && echo yes || echo no)" yes
+  expect "journal: menu, back, slot 1, a shader select of none, then each pad's menu and back" "$(value journal)" "1:0 5:0 77:1 80:$(value shader_none) 1:0 5:0 1:0 5:0 1:0 5:0"
   case "$(value status_after_ctrl_k)" in *PLAYING*) echo "ok   GET_STATUS after Ctrl+K: $(value status_after_ctrl_k)" ;; *) echo "FAIL GET_STATUS after Ctrl+K: $(value status_after_ctrl_k)" ;; esac
   echo "note: Semu's uinput typing cannot echo on bare Xvfb (no evdev input), so echo suppression is proven by the contracts only"
 } | tee "$out/result"

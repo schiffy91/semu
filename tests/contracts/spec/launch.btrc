@@ -128,14 +128,15 @@ class LaunchSpecJournal {  // slot moves journal as themselves; unplugged slots 
         contract.expect(SemuActionRouter.journalCode("ui.pause") == SemuActions.none(), "emulator-only actions are not journalled");
         memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
         memset(SemuDevicePaths, 0, sizeof(SemuDevicePaths));
-        for (int slot = 0; slot < SEMU_SUPERVISOR_DEVICES; slot++) { SemuInputDevices.adopt(slot, 1000 + slot, 1, 0, "/dev/input/event-spec"); }
+        Vector<string> positional = [];
+        for (int slot = 0; slot < SEMU_SUPERVISOR_DEVICES; slot++) { SemuInputDevices.adopt(slot, 1000 + slot, 1, 0, 0, 0, "/dev/input/event-spec", positional); }
         contract.expect(SemuSupervisorRuntime.device_count == SEMU_SUPERVISOR_DEVICES && SemuInputDevices.freeSlot() == -1, "a full device table has no free slot");
         int handle = open("/dev/null", O_RDONLY);
         SemuSupervisorRuntime.devices[5].descriptor = handle;
         SemuInputDevices.remember(5, "/dev/input/event5");
         SemuInputDevices.vacate(5);
         contract.expect(SemuInputDevices.freeSlot() == 5 && !SemuInputDevices.opened("/dev/input/event5"), "an unplugged slot is free again");
-        SemuInputDevices.adopt(SemuInputDevices.freeSlot(), 2000, 1, 0, "/dev/input/event7");
+        SemuInputDevices.adopt(SemuInputDevices.freeSlot(), 2000, 1, 0, 0, 0, "/dev/input/event7", positional);
         contract.expect(SemuSupervisorRuntime.device_count == SEMU_SUPERVISOR_DEVICES && SemuInputDevices.opened("/dev/input/event7"), "a new device reuses the slot without growing the table");
         contract.expect(SemuSupervisorRuntime.devices[5].quit_chord.window_ms == SemuSupervisorRuntime.quit_template.window_ms, "a reused slot starts from the configured chord");
         memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
@@ -269,7 +270,7 @@ class LaunchSpecSystemFiles {  // RetroArch's system folder is a copy in the sta
 
 class LaunchSpecLayout {  // the supervisor is split and styled
     class void run(Contract contract, Fixture fixture) {
-        for name in ["supervisor", "actions", "journal", "visual_cycle", "input_state", "input_filters", "x11_keys", "menu_modal", "process", "plan", "playlist", "gamepad"] {
+        for name in ["supervisor", "actions", "journal", "visual_cycle", "input_state", "input_filters", "input_devices", "x11_keys", "menu_modal", "process", "plan", "playlist", "gamepad"] {
             string text = LaunchSpecTools.source(fixture, "src/launch/" + name + ".btrc");
             contract.expect(!text.isEmpty() && LaunchSpecTools.lines(text) <= 500, "src/launch/" + name + ".btrc stays under 500 lines");
             contract.lacks(text, "SemuActions2", "no numbered class names in " + name);

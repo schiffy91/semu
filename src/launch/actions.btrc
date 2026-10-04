@@ -198,11 +198,19 @@ class SemuActionExecutor {  // execution of one action id (SemuActions is the re
         }
     }
 
-    class void execute(SemuLaunchPlan launch, string action, int source) {  // SEMU_SOURCE_*: the same chord from two sources runs once
+    class void fromDevice(SemuLaunchPlan launch, string action, struct SemuInputDevice* device) {  // a device's press: its source routes, its identity deduplicates
+        SemuActionExecutor.dispatch(launch, action, device->source, device->identity != 0 ? device->identity : device->source);
+    }
+
+    class void execute(SemuLaunchPlan launch, string action, int source) {  // SEMU_SOURCE_*, deduplicated as that source
+        SemuActionExecutor.dispatch(launch, action, source, source);
+    }
+
+    class void dispatch(SemuLaunchPlan launch, string action, int source, int identity) {  // the same chord from two inputs within the window runs once
         if (action.isEmpty()) { return; }
         bool fromKeyboard = source != SEMU_SOURCE_GAMEPAD;
         bool debug = getenv("SEMU_RENDER_DEBUG") != null;
-        if (!SemuActionDedupe.accept(action, source, SemuClock.milliseconds())) {
+        if (!SemuActionDedupe.accept(action, identity, SemuClock.milliseconds())) {
             if (debug) { Console.error("semu: " + action + " already ran from another input source"); }
             return;
         }

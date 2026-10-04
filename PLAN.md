@@ -841,6 +841,19 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   Only the shots right after a move or tap use gamescope screenshot type 3 (full composition, the
   cursor plane included; gamescope 3.16.30, which the Deck runs, takes the type as the screenshot
   command's third argument, steamcompmgr.cpp:1594-1600); the rest keep the base plane as before.
+- One pad read twice (2026-10-04, review follow-up). The supervisor opens every gamepad node, so with
+  Steam running and an external pad it read the physical pad and Steam's 28de:11ff copy of it; since
+  the face swap both copies fired Select+Triangle, and the menu opened and closed in one tick. Each
+  evdev pad now deduplicates as its own input (`identity`, SEMU_IDENTITY_PAD_BASE plus its slot; a
+  GameController pad likewise), kept apart from the routing `source` that decides "already reached
+  the emulator", so one chord read from two pads within 250 ms runs once (two players pressing the
+  same chord inside a quarter second would be read as one: accepted). The supervisor also honours
+  `SDL_GAMECONTROLLER_IGNORE_DEVICES` and `_EXCEPT` as SDL does (an allow list wins), the vid/pid list
+  Steam puts in a launched game's environment: a pad on it is never opened, because the game reads
+  only Steam's copy of it too. Keyboards are never skipped. What a device is (face layout, source,
+  identity, ignored or not) is decided by `SemuInputDevices.admit`/`adopt` in
+  `src/launch/input_devices.btrc` from `classify()`'s EVIOCGID and EVIOCGBIT answers, so contracts
+  drive it with socketpairs. Reversible.
 
 ### G1. Build and tests run on one host only — done on the Mac
 
@@ -1650,6 +1663,21 @@ Update this block whenever a milestone criterion changes state.
   the menu) must now leave the title where it was, with `menu-holds: 1 gave-back: 1` in its result;
   and in Game Mode the same on Steam's real virtual pad. macOS stays non-modal (no grab in
   GameController); F2 (Azahar presenting while paused) stays open (ruling above).
+  2026-10-04, review follow-ups on input (offline, Deck untouched). A physical pad and Steam's copy
+  of it run each chord once, and Steam's ignore list keeps the physical one closed (ruling above).
+  `tests/integration/input-x11.sh` now also plays a positional pad and the Steam-pad replica at once,
+  and expects Ctrl+H's shader select of none (journal code 80 with the variants file's none index,
+  D5) instead of the old shader toggle. Run in the podman VM on this tree: every check passed but the
+  harness's own first guess at the duplicate count; the pair opened and closed the menu once
+  (`menu_gamepad=3`, `back_gamepad=3`, one "already ran from another input source", journal
+  `1:0 5:0 77:1 80:2 1:0 5:0 1:0 5:0 1:0 5:0`, `shader_none=2`), RetroArch PLAYING after Ctrl+K, no
+  core reset on Ctrl+H, Start+Select quit. The pair's B finds the menu already closed, so only
+  Select+north is dropped; the expectation now says one. New contracts
+  (`tests/contracts/spec/input_devices.btrc`, `menu_modal.btrc`) fail when the X adapter stops
+  connecting in begin or on rescan, stops selecting or decoding raw keys, connects without DISPLAY,
+  when adopt stops swapping Steam's pad or tagging keyboards, classify drops EVIOCGID's vendor, the
+  menu grabs a keyboard, the echo is no longer armed by typing or is consumed from evdev, keyboard
+  Left/Right stop stepping the menu's rows, or two pads share one identity.
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a
