@@ -15,6 +15,7 @@ import ./librashader_gl.btrc;
 import ./renderer_file_hash.btrc;
 import ./renderer_layout.btrc;
 import ./renderer_config.btrc;
+import ./renderer_placement.btrc;
 int RGL_VERTEX_SHADER = 0x8B31;
 int RGL_FRAGMENT_SHADER = 0x8B30;
 int RGL_LINK_STATUS = 0x8B82;
@@ -211,70 +212,6 @@ SemuLibrashaderOpenGLChain RendererShaderLane1;
 
 
 class RendererGeometry {
-    class void integerPlacement(struct SemuRenderFrameGl* frame, struct RendererVariantConfig* variant, int placement, float aspect, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas) {  // the picture at a whole multiple of its native height
-        struct RendererScreenConfig* screen = &variant->screens[0];
-        struct RendererNormalizedHole area = screen->image;  // the calibrated picture rectangle, else the opening less its inset, as placeInTube fits the game
-        if (area.set == 0) {
-            float tubeWidth = screen->tube.width * canvas->width;
-            float tubeHeight = screen->tube.height * canvas->height;
-            float inset = screen->inset * (tubeWidth < tubeHeight ? tubeWidth : tubeHeight);
-            area.x = screen->tube.x + inset / canvas->width;
-            area.y = screen->tube.y + inset / canvas->height;
-            area.width = screen->tube.width - 2.0f * inset / canvas->width;
-            area.height = screen->tube.height - 2.0f * inset / canvas->height;
-        }
-        struct RendererNormalizedHole* image = &area;
-        if (image->width <= 0.0f || image->height <= 0.0f) { return; }
-        float pictureWidth = image->width * canvas->width;
-        float pictureHeight = image->height * canvas->height;
-        float shown = aspect > 0.01f ? aspect : pictureWidth / pictureHeight;
-        if (pictureWidth / pictureHeight > shown) { pictureWidth = pictureHeight * shown; } else { pictureHeight = pictureWidth / shown; }  // the game inside its rectangle
-        float native = (float)frame->surfaces[0].native_height;
-        if (native < 1.0f || pictureHeight < 1.0f) { return; }
-        int multiple = (int)(pictureHeight / native);  // bezel: the largest step that keeps the whole shell
-        if (placement == 1) {  // game: the largest step the screen holds
-            int down = (int)((float)areaHeight / native);
-            int across = (int)((float)areaWidth / (native * shown));
-            multiple = down < across ? down : across;
-        }
-        float steps = (float)multiple;
-        if (multiple < 1) {  // larger than the screen at 1x (PPSSPP's internal resolution set for a bigger display): the scaling fallback, fractional_downscale, never an overflow
-            float down = (float)areaHeight / native;
-            float across = (float)areaWidth / (native * shown);
-            steps = placement == 1 ? (down < across ? down : across) : pictureHeight / native;
-        }
-        float grow = steps * native / pictureHeight;
-        float centerX = canvas->x + (image->x + image->width * 0.5f) * canvas->width;
-        float centerY = canvas->y + (1.0f - image->y - image->height * 0.5f) * canvas->height;  // pixel rows count up from the bottom
-        float anchorX = placement == 1 ? (float)areaWidth * 0.5f : canvas->x + canvas->width * 0.5f + (centerX - canvas->x - canvas->width * 0.5f) * grow;
-        float anchorY = placement == 1 ? (float)areaHeight * 0.5f : canvas->y + canvas->height * 0.5f + (centerY - canvas->y - canvas->height * 0.5f) * grow;
-        canvas->x = anchorX - (centerX - canvas->x) * grow;  // game centres the picture, bezel keeps the shell centred
-        canvas->y = anchorY - (centerY - canvas->y) * grow;
-        canvas->width = canvas->width * grow;
-        canvas->height = canvas->height * grow;
-    }
-
-    class void coverKeepingTubes(struct SemuRenderFrameGl* frame, struct RendererVariantConfig* variant, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas) {  // scale the canvas to fill the area; keep contain if a tube would leave it
-        if (canvas->width <= 0.0f || canvas->height <= 0.0f) { return; }
-        float horizontal = (float)areaWidth / canvas->width;
-        float vertical = (float)areaHeight / canvas->height;
-        float grow = horizontal > vertical ? horizontal : vertical;
-        float width = canvas->width * grow;
-        float height = canvas->height * grow;
-        float x = ((float)areaWidth - width) * 0.5f;
-        float y = ((float)areaHeight - height) * 0.5f;
-        for (int index = 0; index < frame->surface_count && index < 2; index++) {
-            struct RendererNormalizedHole* tube = &variant->screens[index].tube;
-            float left = x + tube->x * width;
-            float top = y + tube->y * height;
-            if (left < 0.0f || top < 0.0f || left + tube->width * width > (float)areaWidth || top + tube->height * height > (float)areaHeight) { return; }
-        }
-        canvas->x = x;
-        canvas->y = y;
-        canvas->width = width;
-        canvas->height = height;
-    }
-
     class void fit(int areaX, int areaY, int areaWidth, int areaHeight,
                    int nativeWidth, int nativeHeight, float declaredAspect,
                    int integerScaling, struct RendererLaneGeometry* lane) {
@@ -382,11 +319,9 @@ class RendererGeometry {
         }
         if (bezel && fixed) {
             struct RendererCanvasRect canvas;
-            RendererCompositionContract.contain(areaWidth, areaHeight,
+            RendererPlacement.canvas(frame, variant, config->placement, singleAspect, areaWidth, areaHeight,
                 layered ? variant->canvas_width : resources->art_width[variantIndex],
-                layered ? variant->canvas_height : resources->art_height[variantIndex], &canvas);
-            if (layered && variant->canvas_cover != 0) { RendererGeometry.coverKeepingTubes(frame, variant, areaWidth, areaHeight, &canvas); }
-            if (config->placement != 0 && frame->surface_count == 1 && (variant->screens[0].image.set != 0 || variant->screens[0].tube.set != 0)) { RendererGeometry.integerPlacement(frame, variant, config->placement, singleAspect, areaWidth, areaHeight, &canvas); }
+                layered ? variant->canvas_height : resources->art_height[variantIndex], &canvas);  // contained, covered, then at the placement's whole step
             geometry->bezel_x = canvas.x;
             geometry->bezel_y = canvas.y;
             geometry->bezel_width = canvas.width;

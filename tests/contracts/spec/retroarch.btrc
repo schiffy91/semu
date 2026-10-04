@@ -85,6 +85,8 @@ class RetroArchSpecProfile {  // retroarch.cfg per target: fullscreen, shader ow
         JSONValue linux = emulator.platform("linux");
         string mupen = SemuLauncher.coreOptions(fixture.plan, linux, "mupen64plus_next", fixture.model.system("n64"));
         RetroArchSpecText.fixtureLines(contract, fixture, "n64-software-core-options.cfg", mupen, "", "", "mupen64plus_next core options on " + target);
+        string macos = SemuLauncher.coreOptions(fixture.plan, emulator.platform("macos"), "mupen64plus_next", fixture.model.system("n64"));  // the Mac's slice repeats the list: angrylion and its Hide overscan there too
+        RetroArchSpecText.fixtureLines(contract, fixture, "n64-software-core-options.cfg", macos, "", "", "mupen64plus_next core options in the macos slice, rendered on " + target);
         contract.expect(fixture.diagnostics.ok(), label + " has no diagnostics: " + fixture.diagnostics.render());
     }
 }

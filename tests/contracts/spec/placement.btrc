@@ -1,0 +1,170 @@
+// Placement spec: the pictures the owner judged on the Deck (M13 items 1 and 5). The N64 TV's lip mirrors the
+// picture at the TV strength, genesis's 0.4 (it had 0.2 and a thin lip, and angrylion's black overscan columns
+// left nothing to mirror); the handhelds draw the wood desk, never Duimon's carbon plate stretched over it;
+// game placement centres a shell that fits the screen (the PSP at 1280x800, whose screen sits above the
+// device's middle) and leaves one that does not alone, so gb, gbc and gba keep their picture centred; and the
+// whole step follows the height the emulator reports, so angrylion's cropped frame lands at multiples of 237.
+
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/rendering.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+import ../../../src/renderer/renderer_config.btrc;
+import ../../../src/renderer/renderer_placement.btrc;
+import ./render_env.btrc;
+
+class PlacementSpecEnvironment {
+    class string entry(Vector<string> environment, string name) {  // NAME's value, else ""
+        string prefix = name + "=";
+        for line in environment { if (line.startsWith(prefix)) { return line.substring(prefix.len(), line.len() - prefix.len()); } }
+        return "";
+    }
+
+    class Vector<string> compile(Fixture fixture, string systemId, string variant) {  // the Deck's launch environment for a bezel variant ("" the default)
+        string overlay = variant.isEmpty() ? "{}" : "{\"visual\":{\"systems\":{\"" + systemId + "\":{\"bezel_variant\":\"" + variant + "\"}}}}";
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuPlan plan = SemuResolver.plan(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
+        return SemuRenderEnvironment.compile(plan, fixture.model.system(systemId), "retroarch", "/state/retroarch", diagnostics);
+    }
+
+    class Vector<string> layers(Vector<string> environment, string ending) {  // the package layers whose file ends in ENDING
+        Vector<string> found = [];
+        for line in environment {
+            if (!line.startsWith("SEMU_RENDER_LAYER_") || line.startsWith("SEMU_RENDER_LAYER_COUNT")) { continue; }
+            if (Strings.split(line, "|")[0].endsWith(ending)) { found.push(line); }
+        }
+        return found;
+    }
+
+    class string strength(Vector<string> environment) { return Strings.split(PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_SCREEN_0_REFLECT"), ",")[0]; }
+
+    class void run(Contract contract, Fixture fixture) {
+        string television = PlacementSpecEnvironment.strength(PlacementSpecEnvironment.compile(fixture, "n64", ""));
+        string genesis = PlacementSpecEnvironment.strength(PlacementSpecEnvironment.compile(fixture, "genesis", ""));
+        contract.expect(television.equals("0.4") && television.equals(genesis), "the N64 TV lip mirrors the picture at the TV strength, genesis's 0.4: n64 " + television + ", genesis " + genesis);
+        for systemId in ["psp", "gb", "gbc", "gba"] {
+            Vector<string> variants = [""];
+            JSONValue declared = fixture.model.system(systemId).bezels.get("variants");
+            for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) { variants.push(SemuJson.textAt(declared.at(index), "id")); }
+            for variant in variants {
+                Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, variant);
+                Vector<string> carbon = PlacementSpecEnvironment.layers(environment, "/background.jpg");
+                bool drawn = PlacementSpecEnvironment.layers(environment, ".png").size() > 0 || !PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_ART").isEmpty();
+                contract.expect(drawn && carbon.isEmpty(), systemId + (variant.isEmpty() ? "" : ":" + variant) + " draws its shell on the wood desk, never Duimon's carbon plate: " + carbon.join(" "));
+            }
+        }
+        contract.expect(PlacementSpecEnvironment.layers(PlacementSpecEnvironment.compile(fixture, "nds", ""), "/background.jpg").size() == 1, "the DS keeps its canvas-sized backdrop under the opaque face, so the scan sees a background layer where one is drawn");
+    }
+}
+
+class PlacementSpecGeometry {
+    class int rounded(float value) { return value >= 0.0f ? (int)(value + 0.5f) : -(int)(0.5f - value); }
+
+    class string text(struct RendererCanvasRect* rectangle) {
+        return f"{PlacementSpecGeometry.rounded(rectangle->x)},{PlacementSpecGeometry.rounded(rectangle->y)} {PlacementSpecGeometry.rounded(rectangle->width)}x{PlacementSpecGeometry.rounded(rectangle->height)}";
+    }
+
+    class bool near(float value, float wanted) { return value - wanted < 0.05f && wanted - value < 0.05f; }
+
+    class void load(Vector<string> environment, struct RendererVariantConfig* variant) {  // variant A as the renderer reads the launch's environment
+        Vector<string> names = [];
+        for line in environment {
+            int equals = Strings.find(line, "=", 0);
+            if (equals < 1) { continue; }
+            string name = line.substring(0, equals);
+            setenv(name, line.substring(equals + 1, line.len() - equals - 1), 1);
+            names.push(name);
+        }
+        RendererConfiguration.loadVariant(variant, "");
+        for name in names { unsetenv(name); }
+    }
+
+    class float aspect(Vector<string> environment, int nativeWidth, int nativeHeight) {  // SEMU_RENDER_ASPECT=W:H, else the native shape, as the render host reads it
+        Vector<string> parts = Strings.split(PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_ASPECT"), ":");
+        if (parts.size() == 2 && atof(parts[1]) > 0.0) { return (float)(atof(parts[0]) / atof(parts[1])); }
+        return (float)nativeWidth / (float)nativeHeight;
+    }
+
+    class void place(Fixture fixture, string systemId, int nativeWidth, int nativeHeight, int placement, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas, struct RendererCanvasRect* picture) {  // the shell's canvas and the game in it, bottom-up as GL counts rows
+        Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, "");
+        struct RendererVariantConfig variant;
+        PlacementSpecGeometry.load(environment, &variant);
+        struct SemuRenderFrameGl frame;
+        memset(&frame, 0, sizeof(struct SemuRenderFrameGl));
+        frame.surface_count = 1;
+        frame.surfaces[0].native_width = nativeWidth;
+        frame.surfaces[0].native_height = nativeHeight;
+        float shown = PlacementSpecGeometry.aspect(environment, nativeWidth, nativeHeight);
+        RendererPlacement.canvas(&frame, &variant, placement, shown, areaWidth, areaHeight, variant.canvas_width, variant.canvas_height, canvas);
+        struct RendererNormalizedHole* image = &variant.screens[0].image;
+        float width = image->width * canvas->width;
+        float height = image->height * canvas->height;
+        if (width / height > shown) { width = height * shown; } else { height = width / shown; }
+        picture->width = width;
+        picture->height = height;
+        picture->x = canvas->x + (image->x + image->width * 0.5f) * canvas->width - width * 0.5f;
+        picture->y = canvas->y + (1.0f - image->y - image->height * 0.5f) * canvas->height - height * 0.5f;
+    }
+
+    class bool centred(struct RendererCanvasRect* picture, int areaWidth, int areaHeight) {
+        return PlacementSpecGeometry.near(picture->x * 2.0f + picture->width, (float)areaWidth) && PlacementSpecGeometry.near(picture->y * 2.0f + picture->height, (float)areaHeight);
+    }
+
+    class void handheld(Contract contract, Fixture fixture) {
+        struct RendererCanvasRect canvas;
+        struct RendererCanvasRect picture;
+        PlacementSpecGeometry.place(fixture, "psp", 480, 272, 1, 1280, 800, &canvas, &picture);
+        float top = 800.0f - canvas.y - canvas.height;
+        contract.expect(PlacementSpecGeometry.near(picture.height, 544.0f) && PlacementSpecGeometry.near(picture.x, 160.0f) && PlacementSpecGeometry.near(picture.y, (float)PlacementSpecGeometry.rounded(picture.y)),
+            "PSP at 1280x800, game placement: the picture stays 2x, 960x544 at x=160, on whole pixels: " + PlacementSpecGeometry.text(&picture));
+        contract.expect(canvas.y >= 0.0f && top >= 0.0f && canvas.y - top <= 1.0f && top - canvas.y <= 1.0f,
+            "PSP at 1280x800: the whole shell fits, so it is centred, its top and bottom bands within a pixel: canvas " + PlacementSpecGeometry.text(&canvas) + f", bands {PlacementSpecGeometry.rounded(top)} and {PlacementSpecGeometry.rounded(canvas.y)}");
+        PlacementSpecGeometry.place(fixture, "psp", 480, 272, 1, 1920, 1080, &canvas, &picture);
+        contract.expect(canvas.height > 1080.0f && PlacementSpecGeometry.centred(&picture, 1920, 1080) && PlacementSpecGeometry.near(picture.height, 816.0f),
+            "PSP at 1920x1080: the shell is taller than the screen, so the 3x picture stays centred: " + PlacementSpecGeometry.text(&picture));
+        int widths[2] = {1280, 1920};
+        int heights[2] = {800, 1080};
+        for systemId in ["gb", "gbc", "gba"] {
+            JSONValue native = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0.native");
+            int nativeWidth = SemuJson.intAt(native, "w", 0);
+            int nativeHeight = SemuJson.intAt(native, "h", 0);
+            for (int size = 0; size < 2; size++) {
+                PlacementSpecGeometry.place(fixture, systemId, nativeWidth, nativeHeight, 1, widths[size], heights[size], &canvas, &picture);
+                int steps = nativeHeight < 1 ? 0 : PlacementSpecGeometry.rounded(picture.height) / nativeHeight;
+                bool whole = steps >= 1 && PlacementSpecGeometry.near(picture.height, (float)(steps * nativeHeight)) && (steps + 1) * nativeHeight > heights[size];
+                contract.expect(whole && PlacementSpecGeometry.centred(&picture, widths[size], heights[size]) && canvas.height > (float)heights[size],
+                    systemId + f" at {widths[size]}x{heights[size]}, game placement: the largest whole step, centred, the shell cropped and left where the picture puts it: " + PlacementSpecGeometry.text(&picture) + ", canvas " + PlacementSpecGeometry.text(&canvas));
+            }
+        }
+    }
+
+    class void television(Contract contract, Fixture fixture) {  // angrylion with Hide overscan hands 625x237 for a 474-line VI span (vi.c:456-462): the step is of 237
+        struct RendererCanvasRect canvas;
+        struct RendererCanvasRect picture;
+        PlacementSpecGeometry.place(fixture, "n64", 625, 237, 1, 1280, 800, &canvas, &picture);
+        contract.expect(PlacementSpecGeometry.near(picture.height, 711.0f) && PlacementSpecGeometry.centred(&picture, 1280, 800), "N64 cropped to 625x237, game placement at 1280x800: 3x the reported height, 711 lines: " + PlacementSpecGeometry.text(&picture));
+        PlacementSpecGeometry.place(fixture, "n64", 625, 237, 1, 1920, 1080, &canvas, &picture);
+        contract.expect(PlacementSpecGeometry.near(picture.height, 948.0f), "N64 cropped, game placement at 1920x1080: 4x 237 = 948 lines: " + PlacementSpecGeometry.text(&picture));
+        PlacementSpecGeometry.place(fixture, "n64", 625, 237, 2, 1280, 800, &canvas, &picture);
+        int steps = PlacementSpecGeometry.rounded(picture.height) / 237;
+        contract.expect(steps >= 1 && PlacementSpecGeometry.near(picture.height, (float)(steps * 237)), "N64 cropped, bezel placement at 1280x800: a whole multiple of 237: " + PlacementSpecGeometry.text(&picture));
+        PlacementSpecGeometry.place(fixture, "n64", 640, 240, 1, 1280, 800, &canvas, &picture);
+        contract.expect(PlacementSpecGeometry.near(picture.height, 720.0f), "N64 with its overscan, 640x240, game placement at 1280x800: 3x 240 = 720 lines, so the step is the reported height's: " + PlacementSpecGeometry.text(&picture));
+    }
+}
+
+class PlacementSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        RenderEnvSpecAssets.packages(fixture.plan.assetRoot, fixture.plan.configRoot);  // every layer file exists, so a hidden layer is the only way to drop one
+        PlacementSpecEnvironment.run(contract, fixture);
+        PlacementSpecGeometry.handheld(contract, fixture);
+        PlacementSpecGeometry.television(contract, fixture);
+    }
+}

@@ -1,6 +1,6 @@
 // The renderer, ported for the bezel editor by name: what `semu render-env` emits for a package
 // (SemuRenderEnvironment and SemuRenderLayers in src/emit/rendering.btrc) as the renderer reads it
-// (RendererConfiguration), and where it places it (RendererGeometry, RendererCompositionContract in
+// (RendererConfiguration), and where it places it (RendererGeometry, RendererPlacement, RendererCompositionContract in
 // src/renderer). Arithmetic the C does in float is rounded to 32 bits here, so edges land on the same
 // pixels; tests/visual/editor-sync.sh compares the editor with the real renderer.
 "use strict";
@@ -157,7 +157,7 @@ const BezelRenderer = (() => {
     }
   }
 
-  class Geometry {  // RendererGeometry, src/renderer/renderer_compositor.btrc; every rectangle bottom-up, as GL counts rows
+  class Geometry {  // RendererGeometry (renderer_compositor.btrc) and RendererPlacement (renderer_placement.btrc); every rectangle bottom-up, as GL counts rows
     static coverKeepingTubes(variant, surfaceCount, areaWidth, areaHeight, canvas) {
       if (canvas.width <= 0 || canvas.height <= 0) return canvas;
       const horizontal = float(areaWidth / canvas.width), vertical = float(areaHeight / canvas.height), grow = horizontal > vertical ? horizontal : vertical;
@@ -195,7 +195,15 @@ const BezelRenderer = (() => {
       const centerY = float(canvas.y + float(float(float(1 - area.y) - float(area.height * 0.5)) * canvas.height));
       const anchorX = placement === "game" ? float(areaWidth * 0.5) : float(float(canvas.x + float(canvas.width * 0.5)) + float(float(float(centerX - canvas.x) - float(canvas.width * 0.5)) * grow));
       const anchorY = placement === "game" ? float(areaHeight * 0.5) : float(float(canvas.y + float(canvas.height * 0.5)) + float(float(float(centerY - canvas.y) - float(canvas.height * 0.5)) * grow));
-      return { x: float(anchorX - float(float(centerX - canvas.x) * grow)), y: float(anchorY - float(float(centerY - canvas.y) * grow)), width: float(canvas.width * grow), height: float(canvas.height * grow) };
+      const placed = { x: float(anchorX - float(float(centerX - canvas.x) * grow)), y: float(anchorY - float(float(centerY - canvas.y) * grow)), width: float(canvas.width * grow), height: float(canvas.height * grow) };
+      if (placement === "game") {  // on an axis the whole shell fits, the shell is centred so the backdrop shows evenly; a whole-pixel shift keeps the picture on the grid
+        if (placed.width <= areaWidth) placed.x = float(placed.x + Geometry.wholePixels(float(float(float(areaWidth - placed.width) * 0.5) - placed.x)));
+        if (placed.height <= areaHeight) placed.y = float(placed.y + Geometry.wholePixels(float(float(float(areaHeight - placed.height) * 0.5) - placed.y)));
+      }
+      return placed;
+    }
+    static wholePixels(shift) {  // RendererPlacement.wholePixels: rounded half away from zero
+      return shift >= 0 ? integer(float(shift + 0.5)) : -integer(float(0.5 - shift));
     }
     static placeInTube(screen, tube, image, nativeWidth, nativeHeight, declaredAspect) {  // the game inside the calibrated image rectangle, else inside the inset opening
       const insetPixels = integer(float(float(screen.inset * Math.min(tube.width, tube.height)) + 0.5));

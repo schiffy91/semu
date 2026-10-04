@@ -146,7 +146,7 @@
         "h": 2160
       },
       "order": 0,
-      "visible": true,
+      "visible": false,
       "follow": "viewport",
       "blend": "normal",
       "opacity": 1,

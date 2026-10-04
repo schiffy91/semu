@@ -333,6 +333,13 @@
                 "kind": "literal",
                 "value": "cxd4"
               }
+            },
+            {
+              "key": "mupen64plus-angrylion-overscan",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
             }
           ],
           "mednafen_psx": [
@@ -731,6 +738,13 @@
               "source": {
                 "kind": "literal",
                 "value": "cxd4"
+              }
+            },
+            {
+              "key": "mupen64plus-angrylion-overscan",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
               }
             }
           ],

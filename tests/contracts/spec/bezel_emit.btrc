@@ -112,6 +112,32 @@ class BezelEmitSpecContract {
         contract.expect(television.equals("1") && handheld.equals("0"), "a new ring says its bevel: a chamfered CRT bezel 1, a Duimon lens's flat mask 0; wrote " + television + " and " + handheld);
     }
 
+    class string visibility(JSONValue package, string layerId) {  // "true", "false" or "missing"
+        JSONValue layers = package == null ? null : package.get("layers");
+        for (int index = 0; layers != null && layers.isArray() && index < layers.size(); index++) {
+            if (SemuJson.textAt(layers.at(index), "id").equals(layerId)) { return SemuJson.boolAt(layers.at(index), "visible", true) ? "true" : "false"; }
+        }
+        return "missing";
+    }
+
+    class void hiddenLayers(Contract contract, Fixture fixture, string configRoot, string root) {  // the editor's eye survives emit: Duimon's carbon plate stays off the PSP and the Game Boys, a layer hidden by hand stays hidden
+        string copy = BezelEmitSpecContract.stage(contract, fixture, configRoot, "emit-hidden");
+        BezelRepository repository = BezelRepository(copy);
+        JSONValue shell = repository.package("nds-shell");
+        JSONValue layers = shell.get("layers");
+        for (int index = 0; layers != null && layers.isArray() && index < layers.size(); index++) {
+            if (SemuJson.textAt(layers.at(index), "id").equals("background")) { layers.at(index).set("visible", JSONValue.makeBool(false)); }
+        }
+        contract.expect(repository.save("nds-shell", shell), "nds-shell with its backdrop hidden by hand is staged");
+        Vector<string> wanted = ["psp-e1000", "gb-dmg-shell", "gbc-shell", "gba-shell", "nds-shell"];
+        BezelEmitSpecContract.emit(contract, copy, root, wanted, "the handhelds' hidden layers");
+        for packageId in ["psp-e1000", "psp-red", "gb-dmg-shell", "gbc-shell", "gbc-berry", "gba-shell", "gba-arctic", "nds-shell"] {
+            JSONValue package = repository.package(packageId);
+            contract.expect(BezelEmitSpecContract.visibility(package, "background").equals("false") && BezelEmitSpecContract.visibility(package, "device").equals("true"),
+                packageId + ": emit keeps the hidden background hidden and the device shown: background " + BezelEmitSpecContract.visibility(package, "background") + ", device " + BezelEmitSpecContract.visibility(package, "device"));
+        }
+    }
+
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
         string configRoot = PathTools.join(fixture.project, "config");
@@ -119,5 +145,6 @@ class BezelEmitSpecContract {
         if (root.isEmpty()) { contract.skip("bezel emit", "no pinned slang tree (build it with `make bezel-tree` or set SEMU_BEZEL_TREE)"); return; }
         BezelEmitSpecContract.fixedPoint(contract, fixture, configRoot, root);
         BezelEmitSpecContract.handSet(contract, fixture, configRoot, root);
+        BezelEmitSpecContract.hiddenLayers(contract, fixture, configRoot, root);
     }
 }

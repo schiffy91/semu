@@ -293,7 +293,7 @@ class LiveVariantSources {  // the GL-bound wiring the contracts cannot run: kep
         int reset = Strings.find(renderer, "class void reset(", 0);
         int activate = Strings.find(renderer, "class void activate(", 0);
         contract.expect(reset > 0 && activate > reset && !renderer.substring(reset, activate - reset).contains("SemuRenderer.live"), "live: a context reset keeps the live choice");
-        for name in ["renderer_config", "renderer_config_screen", "renderer_variants", "renderer_live_switch", "renderer_menu", "renderer_menu_raster", "variant_keys"] {
+        for name in ["renderer_config", "renderer_config_screen", "renderer_variants", "renderer_live_switch", "renderer_menu", "renderer_menu_raster", "renderer_placement", "variant_keys"] {
             string text = LaunchSpecTools.source(fixture, "src/renderer/" + name + ".btrc");
             bool plain = !text.isEmpty() && !text.contains("renderer_compositor.btrc") && !text.contains("renderer_gl_api.btrc") && !text.contains("librashader") && !text.contains("stb_image");
             contract.expect(plain, "live: src/renderer/" + name + ".btrc stays GL-free, so the contracts import it");

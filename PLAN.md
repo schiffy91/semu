@@ -659,6 +659,43 @@ sequential implementation, review and fixes), each item done only when observed.
 Status: being designed (workflow mods-design, with critique) while the radial series
 (M8) finishes its review fixes; implementation follows in the main checkout.
 
+- Item 1 (N64 glow): built 2026-10-04 and checked in the render host; the Deck is open. Two causes:
+  angrylion handed over its black overscan columns, so the lip mirrored black, and the package had the
+  weakest reflection of the TVs (0.2, from upstream's HSM_REFLECT_GLOBAL_AMOUNT 20). RetroArch now sets
+  `mupen64plus-angrylion-overscan = "enabled"` in the linux and macos slices (both checked against the
+  core-options fixture), and tv-soqueroeu-n64 mirrors at 0.4 like genesis, gc and ps2
+  (`provenance.edited`, so `semu bezel emit` keeps it). PSX and Wii share the thin lip and 0.2; they stay
+  as they are unless the owner wants every TV to match. Render host at 1280x800 and 1920x1080: the N64
+  lip carries a brighter blue/green mirror; snes and genesis are unchanged (AE 0).
+  The cropped frame stays on whole steps: angrylion hands RetroArch maxhpass-minhpass by vres, 625x237
+  for the usual 474-line VI span (mupen64plus-libretro-nx f275caf4 vi.c:456-462), and the RetroArch
+  bridge reports the frame's own size as the surface's native size (surface_contract.btrc:193, positive
+  geometry policy), so game and bezel placement step in 237s: 711 (3x) at 1280x800, 948 (4x) at 1080p,
+  474 (2x) in bezel placement (render host with SEMU_RENDER_SURFACE_0_NATIVE=625x237, and the placement
+  contract). Logged, as only a RetroArch patch would avoid it: RetroArch's own integer scale works from
+  the core's declared geometry, 640x480, which the core forces for angrylion (libretro.c:1449-1456), so
+  inside RetroArch's viewport the 237 lines are point-stretched 480/237 = 2.03x before Semu reads them
+  back at native size (a linear blit to 625x237, `RendererShaderPasses.extract`). Fit placement, the
+  default, is fractional by design either way.
+- Item 5 (PSP background): built 2026-10-04 and checked in the render host; the Deck is open. The carbon
+  was Duimon's Canvas_Background.jpg layer: 3840x2160 on the PSP's 5335x2160 canvas, so it was emitted as
+  cover and stretched over the desk-night wood. It is hidden (`visible: false`, the editor's eye) in
+  psp-e1000 and psp-red, and in gb-dmg-shell, gbc-shell, gbc-berry, gba-shell and gba-arctic, where bezel
+  or fit placement shows it (nds-shell keeps its canvas-sized one under the opaque face); `semu bezel emit`
+  now keeps a layer the package hides. The off-centre look: game placement centred the picture, and the
+  E1000's screen sits above the device's middle, so the device sat 31 px low with a 53 px band on top
+  only. Ruling taken as a default (reversible): game placement centres the shell on an axis where the
+  whole shell fits, by whole pixels (`RendererPlacement` in the new GL-free renderer_placement.btrc,
+  mirrored in the editor). At 1280x800 the PSP shows the whole device on wood bands of about 21 and
+  22 px, the picture still 960x544 at x=160 (rows 97..640, was 128..671). gb, gbc, gba, nds and n3ds
+  render identically (AE 0 at both sizes): their shells do not fit, so their pictures stay centred.
+  editor-sync matches production for psp, gb, gba and n64 at both sizes. Contracts: placement.btrc (the
+  strengths, no carbon layer on any psp/gb/gbc/gba variant, the PSP's bands, the Game Boys' centred
+  whole steps, the 237-line steps) and bezel_emit's hidden layers, each failing under its mutation.
+  Open, the owner's call: at 1920x1080 the PSP's 3x shell (1178 px) is taller than the screen, so the
+  picture stays centred, a thin wood strip shows at the top and the button bar is half cut; centring the
+  shell there needs a per-system rule, and applied to all it pushes the gb, gbc and gba pictures to the top.
+
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
 The review ran on the Mac (mbp21, aarch64-darwin, macOS 27). FRACTAL-NORTH did not resolve

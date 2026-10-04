@@ -280,6 +280,15 @@ class BezelPackageWriter {
 
     class JSONValue rectJson(BezelRect rect) { return rect.rounded(); }
 
+    class bool hidden(JSONValue layers, string layerId) {  // the committed package names this layer and sets it invisible (the editor's eye)
+        if (layers == null || !layers.isArray()) { return false; }
+        for (int index = 0; index < layers.size(); index++) {
+            JSONValue layer = layers.at(index);
+            if (SemuJson.textAt(layer, "id").equals(layerId)) { return !SemuJson.boolAt(layer, "visible", true); }
+        }
+        return false;
+    }
+
     public string emit(string packageId) {  // "" on success, else why
         JSONValue package = self.repository.package(packageId);
         if (package == null) { return "no such package"; }
@@ -293,8 +302,13 @@ class BezelPackageWriter {
         canvas.set("h", JSONValue.makeInt(geometry.canvasLayer.height));
         package.set("canvas", canvas);
         package.set("canvas_layer", JSONValue.makeString(geometry.canvasLayer.id));
+        JSONValue previous = package.get("layers");
         JSONValue layers = JSONValue.makeArray();
-        for layer in geometry.layers { layers.push(layer.toJson(geometry.frame(), geometry.canvasLayer.width, geometry.canvasLayer.height)); }
+        for layer in geometry.layers {
+            JSONValue emitted = layer.toJson(geometry.frame(), geometry.canvasLayer.width, geometry.canvasLayer.height);
+            if (BezelPackageWriter.hidden(previous, layer.id)) { emitted.set("visible", JSONValue.makeBool(false)); }  // a layer the package hides (the editor's eye) stays hidden
+            layers.push(emitted);
+        }
         package.set("layers", layers);
         package.set("frame", JSONValue.makeNull());  // the computed ring replaces any drawn frame
         JSONValue screens = package.get("screens");
