@@ -31,8 +31,8 @@ class RightTrackpadSpecText {
     }
 
     class bool before(string text, string first, string second) {
-        int at = text.indexOf(first);
-        return at >= 0 && text.indexOf(second) > at;
+        int position = text.indexOf(first);
+        return position >= 0 && text.indexOf(second) > position;
     }
 
     class bool near(float actual, float expected, float tolerance) {
@@ -202,11 +202,11 @@ class RightTrackpadSpecCores {  // every DS and 3DS core reads Semu's pointer an
     class void options(Contract contract, Fixture fixture, string platformId) {
         JSONValue platform = fixture.model.emulator("retroarch").platform(platformId);
         SemuSystem threeDs = fixture.model.system("n3ds");
-        SemuSystem ds = fixture.model.system("nds");
+        SemuSystem nintendoDs = fixture.model.system("nds");
         string citra = SemuLauncher.coreOptions(fixture.plan, platform, "citra", threeDs);
         string azahar = SemuLauncher.coreOptions(fixture.plan, platform, "azahar", threeDs);
-        string desmume = SemuLauncher.coreOptions(fixture.plan, platform, "desmume", ds);
-        string melonDs = SemuLauncher.coreOptions(fixture.plan, platform, "melonds", ds);
+        string desmume = SemuLauncher.coreOptions(fixture.plan, platform, "desmume", nintendoDs);
+        string melonDs = SemuLauncher.coreOptions(fixture.plan, platform, "melonds", nintendoDs);
         contract.expect(RightTrackpadSpecCores.option(citra, "citra_touch_touchscreen").equals("citra_touch_touchscreen = \"enabled\"") && RightTrackpadSpecCores.option(citra, "citra_mouse_touchscreen").equals("citra_mouse_touchscreen = \"disabled\""),
             platformId + ": the Citra core reads the pointer as a touch screen, not as its own mouse");
         contract.expect(RightTrackpadSpecCores.option(azahar, "citra_enable_touch_touchscreen").equals("citra_enable_touch_touchscreen = \"enabled\"") && RightTrackpadSpecCores.option(azahar, "citra_enable_mouse_touchscreen").equals("citra_enable_mouse_touchscreen = \"disabled\""),
@@ -225,11 +225,11 @@ class RightTrackpadSpecCores {  // every DS and 3DS core reads Semu's pointer an
             string rendered = fixture.profile("retroarch", "remaps/" + library + "/" + library + ".rmp");
             contract.expect(rendered.equals("input_player1_btn_" + buttons.get(index) + " = \"-1\"\n"), target + ": " + library + " loses its screen-swap button (" + buttons.get(index) + ")");
         }
-        string cfg = fixture.profile("retroarch", "retroarch.cfg");
+        string retroarchConfig = fixture.profile("retroarch", "retroarch.cfg");
         string remapDirectory = "input_remapping_directory = \"" + PathTools.join(fixture.plan.stateRoot(), "retroarch/remaps") + "\"";
-        contract.contains(cfg, remapDirectory, target + ": RetroArch looks for remaps where Semu writes them");
+        contract.contains(retroarchConfig, remapDirectory, target + ": RetroArch looks for remaps where Semu writes them");
         for line in ["input_remap_binds_enable = \"true\"", "auto_remaps_enable = \"true\"", "input_remap_sort_by_controller_enable = \"false\"", "video_windowed_fullscreen = \"true\"", "input_auto_mouse_grab = \"false\""] {
-            contract.contains(cfg, line + "\n", target + ": retroarch.cfg pins the remap load and an ungrabbed pointer");
+            contract.contains(retroarchConfig, line + "\n", target + ": retroarch.cfg pins the remap load and an ungrabbed pointer");
         }
     }
 

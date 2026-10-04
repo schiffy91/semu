@@ -32,7 +32,7 @@ install_release() {
   fi
   switch_to "$target"
   echo "installed $actual -> $root/current"
-  echo "add to Steam: quit Steam, then run $root/bin/semu-deck-cli steam shortcuts"
+  next_steps
 }
 
 install_delta() {  # a release tree plus only the store paths the current release lacks
@@ -63,6 +63,11 @@ install_delta() {  # a release tree plus only the store paths the current releas
   if [ -d "$target" ]; then remove_tree "$staging"; else mv "$staging" "$target"; fi
   switch_to "$target"
   echo "installed $named (delta $actual) -> $root/current"
+  next_steps
+}
+
+next_steps() {  # the shortcut, then the controller profile: without steam input Steam keeps its fallback layout, so no radial or trackpad pointer
+  echo "add to Steam: quit Steam, then run $root/bin/semu-deck-cli steam shortcuts && $root/bin/semu-deck-cli steam input"
 }
 
 switch_to() {  # make TARGET current, keep the old current as previous, refresh launchers

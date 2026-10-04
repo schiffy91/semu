@@ -41,34 +41,90 @@ class HarnessSpecInputX11 {  // the VM harness for the radial's input path expec
     }
 }
 
-class HarnessSpecStyle {  // no one- or two-letter names in the multi-disc and checker code
-    class bool typeWord(string word) {
-        string bare = word.startsWith("(") ? word.substring(1, word.len() - 1) : word;
-        if (bare.equals("string") || bare.equals("int") || bare.equals("bool")) { return true; }
+class HarnessSpecInstaller {  // the installer names both Steam steps: without steam input Steam never loads the radial or the trackpad pointer
+    class void run(Contract contract) {
+        string project = Fixture("linux-desktop").project;
+        string installer = FileSystem.readText(PathTools.join(project, "packaging/deck/install.sh"));
+        contract.contains(installer, "semu-deck-cli steam shortcuts && $root/bin/semu-deck-cli steam input\"", "install.sh tells the owner to run steam input after steam shortcuts");
+        int full = installer.indexOf("install_release() {");
+        int delta = installer.indexOf("install_delta() {");
+        int switching = installer.indexOf("switch_to() {");
+        bool both = full >= 0 && delta > full && switching > delta && installer.substring(full, delta - full).contains("  next_steps\n") && installer.substring(delta, switching - delta).contains("  next_steps\n");
+        contract.expect(both, "a full install and a delta install both print the next steps");
+    }
+}
+
+class HarnessSpecStyle {  // no one- or two-letter names in the multi-disc, checker and radial code
+    class Vector<string> primitives() { return ["string", "int", "bool", "char", "float", "double", "long", "short", "unsigned", "void", "size_t", "ssize_t", "int16_t", "uint16_t", "int32_t", "uint32_t", "int64_t", "uint64_t"]; }
+
+    class Vector<string> abbreviations() { return ["cfg", "idx", "tmp", "buf", "ptr", "len", "str", "msg", "cnt", "num", "val", "res", "ret"]; }
+
+    class bool typeWord(string word) {  // a type a name can follow: a primitive or a capitalised class, maybe a pointer, maybe the first parameter's after "("
+        if (word.endsWith(",") || word.endsWith(")") || word.endsWith(";")) { return false; }
+        int open = -1;
+        for (int index = 0; index < word.len(); index++) { if (word.charAt(index) == '(') { open = index; } }
+        string bare = open < 0 ? word : word.substring(open + 1, word.len() - open - 1);
+        while (bare.endsWith("*")) { bare = bare.substring(0, bare.len() - 1); }
+        if (HarnessSpecStyle.primitives().contains(bare)) { return true; }
         return bare.len() > 0 && bare.charAt(0) >= 65 && bare.charAt(0) <= 90;
     }
 
-    class Vector<string> shortNames(string source) {  // names bound by "Type name =" or "for name in"
+    class string bound(string word) {  // the name in "name", "name,", "name)" or "name) {"
+        string name = word;
+        while (name.len() > 0 && (name.endsWith(",") || name.endsWith(")") || name.endsWith(";") || name.endsWith("{"))) { name = name.substring(0, name.len() - 1); }
+        return name;
+    }
+
+    class bool identifier(string name) {
+        if (name.isEmpty() || !((name.charAt(0) >= 97 && name.charAt(0) <= 122) || (name.charAt(0) >= 65 && name.charAt(0) <= 90))) { return false; }
+        for (int index = 1; index < name.len(); index++) {
+            char character = name.charAt(index);
+            if (!((character >= 97 && character <= 122) || (character >= 65 && character <= 90) || (character >= 48 && character <= 57) || character == 95)) { return false; }
+        }
+        return true;
+    }
+
+    class Vector<string> shortNames(string source) {  // names bound by "Type name =", "for name in", or a "Type name," / "Type name)" parameter
         Vector<string> found = [];
         for line in Strings.split(source, "\n") {
-            Vector<string> words = Strings.split(line.trim(), " ");
-            for (int index = 0; index + 2 < words.size(); index++) {
-                bool declared = HarnessSpecStyle.typeWord(words.get(index)) && words.get(index + 2).equals("=");
-                bool looped = words.get(index).equals("for") && words.get(index + 2).equals("in");
-                string name = words.get(index + 1);
-                if ((declared || looped) && name.len() <= 2) { found.push(name); }
+            string code = line.trim();
+            int comment = code.indexOf("  // ");
+            if (comment >= 0) { code = code.substring(0, comment); }
+            if (code.startsWith("//")) { continue; }
+            Vector<string> words = Strings.split(code, " ");
+            for (int index = 0; index + 1 < words.size(); index++) {
+                string next = words.get(index + 1);
+                bool typed = HarnessSpecStyle.typeWord(words.get(index));
+                bool declared = typed && index + 2 < words.size() && words.get(index + 2).equals("=");
+                bool looped = words.get(index).equals("for") && index + 2 < words.size() && words.get(index + 2).equals("in");
+                bool parameter = typed && (next.endsWith(",") || next.endsWith(")"));
+                string name = HarnessSpecStyle.bound(next);
+                if ((declared || looped || parameter) && (name.len() <= 2 || HarnessSpecStyle.abbreviations().contains(name)) && HarnessSpecStyle.identifier(name)) { found.push(name); }
             }
         }
         return found;
     }
 
+    class Vector<string> files() {  // the multi-disc and checker code, and every source and spec the radial series wrote or grew
+        Vector<string> result = ["src/check.btrc", "src/launch/playlist.btrc", "tests/contracts/spec/playlist.btrc", "tests/contracts/spec/content.btrc", "tests/contracts/spec/flycast_config.btrc", "tests/contracts/spec/deck_harness.btrc"];
+        for name in ["x11_keys", "input_filters", "input_devices", "menu_modal", "visual_cycle"] { result.push("src/launch/" + name + ".btrc"); }
+        for name in ["render_variants", "key_collisions"] { result.push("src/emit/" + name + ".btrc"); }
+        for name in ["variant_keys", "renderer_variants", "renderer_config", "renderer_config_screen", "renderer_live_switch", "renderer_menu", "renderer_menu_raster", "renderer_cursor", "renderer_variant_images", "retroarch/surface_math"] { result.push("src/renderer/" + name + ".btrc"); }
+        for name in ["configset", "input_document", "input_groups", "input_presets", "input_rules", "input_vdf"] { result.push("src/steam/" + name + ".btrc"); }
+        for name in ["input_delivery", "input_devices", "menu_modal", "retroarch_keyboard", "emulator_hotkeys", "emulator_keyboard", "save_slots", "render_variants", "visual_cycle", "live_variants", "live_switch", "steam_configset", "steam_controllers", "right_trackpad"] { result.push("tests/contracts/spec/" + name + ".btrc"); }
+        return result;
+    }
+
     class void run(Contract contract) {
         string project = Fixture("linux-desktop").project;
-        for name in ["src/check.btrc", "src/launch/playlist.btrc", "tests/contracts/spec/playlist.btrc", "tests/contracts/spec/content.btrc", "tests/contracts/spec/flycast_config.btrc", "tests/contracts/spec/deck_harness.btrc"] {
-            Vector<string> found = HarnessSpecStyle.shortNames(FileSystem.readText(PathTools.join(project, name)));
-            contract.expect(found.isEmpty(), name + " binds no one- or two-letter name: " + found.join(" "));
+        for name in HarnessSpecStyle.files() {
+            string path = PathTools.join(project, name);
+            Vector<string> found = FileSystem.isFile(path) ? HarnessSpecStyle.shortNames(FileSystem.readText(path)) : ["(missing)"];
+            contract.expect(found.isEmpty(), name + " binds no one- or two-letter name and no abbreviation: " + found.join(" "));
         }
         contract.expect(HarnessSpecStyle.shortNames("        string gc = PlaylistSpecLaunch.writeFolder(bed);\n        for (int ix = 0; ix < 2; ix++) {\n        for dc in names {").join(" ").equals("gc ix dc"), "the style scan finds a two-letter declaration, loop index and loop variable");
+        contract.expect(HarnessSpecStyle.shortNames("    class void load(string id, int x) {\n        int16_t at = point;\n        SemuActions.code(X, Y);\n").join(" ").equals("id x at"), "the style scan finds short parameters and an int16_t local, never a call's arguments");
+        contract.expect(HarnessSpecStyle.shortNames("        string cfg = fixture.profile(\"retroarch\", \"retroarch.cfg\");\n").join(" ").equals("cfg"), "the style scan finds an abbreviation the reviews named");
     }
 }
 
@@ -76,6 +132,7 @@ class HarnessSpecContract {
     class void run(Contract contract) {
         HarnessSpecDeckScripts.run(contract);
         HarnessSpecInputX11.run(contract);
+        HarnessSpecInstaller.run(contract);
         HarnessSpecStyle.run(contract);
     }
 }

@@ -11,9 +11,9 @@ import ../../../src/emit/profiles.btrc;
 import ../../../src/emit/key_collisions.btrc;
 
 class RetroArchKeyboardTools {
-    class string value(string cfg, string setting) {  // the quoted value of SETTING, "" when the line is absent
+    class string value(string retroarchConfig, string setting) {  // the quoted value of SETTING, "" when the line is absent
         string found = "";
-        for line in Strings.split(cfg, "\n") {
+        for line in Strings.split(retroarchConfig, "\n") {
             string prefix = setting + " = \"";
             if (line.startsWith(prefix) && line.endsWith("\"")) { found = line.substring(prefix.len(), line.len() - prefix.len() - 1); }
         }
@@ -65,25 +65,25 @@ class RetroArchKeyboardTargets {  // Linux nul's the keymap and the colliding pl
         for targetId in ["linux-desktop", "steam-deck", "macos"] {
             Fixture fixture = Fixture(targetId);
             bool linux = fixture.plan.platform.equals("linux");
-            string cfg = fixture.profile("retroarch", "retroarch.cfg");
+            string retroarchConfig = fixture.profile("retroarch", "retroarch.cfg");
             Vector<string> chordKeys = RetroArchKeyboardTools.chordKeys(fixture);
             contract.expect(chordKeys.contains("k") && chordKeys.contains("h") && chordKeys.contains("m") && chordKeys.contains("s") && chordKeys.contains("add") && chordKeys.contains("escape") && chordKeys.contains("f9"), targetId + ": the chords encode as RetroArch key names");
             for setting in ["input_frame_advance", "input_reset", "input_shader_next", "input_shader_prev", "input_shader_toggle", "input_audio_mute", "input_grab_mouse_toggle", "input_volume_up", "input_volume_down"] {
-                contract.expect(RetroArchKeyboardTools.value(cfg, setting).equals("nul"), targetId + ": " + setting + " is cleared on every target");
+                contract.expect(RetroArchKeyboardTools.value(retroarchConfig, setting).equals("nul"), targetId + ": " + setting + " is cleared on every target");
             }
             for setting in ["input_player1_a", "input_player1_x", "input_player1_y", "input_player1_l", "input_player1_start", "input_player1_up", "input_player1_down", "input_player1_gun_start"] {
-                string value = RetroArchKeyboardTools.value(cfg, setting);
+                string value = RetroArchKeyboardTools.value(retroarchConfig, setting);
                 contract.expect((linux && value.equals("nul")) || (!linux && value.isEmpty()), targetId + ": " + setting + (linux ? " is cleared, its key belongs to a Semu chord" : " keeps RetroArch's default on macOS"));
             }
-            contract.expect(RetroArchKeyboardTools.value(cfg, "input_player1_b").isEmpty() && RetroArchKeyboardTools.value(cfg, "input_hold_fast_forward").isEmpty(), targetId + ": defaults no chord uses stay RetroArch's");
-            contract.expect(RetroArchKeyboardTools.value(cfg, "input_save_state").equals(linux ? "nul" : "s"), targetId + ": RetroArch's own save key is " + (linux ? "off; the supervisor drives saves" : "Ctrl+S's s, macOS has no keyboard source"));
+            contract.expect(RetroArchKeyboardTools.value(retroarchConfig, "input_player1_b").isEmpty() && RetroArchKeyboardTools.value(retroarchConfig, "input_hold_fast_forward").isEmpty(), targetId + ": defaults no chord uses stay RetroArch's");
+            contract.expect(RetroArchKeyboardTools.value(retroarchConfig, "input_save_state").equals(linux ? "nul" : "s"), targetId + ": RetroArch's own save key is " + (linux ? "off; the supervisor drives saves" : "Ctrl+S's s, macOS has no keyboard source"));
             JSONValue keymap = SemuJson.get(RetroArchKeyboardTools.profile(fixture), "hotkeys.keymap");
             Vector<string> keymapSettings = SemuKeyCollisions.settings(keymap, fixture.plan.platform, fixture.model.emulator("retroarch").actions);
             for setting in keymapSettings {
-                string value = RetroArchKeyboardTools.value(cfg, setting);
+                string value = RetroArchKeyboardTools.value(retroarchConfig, setting);
                 contract.expect((linux && value.equals("nul")) || (!linux && !value.isEmpty() && !value.equals("nul")), targetId + ": keymap row " + setting + (linux ? " is nul" : " keeps its chord key"));
             }
-            for line in Strings.split(cfg, "\n") {  // no line but Semu's own macOS keymap binds a key a Semu chord uses
+            for line in Strings.split(retroarchConfig, "\n") {  // no line but Semu's own macOS keymap binds a key a Semu chord uses
                 int separator = line.indexOf(" = \"");
                 if (!line.startsWith("input_") || separator < 0 || !line.endsWith("\"")) { continue; }
                 string setting = line.substring(0, separator);
@@ -98,7 +98,7 @@ class RetroArchKeyboardTargets {  // Linux nul's the keymap and the colliding pl
                     string setting = SemuJson.textAt(rows.at(index), "setting");
                     bool colliding = chordKeys.contains(SemuJson.textAt(rows.at(index), "key")) && !keymapSettings.contains(setting);
                     if (!colliding || (group.equals("player1") && !linux)) { continue; }
-                    contract.expect(RetroArchKeyboardTools.value(cfg, setting).equals("nul"), targetId + ": the colliding default " + setting + " is nul");
+                    contract.expect(RetroArchKeyboardTools.value(retroarchConfig, setting).equals("nul"), targetId + ": the colliding default " + setting + " is nul");
                 }
             }
             contract.expect(fixture.diagnostics.ok(), targetId + ": the keyboard groups render without diagnostics: " + fixture.diagnostics.render());

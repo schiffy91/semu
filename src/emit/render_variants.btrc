@@ -80,10 +80,10 @@ class SemuRenderVariants {
             || character == ',' || character == '.' || character == '(' || character == ')';
     }
 
-    class string label(JSONValue manifest, string id) {  // the manifest label upper-cased and filtered, at most labelCapacity; none is OFF
-        if (id.equals("none")) { return "OFF"; }
-        string source = SemuJson.textAt(SemuRenderEnvironment.findVariant(manifest, id), "label");
-        if (source.isEmpty()) { source = id; }
+    class string label(JSONValue manifest, string variantId) {  // the manifest label upper-cased and filtered, at most labelCapacity; none is OFF
+        if (variantId.equals("none")) { return "OFF"; }
+        string source = SemuJson.textAt(SemuRenderEnvironment.findVariant(manifest, variantId), "label");
+        if (source.isEmpty()) { source = variantId; }
         int capacity = RendererVariantKeys.labelCapacity();
         char* buffer = (char*)malloc((size_t)(capacity + 1));
         int written = 0;
@@ -104,7 +104,7 @@ class SemuRenderVariants {
         SemuVariantChoice result = SemuVariantChoice(kind);
         JSONValue manifest = SemuRenderVariants.manifest(system, kind);
         result.ids = SemuRenderVariants.choices(system, kind);
-        for id in result.ids { result.labels.push(SemuRenderVariants.label(manifest, id)); }
+        for variantId in result.ids { result.labels.push(SemuRenderVariants.label(manifest, variantId)); }
         int found = result.ids.indexOf(SemuRenderVariants.current(plan, system, kind));
         result.index = found >= 0 ? found : 0;
         int fallback = result.ids.indexOf(SemuJson.textAt(manifest, "default_variant"));

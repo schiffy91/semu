@@ -334,7 +334,7 @@ class BezelPreview {  // what the launcher gives the renderer when a system show
 }
 
 class BezelComputedLayout {  // the computed DS/3DS layouts by the renderer's own arithmetic (src/renderer/renderer_layout.btrc), for the editor's preview
-    class int code(string layout) {  // RendererConfiguration.parseLayout
+    class int code(string layout) {  // RendererConfigKeys.parseLayout
         if (layout.equals("main_right")) { return SEMU_LAYOUT_MAIN_RIGHT; }
         if (layout.equals("main_left")) { return SEMU_LAYOUT_MAIN_LEFT; }
         if (layout.equals("side_by_side")) { return SEMU_LAYOUT_SIDE_BY_SIDE; }

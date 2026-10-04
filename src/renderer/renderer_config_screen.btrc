@@ -1,0 +1,243 @@
+// The keys one variant's screens and layers read, parsed without GL: a screen's opening, picture,
+// drawn ring, bulge, reflection, look, surround, glass and shader, and a package layer's file,
+// rectangle and blend. While a live choice reloads the variants, a variant-scoped key comes from the
+// variants file's section only (RendererLookup), never the launch's environment.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+import ./renderer_file_hash.btrc;
+import ./renderer_layout.btrc;
+import ./renderer_variants.btrc;
+import ./variant_keys.btrc;
+
+struct RendererPath {
+    char value[4096];
+};
+
+struct RendererNormalizedHole {
+    int set;
+    float x;
+    float y;
+    float width;
+    float height;
+};
+
+struct RendererScreenConfig {
+    int look_set;
+    struct RendererNormalizedHole tube;
+    struct RendererNormalizedHole image;  // calibrated picture rectangle inside the opening
+    int ring_set;  // the upstream preset's drawn bezel between the black edge and the opening
+    struct RendererNormalizedHole ring_inner;
+    struct RendererNormalizedHole ring_outer;
+    float ring_inner_radius;
+    float ring_outer_radius;
+    float ring_r;
+    float ring_g;
+    float ring_b;
+    float ring_opacity;  // 0: the band only marks the painted bezel, nothing is filled
+    float ring_bevel;  // the lit chamfer on the lip's outer edge, 0..1
+    float bulge_x;  // edge middles bowed outward, fractions of the opening's half width and half height
+    float bulge_y;
+    float ring_reflect;  // the picture mirrored onto the drawn bezel: strength, blur growth, fade with distance
+    float ring_reflect_blur;
+    float ring_reflect_fade;
+    int shape;
+    float radius;
+    float exponent;
+    int fit;
+    float inset;
+    float surround_r;
+    float surround_g;
+    float surround_b;
+    float curvature;
+    float vignette;
+    float bloom;
+    float reflect;
+    struct RendererPath glass;
+    struct RendererPath shader;
+    char shader_sha256[65];
+    int shader_available;
+};
+
+struct RendererLayerConfig {  // one layer of the package stack: SEMU_RENDER_LAYER_<n>, see parseLayer
+    int set;
+    struct RendererPath file;
+    struct RendererNormalizedHole rect;
+    int cover;   // follows the viewport: cover-fit like the background plate
+    int above;   // drawn after the screens
+    int blend;   // 0 normal, 1 add, 2 multiply
+    float opacity;
+    float tint[4];  // r, g, b, brightness: grayscale times brightness times colour; brightness 0 is untinted
+    float lift;     // blends the texel toward white first, so a multiply plate lightens
+};
+
+struct RendererLookupState {  // while reloadVariants runs, a variant key comes from this section only
+    struct RendererVariantOverlay* overlay;
+};
+
+struct RendererLookupState RendererLookup;
+
+class RendererConfigKeys {
+    class char* lookup(char* name) {  // a variant key comes only from the live section, never the launch's environment
+        if (RendererLookup.overlay != null && RendererVariantKeys.scopedName(name)) { return RendererVariantFile.value(RendererLookup.overlay, name); }
+        return getenv(name);
+    }
+
+    class bool enabled(char* name) {  // SEMU_RENDER_SHADERS or _BEZELS: on unless it says 0
+        char* value = RendererConfigKeys.lookup(name);
+        return value == null || value[0] != '0';
+    }
+
+    class void copyEnvironment(struct RendererPath* path, char* name) {
+        if (path == null) { return; }
+        path->value[0] = 0;
+        char* value = RendererConfigKeys.lookup(name);
+        if (value != null && value[0] != 0) {
+            strncpy(path->value, value, 4095);
+            path->value[4095] = 0;
+        }
+    }
+
+    class void parseHole(struct RendererNormalizedHole* hole, char* name) {
+        if (hole == null) { return; }
+        memset(hole, 0, sizeof(struct RendererNormalizedHole));
+        char* value = RendererConfigKeys.lookup(name);
+        if (value != null && sscanf(value, "%f,%f,%f,%f", &hole->x, &hole->y,
+                &hole->width, &hole->height) == 4
+            && hole->x >= 0.0f && hole->y >= 0.0f
+            && hole->width > 0.0f && hole->height > 0.0f
+            && hole->x + hole->width <= 1.0001f
+            && hole->y + hole->height <= 1.0001f) {
+            hole->set = 1;
+        }
+    }
+
+    class float clamp01(float value) {
+        return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
+    }
+
+    class void loadScreen(struct RendererScreenConfig* screen, int index, char* suffix) {
+        char name[128];
+        memset(screen, 0, sizeof(struct RendererScreenConfig));
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d%s", index, suffix);
+        RendererConfigKeys.parseHole(&screen->tube, name);
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_IMAGE%s", index, suffix);
+        RendererConfigKeys.parseHole(&screen->image, name);
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_RING%s", index, suffix);
+        char* ring = RendererConfigKeys.lookup(name);
+        float ringValues[15];
+        ringValues[13] = 1.0f;
+        ringValues[14] = 1.0f;  // an older CLI: the lit chamfer every lip had
+        int ringCount = ring == null ? 0 : sscanf(ring, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", &ringValues[0], &ringValues[1], &ringValues[2], &ringValues[3], &ringValues[4], &ringValues[5], &ringValues[6], &ringValues[7], &ringValues[8], &ringValues[9], &ringValues[10], &ringValues[11], &ringValues[12], &ringValues[13], &ringValues[14]);
+        if (ringCount >= 13 && ringValues[2] > 0.0f && ringValues[3] > 0.0f && ringValues[6] > 0.0f && ringValues[7] > 0.0f) {  // 13 values: a filled ring from an older CLI
+            screen->ring_set = 1;
+            screen->ring_inner.set = 1;
+            screen->ring_inner.x = ringValues[0];
+            screen->ring_inner.y = ringValues[1];
+            screen->ring_inner.width = ringValues[2];
+            screen->ring_inner.height = ringValues[3];
+            screen->ring_outer.set = 1;
+            screen->ring_outer.x = ringValues[4];
+            screen->ring_outer.y = ringValues[5];
+            screen->ring_outer.width = ringValues[6];
+            screen->ring_outer.height = ringValues[7];
+            screen->ring_inner_radius = RendererConfigKeys.clamp01(ringValues[8]);
+            screen->ring_outer_radius = RendererConfigKeys.clamp01(ringValues[9]);
+            screen->ring_r = RendererConfigKeys.clamp01(ringValues[10]);
+            screen->ring_g = RendererConfigKeys.clamp01(ringValues[11]);
+            screen->ring_b = RendererConfigKeys.clamp01(ringValues[12]);
+            screen->ring_opacity = RendererConfigKeys.clamp01(ringValues[13]);
+            screen->ring_bevel = RendererConfigKeys.clamp01(ringValues[14]);
+        }
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_BULGE%s", index, suffix);
+        char* bulge = RendererConfigKeys.lookup(name);
+        if (bulge == null || sscanf(bulge, "%f,%f", &screen->bulge_x, &screen->bulge_y) != 2) {
+            screen->bulge_x = 0.0f;
+            screen->bulge_y = 0.0f;
+        }
+        screen->bulge_x = RendererConfigKeys.clamp01(screen->bulge_x);
+        screen->bulge_y = RendererConfigKeys.clamp01(screen->bulge_y);
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_REFLECT%s", index, suffix);
+        char* reflect = RendererConfigKeys.lookup(name);
+        int reflectCount = reflect == null ? 0 : sscanf(reflect, "%f,%f,%f", &screen->ring_reflect, &screen->ring_reflect_blur, &screen->ring_reflect_fade);
+        if (reflectCount < 3) {
+            screen->ring_reflect = 0.0f;
+            screen->ring_reflect_blur = 0.0f;
+            screen->ring_reflect_fade = 0.0f;
+        }
+        screen->ring_reflect = RendererConfigKeys.clamp01(screen->ring_reflect);
+        screen->ring_reflect_blur = RendererConfigKeys.clamp01(screen->ring_reflect_blur);
+        screen->ring_reflect_fade = RendererConfigKeys.clamp01(screen->ring_reflect_fade);
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_LOOK%s", index, suffix);
+        char* look = RendererConfigKeys.lookup(name);
+        float values[10];
+        if (look != null && sscanf(look, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", &values[0], &values[1], &values[2], &values[3], &values[4], &values[5], &values[6], &values[7], &values[8], &values[9]) == 10) {
+            screen->look_set = 1;
+            screen->shape = (int)values[0];
+            screen->radius = RendererConfigKeys.clamp01(values[1]);
+            screen->exponent = values[2] < 2.0f ? 2.0f : values[2];
+            screen->fit = (int)values[3];
+            screen->inset = RendererConfigKeys.clamp01(values[4]) * 0.45f;
+            screen->curvature = values[5];
+            screen->vignette = values[6];
+            screen->bloom = values[7];
+            screen->reflect = values[9];  // values[8], the retired glow slot, is ignored
+        }
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_SURROUND%s", index, suffix);
+        char* surround = RendererConfigKeys.lookup(name);
+        if (surround == null || sscanf(surround, "%f,%f,%f", &screen->surround_r, &screen->surround_g, &screen->surround_b) != 3) {
+            screen->surround_r = 0.0f;
+            screen->surround_g = 0.0f;
+            screen->surround_b = 0.0f;
+        }
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_GLASS%s", index, suffix);
+        RendererConfigKeys.copyEnvironment(&screen->glass, name);
+        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_SHADER%s", index, suffix);
+        RendererConfigKeys.copyEnvironment(&screen->shader, name);
+        screen->shader_available = RendererFileHash.sha256(screen->shader.value, screen->shader_sha256) ? 1 : 0;
+    }
+
+    class bool parseLayer(struct RendererLayerConfig* layer, char* value) {  // file|x,y,w,h or cover|above|blend|opacity|tint|lift
+        memset(layer, 0, sizeof(struct RendererLayerConfig));
+        if (value == null || value[0] == 0) { return false; }
+        char* bar = strchr(value, '|');
+        if (bar == null || bar == value || bar - value > 4095) { return false; }
+        strncpy(layer->file.value, value, (size_t)(bar - value));
+        layer->file.value[bar - value] = 0;
+        char* rest = bar + 1;
+        if (strncmp(rest, "cover", 5) == 0) {
+            layer->cover = 1;
+            rest = rest + 5;
+        } else {
+            if (sscanf(rest, "%f,%f,%f,%f", &layer->rect.x, &layer->rect.y, &layer->rect.width, &layer->rect.height) != 4 || layer->rect.width <= 0.0f || layer->rect.height <= 0.0f) { return false; }
+            layer->rect.set = 1;
+            rest = strchr(rest, '|');
+            if (rest == null) { return false; }
+        }
+        int above = 0;
+        int blend = 0;
+        float opacity = 1.0f;
+        if (sscanf(rest, "|%d|%d|%f", &above, &blend, &opacity) < 2) { return false; }
+        layer->above = above != 0 ? 1 : 0;
+        layer->blend = blend < 0 ? 0 : (blend > 2 ? 2 : blend);
+        layer->opacity = RendererConfigKeys.clamp01(opacity);
+        char* field = rest;
+        for (int skipped = 0; skipped < 3 && field != null; skipped++) { field = strchr(field + 1, (int)'|'); }  // the tint field follows opacity
+        if (field != null && field[1] != '-') { sscanf(field + 1, "%f,%f,%f,%f", &layer->tint[0], &layer->tint[1], &layer->tint[2], &layer->tint[3]); }
+        char* liftField = field == null ? null : strchr(field + 1, (int)'|');
+        if (liftField != null) { layer->lift = RendererConfigKeys.clamp01((float)atof(liftField + 1)); }
+        layer->set = 1;
+        return true;
+    }
+
+    class int parseLayout(char* value) {
+        if (value == null) { return SEMU_LAYOUT_FIXED; }
+        if (strcmp(value, "main_right") == 0) { return SEMU_LAYOUT_MAIN_RIGHT; }
+        if (strcmp(value, "main_left") == 0) { return SEMU_LAYOUT_MAIN_LEFT; }
+        if (strcmp(value, "side_by_side") == 0) { return SEMU_LAYOUT_SIDE_BY_SIDE; }
+        if (strcmp(value, "stacked") == 0) { return SEMU_LAYOUT_STACKED; }
+        return SEMU_LAYOUT_FIXED;
+    }
+}

@@ -1775,6 +1775,24 @@ Update this block whenever a milestone criterion changes state.
   unmapped, its !Ctrl guard dropped, a bare digit, main-row + for each of the three emulators, and
   Azahar's Audio Mute key changed. Not observed in a running Wii game yet: the Deck run should check
   that Wiimote buttons follow Steam's pad, 1 and 2 are no longer held, and the menu holds them.
+  2026-10-04, the installer and the style review. `install.sh` prints both Steam steps after a full
+  and a delta install (`steam shortcuts && steam input`): without `steam input` Steam keeps its
+  fallback layout, so neither the radial nor the right-trackpad pointer exists. The style scan
+  (`tests/contracts/spec/harness.btrc`) now covers every source and spec the radial series wrote or
+  grew, reads "Type name," and "Type name)" parameters and the C integer types, and also refuses the
+  abbreviations the reviews named (cfg and the like). It found and the series renamed: `id` in
+  render_variants and rendering (variantId, packageId), `x`/`y` in renderer_menu_raster (left, top),
+  `gl` in renderer_variant_images (graphics), `gb`, `at`, `ds` and `cfg` in the specs; the bridge's
+  int16_t `x`/`y` went with the cursor fill. renderer_config.btrc (476 lines) is split: the screen and
+  layer keys and the lookup that a live switch scopes are `RendererConfigKeys` in
+  `renderer_config_screen.btrc`. Still long and left as they are: runtime_bridge.btrc (539 lines; a
+  split means a RetroArch rebuild for no behaviour) and renderer_menu.btrc (353); older files outside
+  the series (rendering, renderer_post_ui, surface_contract, runtime_bridge, plan) still bind short
+  names and are outside the scan.
+  The Mac render host, built from this tree (the split config and the live switch of the renderer
+  commit), drew nds shell>main_right and gba>arctic: each switched frame equals a fresh render of the
+  target below the toast band (ImageMagick AE 0), the toast frame shows BEZEL: ARCTIC over the closed
+  menu, and a context reset after the switch reproduces the switched frame (AE 0).
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a

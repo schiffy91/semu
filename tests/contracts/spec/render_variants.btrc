@@ -215,13 +215,13 @@ class RenderVariantChoiceSpec {  // a system's own choice beats the global switc
     }
 
     class void run(Contract contract, Fixture fixture) {
-        SemuSystem gb = fixture.model.system("gb");
+        SemuSystem gameBoy = fixture.model.system("gb");
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        Vector<string> chosen = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false,\"systems\":{\"gb\":{\"bezel_variant\":\"studio\",\"shader_variant\":\"pocket\"}}}}"), gb, "retroarch", "/state/retroarch", diagnostics);
+        Vector<string> chosen = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false,\"systems\":{\"gb\":{\"bezel_variant\":\"studio\",\"shader_variant\":\"pocket\"}}}}"), gameBoy, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(chosen.contains("SEMU_RENDER_BEZELS=1") && chosen.contains("SEMU_RENDER_BEZEL_ID=gb-studio") && chosen.contains("SEMU_RENDER_SHADERS=1"), "with both global switches off, gb's own studio bezel and pocket shader still draw");
-        Vector<string> turnedOff = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"systems\":{\"gb\":{\"bezel_variant\":\"none\",\"shader_variant\":\"none\"}}}}"), gb, "retroarch", "/state/retroarch", diagnostics);
+        Vector<string> turnedOff = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"systems\":{\"gb\":{\"bezel_variant\":\"none\",\"shader_variant\":\"none\"}}}}"), gameBoy, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(turnedOff.contains("SEMU_RENDER_BEZELS=0") && turnedOff.contains("SEMU_RENDER_SHADERS=0"), "with both global switches on, gb's own none turns its bezel and shader off");
-        Vector<string> defaulted = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false}}"), gb, "retroarch", "/state/retroarch", diagnostics);
+        Vector<string> defaulted = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false}}"), gameBoy, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(defaulted.contains("SEMU_RENDER_BEZELS=0") && defaulted.contains("SEMU_RENDER_SHADERS=0"), "a system without its own choice follows the global switches");
         contract.expect(diagnostics.ok(), "the per-system ladder compiles cleanly: " + diagnostics.render());
         JSONValue off = SemuSettingsUi.document(fixture.model, RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false}}"));
@@ -232,15 +232,15 @@ class RenderVariantChoiceSpec {  // a system's own choice beats the global switc
         contract.contains(labels, "\"BEZELS (UNLESS A SYSTEM CHOOSES)\"", "the global bezel switch says it is only the default");
         contract.contains(labels, "\"CRT SHADERS (UNLESS A SYSTEM CHOOSES)\"", "the global shader switch says it is only the default");
         SemuPlan retired = RenderVariantTools.plan(fixture, "{\"visual\":{\"systems\":{\"gb\":{\"bezel_variant\":\"retired\",\"shader_variant\":\"retired\"}}}}");
-        contract.expect(SemuRenderEnvironment.bezelVariantId(retired, gb).equals("dmg") && SemuRenderEnvironment.shaderVariantId(retired, gb).equals("dmg"), "a stale per-system id (a renamed variant, a typo through semu settings) resolves to the manifest default, bezel and shader");
-        Vector<string> fallback = SemuRenderEnvironment.compile(retired, gb, "retroarch", "/state/retroarch", diagnostics);
-        Vector<string> plainCompile = SemuRenderEnvironment.compile(fixture.plan, gb, "retroarch", "/state/retroarch", diagnostics);
+        contract.expect(SemuRenderEnvironment.bezelVariantId(retired, gameBoy).equals("dmg") && SemuRenderEnvironment.shaderVariantId(retired, gameBoy).equals("dmg"), "a stale per-system id (a renamed variant, a typo through semu settings) resolves to the manifest default, bezel and shader");
+        Vector<string> fallback = SemuRenderEnvironment.compile(retired, gameBoy, "retroarch", "/state/retroarch", diagnostics);
+        Vector<string> plainCompile = SemuRenderEnvironment.compile(fixture.plan, gameBoy, "retroarch", "/state/retroarch", diagnostics);
         string defaultBezel = "";
         for line in plainCompile { if (line.startsWith("SEMU_RENDER_BEZEL_ID=")) { defaultBezel = line; } }
         contract.expect(!defaultBezel.isEmpty() && fallback.contains(defaultBezel) && fallback.contains("SEMU_RENDER_BEZELS=1") && fallback.contains("SEMU_RENDER_SHADERS=1"), "the launch then draws the default bezel (" + defaultBezel + ") and shader instead of nothing");
-        SemuVariantChoice stale = SemuRenderVariants.choice(RenderVariantTools.plan(fixture, "{\"visual\":{\"systems\":{\"gb\":{\"bezel_variant\":\"retired\"}}}}"), gb, "bezel");
+        SemuVariantChoice stale = SemuRenderVariants.choice(RenderVariantTools.plan(fixture, "{\"visual\":{\"systems\":{\"gb\":{\"bezel_variant\":\"retired\"}}}}"), gameBoy, "bezel");
         contract.expect(stale.current().equals("dmg") && stale.lastReal == 0, "a stale per-system id starts on the default");
-        SemuVariantChoice none = SemuRenderVariants.choice(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false}}"), gb, "bezel");
+        SemuVariantChoice none = SemuRenderVariants.choice(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false}}"), gameBoy, "bezel");
         contract.expect(none.off() && none.index == 2 && none.lastReal == 0, "under a global off the launch starts on none, the On switch returning to the default");
     }
 }

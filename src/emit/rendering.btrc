@@ -145,11 +145,11 @@ class SemuRenderPackages {  // each bezel package parsed once, however many comb
         self.documents = [];
     }
 
-    public JSONValue load(SemuPlan plan, string id) {
-        int found = self.ids.indexOf(id);
+    public JSONValue load(SemuPlan plan, string packageId) {
+        int found = self.ids.indexOf(packageId);
         if (found >= 0) { return self.documents.get(found); }
-        JSONValue document = SemuBezelPackage.load(plan, id);
-        self.ids.push(id);
+        JSONValue document = SemuBezelPackage.load(plan, packageId);
+        self.ids.push(packageId);
         self.documents.push(document);
         return document;
     }
@@ -281,9 +281,9 @@ class SemuRenderEnvironment {
     }
 
     class string chosenId(JSONValue settings, SemuSystem system, JSONValue manifest, string kind, string globalSwitch) {  // the system's own choice wins; the global switch is only the default
-        string id = SemuJson.textAt(settings, "visual.systems." + system.id + "." + kind + "_variant");
-        if (id.isEmpty()) { return SemuJson.boolAt(settings, globalSwitch, true) ? SemuJson.textAt(manifest, "default_variant") : "none"; }
-        return id.equals("none") || SemuRenderEnvironment.findVariant(manifest, id).isObject() ? id : SemuJson.textAt(manifest, "default_variant");  // a stale id is the default
+        string variantId = SemuJson.textAt(settings, "visual.systems." + system.id + "." + kind + "_variant");
+        if (variantId.isEmpty()) { return SemuJson.boolAt(settings, globalSwitch, true) ? SemuJson.textAt(manifest, "default_variant") : "none"; }
+        return variantId.equals("none") || SemuRenderEnvironment.findVariant(manifest, variantId).isObject() ? variantId : SemuJson.textAt(manifest, "default_variant");  // a stale choice falls back to the default
     }
 
     class string shaderVariantId(SemuPlan plan, SemuSystem system) { return SemuRenderEnvironment.chosenId(plan.settings, system, system.shaders, "shader", "visual.crt_shaders"); }

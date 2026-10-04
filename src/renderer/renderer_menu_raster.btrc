@@ -62,31 +62,31 @@ class RendererMenuRaster {
         return "00000000000000000000000000000000000";
     }
 
-    class void pixel(unsigned char* pixels, int x, int y,
+    class void pixel(unsigned char* pixels, int left, int top,
                      unsigned char red, unsigned char green,
                      unsigned char blue, unsigned char alpha) {
-        if (pixels == null || x < 0 || y < 0 || x >= SEMU_RENDER_MENU_WIDTH
-            || y >= SEMU_RENDER_MENU_HEIGHT) { return; }
-        int offset = (y * SEMU_RENDER_MENU_WIDTH + x) * 4;
+        if (pixels == null || left < 0 || top < 0 || left >= SEMU_RENDER_MENU_WIDTH
+            || top >= SEMU_RENDER_MENU_HEIGHT) { return; }
+        int offset = (top * SEMU_RENDER_MENU_WIDTH + left) * 4;
         pixels[offset] = red;
         pixels[offset + 1] = green;
         pixels[offset + 2] = blue;
         pixels[offset + 3] = alpha;
     }
 
-    class void rectangle(unsigned char* pixels, int x, int y,
+    class void rectangle(unsigned char* pixels, int left, int top,
                          int width, int height, unsigned char red,
                          unsigned char green, unsigned char blue,
                          unsigned char alpha) {
-        for (int row = y; row < y + height; row++) {
-            for (int column = x; column < x + width; column++) {
+        for (int row = top; row < top + height; row++) {
+            for (int column = left; column < left + width; column++) {
                 RendererMenuRaster.pixel(pixels, column, row,
                     red, green, blue, alpha);
             }
         }
     }
 
-    class void text(unsigned char* pixels, const char* value, int x, int y,
+    class void text(unsigned char* pixels, const char* value, int left, int top,
                     int scale, unsigned char red, unsigned char green,
                     unsigned char blue) {
         if (value == null) { return; }
@@ -96,8 +96,8 @@ class RendererMenuRaster {
                 for (int column = 0; column < 5; column++) {
                     if (glyph[row * 5 + column] == '1') {
                         RendererMenuRaster.rectangle(pixels,
-                            x + character * 6 * scale + column * scale,
-                            y + row * scale, scale, scale,
+                            left + character * 6 * scale + column * scale,
+                            top + row * scale, scale, scale,
                             red, green, blue, 255);
                     }
                 }
@@ -150,16 +150,16 @@ class RendererMenuRaster {
         int count = RendererMenuModel.itemCount(state);
         char row[64];
         for (int item = 0; item < count; item++) {
-            int y = 72 + item * 43;
+            int top = 72 + item * 43;
             if (item == state->selected) {
-                RendererMenuRaster.rectangle(state->menu_pixels, 16, y,
+                RendererMenuRaster.rectangle(state->menu_pixels, 16, top,
                     SEMU_RENDER_MENU_WIDTH - 32, 35, 32, 134, 142, 255);
             } else {
-                RendererMenuRaster.rectangle(state->menu_pixels, 16, y,
+                RendererMenuRaster.rectangle(state->menu_pixels, 16, top,
                     SEMU_RENDER_MENU_WIDTH - 32, 35, 29, 35, 40, 232);
             }
             RendererMenuRaster.rowText(state, item, row, (int)sizeof(row));
-            RendererMenuRaster.text(state->menu_pixels, row, 30, y + 8, 2, 238, 242, 244);
+            RendererMenuRaster.text(state->menu_pixels, row, 30, top + 8, 2, 238, 242, 244);
         }
         char slotText[16];
         if (SemuSlotLabel.text(slotText, (int)sizeof(slotText), state->first_slot, state->slot_count, state->slot)) {  // no line without a slot to choose
