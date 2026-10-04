@@ -1,0 +1,22 @@
+// Header-free arithmetic of the RetroArch bridge, imported by surface_contract.btrc and the contracts:
+// where a mapped touch lands in the core's whole stacked frame, and when the bridge hands the
+// renderer a cursor to draw.
+
+class SemuRetroArchCoreAxis {
+    class float x(float compositeWidth, float surfaceWidth, float normalized) {  // the narrower screen sits centred, as partition() cuts it
+        if (compositeWidth <= 0.0f || surfaceWidth <= 0.0f) { return 0.0f; }
+        return ((compositeWidth - surfaceWidth) * 0.5f + normalized * surfaceWidth) / compositeWidth;
+    }
+
+    class float y(float rowsBefore, float surfaceHeight, float compositeHeight, float normalized) {  // the screens stack top to bottom
+        if (compositeHeight <= 0.0f) { return 0.0f; }
+        return (rowsBefore + normalized * surfaceHeight) / compositeHeight;
+    }
+}
+
+class SemuRetroArchCursorPolicy {
+    class bool shown(int touchIndex, bool allowed, int screenX, int screenY, int framebufferWidth, int framebufferHeight) {  // a touch system, a pointer the core may read, in the window
+        return touchIndex >= 0 && allowed && screenX >= 0 && screenY >= 0
+            && screenX < framebufferWidth && screenY < framebufferHeight;
+    }
+}

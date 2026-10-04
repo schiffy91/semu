@@ -100,6 +100,15 @@ writeText "semu_renderer.h" ''
   typedef int (*SemuRenderMapPointer)(SemuRenderPointerMap* map,
       SemuRenderPointerQuery* query, SemuRenderPointerResult* result);
 
+  /* Where the emulator's pointer is, for the cursor Semu draws on a touch screen system.
+     Appended to ABI 3: the renderer reads it only when struct_size covers it. */
+  typedef struct SemuRenderCursorGl {
+      int visible;
+      int x;
+      int y;
+      int pressed;
+  } SemuRenderCursorGl;
+
   typedef struct SemuRenderFrameGl {
       unsigned int abi;
       unsigned int struct_size;
@@ -116,6 +125,7 @@ writeText "semu_renderer.h" ''
       uint64_t context_generation;
       SemuRenderPointerMap pointer_map;
       SemuRenderMapPointer map_pointer;
+      SemuRenderCursorGl cursor;  /* framebuffer pixels from the top-left */
   } SemuRenderFrameGl;
 
   void semu_render_context_invalidate_gl(uint64_t context_generation);

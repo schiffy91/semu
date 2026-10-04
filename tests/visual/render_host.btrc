@@ -3,7 +3,8 @@
 // editor's card with RENDER_HOST_CARD=editor) stands in for the
 // emulator's picture, SEMU_RENDER_* comes from `semu render-env`, and the last of RENDER_HOST_FRAMES
 // frames (default 12, so a history pass sees a running game) is written as PPM; --switch then journals a
-// bezel and shader select and writes the toast frame and the switched one.
+// bezel and shader select and writes the toast frame and the switched one. RENDER_HOST_CURSOR=X,Y hands
+// the renderer a moving pointer there, as RetroArch's bridge does on a touch system.
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/gl3.h>
 #include <dlfcn.h>
@@ -244,6 +245,16 @@ class RenderHost {
         return 0.0f;
     }
 
+    class void cursor(struct SemuRenderFrameGl* frame, unsigned long long frameId) {  // RENDER_HOST_CURSOR=X,Y: a pointer that arrives one pixel left, then moves there
+        char* value = getenv("RENDER_HOST_CURSOR");
+        int x = 0;
+        int y = 0;
+        if (value == null || sscanf(value, "%d,%d", &x, &y) != 2) { return; }
+        frame->cursor.visible = 1;
+        frame->cursor.x = frameId == 1ULL ? x - 1 : x;
+        frame->cursor.y = y;
+    }
+
     class int frame(RenderHostTarget target, unsigned long long frameId) {
         char* countText = getenv("SEMU_RENDER_SURFACE_COUNT");
         int screens = countText == null ? 1 : atoi(countText);
@@ -264,6 +275,7 @@ class RenderHost {
         frame.surface_count = screens;
         frame.get_proc = semuHostProcedure;
         frame.context_generation = RenderHostGeneration;
+        RenderHost.cursor(&frame, frameId);
         int x = 0;
         for (int screen = 0; screen < screens; screen++) {
             int width = RenderHost.nativeWidth(screen);

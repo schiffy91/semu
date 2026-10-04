@@ -7,6 +7,8 @@
 #include <libretro.h>
 #include <semu_renderer.h>
 
+import ./surface_math.btrc;
+
 int SEMU_RETROARCH_LAYOUT_SINGLE = 1;
 int SEMU_RETROARCH_LAYOUT_VERTICAL = 2;
 int SEMU_RETROARCH_WIDTHS_INDEPENDENT = 1;
@@ -266,25 +268,36 @@ class SemuRetroArchSurfaceModel {
         return true;
     }
 
+    class bool mappedSurface(struct SemuRetroArchSurfaceContract* contract,
+                             struct SemuRenderPointerResult* result) {
+        return contract != null && result != null && contract->count >= 1
+            && result->surface_index >= 0
+            && result->surface_index < contract->count;
+    }
+
     class float coreX(struct SemuRetroArchSurfaceContract* contract,
-                      struct SemuRenderPointerResult* result) {
-        if (contract == null || result == null) { return 0.0f; }
-        return result->normalized_x;
+                      struct SemuRenderPointerResult* result) {  // the core reads x across its whole composite row
+        if (!SemuRetroArchSurfaceModel.mappedSurface(contract, result)) {
+            return 0.0f;
+        }
+        return SemuRetroArchCoreAxis.x(
+            (float)SemuRetroArchSurfaceModel.compositeWidth(contract),
+            (float)contract->surfaces[result->surface_index].native_width,
+            result->normalized_x);
     }
 
     class float coreY(struct SemuRetroArchSurfaceContract* contract,
                       struct SemuRenderPointerResult* result) {
-        if (contract == null || result == null || contract->count < 1) {
+        if (!SemuRetroArchSurfaceModel.mappedSurface(contract, result)) {
             return 0.0f;
         }
         unsigned int before = 0u;
         for (int index = 0; index < result->surface_index; index++) {
             before = before + contract->surfaces[index].native_height;
         }
-        unsigned int total =
-            SemuRetroArchSurfaceModel.compositeHeight(contract);
-        return ((float)before + result->normalized_y
-            * (float)contract->surfaces[result->surface_index].native_height)
-            / (float)total;
+        return SemuRetroArchCoreAxis.y((float)before,
+            (float)contract->surfaces[result->surface_index].native_height,
+            (float)SemuRetroArchSurfaceModel.compositeHeight(contract),
+            result->normalized_y);
     }
 }

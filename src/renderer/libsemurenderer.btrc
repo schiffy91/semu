@@ -12,6 +12,7 @@ import ./renderer_variants.btrc;
 import ./renderer_compositor.btrc;
 import ./renderer_variant_images.btrc;
 import ./renderer_menu.btrc;
+import ./renderer_cursor.btrc;
 import ./renderer_post_ui.btrc;
 int semu_render_map_pointer_abi3(struct SemuRenderPointerMap* map,
                                  struct SemuRenderPointerQuery* query,
@@ -41,6 +42,7 @@ struct SemuRendererRuntime {
     struct RendererVariantOverlay live_overlay;  // that section's keys, re-applied over a freshly loaded config
     long long switch_started_ms;  // a switch this frame: when it began, 0 otherwise
     long long switch_images_ms;
+    struct RendererCursorState cursor;  // the touch cursor follows the frame's pointer sample
 };
 
 struct SemuRendererRuntime SemuRenderer;
@@ -315,6 +317,9 @@ int semu_render_post_ui_gl(struct SemuRenderFrameGl* frame) {
     int consumed = 0;
     bool needsGl = RendererPostUiPhase.prepare(&SemuRenderer.post_ui,
         frame, &consumed);
+    bool cursor = RendererCursor.update(&SemuRenderer.cursor,
+        RendererFrameContract.cursor(frame), RendererClock.milliseconds());
+    needsGl = needsGl || cursor;
     if ((SemuRenderer.post_ui.bezels_toggles & 1) != 0) {  // menu toggles flip the live config; odd counts flip
         SemuRenderer.config.bezels_enabled = SemuRenderer.config.bezels_enabled != 0 ? 0 : 1;
     }
@@ -350,7 +355,8 @@ int semu_render_post_ui_gl(struct SemuRenderFrameGl* frame) {
     int nonblank = -1;
     bool applied = RendererPostUiPhase.apply(&SemuRenderer.gl,
         &SemuRenderer.resources, frame, &SemuRenderer.post_ui,
-        &SemuRenderer.geometry, &hash, &nonblank);
+        &SemuRenderer.geometry, cursor ? &SemuRenderer.cursor : null,
+        &hash, &nonblank);
     RendererGlStateGuard.restore(&SemuRenderer.gl, &SemuRenderer.post_state);
     RendererPhaseOwnership.clear(&SemuRenderer.pending);
     int status = applied ? SEMU_RENDER_APPLIED : SEMU_RENDER_PIPELINE_FAILED;

@@ -1,6 +1,8 @@
 // A content-free libretro core that draws a test card, so RetroArch can run headless without a ROM.
 // It honors the Semu surface contract (SEMU_RENDER_SURFACE_COUNT and SURFACE_<n>_NATIVE): one
 // card per declared screen, stacked top over bottom at native size, the way dual-screen cores do.
+// It prints each press and release of the RetroPad pointer, so a touch test can read where a tap
+// landed in the core's frame. SEMU_SYNTHETIC_LIBRARY_NAME stands it in for a real core's name.
 
 #include <libretro.h>
 #include <stdbool.h>
@@ -23,6 +25,7 @@ int SyntheticHeights[2];
 int SyntheticFrameWidth;
 int SyntheticFrameHeight;
 float SyntheticAspect;
+int SyntheticPointerDown;
 
 class SyntheticGeometry {
     class void load() {  // the launcher's surface contract, else the classic 256x240 card
@@ -100,7 +103,25 @@ class SyntheticPattern {
     }
 }
 
-void retro_init() { SyntheticFrame = 0ULL; SyntheticGeometry.load(); }
+class SyntheticPointer {
+    class float normalized(int16_t value) { return ((float)value + 32767.0f) / 65534.0f; }  // libretro -32767..32767 to 0..1
+
+    class void report() {  // the pointer as the core reads it, on each press edge
+        if (SyntheticInputState == null) { return; }
+        int pressed = SyntheticInputState(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_PRESSED) != 0 ? 1 : 0;
+        if (pressed == SyntheticPointerDown) { return; }
+        SyntheticPointerDown = pressed;
+        if (pressed == 0) {
+            fputs("synthetic: pointer release\n", stderr);
+            return;
+        }
+        int16_t x = SyntheticInputState(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_X);
+        int16_t y = SyntheticInputState(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_Y);
+        fprintf(stderr, "synthetic: pointer press %d,%d normalized %.4f,%.4f\n", (int)x, (int)y, SyntheticPointer.normalized(x), SyntheticPointer.normalized(y));
+    }
+}
+
+void retro_init() { SyntheticFrame = 0ULL; SyntheticPointerDown = 0; SyntheticGeometry.load(); }
 void retro_deinit() {}
 unsigned int retro_api_version() { return RETRO_API_VERSION; }
 void retro_set_environment(__fn_ptr<bool, unsigned int, void*> callback) { SyntheticEnvironment = callback; }
@@ -112,7 +133,8 @@ void retro_set_input_state(__fn_ptr<int16_t, unsigned int, unsigned int, unsigne
 
 void retro_get_system_info(struct retro_system_info* info) {
     memset(info, 0, sizeof(*info));
-    info->library_name = "Semu Synthetic";
+    char* name = getenv("SEMU_SYNTHETIC_LIBRARY_NAME");  // a real core's name, so RetroArch loads that core's remap file
+    info->library_name = name != null && name[0] != 0 ? name : "Semu Synthetic";
     info->library_version = "1";
     info->valid_extensions = "semu";
     info->need_fullpath = false;
@@ -170,6 +192,7 @@ bool retro_load_game_special(unsigned int type, const struct retro_game_info* in
 void retro_run() {
     SyntheticFrame++;
     if (SyntheticInputPoll != null) { SyntheticInputPoll(); }
+    SyntheticPointer.report();
     SyntheticPattern.fill();
     size_t pitch = (size_t)SyntheticFrameWidth * sizeof(uint32_t);
     if (SyntheticVideo != null) { SyntheticVideo(SyntheticPixels, (unsigned int)SyntheticFrameWidth, (unsigned int)SyntheticFrameHeight, pitch); }

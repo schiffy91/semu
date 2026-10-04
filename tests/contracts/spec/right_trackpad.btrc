@@ -1,0 +1,254 @@
+// Right trackpad spec: a tap lands where the core reads it on every DS and 3DS route, a cursor shows
+// where the pointer is, and nothing swaps the screens under the bezel.
+
+#include <string.h>
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+import ../../../src/renderer/renderer_cursor.btrc;
+import ../../../src/renderer/retroarch/surface_math.btrc;
+
+class RightTrackpadSpecText {
+    class string read(Fixture fixture, string relative) {
+        string path = PathTools.join(fixture.project, relative);
+        return FileSystem.isFile(path) ? FileSystem.readText(path) : "";
+    }
+
+    class string between(string text, string startMarker, string endMarker) {  // from one marker to the next after it
+        int start = text.indexOf(startMarker);
+        if (start < 0) { return ""; }
+        string rest = text.substring(start, text.len() - start);
+        int end = rest.indexOf(endMarker);
+        return end <= 0 ? "" : rest.substring(0, end);
+    }
+
+    class bool before(string text, string first, string second) {
+        int at = text.indexOf(first);
+        return at >= 0 && text.indexOf(second) > at;
+    }
+
+    class bool near(float actual, float expected, float tolerance) {
+        float difference = actual - expected;
+        if (difference < 0.0f) { difference = -difference; }
+        return difference <= tolerance;
+    }
+}
+
+class RightTrackpadSpecAxis {  // the core's own coordinates for a mapped touch
+    class void run(Contract contract) {
+        contract.expect(RightTrackpadSpecText.near(SemuRetroArchCoreAxis.x(400.0f, 320.0f, 0.0f), 0.1f, 0.0001f)
+            && RightTrackpadSpecText.near(SemuRetroArchCoreAxis.x(400.0f, 320.0f, 0.5f), 0.5f, 0.0001f)
+            && RightTrackpadSpecText.near(SemuRetroArchCoreAxis.x(400.0f, 320.0f, 1.0f), 0.9f, 0.0001f),
+            "3DS: the 320-wide touch screen sits centred in the core's 400-wide frame (0, 0.5, 1 -> 0.1, 0.5, 0.9)");
+        contract.expect(RightTrackpadSpecText.near(SemuRetroArchCoreAxis.x(400.0f, 320.0f, 0.05f), 0.14f, 0.0001f)
+            && RightTrackpadSpecText.near(SemuRetroArchCoreAxis.x(400.0f, 320.0f, 0.95f), 0.86f, 0.0001f),
+            "3DS: taps at 5 and 95 percent of the touch screen reach the core at 0.14 and 0.86");
+        contract.expect(RightTrackpadSpecText.near(SemuRetroArchCoreAxis.x(256.0f, 256.0f, 0.0f), 0.0f, 0.0001f)
+            && RightTrackpadSpecText.near(SemuRetroArchCoreAxis.x(256.0f, 256.0f, 0.37f), 0.37f, 0.0001f)
+            && RightTrackpadSpecText.near(SemuRetroArchCoreAxis.x(256.0f, 256.0f, 1.0f), 1.0f, 0.0001f),
+            "DS: equal widths map unchanged");
+        contract.expect(RightTrackpadSpecText.near(SemuRetroArchCoreAxis.y(240.0f, 240.0f, 480.0f, 0.5f), 0.75f, 0.0001f)
+            && RightTrackpadSpecText.near(SemuRetroArchCoreAxis.y(192.0f, 192.0f, 384.0f, 0.5f), 0.75f, 0.0001f),
+            "the bottom screen's middle row is three quarters down the stacked frame");
+        contract.expect(SemuRetroArchCoreAxis.x(0.0f, 320.0f, 0.5f) == 0.0f && SemuRetroArchCoreAxis.y(0.0f, 240.0f, 0.0f, 0.5f) == 0.0f,
+            "an empty composite maps to 0, never a division by zero");
+    }
+
+    class void bridge(Contract contract, Fixture fixture) {  // the compiled-in bridge uses that arithmetic and guards the index
+        string surface = RightTrackpadSpecText.read(fixture, "src/renderer/retroarch/surface_contract.btrc");
+        string coreX = RightTrackpadSpecText.between(surface, "class float coreX(", "class float coreY(");
+        string guard = RightTrackpadSpecText.between(surface, "class bool mappedSurface(", "class float coreX(");
+        contract.contains(surface, "import ./surface_math.btrc;", "surface hook imports the header-free axis math");
+        contract.expect(coreX.contains("SemuRetroArchCoreAxis.x(") && coreX.contains("compositeWidth(contract)") && coreX.contains("SemuRetroArchSurfaceModel.mappedSurface(contract, result)"),
+            "coreX centres the narrower screen in the composite row, only for a declared surface");
+        contract.expect(guard.contains("result->surface_index >= 0") && guard.contains("result->surface_index < contract->count"),
+            "a surface index outside the contract maps to 0");
+    }
+}
+
+class RightTrackpadSpecCursor {  // Semu draws the pointer on touch systems and hides it when idle
+    class void model(Contract contract) {
+        struct RendererCursorState state;
+        memset(&state, 0, sizeof(struct RendererCursorState));
+        struct SemuRenderCursorGl sample;
+        memset(&sample, 0, sizeof(struct SemuRenderCursorGl));
+        sample.visible = 1;
+        sample.x = 640;
+        sample.y = 400;
+        contract.expect(!RendererCursor.update(&state, &sample, 1000LL), "a pointer that has not moved yet draws no cursor");
+        sample.x = 642;
+        contract.expect(RendererCursor.update(&state, &sample, 1100LL), "motion shows the cursor");
+        contract.expect(RendererCursor.update(&state, &sample, 4099LL), "it stays for three seconds without motion");
+        contract.expect(!RendererCursor.update(&state, &sample, 4100LL), "it hides after three idle seconds");
+        sample.pressed = 1;
+        contract.expect(RendererCursor.update(&state, &sample, 9000LL), "a press shows it again");
+        sample.visible = 0;
+        contract.expect(!RendererCursor.update(&state, &sample, 9001LL) && state.known == 0, "a frame without a pointer hides it and forgets the position");
+        sample.visible = 1;
+        sample.pressed = 0;
+        contract.expect(!RendererCursor.update(&state, &sample, 9002LL), "the pointer coming back where it was draws nothing until it moves");
+        sample.visible = 0;
+        RendererCursor.update(&state, &sample, 9003LL);
+        sample.visible = 1;
+        sample.pressed = 1;
+        contract.expect(RendererCursor.update(&state, &sample, 9004LL), "a press as the pointer comes back shows it at once");
+        contract.expect(!RendererCursor.update(&state, null, 9003LL), "a frame from an older emulator build carries no cursor");
+        RendererCursor.raster(state.pixels);
+        int opaque = 0;
+        for (int index = 0; index < SEMU_RENDER_CURSOR_WIDTH * SEMU_RENDER_CURSOR_HEIGHT; index++) { if (state.pixels[index * 4 + 3] == 255) { opaque++; } }
+        contract.expect(state.pixels[3] == 255 && state.pixels[0] == 0, "the arrow's tip, its hotspot, is the texture's first pixel, opaque black");
+        int fill = (2 * SEMU_RENDER_CURSOR_WIDTH + 1) * 4;
+        int corner = (SEMU_RENDER_CURSOR_WIDTH - 1) * 4;
+        contract.expect(state.pixels[fill] == 255 && state.pixels[fill + 3] == 255 && state.pixels[corner + 3] == 0 && opaque == 118, f"a white arrow with a black outline on clear ({opaque} opaque pixels)");
+        struct RendererPixelRect rectangle;
+        state.x = 100;
+        state.y = 50;
+        RendererCursor.placement(&state, 800, &rectangle);
+        contract.expect(rectangle.x == 100 && rectangle.width == 24 && rectangle.height == 38 && rectangle.y == 712, f"at 800 rows the arrow is 24x38 with its tip on the pointer ({rectangle.x},{rectangle.y} {rectangle.width}x{rectangle.height})");
+        contract.expect(RendererCursor.scale(400) == 1 && RendererCursor.scale(2160) == 5 && RendererCursor.scale(200) == 1, "the arrow grows in whole steps with the screen");
+    }
+
+    class void frame(Contract contract) {  // ABI 3 grew a cursor at its end: older emulator frames still compose
+        struct SemuRenderFrameGl frame;
+        memset(&frame, 0, sizeof(struct SemuRenderFrameGl));
+        frame.abi = (unsigned int)SEMU_RENDER_ABI_GL;
+        frame.struct_size = RendererFrameContract.baseSize();
+        contract.expect(RendererFrameContract.compatible(&frame) && RendererFrameContract.cursor(&frame) == null, "a frame sized before the cursor composes and has no cursor");
+        frame.struct_size = (unsigned int)sizeof(struct SemuRenderFrameGl);
+        contract.expect(RendererFrameContract.cursor(&frame) == &frame.cursor, "a full frame hands the renderer its cursor");
+        frame.struct_size = RendererFrameContract.baseSize() - 1u;
+        contract.expect(!RendererFrameContract.compatible(&frame), "a frame smaller than ABI 3 is refused");
+        contract.expect(RendererFrameContract.baseSize() + (unsigned int)sizeof(struct SemuRenderCursorGl) == (unsigned int)sizeof(struct SemuRenderFrameGl), "the cursor is the frame's last field");
+    }
+
+    class void policy(Contract contract) {
+        contract.expect(SemuRetroArchCursorPolicy.shown(1, true, 10, 10, 1280, 800), "a touch system's pointer inside the window shows");
+        contract.expect(!SemuRetroArchCursorPolicy.shown(-1, true, 10, 10, 1280, 800), "a system without a touch screen shows no cursor");
+        contract.expect(!SemuRetroArchCursorPolicy.shown(1, false, 10, 10, 1280, 800), "no cursor while RetroArch keeps the pointer from the core (its menu)");
+        contract.expect(!SemuRetroArchCursorPolicy.shown(1, true, 1280, 10, 1280, 800) && !SemuRetroArchCursorPolicy.shown(1, true, -1, 10, 1280, 800), "no cursor outside the window");
+    }
+
+    class void wiring(Contract contract, Fixture fixture) {  // the sources that carry the sample from RetroArch to the post-UI pass
+        string header = RightTrackpadSpecText.read(fixture, "src/renderer/semu_render_header.nix");
+        string abi = RightTrackpadSpecText.read(fixture, "src/renderer/renderer_abi.btrc");
+        string runtime = RightTrackpadSpecText.read(fixture, "src/renderer/retroarch/runtime_bridge.btrc");
+        string library = RightTrackpadSpecText.read(fixture, "src/renderer/libsemurenderer.btrc");
+        string post = RightTrackpadSpecText.read(fixture, "src/renderer/renderer_post_ui.btrc");
+        contract.contains(header, "typedef struct SemuRenderCursorGl {\n      int visible;\n      int x;\n      int y;\n      int pressed;\n  } SemuRenderCursorGl;", "the emulator header declares the cursor as the renderer does");
+        contract.contains(header, "SemuRenderMapPointer map_pointer;\n      SemuRenderCursorGl cursor;", "the emulator header appends the cursor after the pointer callback");
+        contract.contains(abi, "map_pointer;\n    struct SemuRenderCursorGl cursor;\n};", "the renderer's frame ends with the cursor too");
+        string build = RightTrackpadSpecText.between(runtime, "class bool build(", "class SemuRetroArchPointerBridge");
+        contract.expect(RightTrackpadSpecText.before(build, "SemuRetroArchFrameBridge.cursor(frame);", "SemuRetroArchSurfaceModel.partition("), "every frame RetroArch builds carries the pointer sample");
+        string cursor = RightTrackpadSpecText.between(runtime, "class void cursor(", "class bool build(");
+        contract.expect(cursor.contains("SemuRetroArchCursorPolicy.shown(") && cursor.contains("SemuRetroArchSurfaces.touch_index") && RightTrackpadSpecText.before(cursor, "semuRetroArchDisplayLock(", "frame->cursor.visible"),
+            "the bridge reports the cursor only on a touch system, under the display lock");
+        string sample = RightTrackpadSpecText.between(runtime, "class void sample(", "class bool snapshot(");
+        string locked = RightTrackpadSpecText.between(sample, "semuRetroArchDisplayLock(video_state_get_ptr());\n        bool stable = contextLocked", "semuRetroArchDisplayUnlock(");
+        contract.expect(locked.contains("SemuRetroArchPointer.hover_x = screenX;") && locked.contains("SemuRetroArchPointer.hover_allowed = allowed ? 1 : 0;") && !locked.contains("if (stable) {\n            SemuRetroArchPointer.hover"),
+            "every pointer poll keeps the raw window position for the cursor, under the display lock");
+        contract.expect(sample.contains("if (nextDown != 0 && wasDown == 0)") && runtime.contains("semu-retroarch: touch %d,%d -> surface %d native %.1f,%.1f core %d,%d") && runtime.contains("getenv(\"SEMU_RENDER_DEBUG\")"),
+            "SEMU_RENDER_DEBUG logs each press edge with its surface, native and core coordinates");
+        string postUi = RightTrackpadSpecText.between(library, "int semu_render_post_ui_gl(", "\n}\n");
+        contract.expect(postUi.contains("RendererCursor.update(&SemuRenderer.cursor,") && postUi.contains("RendererFrameContract.cursor(frame)") && postUi.contains("needsGl = needsGl || cursor;") && postUi.contains("cursor ? &SemuRenderer.cursor : null"),
+            "the post-UI phase follows the frame's cursor and draws when it shows");
+        string apply = RightTrackpadSpecText.between(post, "class bool apply(", "\n    }\n");
+        contract.expect(RightTrackpadSpecText.before(apply, "RendererFinalEvidence.capture(", "RendererPostUiCompositor.drawCursor("), "the cursor draws after the final-frame capture, so screenshots never hold it");
+    }
+}
+
+class RightTrackpadSpecCores {  // every DS and 3DS core reads Semu's pointer and keeps its screens where Semu put them
+    class string option(string options, string key) {
+        for line in Strings.split(options, "\n") { if (line.startsWith(key + " = ")) { return line; } }
+        return "";
+    }
+
+    class void options(Contract contract, Fixture fixture, string platformId) {
+        JSONValue platform = fixture.model.emulator("retroarch").platform(platformId);
+        SemuSystem threeDs = fixture.model.system("n3ds");
+        SemuSystem ds = fixture.model.system("nds");
+        string citra = SemuLauncher.coreOptions(fixture.plan, platform, "citra", threeDs);
+        string azahar = SemuLauncher.coreOptions(fixture.plan, platform, "azahar", threeDs);
+        string desmume = SemuLauncher.coreOptions(fixture.plan, platform, "desmume", ds);
+        string melonDs = SemuLauncher.coreOptions(fixture.plan, platform, "melonds", ds);
+        contract.expect(RightTrackpadSpecCores.option(citra, "citra_touch_touchscreen").equals("citra_touch_touchscreen = \"enabled\"") && RightTrackpadSpecCores.option(citra, "citra_mouse_touchscreen").equals("citra_mouse_touchscreen = \"disabled\""),
+            platformId + ": the Citra core reads the pointer as a touch screen, not as its own mouse");
+        contract.expect(RightTrackpadSpecCores.option(azahar, "citra_enable_touch_touchscreen").equals("citra_enable_touch_touchscreen = \"enabled\"") && RightTrackpadSpecCores.option(azahar, "citra_enable_mouse_touchscreen").equals("citra_enable_mouse_touchscreen = \"disabled\""),
+            platformId + ": the Azahar core's touch input is pinned on, its mouse off");
+        contract.expect(RightTrackpadSpecCores.option(desmume, "desmume_pointer_type").equals("desmume_pointer_type = \"touch\"") && RightTrackpadSpecCores.option(desmume, "desmume_pointer_mouse").equals("desmume_pointer_mouse = \"enabled\""),
+            platformId + ": DeSmuME reads RETRO_DEVICE_POINTER, not its own relative mouse");
+        contract.expect(RightTrackpadSpecCores.option(melonDs, "melonds_touch_mode").equals("melonds_touch_mode = \"Touch\""), platformId + ": melonDS stays in Touch mode");
+        contract.expect(fixture.diagnostics.ok(), platformId + ": core options compile without diagnostics: " + fixture.diagnostics.render());
+    }
+
+    class void remaps(Contract contract, Fixture fixture, string target) {  // RetroArch loads <remaps>/<library_name>/<library_name>.rmp
+        Vector<string> libraries = ["melonDS", "Azahar", "Citra", "DeSmuME"];
+        Vector<string> buttons = ["r2", "l3", "l3", "r3"];
+        for (int index = 0; index < libraries.size(); index++) {
+            string library = libraries.get(index);
+            string rendered = fixture.profile("retroarch", "remaps/" + library + "/" + library + ".rmp");
+            contract.expect(rendered.equals("input_player1_btn_" + buttons.get(index) + " = \"-1\"\n"), target + ": " + library + " loses its screen-swap button (" + buttons.get(index) + ")");
+        }
+        string cfg = fixture.profile("retroarch", "retroarch.cfg");
+        string remapDirectory = "input_remapping_directory = \"" + PathTools.join(fixture.plan.stateRoot(), "retroarch/remaps") + "\"";
+        contract.contains(cfg, remapDirectory, target + ": RetroArch looks for remaps where Semu writes them");
+        for line in ["input_remap_binds_enable = \"true\"", "auto_remaps_enable = \"true\"", "input_remap_sort_by_controller_enable = \"false\"", "video_windowed_fullscreen = \"true\"", "input_auto_mouse_grab = \"false\""] {
+            contract.contains(cfg, line + "\n", target + ": retroarch.cfg pins the remap load and an ungrabbed pointer");
+        }
+    }
+
+    class void azahar(Contract contract, Fixture fixture, string target) {  // standalone Azahar keeps its own cursor and hides it when idle
+        string config = fixture.profile("azahar", "config/azahar-emu/qt-config.ini");
+        string userInterface = RightTrackpadSpecText.between(config, "[UI]\n", "\n[");
+        if (userInterface.isEmpty()) { userInterface = config.contains("[UI]\n") ? config.substring(config.indexOf("[UI]\n"), config.len() - config.indexOf("[UI]\n")) : ""; }
+        contract.contains(userInterface, "hideInactiveMouse=true\nhideInactiveMouse\\default=false\n", target + ": Azahar blanks its cursor 2.5 s after the pointer stops, inside [UI]");
+    }
+}
+
+class RightTrackpadSpecCompose {  // standalone touch: the map is written at present and read on Qt's GUI thread
+    class void run(Contract contract, Fixture fixture) {
+        string compose = RightTrackpadSpecText.read(fixture, "src/renderer/preload/semu_compose.btrc");
+        contract.contains(compose, "pthread_mutex_t SemuComposePointerLock = PTHREAD_MUTEX_INITIALIZER;", "one mutex guards the composed pointer map");
+        string publish = RightTrackpadSpecText.between(compose, "int post = status == SEMU_RENDER_INVALID_FRAME", "if (!SemuComposition.reported");
+        int locked = publish.indexOf("pthread_mutex_lock(&SemuComposePointerLock);");
+        int unlocked = publish.indexOf("pthread_mutex_unlock(&SemuComposePointerLock);");
+        contract.expect(locked >= 0 && unlocked > locked && publish.indexOf("memcpy(&SemuComposition.pointer_map") > locked && publish.indexOf("memcpy(&SemuComposition.pointer_map") < unlocked
+            && publish.indexOf("memcpy(SemuComposition.drawn, drawn") > locked && publish.indexOf("SemuComposition.framebuffer_width = width;") > locked,
+            "compose publishes the map, its callback, the drawn rects and the size inside the lock");
+        string unmap = RightTrackpadSpecText.between(compose, "class int unmap(", "\n    }\n");
+        int readLock = unmap.indexOf("pthread_mutex_lock(&SemuComposePointerLock);");
+        int readUnlock = unmap.indexOf("pthread_mutex_unlock(&SemuComposePointerLock);");
+        string afterUnlock = readUnlock < 0 ? "" : unmap.substring(readUnlock, unmap.len() - readUnlock);
+        contract.expect(readLock >= 0 && readUnlock > readLock && unmap.indexOf("memcpy(&map, &SemuComposition.pointer_map") > readLock && !afterUnlock.contains("SemuComposition."),
+            "unmap reads one frame's map and rects under the lock and touches no shared state after it");
+        contract.lacks(compose, "SemuComposition.drawn[index] = rect;", "compose never writes a drawn rect outside the lock");
+    }
+}
+
+class RightTrackpadSpecContract {
+    class void run(Contract contract) {
+        Fixture desktop = Fixture("linux-desktop");
+        Fixture deck = Fixture("steam-deck");
+        Fixture mac = Fixture("macos");
+        RightTrackpadSpecAxis.run(contract);
+        RightTrackpadSpecAxis.bridge(contract, desktop);
+        RightTrackpadSpecCursor.model(contract);
+        RightTrackpadSpecCursor.frame(contract);
+        RightTrackpadSpecCursor.policy(contract);
+        RightTrackpadSpecCursor.wiring(contract, desktop);
+        RightTrackpadSpecCores.options(contract, desktop, "linux");
+        RightTrackpadSpecCores.options(contract, mac, "macos");
+        RightTrackpadSpecCores.remaps(contract, deck, "steam-deck");
+        RightTrackpadSpecCores.remaps(contract, mac, "macos");
+        RightTrackpadSpecCores.azahar(contract, deck, "steam-deck");
+        RightTrackpadSpecCores.azahar(contract, mac, "macos");
+        RightTrackpadSpecCompose.run(contract, desktop);
+    }
+}

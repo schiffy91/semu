@@ -382,6 +382,20 @@
                 "display_aspect": "native",
                 "anchor": "width"
               }
+            },
+            {
+              "key": "desmume_pointer_type",
+              "source": {
+                "kind": "literal",
+                "value": "touch"
+              }
+            },
+            {
+              "key": "desmume_pointer_mouse",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
             }
           ],
           "ppsspp": [
@@ -451,6 +465,13 @@
                 "kind": "literal",
                 "value": "disabled"
               }
+            },
+            {
+              "key": "citra_touch_touchscreen",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
             }
           ],
           "azahar": [
@@ -501,6 +522,13 @@
               "source": {
                 "kind": "literal",
                 "value": "disabled"
+              }
+            },
+            {
+              "key": "citra_enable_touch_touchscreen",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
               }
             }
           ],
@@ -753,6 +781,20 @@
                 "display_aspect": "native",
                 "anchor": "width"
               }
+            },
+            {
+              "key": "desmume_pointer_type",
+              "source": {
+                "kind": "literal",
+                "value": "touch"
+              }
+            },
+            {
+              "key": "desmume_pointer_mouse",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
             }
           ],
           "ppsspp": [
@@ -822,6 +864,13 @@
                 "kind": "literal",
                 "value": "disabled"
               }
+            },
+            {
+              "key": "citra_touch_touchscreen",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
+              }
             }
           ],
           "azahar": [
@@ -872,6 +921,13 @@
               "source": {
                 "kind": "literal",
                 "value": "disabled"
+              }
+            },
+            {
+              "key": "citra_enable_touch_touchscreen",
+              "source": {
+                "kind": "literal",
+                "value": "enabled"
               }
             }
           ],

@@ -334,6 +334,13 @@ Semu executing the actions itself.
   key with exactly its modifiers held, one action from two sources within
   250 ms runs once, and Semu's own uinput typing is ignored when it comes
   back through X.
+- The right trackpad is the pointer on DS and 3DS: Steam moves the X pointer,
+  a soft press taps the touch screen under it and press-and-drag drags, on
+  every route (RetroArch's melonDS, DeSmuME, Azahar and Citra cores, and
+  standalone Azahar), wherever the bezel or layout put the touch screen. A
+  cursor shows while it moves and hides when idle (Semu draws it on
+  RetroArch routes; standalone Azahar draws its own), and no core can swap
+  the screens out from under the bezel.
 - The native menu (`menu.items`): RESUME, SAVE STATE, LOAD STATE,
   SCREENSHOT, BEZEL, SHADER, QUIT GAME. Opening it pauses the
   emulator through its own pause action, and closing it resumes, only where
@@ -737,6 +744,39 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   time and 268 ms once cached. A switch to a shader that must compile shows input.json's
   `loading_toast` ("LOADING <label>") until the chain is built, then the plain toast; no worker
   precompiles chains (that would need a second, shared GL context).
+- Right trackpad on DS and 3DS (2026-10-04). Steam's trackpad mouse is relative ("As Mouse"), so
+  the player needs a visible pointer. On RetroArch routes Semu's renderer draws it: the RetroArch
+  bridge puts its last pointer sample into the frame (ABI 3 grew a `cursor` at the end of
+  SemuRenderFrameGl; the renderer reads it only when `struct_size` covers it, so emulators built
+  earlier still compose, without a cursor), only on systems with SEMU_RENDER_TOUCH_SURFACE_* and
+  only while RetroArch lets the core read the pointer (never in RetroArch's menu). The arrow
+  (`renderer_cursor.btrc`, 12x19, whole steps of 400 rows) shows on motion or a press, hides 3 s
+  after the last one, and draws after the final-frame capture, above the bezel, menu and toast,
+  so screenshots never hold it. No RetroArch X11 patch: RetroArch keeps blanking its X cursor and
+  the directive "agnostic of X11, Wayland, and gamescope" holds. Standalone Azahar keeps its own
+  Qt cursor, which Azahar draws while the pointer moves; the pinned default (`hideInactiveMouse`
+  false) never hides it, so the profile pins it true and Azahar blanks it 2.5 s after the last
+  motion, like Semu's cursor (the orchestrator's ruling assumed that default).
+  All four RetroArch DS/3DS cores read the same RETRO_DEVICE_POINTER snapshot: the Azahar core's
+  x is centred the way the bridge cuts the 320-wide screen out of its 400-wide frame (it was spread
+  over all 400, up to 40 px off at the edges, a stale point in the outer 10 %), the Citra core
+  reads the pointer as a touch screen (`citra_touch_touchscreen`, mouse off), the Azahar core's
+  touch is pinned on (`citra_enable_touch_touchscreen`, a default before), and DeSmuME takes
+  `desmume_pointer_type` touch instead of its own relative mouse. Each core's own screen-swap
+  button is taken away by a core remap file, because a swapped frame keeps its size and Semu cannot
+  see it (the picture lands in the wrong hole, taps on the wrong screen): melonDS R2, Azahar and
+  Citra L3 (Citra loses HOME with it), DeSmuME R3, under each core's retro_get_system_info
+  library_name (melonDS libretro.cpp:114, Azahar and Citra environment.cpp:269 and :180, DeSmuME
+  libretro.cpp:517); retroarch.cfg pins auto_remaps_enable and input_remap_sort_by_controller_enable
+  so the files load from where Semu writes them, and video_windowed_fullscreen and
+  input_auto_mouse_grab (their desktop defaults) so RetroArch never grabs the pointer. DeSmuME's
+  L2 still closes the virtual lid (not a swap; the owner's call). SemuCompose's pointer map,
+  written at present on the render thread and read on Qt's GUI thread, is behind one mutex.
+  SEMU_RENDER_DEBUG logs each RetroArch press edge (`semu-retroarch: touch X,Y -> surface S native
+  NX,NY core CX,CY`, or `-> no surface`). Out of scope, with reasons: standalone melonDS has no
+  compositor on any platform, so its window is unframed and maps its own clicks (no Semu cursor);
+  Switch touch (Ryujinx keeps `enable_mouse` false) and the Wii U GamePad (wiiu declares one screen
+  with no touch surface) have no touch surface in Semu's model yet.
 
 ### G1. Build and tests run on one host only — done on the Mac
 
@@ -1430,6 +1470,33 @@ Update this block whenever a milestone criterion changes state.
   background. Still for the Deck: Steam loading the profile through the configset (controller_ui.txt
   naming config/semu/controller_neptune.vdf as the Local Selection Path), the ring's feel and icons
   in Game Mode, and both Steam Controllers on hardware.
+  2026-10-04, the right trackpad on DS and 3DS (offline, Deck untouched; ruling above). In the podman
+  VM under Xvfb (`tests/integration/touch-x11.sh`: xdotool XTest pointer, real RetroArch 1.22.2 with
+  this tree's bridge and renderer, the synthetic core standing in under each library name, the
+  launch exactly `semu launch retroarch`'s plan plus --verbose, llvmpipe at 1280x800), taps half way
+  down the bottom screen of the default shells at 5, 50 and 95 % across it reached the core at
+  0.1397, 0.5000 and 0.8576 across the Azahar core's 400-wide frame (wanted 0.1 + 0.8 f: 0.14, 0.50,
+  0.86; native 15.8, 159.5 and 302.1 of 320) and 0.7489 down, and at 0.0498, 0.5000 and 0.9484 on
+  the melonDS core (native 12.7, 127.5, 241.8 of 256) and 0.7500 down; a tap on the bezel between
+  the screens pressed nothing and was logged `-> no surface`; RetroArch's log shows it loading
+  `remaps/Azahar/Azahar.rmp` and `remaps/melonDS/melonDS.rmp` from Semu's state root. Semu's cursor
+  showed in the xwd capture 1.2 s after the pointer moved onto a static corner of the plate (472
+  pixels differ, the whole 24x38 arrow) and was gone 4.5 s later (inspected). On the Mac render host
+  the cursor is exactly that arrow over the 3DS, DS and GBA shells, and the menu and toast frames of
+  a live switch are pixel-identical to the previous commit's. Standalone Azahar
+  (`tests/visual/vm-azahar-layer.sh`, now with Semu's own compiled qt-config.ini, Pushmo, lavapipe
+  under the layer, 1280x720): a click held on OK of the composed bottom screen (1093,560) mapped to
+  639,556 in Azahar's layout and dismissed "Save data created" into the intro, with the mutex in
+  SemuCompose; Azahar's X cursor (the default arrow, captured with maim against maim -u) showed
+  while the pointer moved (94 pixels) and was blanked 4 s after it stopped (0); with the pin
+  replaced by the pinned default (`HIDE_INACTIVE_MOUSE=false`) it was still there after 4 s (94).
+  RetroArch with the new bridge also builds for aarch64-darwin, as does the macOS renderer (window
+  shim and MoltenVK stand-in, both with the SemuCompose mutex). Of the emulators, the header change
+  rebuilds RetroArch and PCSX2 (both link the loader, which carries the header) in the next
+  release; no other emulator does.
+  Still for the Deck: Steam's real trackpad through gamescope (the cursor over RetroArch, Azahar's
+  own cursor under gamescope's hide delay), a soft-press tap in a real game on each core, and the
+  remap files taking R2/L3/R3 away on the virtual pad.
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a

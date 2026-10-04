@@ -102,7 +102,9 @@
   "doc": {
     "purpose": "RetroArch profile content (retroarch.cfg, golden line order) as data, substituted by RetroArchEmitter. The visual block emits fullscreen raw output with native shaders and smoothing disabled; session-specific driver and scaling pins are runtime upserts owned by RetroArchRendering.",
     "variables": "${profile_name} contract name; ${input_driver}/${audio_driver} resolved by the emulator class (lines drop when empty); ${content_root} the shared runtime content root.",
-    "keyboard": "RetroArch polls its keymap once a frame (XQueryKeymap), so it can miss a short Steam tap and would act a second time beside the supervisor. On Linux targets the supervisor reads every keyboard chord (evdev, and the X raw-key adapter in Game Mode) and drives RetroArch over the command port, so the keymap rows Semu compiles are \"nul\" there (formats.linux) and so is every player-1 default whose key a Semu chord uses (keyboard_player_defaults). macOS has no keyboard source in its supervisor and keeps the keymap and the player keys. On every target the hotkey defaults that collide with a Semu chord are cleared, plus RetroArch's own shader hotkeys because Semu's renderer owns shaders (keyboard_hotkey_defaults). A collision is a default whose key equals a chord's key as keymap_hotkeys encodes it, modifiers ignored, as RetroArch ignores them."
+    "keyboard": "RetroArch polls its keymap once a frame (XQueryKeymap), so it can miss a short Steam tap and would act a second time beside the supervisor. On Linux targets the supervisor reads every keyboard chord (evdev, and the X raw-key adapter in Game Mode) and drives RetroArch over the command port, so the keymap rows Semu compiles are \"nul\" there (formats.linux) and so is every player-1 default whose key a Semu chord uses (keyboard_player_defaults). macOS has no keyboard source in its supervisor and keeps the keymap and the player keys. On every target the hotkey defaults that collide with a Semu chord are cleared, plus RetroArch's own shader hotkeys because Semu's renderer owns shaders (keyboard_hotkey_defaults). A collision is a default whose key equals a chord's key as keymap_hotkeys encodes it, modifiers ignored, as RetroArch ignores them.",
+    "screen_swap": "Every DS and 3DS core swaps its screens on a pad button, which moves the picture into the wrong bezel hole and the taps to the wrong screen, and Semu cannot see a swapped frame (its size is unchanged). Each core remap file (RetroArch loads <input_remapping_directory>/<library_name>/<library_name>.rmp, -1 unmapped) takes that button away: melonDS R2 (input.cpp:59), Azahar and Citra L3 (also Citra's HOME), DeSmuME R3 (Quick Screen Switch, libretro.cpp:2011). The folder names are each core's retro_get_system_info library_name.",
+    "pointer": "Taps reach the core as RETRO_DEVICE_POINTER from the window pointer RetroArch reads, so RetroArch must never grab the mouse (a grab turns it into warped deltas): video_windowed_fullscreen and input_auto_mouse_grab are pinned to their desktop defaults (config.def.h:252, 1610). auto_remaps_enable and input_remap_sort_by_controller_enable are pinned too, so the core remap files below load from where Semu writes them."
   },
   "keyboard_defaults": {
     "source": "RetroArch 69a4f0ea1e8aaf442ae4858f2e7f2b31a1776576 config.def.keybinds.h retro_keybinds_1, the #else (desktop, not Lakka) block at lines 1345-2015, every bind with a key; setting names from configuration.c input_config_bind_map (DECLARE_BIND/DECLARE_META_BIND, lines 299-414) and key names from input/input_keymaps.c input_config_key_map (lines 84-160). Vendored as data so a new Semu chord that takes one of these keys is cleared by the collision groups, never silently shared.",
@@ -358,6 +360,9 @@
         "network_cmd_enable = \"true\"",
         "network_cmd_port = \"55355\"",
         "input_remap_binds_enable = \"true\"",
+        "auto_remaps_enable = \"true\"",
+        "input_remap_sort_by_controller_enable = \"false\"",
+        "input_auto_mouse_grab = \"false\"",
         "system_directory = \"${state_root}/system\"",
         "savestate_directory = \"${content_root}/states\"",
         "savefile_directory = \"${content_root}/saves\"",
@@ -373,6 +378,7 @@
         "runtime_log_directory = \"${state_root}/logs\"",
         "video_driver = \"${video_driver}\"",
         "video_fullscreen = \"true\"",
+        "video_windowed_fullscreen = \"true\"",
         "video_threaded = \"false\"",
         "video_scale_integer = \"true\"",
         "video_force_aspect = \"true\"",
@@ -394,6 +400,30 @@
         "@lines:keymap_hotkeys",
         "@lines:keyboard_hotkey_defaults",
         "@lines:keyboard_player_defaults"
+      ]
+    },
+    {
+      "path": "${profile_name}/remaps/melonDS/melonDS.rmp",
+      "lines": [
+        "input_player1_btn_r2 = \"-1\""
+      ]
+    },
+    {
+      "path": "${profile_name}/remaps/Azahar/Azahar.rmp",
+      "lines": [
+        "input_player1_btn_l3 = \"-1\""
+      ]
+    },
+    {
+      "path": "${profile_name}/remaps/Citra/Citra.rmp",
+      "lines": [
+        "input_player1_btn_l3 = \"-1\""
+      ]
+    },
+    {
+      "path": "${profile_name}/remaps/DeSmuME/DeSmuME.rmp",
+      "lines": [
+        "input_player1_btn_r3 = \"-1\""
       ]
     }
   ]

@@ -2,6 +2,8 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "video_driver.h"
@@ -51,10 +53,15 @@ struct SemuRetroArchPointerRuntime {
     int16_t pressed;
     int16_t count;
     int16_t offscreen;
+    int hover_allowed;  // the last poll's raw window pointer, for the renderer's cursor
+    int16_t hover_x;
+    int16_t hover_y;
+    int hover_pressed;
 };
 
 struct SemuRetroArchSurfaceContract SemuRetroArchSurfaces;
 struct SemuRetroArchPointerRuntime SemuRetroArchPointer;
+int SemuRetroArchDebug = -1;  // SEMU_RENDER_DEBUG, read on the first press
 unsigned long long SemuRetroArchNextContextGeneration;
 unsigned long long SemuRetroArchActiveContextGeneration;
 
@@ -108,6 +115,21 @@ class SemuRetroArchGeneration {
 }
 
 class SemuRetroArchFrameBridge {
+    class void cursor(struct SemuRenderFrameGl* frame) {  // the window pointer for Semu's cursor, on touch systems only
+        semuRetroArchDisplayLock(video_state_get_ptr());
+        int16_t x = SemuRetroArchPointer.hover_x;
+        int16_t y = SemuRetroArchPointer.hover_y;
+        bool shown = SemuRetroArchCursorPolicy.shown(
+            SemuRetroArchSurfaces.touch_index,
+            SemuRetroArchPointer.hover_allowed != 0, (int)x, (int)y,
+            frame->framebuffer_width, frame->framebuffer_height);
+        frame->cursor.visible = shown ? 1 : 0;
+        frame->cursor.x = shown ? (int)x : 0;
+        frame->cursor.y = shown ? (int)y : 0;
+        frame->cursor.pressed = shown && SemuRetroArchPointer.hover_pressed != 0 ? 1 : 0;
+        semuRetroArchDisplayUnlock(video_state_get_ptr());
+    }
+
     class bool build(struct SemuRenderFrameGl* frame,
                      uint64_t frameId, unsigned int framebuffer,
                      unsigned int colorBuffer, int framebufferWidth,
@@ -146,6 +168,7 @@ class SemuRetroArchFrameBridge {
         frame->layout_variant = SEMU_RENDER_LAYOUT_AUTO;
         frame->get_proc = getProc;
         frame->context_generation = contextGeneration;
+        SemuRetroArchFrameBridge.cursor(frame);
         return SemuRetroArchSurfaceModel.partition(
             &SemuRetroArchSurfaces, frame, semuRetroArchGeometry(),
             viewportX, viewportY, viewportWidth, viewportHeight,
@@ -280,6 +303,23 @@ class SemuRetroArchPointerBridge {
         return true;
     }
 
+    class void logPress(int16_t screenX, int16_t screenY, bool mapped,
+                        struct SemuRenderPointerResult* result,
+                        int16_t coreX, int16_t coreY) {  // SEMU_RENDER_DEBUG: each press edge and where it went
+        if (SemuRetroArchDebug < 0) {
+            SemuRetroArchDebug = getenv("SEMU_RENDER_DEBUG") != null ? 1 : 0;
+        }
+        if (SemuRetroArchDebug == 0) { return; }
+        if (!mapped) {
+            fprintf(stderr, "semu-retroarch: touch %d,%d -> no surface\n",
+                (int)screenX, (int)screenY);
+            return;
+        }
+        fprintf(stderr, "semu-retroarch: touch %d,%d -> surface %d native %.1f,%.1f core %d,%d\n",
+            (int)screenX, (int)screenY, result->surface_index,
+            result->native_x, result->native_y, (int)coreX, (int)coreY);
+    }
+
     class int16_t libretroCoordinate(float normalized) {
         if (normalized < 0.0f) { normalized = 0.0f; }
         else if (normalized > 1.0f) { normalized = 1.0f; }
@@ -385,6 +425,10 @@ class SemuRetroArchPointerBridge {
             count = 1;
             offscreen = 0;
         }
+        if (nextDown != 0 && wasDown == 0) {
+            SemuRetroArchPointerBridge.logPress(screenX, screenY,
+                isPressed != 0, &result, x, y);
+        }
 
         bool contextLocked = contextGeneration != 0ULL
             && SemuRetroArchGeneration.lockActive(contextGeneration);
@@ -406,6 +450,10 @@ class SemuRetroArchPointerBridge {
         SemuRetroArchPointer.pressed = 0;
         SemuRetroArchPointer.count = 0;
         SemuRetroArchPointer.offscreen = 1;
+        SemuRetroArchPointer.hover_allowed = allowed ? 1 : 0;
+        SemuRetroArchPointer.hover_x = screenX;
+        SemuRetroArchPointer.hover_y = screenY;
+        SemuRetroArchPointer.hover_pressed = pressed ? 1 : 0;
         if (stable) {
             SemuRetroArchPointer.captured = nextCaptured;
             SemuRetroArchPointer.down = nextDown;

@@ -1,5 +1,6 @@
 // Matched post-UI phase: the Semu menu or a toast drawn from the journal's state (renderer_menu), the
-// evidence receipts and the final-frame capture. It reads only the supervisor journal; it never polls input.
+// evidence receipts, the final-frame capture, then the touch cursor (renderer_cursor), which no capture
+// holds. It reads only the supervisor journal and the frame's pointer sample; it never polls input.
 
 #include <errno.h>
 #include <stdio.h>
@@ -13,6 +14,7 @@ import ./renderer_compositor.btrc;
 import ./renderer_variants.btrc;
 import ./renderer_menu.btrc;
 import ./renderer_menu_raster.btrc;
+import ./renderer_cursor.btrc;
 import ./action_abi.btrc;
 
 class RendererStateFiles {
@@ -162,25 +164,24 @@ class RendererPostUiCompositor {
         *height = (int)((float)SEMU_RENDER_MENU_HEIGHT * shrink);
     }
 
-    class bool draw(struct RendererGlApi* gl,
-                    struct RendererGlResources* resources,
-                    struct SemuRenderFrameGl* frame,
-                    struct RendererPostUiState* state) {  // the open menu, else a toast in the same texture and pass, at the top
-        long long now = RendererClock.milliseconds();
-        bool toastOnly = state->visible == 0 && RendererToast.active(state, now);
-        if (state->visible == 0 && !toastOnly) { return true; }
-        if (toastOnly ? !RendererMenuRaster.renderToast(state) : !RendererMenuRaster.render(state, now)) { return false; }
-
+    class bool upload(struct RendererGlApi* gl,
+                      struct RendererGlResources* resources,
+                      unsigned char* pixels, int width, int height) {  // the menu texture holds the menu, a toast or the cursor
         gl->active_texture((unsigned int)(RGL_TEXTURE0 + 3));
         gl->bind_sampler(3, 0);
         RendererResources.configureTexture(gl, resources->menu_texture, RGL_NEAREST);  // whole-number scale: crisp glyph pixels
         RendererResources.normalizeUnpack(gl);
         RendererGlErrors.clear(gl);
         gl->texture_image_2d((unsigned int)RGL_TEXTURE_2D, 0, RGL_RGBA8,
-            SEMU_RENDER_MENU_WIDTH, SEMU_RENDER_MENU_HEIGHT, 0,
-            (unsigned int)RGL_RGBA, (unsigned int)RGL_UNSIGNED_BYTE,
-            state->menu_pixels);
-        if (!RendererGlErrors.none(gl)) { return false; }
+            width, height, 0, (unsigned int)RGL_RGBA,
+            (unsigned int)RGL_UNSIGNED_BYTE, pixels);
+        return RendererGlErrors.none(gl);
+    }
+
+    class void quad(struct RendererGlApi* gl,
+                    struct RendererGlResources* resources,
+                    struct SemuRenderFrameGl* frame,
+                    int x, int y, int width, int height) {  // the menu pass over the emulator's framebuffer at one rectangle
         gl->bind_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER,
             frame->framebuffer);
         gl->draw_buffer(frame->color_buffer);
@@ -195,11 +196,6 @@ class RendererPostUiCompositor {
         gl->viewport(0, 0, frame->framebuffer_width, frame->framebuffer_height);
         gl->use_program(resources->program);
         gl->bind_vertex_array(resources->vertex_array);
-        int width = 0;
-        int height = 0;
-        RendererPostUiCompositor.menuSize(frame->framebuffer_width, frame->framebuffer_height, &width, &height);
-        int x = (frame->framebuffer_width - width) / 2;
-        int y = toastOnly ? frame->framebuffer_height - height : (frame->framebuffer_height - height) / 2;  // GL rows start at the bottom: the texture's top row at the screen's
         if (resources->uniform_menu_rect >= 0) {
             gl->uniform_4f(resources->uniform_menu_rect,
                 (float)x, (float)y, (float)width, (float)height);
@@ -209,6 +205,36 @@ class RendererPostUiCompositor {
         }
         RendererCompositor.drawPass(gl, resources,
             SEMU_RENDER_PASS_MENU, true);
+    }
+
+    class bool draw(struct RendererGlApi* gl,
+                    struct RendererGlResources* resources,
+                    struct SemuRenderFrameGl* frame,
+                    struct RendererPostUiState* state) {  // the open menu, else a toast in the same texture and pass, at the top
+        long long now = RendererClock.milliseconds();
+        bool toastOnly = state->visible == 0 && RendererToast.active(state, now);
+        if (state->visible == 0 && !toastOnly) { return true; }
+        if (toastOnly ? !RendererMenuRaster.renderToast(state) : !RendererMenuRaster.render(state, now)) { return false; }
+        if (!RendererPostUiCompositor.upload(gl, resources, state->menu_pixels, SEMU_RENDER_MENU_WIDTH, SEMU_RENDER_MENU_HEIGHT)) { return false; }
+        int width = 0;
+        int height = 0;
+        RendererPostUiCompositor.menuSize(frame->framebuffer_width, frame->framebuffer_height, &width, &height);
+        int x = (frame->framebuffer_width - width) / 2;
+        int y = toastOnly ? frame->framebuffer_height - height : (frame->framebuffer_height - height) / 2;  // GL rows start at the bottom: the texture's top row at the screen's
+        RendererPostUiCompositor.quad(gl, resources, frame, x, y, width, height);
+        return true;
+    }
+
+    class bool drawCursor(struct RendererGlApi* gl,
+                          struct RendererGlResources* resources,
+                          struct SemuRenderFrameGl* frame,
+                          struct RendererCursorState* cursor) {  // last, so it sits above the bezel, the menu and the toast
+        if (cursor == null) { return true; }
+        RendererCursor.raster(cursor->pixels);
+        if (!RendererPostUiCompositor.upload(gl, resources, cursor->pixels, SEMU_RENDER_CURSOR_WIDTH, SEMU_RENDER_CURSOR_HEIGHT)) { return false; }
+        struct RendererPixelRect rectangle;
+        RendererCursor.placement(cursor, frame->framebuffer_height, &rectangle);
+        RendererPostUiCompositor.quad(gl, resources, frame, rectangle.x, rectangle.y, rectangle.width, rectangle.height);
         return true;
     }
 }
@@ -390,11 +416,13 @@ class RendererPostUiPhase {
                      struct SemuRenderFrameGl* frame,
                      struct RendererPostUiState* state,
                      struct RendererCompositionGeometry* geometry,
-                     unsigned long long* hash, int* nonblank) {
+                     struct RendererCursorState* cursor,
+                     unsigned long long* hash, int* nonblank) {  // CURSOR: null while the arrow is hidden
         if (!RendererPostUiCompositor.draw(gl, resources, frame, state)) {
             return false;
         }
-        return RendererFinalEvidence.capture(gl, frame, state, geometry,
+        bool captured = RendererFinalEvidence.capture(gl, frame, state, geometry,
             hash, nonblank);
+        return RendererPostUiCompositor.drawCursor(gl, resources, frame, cursor) && captured;
     }
 }

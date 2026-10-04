@@ -35,6 +35,7 @@ import ./spec/frame_layout.btrc;
 import ./spec/esde.btrc;
 import ./spec/gameboy.btrc;
 import ./spec/touch.btrc;
+import ./spec/right_trackpad.btrc;
 import ./spec/launch.btrc;
 import ./spec/render_env.btrc;
 import ./spec/dual_layout.btrc;
@@ -955,6 +956,7 @@ int main() {
     EsDeSpecContract.run(contract);
     GameBoySpecContract.run(contract);
     TouchSpecContract.run(contract);
+    RightTrackpadSpecContract.run(contract);
     LaunchSpecContract.run(contract);
     InputDeliverySpecContract.run(contract);
     RetroArchKeyboardSpecContract.run(contract);

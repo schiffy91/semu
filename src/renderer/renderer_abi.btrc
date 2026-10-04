@@ -108,6 +108,13 @@ struct SemuRenderPointerResult {
     float native_y;
 };
 
+struct SemuRenderCursorGl {  // appended to ABI 3, read only when struct_size covers it
+    int visible;
+    int x;  // framebuffer pixels from the top-left
+    int y;
+    int pressed;
+};
+
 struct SemuRenderFrameGl {
     unsigned int abi;
     unsigned int struct_size;
@@ -126,6 +133,7 @@ struct SemuRenderFrameGl {
     __fn_ptr<int, struct SemuRenderPointerMap*,
         struct SemuRenderPointerQuery*, struct SemuRenderPointerResult*>
         map_pointer;
+    struct SemuRenderCursorGl cursor;
 };
 
 struct RendererLaneGeometry {
@@ -175,11 +183,24 @@ struct SemuRenderPendingFrame {
 };
 
 class RendererFrameContract {
+    class unsigned int baseSize() {  // ABI 3 before the cursor: emulators built earlier still compose
+        return (unsigned int)(sizeof(struct SemuRenderFrameGl)
+            - sizeof(struct SemuRenderCursorGl));
+    }
+
     class bool compatible(struct SemuRenderFrameGl* frame) {
         return frame != null
             && frame->abi == (unsigned int)SEMU_RENDER_ABI_GL
-            && frame->struct_size
-                >= (unsigned int)sizeof(struct SemuRenderFrameGl);
+            && frame->struct_size >= RendererFrameContract.baseSize();
+    }
+
+    class struct SemuRenderCursorGl* cursor(struct SemuRenderFrameGl* frame) {  // null unless the emulator's frame carries one
+        if (!RendererFrameContract.compatible(frame)
+                || frame->struct_size
+                    < (unsigned int)sizeof(struct SemuRenderFrameGl)) {
+            return null;
+        }
+        return &frame->cursor;
     }
 
     class bool validLayout(unsigned int layout) {

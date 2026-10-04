@@ -9,7 +9,9 @@
 //   (a whole multiple when SEMU_RENDER_FRAME_INTEGER=1, as Azahar's use_integer_scaling does) and
 //   centered; each screen is cut from it at the box's scale.
 // The last composition's pointer map is kept, so a touch hook can turn a click on the composed
-// picture back into the point the emulator drew there.
+// picture back into the point the emulator drew there. The map is written at present on the render
+// thread and read by the toolkit's input thread (Qt's GUI thread for Azahar), so one mutex guards it.
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,6 +39,7 @@ struct SemuComposeState {
 };
 
 struct SemuComposeState SemuComposition;
+pthread_mutex_t SemuComposePointerLock = PTHREAD_MUTEX_INITIALIZER;  // the map, its callback, the drawn rects, the size
 
 class SemuCompose {
     class bool size(const char* name, int* width, int* height) {
@@ -78,7 +81,7 @@ class SemuCompose {
                                 SemuComposition.second_native_width, SemuComposition.second_native_height, SemuComposition.integer, top, bottom);
     }
 
-    class void surface(struct SemuRenderFrameGl* frame, int index, struct SemuComposeRect rect, int nativeWidth, int nativeHeight) {
+    class void surface(struct SemuRenderFrameGl* frame, struct SemuComposeRect* drawn, int index, struct SemuComposeRect rect, int nativeWidth, int nativeHeight) {
         frame->surfaces[index].x = rect.x;
         frame->surfaces[index].y = frame->framebuffer_height - rect.y - rect.height;  // OpenGL rows start at the bottom
         frame->surfaces[index].width = rect.width;
@@ -87,7 +90,7 @@ class SemuCompose {
         frame->surfaces[index].native_height = nativeHeight > 0 ? nativeHeight : rect.height;
         frame->surfaces[index].rotation = 0;
         frame->surfaces[index].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
-        SemuComposition.drawn[index] = rect;
+        drawn[index] = rect;
     }
 
     // framebuffer 0 with GL_BACK is a window's back buffer; a hook with its own target passes that
@@ -107,6 +110,8 @@ class SemuCompose {
         frame.layout_variant = SEMU_RENDER_LAYOUT_AUTO;
         frame.get_proc = getProc;
         frame.context_generation = 1ULL;
+        struct SemuComposeRect drawn[2];
+        memset(drawn, 0, sizeof(drawn));
         if (SemuComposition.stacked) {
             struct SemuComposeRect top;
             struct SemuComposeRect bottom;
@@ -114,30 +119,33 @@ class SemuCompose {
             if (top.width < 1 || bottom.width < 1) { return; }
             frame.surface_count = 2;
             frame.presentation_aspect = (float)top.width / (float)(top.height + bottom.height);
-            SemuCompose.surface(&frame, 0, top, SemuComposition.native_width, SemuComposition.native_height);
-            SemuCompose.surface(&frame, 1, bottom, SemuComposition.second_native_width, SemuComposition.second_native_height);
+            SemuCompose.surface(&frame, drawn, 0, top, SemuComposition.native_width, SemuComposition.native_height);
+            SemuCompose.surface(&frame, drawn, 1, bottom, SemuComposition.second_native_width, SemuComposition.second_native_height);
         } else {
             struct SemuComposeRect picture;
             SemuFrameLayout.letterboxed(width, height, SemuComposition.aspect, &picture);
             if (picture.width < 1 || picture.height < 1) { return; }
             frame.surface_count = 1;
             frame.presentation_aspect = SemuFrameLayout.presentationAspect(SemuComposition.aspect, &picture);
-            SemuCompose.surface(&frame, 0, picture, SemuComposition.native_width, SemuComposition.native_height);
+            SemuCompose.surface(&frame, drawn, 0, picture, SemuComposition.native_width, SemuComposition.native_height);
         }
         int status = semu_render_game_gl(&frame);
         int post = status == SEMU_RENDER_INVALID_FRAME ? status : semu_render_post_ui_gl(&frame);
+        pthread_mutex_lock(&SemuComposePointerLock);  // publish this frame's map in one step
         SemuComposition.framebuffer_width = width;
         SemuComposition.framebuffer_height = height;
+        memcpy(SemuComposition.drawn, drawn, sizeof(drawn));
         SemuComposition.mapped = status != SEMU_RENDER_INVALID_FRAME && frame.map_pointer != null;
         if (SemuComposition.mapped) {
             memcpy(&SemuComposition.pointer_map, &frame.pointer_map, sizeof(struct SemuRenderPointerMap));
             SemuComposition.map_pointer = frame.map_pointer;
         }
+        pthread_mutex_unlock(&SemuComposePointerLock);
         if (!SemuComposition.reported && SemuCompose.debug()) {
             SemuComposition.reported = true;
             fprintf(stderr, "semu-compose: first frame %dx%d, %d screen(s), first at %d,%d %dx%d, game=%d post=%d\n",
-                width, height, frame.surface_count, SemuComposition.drawn[0].x, SemuComposition.drawn[0].y,
-                SemuComposition.drawn[0].width, SemuComposition.drawn[0].height, status, post);
+                width, height, frame.surface_count, drawn[0].x, drawn[0].y,
+                drawn[0].width, drawn[0].height, status, post);
         }
     }
 
@@ -145,18 +153,28 @@ class SemuCompose {
     // drew that point of its touch screen: 1 mapped, 0 not on that screen, -1 nothing composed yet.
     // Clamped, a point off the screen maps to its nearest edge (a drag that leaves it).
     class int unmap(float x, float y, bool clamp, float* emulatorX, float* emulatorY) {
+        pthread_mutex_lock(&SemuComposePointerLock);  // one frame's map, rects and size together
+        bool mapped = SemuComposition.mapped;
+        struct SemuRenderPointerMap map;
+        memcpy(&map, &SemuComposition.pointer_map, sizeof(struct SemuRenderPointerMap));
+        __fn_ptr<int, struct SemuRenderPointerMap*, struct SemuRenderPointerQuery*, struct SemuRenderPointerResult*> mapPointer = SemuComposition.map_pointer;
+        struct SemuComposeRect rects[2];
+        memcpy(rects, SemuComposition.drawn, sizeof(rects));
+        int framebufferWidth = SemuComposition.framebuffer_width;
+        int framebufferHeight = SemuComposition.framebuffer_height;
+        pthread_mutex_unlock(&SemuComposePointerLock);
         char* touch = getenv("SEMU_RENDER_TOUCH_SURFACE_INDEX");
-        int surface = touch != null ? atoi(touch) : SemuComposition.pointer_map.surface_count - 1;
-        if (!SemuComposition.mapped || surface < 0 || surface >= SemuComposition.pointer_map.surface_count) { return -1; }
+        int surface = touch != null ? atoi(touch) : map.surface_count - 1;
+        if (!mapped || mapPointer == null || surface < 0 || surface >= map.surface_count || surface > 1) { return -1; }
         struct SemuRenderPointerQuery query;
         memset(&query, 0, sizeof(struct SemuRenderPointerQuery));
         query.abi = SEMU_RENDER_ABI_GL;
         query.struct_size = sizeof(struct SemuRenderPointerQuery);
-        query.frame_id = SemuComposition.pointer_map.frame_id;
+        query.frame_id = map.frame_id;
         query.x = x;
         query.y = y;
-        query.viewport_width = SemuComposition.framebuffer_width;
-        query.viewport_height = SemuComposition.framebuffer_height;
+        query.viewport_width = framebufferWidth;
+        query.viewport_height = framebufferHeight;
         query.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
         query.surface_index = surface;
         query.clamp = clamp ? 1 : 0;
@@ -164,8 +182,8 @@ class SemuCompose {
         memset(&result, 0, sizeof(struct SemuRenderPointerResult));
         result.abi = SEMU_RENDER_ABI_GL;
         result.struct_size = sizeof(struct SemuRenderPointerResult);
-        if (SemuComposition.map_pointer(&SemuComposition.pointer_map, &query, &result) != SEMU_RENDER_POINTER_MAPPED) { return 0; }
-        struct SemuComposeRect drawn = SemuComposition.drawn[surface];
+        if (mapPointer(&map, &query, &result) != SEMU_RENDER_POINTER_MAPPED) { return 0; }
+        struct SemuComposeRect drawn = rects[surface];
         *emulatorX = (float)drawn.x + result.normalized_x * (float)drawn.width;
         float fromTop = (int)result.origin == (int)SEMU_RENDER_ORIGIN_BOTTOM_LEFT ? 1.0f - result.normalized_y : result.normalized_y;  // normalized in the surface's row order
         *emulatorY = (float)drawn.y + fromTop * (float)drawn.height;

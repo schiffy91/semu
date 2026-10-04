@@ -263,7 +263,7 @@ class RetroArchSpecSystems {  // N64 and DS RetroArch bindings and DS core optio
         contract.expect(screens.isArray() && screens.size() == 2 && SemuJson.textAt(screens.at(0), "id").equals("top") && SemuJson.textAt(screens.at(1), "id").equals("bottom"), "DS declares top then bottom screens");
         contract.expect(nds.bindingFor("linux", "retroarch", "desmume") != null, "DS binds RetroArch desmume on Linux");
         JSONValue desmume = SemuJson.get(fixture.model.emulator("retroarch").platform("linux"), "retroarch.core_options.desmume");
-        contract.expect(desmume.isArray() && desmume.size() == 3 && SemuJson.textAt(desmume.at(0), "source.value").equals("top/bottom") && SemuJson.textAt(desmume.at(1), "source.value").equals("0"), "desmume stacks top/bottom with no gap");
+        contract.expect(desmume.isArray() && desmume.size() == 5 && SemuJson.textAt(desmume.at(0), "source.value").equals("top/bottom") && SemuJson.textAt(desmume.at(1), "source.value").equals("0"), "desmume stacks top/bottom with no gap (and reads the pointer as touch, right_trackpad.btrc)");
     }
 }
 
