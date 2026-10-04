@@ -1,0 +1,187 @@
+// Wii pointer spec: the Wii Remote IR follows the right-trackpad pointer over the bezelled picture.
+// Dolphin aims the IR by the X pointer inside its window, scaled so its own 4:3 letterbox spans the
+// IR range (XInput2.cpp:268-313); Semu shows that picture smaller, inside the TV bezel, so the IR
+// drifted away from the finger. wii declares display.surface_mapping.pointer_screen, the launcher
+// emits SEMU_RENDER_POINTER_SURFACE_INDEX, and libsemupreload's XIQueryPointer hands Dolphin the
+// point under the finger as the point Dolphin drew there, clamped to the picture. Dolphin keeps its
+// own edge-reaching IR defaults with Auto-Hide off, and its X arrow stays blank, so one pointer shows.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/emit/rendering.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+import ../../../src/renderer/preload/semu_frame_layout.btrc;
+
+class WiiPointerSpecText {
+    class string read(Fixture fixture, string relative) {
+        string path = PathTools.join(fixture.project, relative);
+        return FileSystem.isFile(path) ? FileSystem.readText(path) : "";
+    }
+
+    class string between(string text, string startMarker, string endMarker) {  // from one marker to the next after it
+        int start = text.indexOf(startMarker);
+        if (start < 0) { return ""; }
+        string rest = text.substring(start, text.len() - start);
+        int end = rest.indexOf(endMarker);
+        return end <= 0 ? "" : rest.substring(0, end);
+    }
+
+    class bool ordered(string text, Vector<string> markers) {  // each marker found after the one before it
+        string rest = text;
+        for marker in markers {
+            int found = rest.indexOf(marker);
+            if (found < 0) { return false; }
+            int after = found + marker.len();
+            rest = rest.substring(after, rest.len() - after);
+        }
+        return true;
+    }
+
+    class bool near(float actual, float expected) {  // within one pixel
+        float difference = actual - expected;
+        if (difference < 0.0f) { difference = -difference; }
+        return difference <= 1.0f;
+    }
+}
+
+class WiiPointerSpecRouting {
+    class bool names(Vector<string> environment, string prefix) {
+        for line in environment { if (line.startsWith(prefix)) { return true; } }
+        return false;
+    }
+
+    class void run(Contract contract, Fixture fixture) {  // only the Wii names a pointer screen
+        Vector<string> wii = SemuRenderEnvironment.compile(fixture.plan, fixture.model.system("wii"), "dolphin", "/state/dolphin", fixture.diagnostics);
+        contract.expect(wii.contains("SEMU_RENDER_POINTER_SURFACE_INDEX=0"), "wii: the IR aims at the main screen, index 0");
+        contract.expect(!WiiPointerSpecRouting.names(wii, "SEMU_RENDER_TOUCH_"), "wii: the pointer screen is no touch screen");
+        for systemId in ["gc", "nds", "n3ds"] {
+            string emulatorId = systemId.equals("gc") ? "dolphin" : "retroarch";
+            Vector<string> other = SemuRenderEnvironment.compile(fixture.plan, fixture.model.system(systemId), emulatorId, "/state/" + emulatorId, fixture.diagnostics);
+            contract.expect(!WiiPointerSpecRouting.names(other, "SEMU_RENDER_POINTER_"), systemId + ": no pointer screen, so its window pointer is left alone");
+        }
+        contract.expect(fixture.diagnostics.ok(), "pointer routing compiles without diagnostics: " + fixture.diagnostics.render());
+    }
+}
+
+class WiiPointerSpecRemap {
+    // The Wii TV bezel on the Deck's 1280x800: the picture composed 640x480 with its top left at
+    // 320,114 (bottom-left lanes, as the compositor publishes them); Dolphin draws its 4:3 letterbox
+    // in the same window, which the compositor cuts at 107,0 1066x800.
+    class void map(struct SemuRenderPointerMap* map) {
+        struct SemuRenderFrameGl frame;
+        frame.frame_id = 40ULL;
+        frame.framebuffer_width = 1280;
+        frame.framebuffer_height = 800;
+        struct RendererCompositionGeometry geometry;
+        geometry.lane_count = 1;
+        geometry.lanes[0].output_x = 320;
+        geometry.lanes[0].output_y = 800 - 114 - 480;
+        geometry.lanes[0].output_width = 640;
+        geometry.lanes[0].output_height = 480;
+        geometry.lanes[0].native_width = 640;
+        geometry.lanes[0].native_height = 480;
+        geometry.lanes[0].rotation = 0;
+        geometry.lanes[0].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
+        RendererPointerContract.publish(&frame, &geometry, map);
+    }
+
+    // What libsemupreload's SemuPointerRemap does with one XIQueryPointer window point: the map on
+    // the pointer screen, then the point Dolphin drew there. False when the map does not take it.
+    class bool remap(struct SemuRenderPointerMap* map, float windowX, float windowY, int clamp, float* dolphinX, float* dolphinY) {
+        struct SemuRenderPointerQuery query;
+        query.abi = (unsigned int)SEMU_RENDER_ABI_GL;
+        query.struct_size = (unsigned int)sizeof(struct SemuRenderPointerQuery);
+        query.frame_id = map->frame_id;
+        query.x = windowX;
+        query.y = windowY;
+        query.viewport_width = 1280;
+        query.viewport_height = 800;
+        query.origin = SEMU_RENDER_ORIGIN_TOP_LEFT;
+        query.surface_index = 0;
+        query.clamp = clamp;
+        struct SemuRenderPointerResult result;
+        if (RendererPointerContract.map(map, &query, &result) != SEMU_RENDER_POINTER_MAPPED) { return false; }
+        struct SemuComposeRect drawn;
+        SemuFrameLayout.letterboxed(1280, 800, 4.0f / 3.0f, &drawn);
+        SemuFrameLayout.drawnPoint(&drawn, result.normalized_x, result.normalized_y, (int)result.origin == (int)SEMU_RENDER_ORIGIN_BOTTOM_LEFT, dolphinX, dolphinY);
+        return true;
+    }
+
+    class void run(Contract contract) {
+        struct SemuRenderPointerMap map;
+        WiiPointerSpecRemap.map(&map);
+        struct SemuComposeRect drawn;
+        SemuFrameLayout.letterboxed(1280, 800, 4.0f / 3.0f, &drawn);
+        contract.expect(drawn.x == 107 && drawn.y == 0 && drawn.width == 1066 && drawn.height == 800, f"Dolphin's letterbox is cut at 107,0 1066x800 (got {drawn.x},{drawn.y} {drawn.width}x{drawn.height})");
+        float dolphinX = -1.0f;
+        float dolphinY = -1.0f;
+        bool mapped = WiiPointerSpecRemap.remap(&map, 320.0f, 114.0f, 1, &dolphinX, &dolphinY);
+        contract.expect(mapped && WiiPointerSpecText.near(dolphinX, 107.0f) && WiiPointerSpecText.near(dolphinY, 0.0f), f"the picture's top left is Dolphin's top left (got {dolphinX},{dolphinY})");
+        mapped = WiiPointerSpecRemap.remap(&map, 959.9f, 593.9f, 1, &dolphinX, &dolphinY);
+        contract.expect(mapped && WiiPointerSpecText.near(dolphinX, 1173.0f) && WiiPointerSpecText.near(dolphinY, 799.0f), f"its bottom right is Dolphin's bottom right (got {dolphinX},{dolphinY})");
+        mapped = WiiPointerSpecRemap.remap(&map, 640.0f, 354.0f, 1, &dolphinX, &dolphinY);
+        contract.expect(mapped && WiiPointerSpecText.near(dolphinX, 640.0f) && WiiPointerSpecText.near(dolphinY, 400.0f), f"its centre is Dolphin's centre (got {dolphinX},{dolphinY})");
+        mapped = WiiPointerSpecRemap.remap(&map, 480.0f, 234.0f, 1, &dolphinX, &dolphinY);
+        contract.expect(mapped && WiiPointerSpecText.near(dolphinX, 373.5f) && WiiPointerSpecText.near(dolphinY, 200.0f), f"a quarter in and down stays a quarter in and down (got {dolphinX},{dolphinY})");
+        mapped = WiiPointerSpecRemap.remap(&map, 10.0f, 10.0f, 1, &dolphinX, &dolphinY);
+        contract.expect(mapped && WiiPointerSpecText.near(dolphinX, 107.0f) && WiiPointerSpecText.near(dolphinY, 0.0f), f"a finger on the bezel holds the IR at the picture's nearest corner (got {dolphinX},{dolphinY})");
+        contract.expect(!WiiPointerSpecRemap.remap(&map, 10.0f, 10.0f, 0, &dolphinX, &dolphinY), "unclamped, the bezel is off the picture: the remap must clamp");
+    }
+}
+
+class WiiPointerSpecWiring {
+    class void run(Contract contract, Fixture fixture) {  // the preload, the compositor and the library's exports
+        string preload = WiiPointerSpecText.read(fixture, "src/renderer/preload/semu_preload.btrc");
+        string hook = WiiPointerSpecText.between(preload, "int XIQueryPointer(void* display, int device, unsigned long window,", "\n}\n");
+        contract.expect(WiiPointerSpecText.ordered(hook, ["int found = SemuPreload.query_pointer(display, device, window, root, child, rootX, rootY, windowX, windowY, buttons, modifiers, group);",
+                "if (found != 0) { SemuPointerRemap.apply(windowX, windowY); }", "return found;"]),
+            "XIQueryPointer asks libXi first, then remaps the window point it found");
+        contract.contains(preload, "SemuPreloadHooks.bind(&SemuPreload.query_pointer, next, \"XIQueryPointer\");", "the real XIQueryPointer is the next one after the preload");
+        string apply = WiiPointerSpecText.between(preload, "class bool apply(double* windowX, double* windowY) {", "\n    }\n");
+        contract.expect(WiiPointerSpecText.ordered(apply, ["int screen = SemuCompose.pointerSurface();", "screen < 0", "SemuCompose.unmapOn(screen, (float)*windowX, (float)*windowY, true, &emulatorX, &emulatorY) != 1",
+                "*windowX = (double)emulatorX;", "*windowY = (double)emulatorY;"]),
+            "the remap reads the declared pointer screen, clamps to it and writes Dolphin's point back");
+        string compose = WiiPointerSpecText.read(fixture, "src/renderer/preload/semu_compose.btrc");
+        contract.contains(compose, "SemuComposition.pointer_index = SemuCursorPolicy.touchIndex(getenv(\"SEMU_RENDER_POINTER_SURFACE_INDEX\"));", "the compositor reads the pointer screen the launcher emits");
+        string unmapOn = WiiPointerSpecText.between(compose, "class int unmapOn(", "\n    }\n");
+        contract.expect(unmapOn.contains("int surface = screen >= 0 ? screen : map.surface_count - 1;") && unmapOn.contains("query.surface_index = surface;") && unmapOn.contains("query.clamp = clamp ? 1 : 0;")
+                && unmapOn.contains("SemuFrameLayout.drawnPoint(&rects[surface], result.normalized_x, result.normalized_y,"),
+            "unmapOn queries the screen it is given and places the point with the arithmetic checked above");
+        string package = WiiPointerSpecText.read(fixture, "src/renderer/package.nix");
+        contract.contains(package, "{ global: SDL_GL_SwapWindow; eglSwapBuffers; glXSwapBuffers; XIQueryPointer; local: *; };", "libsemupreload exports XIQueryPointer, so it interposes Dolphin's call");
+        string injector = WiiPointerSpecText.read(fixture, "tests/deck/inject.sh");
+        contract.contains(injector, "[ -n \"$index\" ] || index=\"$(printf '%s\\n' \"$environment\" | sed -n 's/^SEMU_RENDER_POINTER_SURFACE_INDEX=//p')\"", "the Deck injector aims a Wii case at the pointer screen");
+    }
+}
+
+class WiiPointerSpecDolphin {
+    class void run(Contract contract, Fixture fixture, string target) {  // Dolphin's own IR defaults, no Auto-Hide, no X arrow
+        Vector<string> files = ["dolphin-user/Config/WiimoteNew.ini", "dolphin-user/Config/Profiles/Wiimote/Semu Wiimote.ini",
+            "dolphin-user/Config/Profiles/Wiimote/Semu Nunchuk.ini", "dolphin-user/Config/Profiles/Wiimote/Semu Classic.ini"];
+        for file in files {
+            string text = fixture.profile("dolphin", file);
+            contract.contains(text, "IR/Vertical Offset = 10.\nIR/Total Yaw = 25.\nIR/Total Pitch = 20.\nIR/Auto-Hide = False\nIR/Up = `Cursor Y-`", target + " " + file + ": Dolphin's edge-reaching IR, never hidden while still");
+            contract.lacks(text, "IR/Auto-Hide = True", target + " " + file + ": no Auto-Hide");
+        }
+        string main = fixture.profile("dolphin", "dolphin-user/Config/Dolphin.ini");
+        string userInterface = WiiPointerSpecText.between(main, "[Interface]\n", "\n\n");
+        contract.contains(userInterface, "CursorVisibility = 0", target + " Dolphin.ini [Interface]: the X arrow never shows over the game");
+    }
+}
+
+class WiiPointerSpecContract {
+    class void run(Contract contract) {
+        Fixture desktop = Fixture("linux-desktop");
+        WiiPointerSpecRouting.run(contract, desktop);
+        WiiPointerSpecRemap.run(contract);
+        WiiPointerSpecWiring.run(contract, desktop);
+        WiiPointerSpecDolphin.run(contract, desktop, "linux-desktop");
+        WiiPointerSpecDolphin.run(contract, Fixture("steam-deck"), "steam-deck");
+    }
+}

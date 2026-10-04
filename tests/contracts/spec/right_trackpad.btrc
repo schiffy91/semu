@@ -265,12 +265,12 @@ class RightTrackpadSpecCompose {  // standalone touch: the map is written at pre
         contract.expect(locked >= 0 && unlocked > locked && publish.indexOf("memcpy(&SemuComposition.pointer_map") > locked && publish.indexOf("memcpy(&SemuComposition.pointer_map") < unlocked
             && publish.indexOf("memcpy(SemuComposition.drawn, drawn") > locked && publish.indexOf("SemuComposition.framebuffer_width = width;") > locked,
             "compose publishes the map, its callback, the drawn rects and the size inside the lock");
-        string unmap = RightTrackpadSpecText.between(compose, "class int unmap(", "\n    }\n");
+        string unmap = RightTrackpadSpecText.between(compose, "class int unmapOn(", "\n    }\n");
         int readLock = unmap.indexOf("pthread_mutex_lock(&SemuComposePointerLock);");
         int readUnlock = unmap.indexOf("pthread_mutex_unlock(&SemuComposePointerLock);");
         string afterUnlock = readUnlock < 0 ? "" : unmap.substring(readUnlock, unmap.len() - readUnlock);
         contract.expect(readLock >= 0 && readUnlock > readLock && unmap.indexOf("memcpy(&map, &SemuComposition.pointer_map") > readLock && !afterUnlock.contains("SemuComposition."),
-            "unmap reads one frame's map and rects under the lock and touches no shared state after it");
+            "unmapOn reads one frame's map and rects under the lock and touches no shared state after it");
         contract.lacks(compose, "SemuComposition.drawn[index] = rect;", "compose never writes a drawn rect outside the lock");
     }
 }

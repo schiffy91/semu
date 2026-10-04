@@ -43,6 +43,15 @@ class SemuFrameLayout {
         return picture->height > 0 ? (float)picture->width / (float)picture->height : 0.0f;
     }
 
+    // A point the renderer's pointer map normalized on a screen (0 to 1 across, and down in that
+    // screen's row order: bottom-up for the compositor's bottom-left surfaces) back to where the
+    // emulator drew that point, inside the screen's rectangle in its own frame.
+    class void drawnPoint(struct SemuComposeRect* drawn, float normalizedX, float normalizedY, bool bottomUp, float* emulatorX, float* emulatorY) {
+        *emulatorX = (float)drawn->x + normalizedX * (float)drawn->width;
+        float fromTop = bottomUp ? 1.0f - normalizedY : normalizedY;
+        *emulatorY = (float)drawn->y + fromTop * (float)drawn->height;
+    }
+
     // A picture edge (non-negative, in pixels) moved to the nearest pixel boundary inside the
     // picture: up for a leading edge, down for a trailing one, ignoring float noise on whole edges.
     class int inside(float edge, bool leading) {

@@ -36,6 +36,7 @@ import ./spec/esde.btrc;
 import ./spec/gameboy.btrc;
 import ./spec/touch.btrc;
 import ./spec/right_trackpad.btrc;
+import ./spec/wii_pointer.btrc;
 import ./spec/launch.btrc;
 import ./spec/render_env.btrc;
 import ./spec/dual_layout.btrc;
@@ -967,6 +968,7 @@ int main() {
     GameBoySpecContract.run(contract);
     TouchSpecContract.run(contract);
     RightTrackpadSpecContract.run(contract);
+    WiiPointerSpecContract.run(contract);
     LaunchSpecContract.run(contract);
     InputDeliverySpecContract.run(contract);
     MenuModalSpecContract.run(contract);

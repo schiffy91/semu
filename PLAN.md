@@ -906,6 +906,42 @@ Status: being designed (workflow mods-design, with critique) while the radial se
   forwarders and blank cursor, cursor-arrow.sh's rows equal renderer_cursor's arrow) and deck_harness (the
   capture times, the one-grep lookup ahead of the due time, the step notes, the arrow verdict); 11 mutations
   each failed their checks.
+- Item 2 (right trackpad pointer), the Wii Remote (decision F2): built 2026-10-04 and observed in the podman
+  VM; the Deck check (the four picture corners in a pointer menu, a soft press as A, the Deck's gyro through
+  the SteamDeck backend) waits for the owner's next release. Dolphin aims the IR by the X pointer inside its
+  window, scaled so its own 4:3 letterbox spans -1 to +1 (XInput2.cpp:268-313), while Semu shows that
+  picture smaller inside the TV bezel, so the IR drifted away from the finger. Now wii declares
+  `display.surface_mapping.pointer_screen: "main"`, the launcher emits SEMU_RENDER_POINTER_SURFACE_INDEX=0
+  (no other system names one; a name that is no declared screen is refused), and libsemupreload interposes
+  XIQueryPointer (exported in preload.map): it asks libXi, then hands Dolphin the point under the finger on
+  the composed picture as the point Dolphin drew there (SemuCompose.unmapOn on that screen, clamped, through
+  the frame's pointer map and SemuFrameLayout.drawnPoint, the arithmetic the touch path now shares), so the
+  IR reaches exactly the picture's edges whatever the bezel, and a finger on the bezel holds it at the
+  nearest edge. SEMU_RENDER_DEBUG logs `semu-preload: pointer X,Y -> X',Y'` once per new window point. The
+  IR keeps Dolphin's defaults (Vertical Offset 10, Total Yaw 25, Total Pitch 20) with Auto-Hide off (it hid
+  the pointer 2.5 s after the last move, and no button brought it back); Dolphin.ini [Interface]
+  `CursorVisibility = 0` blanks the X arrow, and Semu draws no arrow on Wii (its cursor is gated on a touch
+  screen), so the one pointer seen is the game's own (reading of F2's "one visible pointer", reversible).
+  inject.sh aims a Wii case at the pointer screen. macOS is not covered: Dolphin there reads the pointer
+  through its Quartz backend, which the window shim does not interpose.
+  Observed in the podman VM (Rosetta, llvmpipe, Xvfb and openbox at 1280x800), this tree on a1ff828:
+  `tests/integration/wii-pointer.sh` with Wii Sports + Resort (read-only mount) at its disc menu, the
+  picture composed at 297,97 686x515 in the TV bezel: all 16 relative moves (the four corners, 5 percent in
+  from each, 3 percent in from each edge, a quarter, three quarters, the centre and a bezel point) logged the
+  expected Dolphin point within 1 px (corners 107,0 / 1171.4,0 / 107,798.4 / 1171.4,798.4, centre 640,399.2,
+  the bezel point 107,0). By eye (OUT/sweep.png, a crop with a cross per target): the game's hand follows
+  the finger and is at the centre at the centre; near the bottom edge its body reaches the picture's bottom.
+  This title's own IR mapping is not 1:1 at Dolphin's defaults: the hand moves about 1.34 times the finger
+  across (a quarter in put it at 0.165 of the width, three quarters at 0.826), so it reaches the side edges
+  with the finger about 17 percent in and is off screen (hidden) beyond, and it sits about 48 px above the
+  fingertip (26 px near the bottom), hidden in the top 3 percent. The old Semu tuning (Total Yaw 19) would
+  bring this title near 1:1 across; F2 keeps Dolphin's defaults, so retuning per title is the owner's call.
+  The keyboard Return is both Wii A and HOME in the profile (a press in the VM opened the HOME menu), and the
+  pad has no HOME: flagged as its own task. Contracts: wii_pointer (the routing for wii and none for gc, nds,
+  n3ds; the remap arithmetic over a published map, clamped and unclamped; the XIQueryPointer hook order, the
+  clamp and the declared screen; the export; the IR values and no Auto-Hide in WiimoteNew.ini and the three
+  Semu profiles on both targets; CursorVisibility = 0; the injector), right_trackpad (unmapOn reads one
+  frame's map under the lock); 10 mutations each failed their checks.
 - Item 3 (radial v2), part 1 (Fit, Aspect, Reset, the menu rows; controller layouts and players follow):
   built 2026-10-04, checked in the render host and the podman VM; the Deck is open (it needs a release and
   `semu-deck-cli steam input` with Steam stopped, which installs the new slots). Rulings, as reversible

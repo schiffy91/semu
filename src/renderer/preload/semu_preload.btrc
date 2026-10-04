@@ -2,6 +2,8 @@
 // at SDL_GL_SwapWindow, reading the emulator's back buffer and writing the
 // composed frame back before the real swap. Configuration comes from the
 // SEMU_RENDER_* environment the launcher already emits for hooked emulators.
+// It also interposes XIQueryPointer, so an emulator that aims by its window pointer (Dolphin's Wii
+// Remote IR) points where the finger is on the composed picture (SemuPointerRemap).
 import ./semu_compose.btrc;
 #include <dlfcn.h>
 #include <stdint.h>
@@ -20,6 +22,9 @@ struct SemuPreloadState {
     __fn_ptr<void, void*, unsigned long> glx_swap;
     __fn_ptr<void, void*, unsigned long, int, unsigned int*> glx_query;
     __fn_ptr<void*, const unsigned char*> glx_get_proc;
+    __fn_ptr<int, void*, int, unsigned long, unsigned long*, unsigned long*, double*, double*, double*, double*, void*, void*, void*> query_pointer;  // libXi's XIQueryPointer
+    int reported_x;  // the last window point the debug line named, so a still pointer logs once
+    int reported_y;
 };
 
 struct SemuPreloadState SemuPreload;
@@ -44,6 +49,9 @@ class SemuPreloadHooks {
         SemuPreloadHooks.bind(&SemuPreload.glx_swap, next, "glXSwapBuffers");
         SemuPreloadHooks.bind(&SemuPreload.glx_query, any, "glXQueryDrawable");
         SemuPreloadHooks.bind(&SemuPreload.glx_get_proc, any, "glXGetProcAddressARB");
+        SemuPreloadHooks.bind(&SemuPreload.query_pointer, next, "XIQueryPointer");
+        SemuPreload.reported_x = -1;
+        SemuPreload.reported_y = -1;
         if (SemuCompose.debug()) {
             fprintf(stderr, "semu-preload: %s (sdl=%d egl=%d glx=%d)\n", SemuCompose.enabled() ? "active" : "inactive",
                 SemuPreload.swap != null ? 1 : 0, SemuPreload.egl_swap != null ? 1 : 0, SemuPreload.glx_swap != null ? 1 : 0);
@@ -103,4 +111,42 @@ void glXSwapBuffers(void* display, unsigned long drawable) {
         SemuPreloadHooks.compose((int)width, (int)height, getProc);
     }
     if (SemuPreload.glx_swap != null) { SemuPreload.glx_swap(display, drawable); }
+}
+
+// Dolphin's XInput2 backend aims the Wii Remote IR by the pointer inside its render window, scaled
+// so its own letterboxed picture spans the IR range (XInput2.cpp:268-313). Semu shows that picture
+// inside a bezel, so the point under the finger on the composed picture is handed to Dolphin as the
+// point it drew there, clamped to the picture: the IR follows the finger and reaches the edges.
+class SemuPointerRemap {
+    class bool apply(double* windowX, double* windowY) {
+        int screen = SemuCompose.pointerSurface();
+        if (!SemuCompose.enabled() || screen < 0 || windowX == null || windowY == null) { return false; }
+        float emulatorX = 0.0f;
+        float emulatorY = 0.0f;
+        if (SemuCompose.unmapOn(screen, (float)*windowX, (float)*windowY, true, &emulatorX, &emulatorY) != 1) { return false; }
+        SemuPointerRemap.report(*windowX, *windowY, emulatorX, emulatorY);
+        *windowX = (double)emulatorX;
+        *windowY = (double)emulatorY;
+        return true;
+    }
+
+    class void report(double windowX, double windowY, float emulatorX, float emulatorY) {  // SEMU_RENDER_DEBUG: one line per new window point
+        if (!SemuCompose.debug() || ((int)windowX == SemuPreload.reported_x && (int)windowY == SemuPreload.reported_y)) { return; }
+        SemuPreload.reported_x = (int)windowX;
+        SemuPreload.reported_y = (int)windowY;
+        fprintf(stderr, "semu-preload: pointer %.1f,%.1f -> %.1f,%.1f\n", windowX, windowY, (double)emulatorX, (double)emulatorY);
+    }
+}
+
+int XIQueryPointer(void* display, int device, unsigned long window, unsigned long* root, unsigned long* child, double* rootX, double* rootY,
+                   double* windowX, double* windowY, void* buttons, void* modifiers, void* group) {
+    SemuPreloadHooks.initialize();
+    if (SemuPreload.query_pointer == null) {  // libXi loaded after the first hook
+        void* next = RTLD_NEXT;
+        SemuPreloadHooks.bind(&SemuPreload.query_pointer, next, "XIQueryPointer");
+    }
+    if (SemuPreload.query_pointer == null) { return 0; }
+    int found = SemuPreload.query_pointer(display, device, window, root, child, rootX, rootY, windowX, windowY, buttons, modifiers, group);
+    if (found != 0) { SemuPointerRemap.apply(windowX, windowY); }
+    return found;
 }

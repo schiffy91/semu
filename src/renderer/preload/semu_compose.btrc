@@ -13,6 +13,8 @@
 // thread and read by the toolkit's input thread (Qt's GUI thread for Azahar), so one mutex guards it.
 // That thread also reports the window pointer (semu_pointer_sample), and each composed frame carries
 // it as the cursor Semu draws on a touch system, under its own mutex.
+// The map also turns the window pointer an emulator aims (Dolphin's Wii Remote IR, which it reads with
+// XIQueryPointer) into the point it drew under the finger: semu_preload.btrc, on the declared pointer screen.
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,6 +42,7 @@ struct SemuComposeState {
     struct SemuRenderPointerMap pointer_map;
     __fn_ptr<int, struct SemuRenderPointerMap*, struct SemuRenderPointerQuery*, struct SemuRenderPointerResult*> map_pointer;
     int touch_index;  // SEMU_RENDER_TOUCH_SURFACE_INDEX, -1 without a touch screen: gates the cursor
+    int pointer_index;  // SEMU_RENDER_POINTER_SURFACE_INDEX, -1 unless the emulator aims its window pointer at a screen (Dolphin's Wii Remote IR)
 };
 
 struct SemuComposePointerSample {  // the window pointer the emulator last reported, framebuffer pixels from the top left
@@ -79,6 +82,7 @@ class SemuCompose {
         char* integer = getenv("SEMU_RENDER_FRAME_INTEGER");
         SemuComposition.integer = integer != null && strcmp(integer, "1") == 0;
         SemuComposition.touch_index = SemuCursorPolicy.touchIndex(getenv("SEMU_RENDER_TOUCH_SURFACE_INDEX"));
+        SemuComposition.pointer_index = SemuCursorPolicy.touchIndex(getenv("SEMU_RENDER_POINTER_SURFACE_INDEX"));  // the same short-number rule
         SemuComposition.enabled = getenv("SEMU_RENDER_SYSTEM_ID") != null;
     }
 
@@ -189,9 +193,22 @@ class SemuCompose {
     }
 
     // A point on the composed picture (top-left origin, framebuffer pixels) back to where the emulator
-    // drew that point of its touch screen: 1 mapped, 0 not on that screen, -1 nothing composed yet.
-    // Clamped, a point off the screen maps to its nearest edge (a drag that leaves it).
+    // drew that point of its touch screen (the declared one, else the last): 1 mapped, 0 not on that
+    // screen, -1 nothing composed yet. Clamped, a point off the screen maps to its nearest edge (a
+    // drag that leaves it).
     class int unmap(float x, float y, bool clamp, float* emulatorX, float* emulatorY) {
+        char* touch = getenv("SEMU_RENDER_TOUCH_SURFACE_INDEX");
+        return SemuCompose.unmapOn(touch != null ? atoi(touch) : -1, x, y, clamp, emulatorX, emulatorY);
+    }
+
+    // The screen the emulator aims its window pointer at (SEMU_RENDER_POINTER_SURFACE_INDEX), or -1.
+    class int pointerSurface() {
+        SemuCompose.initialize();
+        return SemuComposition.pointer_index;
+    }
+
+    // unmap on one screen; a negative index is the composed frame's last screen.
+    class int unmapOn(int screen, float x, float y, bool clamp, float* emulatorX, float* emulatorY) {
         pthread_mutex_lock(&SemuComposePointerLock);  // one frame's map, rects and size together
         bool mapped = SemuComposition.mapped;
         struct SemuRenderPointerMap map;
@@ -202,8 +219,7 @@ class SemuCompose {
         int framebufferWidth = SemuComposition.framebuffer_width;
         int framebufferHeight = SemuComposition.framebuffer_height;
         pthread_mutex_unlock(&SemuComposePointerLock);
-        char* touch = getenv("SEMU_RENDER_TOUCH_SURFACE_INDEX");
-        int surface = touch != null ? atoi(touch) : map.surface_count - 1;
+        int surface = screen >= 0 ? screen : map.surface_count - 1;
         if (!mapped || mapPointer == null || surface < 0 || surface >= map.surface_count || surface > 1) { return -1; }
         struct SemuRenderPointerQuery query;
         memset(&query, 0, sizeof(struct SemuRenderPointerQuery));
@@ -222,10 +238,8 @@ class SemuCompose {
         result.abi = SEMU_RENDER_ABI_GL;
         result.struct_size = sizeof(struct SemuRenderPointerResult);
         if (mapPointer(&map, &query, &result) != SEMU_RENDER_POINTER_MAPPED) { return 0; }
-        struct SemuComposeRect drawn = rects[surface];
-        *emulatorX = (float)drawn.x + result.normalized_x * (float)drawn.width;
-        float fromTop = (int)result.origin == (int)SEMU_RENDER_ORIGIN_BOTTOM_LEFT ? 1.0f - result.normalized_y : result.normalized_y;  // normalized in the surface's row order
-        *emulatorY = (float)drawn.y + fromTop * (float)drawn.height;
+        SemuFrameLayout.drawnPoint(&rects[surface], result.normalized_x, result.normalized_y,
+            (int)result.origin == (int)SEMU_RENDER_ORIGIN_BOTTOM_LEFT, emulatorX, emulatorY);  // normalized in the surface's row order
         return 1;
     }
 }

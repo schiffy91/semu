@@ -26,7 +26,8 @@
 # relatively, as Steam's trackpad mouse moves it. tap:FX,FY moves the same way, then clicks for
 # 0.15 s. The touch screen is surfaceN_content of the newest receipt in SEMU_INJECT_EVIDENCE from
 # byte SEMU_INJECT_EVIDENCE_FROM on (this launch's receipts, a bezel switch's included), N the
-# emulator's SEMU_RENDER_TOUCH_SURFACE_INDEX; the rectangle counts framebuffer pixels from the bottom
+# emulator's SEMU_RENDER_TOUCH_SURFACE_INDEX (on Wii, with no touch screen, the IR's
+# SEMU_RENDER_POINTER_SURFACE_INDEX); the rectangle counts framebuffer pixels from the bottom
 # left, and the framebuffer is taken to be the game's window. SEMU_INJECT_ON=game types into the
 # game's own display instead, under the same rule. The rectangle is read a second before a move
 # or tap is due (the emulator found with one grep over every process's environment), so the
@@ -132,8 +133,9 @@ touch_rect() {  # prints "LEFT TOP WIDTH HEIGHT FRAME_W FRAME_H SURFACE" for the
   [ -n "$file" ] && environment="$({ tr '\0' '\n' < "$file"; } 2>/dev/null)"
   [ -n "$environment" ] || { echo "no emulator of this case is running"; return 1; }
   index="$(printf '%s\n' "$environment" | sed -n 's/^SEMU_RENDER_TOUCH_SURFACE_INDEX=//p')"
+  [ -n "$index" ] || index="$(printf '%s\n' "$environment" | sed -n 's/^SEMU_RENDER_POINTER_SURFACE_INDEX=//p')"  # Wii: the screen the IR aims at
   state="$(printf '%s\n' "$environment" | sed -n 's/^SEMU_RENDER_STATE_DIR=//p')"
-  [ -n "$index" ] || { echo "the emulator has no touch surface (no SEMU_RENDER_TOUCH_SURFACE_INDEX)"; return 1; }
+  [ -n "$index" ] || { echo "the emulator has no touch or pointer surface (no SEMU_RENDER_TOUCH_SURFACE_INDEX or SEMU_RENDER_POINTER_SURFACE_INDEX)"; return 1; }
   [ "$state/semu-render-evidence.log" = "${SEMU_INJECT_EVIDENCE:-}" ] || { echo "the emulator writes $state/semu-render-evidence.log, not ${SEMU_INJECT_EVIDENCE:-(none)}"; return 1; }
   line="$(tail -c +"${SEMU_INJECT_EVIDENCE_FROM:-1}" "$SEMU_INJECT_EVIDENCE" 2>/dev/null | grep "surface${index}_content=" | tail -1)"
   [ -n "$line" ] || { echo "no receipt of this launch draws surface $index yet"; return 1; }

@@ -61,7 +61,11 @@
     "doc": {
       "native": "Real 1x emulator output (was a 256x240 placeholder that corrupted integer placement).",
       "outputs": "The two pictures a Wii game can draw, chosen per game from the radial's Aspect or the menu's ASPECT row (visual.games.wii.<game>.output): Dolphin's platforms.<os>.outputs.wii arguments, the SEMU_RENDER_ASPECT and the bezel variant drawn for that output. Dolphin pins the answer at boot, so a change restarts the game after a confirming press.",
-      "game_fractional_below": "Screen (game) placement fills the screen fractionally when its whole step would be below 2: a 480-line picture holds only 1x on an 800-line screen. Bezel placement stays whole."
+      "game_fractional_below": "Screen (game) placement fills the screen fractionally when its whole step would be below 2: a 480-line picture holds only 1x on an 800-line screen. Bezel placement stays whole.",
+      "pointer": "Dolphin aims the Wii Remote IR pointer by the X pointer inside its window, scaled so its own letterboxed picture spans the IR range (XInput2.cpp:268-313). pointer_screen names the screen that pointer aims at: the launcher emits SEMU_RENDER_POINTER_SURFACE_INDEX, and libsemupreload hands Dolphin the point under the finger on the bezelled picture as the point Dolphin drew there, clamped to the picture, so the IR reaches the picture edges whatever the bezel."
+    },
+    "surface_mapping": {
+      "pointer_screen": "main"
     },
     "refresh_hz": 59.94,
     "outputs": [

@@ -113,7 +113,8 @@
     "save_states": "Save and load bind Dolphin's Save to Selected Slot and Load from Selected Slot (HotkeyManager.cpp:143,155, groups :320-321), the slot Increase/Decrease Selected State Slot moves, so the slot Semu shows is the one Dolphin uses. Dolphin keeps the selected slot in Qt.ini [Emulation] StateSlot (DolphinQt/Settings.cpp:576-584); Semu writes that file with slot 1 each launch, which is where Semu's counter starts too (MainWindow.cpp:300-301, 1582-1596 wrap 1..10).",
     "speed": "Dolphin 2606a (c77bbaa) ships desktop defaults that stutter on the Deck: single core (MainSettings.cpp:59-65, DEFAULT_CPU_THREAD true only on Android) and synchronous shader compiles (GraphicsSettings.cpp:110-111), so every new shader stalls a frame. Dolphin.ini [Core] CPUThread = True runs the GPU thread beside the CPU thread; a GameSettings INI that needs one core (98 say CPUThread = False) still wins, as GlobalGame is searched ahead of Base (Common/Config/Enums.h:39-47). GFX.ini ShaderCompilationMode = 2 is AsynchronousUberShaders, the UI's Hybrid Ubershaders (VideoConfig.h:43-49): an ubershader draws while the specialised shader compiles in the background, which OpenGL on radeonsi supports (OGLConfig.cpp:688-690). WaitForShadersBeforeStarting stays at Dolphin's False: with ubershaders on it would queue every ubershader pipeline and block the boot until all compiled (ShaderCache.cpp:69-75), a long black screen on the first boot after a release. visual.performance_overlay turns on ShowFPS, ShowSpeed and LogRenderTimeToFile, which writes one line per frame to Logs/render_times.txt and per VI to Logs/vblank_times.txt in the user directory (PerformanceMetrics.h:53-54, PerformanceTracker.cpp:187-198); Dolphin draws the overlay at the window's top-right (PerformanceMetrics.cpp:170-171), outside the 4:3 picture the compositor cuts on a 16:10 screen, so on the Deck the log is the measure.",
     "quit": "General/Stop is bound only on macOS: on Linux the supervisor reads every keyboard and quits the process group itself, so Ctrl+Q is Semu's alone there.",
-    "wiimote": "The Wii Remote, Nunchuk and Classic Controller read their buttons, d-pad, sticks and triggers from ${pad}, the SDL pad GCPadNew uses (Steam's virtual pad in Game Mode), with Dolphin's SDL control names; only motion (IMUAccelerometer, IMUGyroscope) reads ${wiimote}, the Deck's own controller through Dolphin's SteamDeck backend, which opens hidraw (SteamDeck.cpp:143,175). So the open Semu menu's EVIOCGRAB of the pads covers every Wii button, the Deck's grips (L4, R4, L5, R5), which Steam's template holds for its Hotkeys and Wii presets, reach no Wii control, and each name exists on the device it is read from (native_controls). The keyboard alternates on the XInput2 pointer device are written (`KEY` & !`Ctrl`): every Semu chord holds Ctrl, so a chord Steam types never also presses a Wii button. Keys are backticked: Dolphin lexes a bare digit as a number (ExpressionParser.cpp:172-181, 252-253), so the old Buttons/1 = 1|... and Buttons/2 = 2|... held 1 and 2 down for good."
+    "wiimote": "The Wii Remote, Nunchuk and Classic Controller read their buttons, d-pad, sticks and triggers from ${pad}, the SDL pad GCPadNew uses (Steam's virtual pad in Game Mode), with Dolphin's SDL control names; only motion (IMUAccelerometer, IMUGyroscope) reads ${wiimote}, the Deck's own controller through Dolphin's SteamDeck backend, which opens hidraw (SteamDeck.cpp:143,175). So the open Semu menu's EVIOCGRAB of the pads covers every Wii button, the Deck's grips (L4, R4, L5, R5), which Steam's template holds for its Hotkeys and Wii presets, reach no Wii control, and each name exists on the device it is read from (native_controls). The keyboard alternates on the XInput2 pointer device are written (`KEY` & !`Ctrl`): every Semu chord holds Ctrl, so a chord Steam types never also presses a Wii button. Keys are backticked: Dolphin lexes a bare digit as a number (ExpressionParser.cpp:172-181, 252-253), so the old Buttons/1 = 1|... and Buttons/2 = 2|... held 1 and 2 down for good.",
+    "pointer": "The Wii Remote IR reads the X pointer the right trackpad moves (IR/Up/Down/Left/Right = `Cursor Y-/Y+/X-/X+` on ${pointer}), and libsemupreload hands Dolphin that pointer on the bezelled picture as the point Dolphin drew there (wii surface_mapping.pointer_screen), so the IR follows the finger. The IR keeps Dolphin's own defaults, chosen to reach the screen edges in most games (Cursor.cpp:34-62): Vertical Offset 10, Total Yaw 25, Total Pitch 20, Auto-Hide off; with Auto-Hide on the pointer vanished 2.5 s after it last moved and no button brought it back (Cursor.cpp:139-163). Dolphin.ini [Interface] CursorVisibility = 0 (ShowCursor::Never, MainSettings.h:255-260) blanks the X arrow over the render window, so the one pointer seen is the game's own; Semu draws no arrow on Wii (its cursor is for touch screens only)."
   },
   "controller_modes": [
     {
@@ -190,10 +191,10 @@
       "D-Pad/Down = (`Down` & !`Ctrl`)|`${pad}:Pad S`",
       "D-Pad/Left = (`Left` & !`Ctrl`)|`${pad}:Pad W`",
       "D-Pad/Right = (`Right` & !`Ctrl`)|`${pad}:Pad E`",
-      "IR/Vertical Offset = 12.",
-      "IR/Total Yaw = 19.",
-      "IR/Total Pitch = 22.",
-      "IR/Auto-Hide = True",
+      "IR/Vertical Offset = 10.",
+      "IR/Total Yaw = 25.",
+      "IR/Total Pitch = 20.",
+      "IR/Auto-Hide = False",
       "IR/Up = `Cursor Y-`",
       "IR/Down = `Cursor Y+`",
       "IR/Left = `Cursor X-`",
@@ -315,6 +316,7 @@
         "[Interface]",
         "ConfirmStop = False",
         "UsePanicHandlers = False",
+        "CursorVisibility = 0",
         "",
         "[Semu Controller Modes]",
         "@lines:controller_mode_profiles"
