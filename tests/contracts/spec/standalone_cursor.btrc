@@ -63,11 +63,11 @@ class StandaloneCursorSpec {
             "every composed frame carries the last pointer sample before the renderer reads it");
         string cursor = StandaloneCursorText.between(compose, "class void cursor(", "\n    }\n");
         contract.expect(StandaloneCursorText.ordered(cursor, ["pthread_mutex_lock(&SemuComposeSampleLock);", "memcpy(&pointer, &SemuComposeSample, sizeof(struct SemuComposePointerSample));", "pthread_mutex_unlock(&SemuComposeSampleLock);",
-                "SemuCursorPolicy.fill(SemuComposition.touch_index, pointer.known && pointer.inside,", "(int)pointer.pointer_x, (int)pointer.pointer_y, pointer.pressed,", "&frame->cursor.visible, &frame->cursor.x, &frame->cursor.y, &frame->cursor.pressed);"]),
-            "the frame's cursor is the sample copied under its lock, through the policy, shown only inside the window");
+                "SemuCursorPolicy.fill(SemuComposition.touch_index, pointer.known && pointer.inside,", "(int)pointer.pointer_x, (int)pointer.pointer_y, pointer.pressed, SemuCursorPolicy.fresh(pointer.serial, &SemuComposition.cursor_serial),", "&frame->cursor.visible, &frame->cursor.x, &frame->cursor.y, &frame->cursor.pressed);"]),
+            "the frame's cursor is the sample copied under its lock, through the policy, shown only inside the window, marked fresh on the first frame after an event");
         string sample = StandaloneCursorText.between(compose, "class void sample(", "\n    }\n");
         contract.expect(StandaloneCursorText.ordered(sample, ["pthread_mutex_lock(&SemuComposeSampleLock);", "SemuComposeSample.known = true;", "SemuComposeSample.inside = inside;", "SemuComposeSample.pressed = pressed;",
-                "SemuComposeSample.pointer_x = pointerX;", "SemuComposeSample.pointer_y = pointerY;", "pthread_mutex_unlock(&SemuComposeSampleLock);"]),
+                "SemuComposeSample.pointer_x = pointerX;", "SemuComposeSample.pointer_y = pointerY;", "SemuComposeSample.serial = SemuComposeSample.serial + 1;", "pthread_mutex_unlock(&SemuComposeSampleLock);"]),
             "a sample from the toolkit's input thread is written whole under its lock");
     }
 

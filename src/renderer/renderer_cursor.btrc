@@ -66,8 +66,9 @@ class RendererCursor {
             return false;
         }
         bool moved = state->known != 0 && (cursor->x != state->x || cursor->y != state->y || cursor->pressed != state->pressed);
-        bool held = cursor->pressed != 0;  // a held press is activity: a drag that pauses keeps its arrow, and a first sample shows only when pressed
-        if (moved || held) { state->active_ms = now; }
+        bool held = cursor->pressed != 0;  // a held press is activity: a drag that pauses keeps its arrow
+        bool reported = cursor->visible == 2;  // an event-driven sample (Azahar): even the first one is motion; a polled first one shows only when pressed
+        if (moved || held || reported) { state->active_ms = now; }
         state->known = 1;
         state->x = cursor->x;
         state->y = cursor->y;

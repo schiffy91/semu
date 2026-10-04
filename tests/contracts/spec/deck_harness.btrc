@@ -67,6 +67,17 @@ class DeckHarnessScripts {  // read as text: the parts of a run that only the De
         contract.contains(check, "grep -o 'step [0-9]* [a-z]*:[0-9.,]* -> [0-9]*,[0-9]*' \"$dir/inject.log\"", "input-check.sh reads where each step put the pointer from those notes");
         contract.contains(check, "shown=\"$(bash \"$here/cursor-arrow.sh\" \"$dir/cursor-$step.png\" \"${point%,*}\" \"${point#*,}\")\"; shown_status=$?", "and looks for Semu's arrow there in cursor-N");
         contract.contains(check, "elif [ \"$shown_status\" -eq 0 ] && [ \"$hidden_status\" -eq 1 ]; then verdict=ok", "arrow-N is ok only with the whole arrow in cursor-N and not in idle-N");
+        contract.contains(check, "if [ \"$shown_status\" -gt 1 ] || [ \"$hidden_status\" -gt 1 ]; then verdict=unchecked", "any status but found (0) or not found (1), a missing script's 127 included, is unchecked, never FAIL");
+        contract.contains(check, "for helper in inject.sh cursor-arrow.sh; do", "a run refuses to start without the injector and the arrow check beside it");
+        string evidence = check.substring(check.indexOf("evidence() {"), check.indexOf("\nwhile IFS= read -r line; do") - check.indexOf("evidence() {"));
+        int scans = 0;
+        int binary = 0;
+        for line in Strings.split(evidence, "\n") {
+            if (!line.contains("\"$dir/run.log\"")) { continue; }
+            scans = scans + (line.len() - line.replace("grep ", "").len()) / 5;
+            binary = binary + (line.len() - line.replace("grep -a ", "").len()) / 8;
+        }
+        contract.expect(scans >= 8 && scans == binary, f"every grep over run.log reads it as text (grep -a), as a restarted Dolphin leaves NUL bytes there ({binary} of {scans})");
     }
 
     class void run(Contract contract, Fixture fixture) {
@@ -148,6 +159,14 @@ class DeckHarnessPlan {  // input-check.sh --plan: the same functions a run sche
         ExecResult refused = DeckHarnessShell.run(script, ["--plan", bad]);
         contract.expect(refused.code == 2 && DeckHarnessShell.count(refused.stdout(), "not run: a token above is malformed") == 7, f"seven malformed cases (a trailing comma among them) are refused and the plan fails ({refused.code}): " + refused.stdout());
         contract.contains(refused.stdout(), "inject inject.sh 30 6 south tap:0.5,0.5\n", "the well-formed case among them is still planned");
+        string injector = PathTools.join(fixture.project, "tests/deck/inject.sh");
+        string keys = DeckHarnessShell.run(injector, ["--plan", "0", "6", "key:ctrl+down", "key:ctrl+backspace", "key:ctrl+up,ctrl+f5", "key:ctrl+space"]).stdout();
+        contract.contains(keys, "0 inject key:ctrl+down: xdotool key --delay 80 ctrl+Down\n", "Semu's key names become the X keysyms xdotool needs: down is Down");
+        contract.contains(keys, "6000 inject key:ctrl+backspace: xdotool key --delay 80 ctrl+BackSpace\n", "backspace is BackSpace");
+        contract.contains(keys, "xdotool key --delay 80 ctrl+Up, then ctrl+F5, a second apart\n", "each press of a double press is mapped, function keys included");
+        contract.contains(keys, "xdotool key --delay 80 ctrl+space\n", "names xdotool already reads stay as they are");
+        contract.contains(FileSystem.readText(injector), "send key --delay 80 \"$(keysyms \"$chord\")\" || sent=$?", "a run types the mapped keysyms the plan prints");
+        contract.contains(text, "inject key:ctrl+backspace: xdotool key --delay 80 ctrl+BackSpace\n", "the players page's Back is typed as a key X knows");
     }
 }
 

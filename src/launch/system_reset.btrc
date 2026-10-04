@@ -33,7 +33,7 @@ class SemuSystemReset {
         if (!launch.semuHome.isEmpty() && !launch.system.isEmpty()) {
             SemuSettingsStore.removePath(launch.semuHome, ["visual", "systems", launch.system]);
             SemuSettingsStore.removePath(launch.semuHome, ["visual", "games", launch.system]);
-            SemuSettingsStore.removePath(launch.semuHome, ["input", "systems", launch.system]);
+            SemuSettingsStore.removePath(launch.semuHome, ["input", "systems", launch.system, "players"]);  // the radial's own input choices; play_mode and other settings stay
         }
         for kind in ["bezel", "shader", "placement"] {  // the defaults, live, as absolute selects
             SemuVariantChoice choice = launch.variants.choice(kind);

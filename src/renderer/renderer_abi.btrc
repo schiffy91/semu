@@ -109,7 +109,7 @@ struct SemuRenderPointerResult {
 };
 
 struct SemuRenderCursorGl {  // appended to ABI 3, read only when struct_size covers it
-    int visible;
+    int visible;  // 0 none, 1 a polled pointer, 2 a pointer event reported since the last frame
     int x;  // framebuffer pixels from the top-left
     int y;
     int pressed;

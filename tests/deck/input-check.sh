@@ -145,6 +145,9 @@ if [ "${1:-}" = --plan ]; then  # the timelines a run would follow, from the sam
   exit "$status"
 fi
 
+for helper in inject.sh cursor-arrow.sh; do  # copied to the Deck together, or a run types nothing or judges nothing
+  [ -f "$here/$helper" ] || { echo "input-check: $here/$helper is missing; copy tests/deck/inject.sh and tests/deck/cursor-arrow.sh beside input-check.sh" >&2; exit 64; }
+done
 pad="$1"; cases="$2"; out="$(mkdir -p "$3" && cd "$3" && pwd -P)"
 roms=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs
 cli="$HOME/Applications/Semu/bin/semu-deck-cli"
@@ -177,21 +180,21 @@ arrows() {  # each move or tap inject.sh sent: Semu's whole arrow at the pointer
   grep -o 'step [0-9]* [a-z]*:[0-9.,]* -> [0-9]*,[0-9]*' "$dir/inject.log" 2>/dev/null | while read -r _ step _ _ point; do
     shown="$(bash "$here/cursor-arrow.sh" "$dir/cursor-$step.png" "${point%,*}" "${point#*,}")"; shown_status=$?
     hidden="$(bash "$here/cursor-arrow.sh" "$dir/idle-$step.png" "${point%,*}" "${point#*,}")"; hidden_status=$?
-    if [ "$shown_status" -eq 2 ] || [ "$hidden_status" -eq 2 ]; then verdict=unchecked
+    if [ "$shown_status" -gt 1 ] || [ "$hidden_status" -gt 1 ]; then verdict=unchecked  # 2 no ImageMagick, 127 no script: no verdict either way
     elif [ "$shown_status" -eq 0 ] && [ "$hidden_status" -eq 1 ]; then verdict=ok
     else verdict=FAIL; fi
     note "arrow-$step: $verdict (cursor-$step $shown; idle-$step $hidden)"
   done
 }
-evidence() {  # what the case left: the X key adapter, each action by source, the touches, the journal, the receipts, the saved choices
-  note "x-listener: $(grep -o 'semu: listening for keys on X display [^ ]*' "$dir/run.log" | sed 's/.* //' | tr '\n' ' ')($(grep -c 'semu: listening for keys on X display' "$dir/run.log") lines)"
-  grep -o 'semu: action [^ ]* ([a-z]*)' "$dir/run.log" | sort | uniq -c | while read -r count _ _ action source; do note "action: $action $source x$count"; done
-  note "deduplicated: $(grep -c 'already ran from another input source' "$dir/run.log")"
-  note "menu-holds: $(grep -c 'semu: the menu holds' "$dir/run.log") gave-back: $(grep -c 'semu: the menu gave' "$dir/run.log")"  # the modal menu: grabbed once every pad rested, released after the closing press
-  grep -E 'semu-retroarch: touch|semu-vulkan: touch' "$dir/run.log" > "$dir/touch.log"
+evidence() {  # what the case left: the X key adapter, each action by source, the touches, the journal, the receipts, the saved choices (grep -a: a restarted emulator can leave NUL bytes in run.log)
+  note "x-listener: $(grep -a -o 'semu: listening for keys on X display [^ ]*' "$dir/run.log" | sed 's/.* //' | tr '\n' ' ')($(grep -a -c 'semu: listening for keys on X display' "$dir/run.log") lines)"
+  grep -a -o 'semu: action [^ ]* ([a-z]*)' "$dir/run.log" | sort | uniq -c | while read -r count _ _ action source; do note "action: $action $source x$count"; done
+  note "deduplicated: $(grep -a -c 'already ran from another input source' "$dir/run.log")"
+  note "menu-holds: $(grep -a -c 'semu: the menu holds' "$dir/run.log") gave-back: $(grep -a -c 'semu: the menu gave' "$dir/run.log")"  # the modal menu: grabbed once every pad rested, released after the closing press
+  grep -a -E 'semu-retroarch: touch|semu-vulkan: touch' "$dir/run.log" > "$dir/touch.log"
   note "touch: $(grep -c 'semu-retroarch: touch' "$dir/touch.log") retroarch, $(grep -c 'semu-vulkan: touch' "$dir/touch.log") vulkan"
   head -12 "$dir/touch.log" | sed 's/^/touch-line: /' >> "$dir/result"
-  grep -o 'semu-renderer: cursor [a-z]* [0-9-]*,[0-9-]* ms=[0-9]*' "$dir/run.log" | head -20 \
+  grep -a -o 'semu-renderer: cursor [a-z]* [0-9-]*,[0-9-]* ms=[0-9]*' "$dir/run.log" | head -20 \
     | awk -v zero="$start_ms" '{ split($5, pair, "="); printf "renderer-cursor: %s at %s t=%.3f\n", $3, $4, (pair[2] - zero) / 1000 }' >> "$dir/result"
   arrows
   if [ -n "$game" ] && [ -f "$state/semu-render-actions.bin" ]; then  # emptied when this session started

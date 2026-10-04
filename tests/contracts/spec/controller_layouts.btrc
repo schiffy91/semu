@@ -79,10 +79,10 @@ class LayoutsTimingSpec {  // the paced timeline and the press count
         Vector<int> chord = [KEY_LEFTALT, KEY_F5];
         Vector<SemuKeyStep> steps = SemuPacedTyper.steps(chord, 3, 40, 40);
         Vector<string> timeline = [];
-        for step in steps { timeline.push(Strings.fromInt(step.at) + (step.down ? "+" : "-") + (step.code == KEY_F5 ? "F5" : "Alt")); }
+        for step in steps { timeline.push(Strings.fromInt(step.offsetMs) + (step.down ? "+" : "-") + (step.code == KEY_F5 ? "F5" : "Alt")); }
         contract.expect(timeline.join(" ").equals("0+Alt 0+F5 40-F5 40-Alt 80+Alt 80+F5 120-F5 120-Alt 160+Alt 160+F5 200-F5 200-Alt"), "each press holds 40 ms and the next waits 40 ms, the modifier around each: " + timeline.join(" "));
         Vector<SemuKeyStep> fast = SemuPacedTyper.steps(chord, 2, 5, 0);
-        contract.expect(fast.size() == 8 && fast.get(2).at == 30 && fast.get(4).at == 60, "a press or a gap under 30 ms is lengthened to 30: the emulator would miss it");
+        contract.expect(fast.size() == 8 && fast.get(2).offsetMs == 30 && fast.get(4).offsetMs == 60, "a press or a gap under 30 ms is lengthened to 30: the emulator would miss it");
         contract.expect(SemuXTest.keycode(KEY_F5) == KEY_F5 + 8, "XTest types the X keycode, the evdev code plus eight");
         contract.expect(SemuControllerLayouts.presses(0, 0, 1) == 1 && SemuControllerLayouts.presses(1, 0, 2) == 1 && SemuControllerLayouts.presses(0, 2, 4) == 2 && SemuControllerLayouts.presses(3, 1, 4) == 2 && SemuControllerLayouts.presses(1, 1, 4) == 4, "presses from the shared index wrap the sorted listing; landing where it is takes a full cycle, never none");
     }
@@ -184,14 +184,14 @@ class LayoutsPageSpec {  // the players page as the supervisor runs it
 }
 
 class LayoutsRendererSpec {  // the renderer draws the page from the file and names the layouts
-    class void apply(struct RendererPostUiState* ui, int action, int slot, int reserved) {  // one fresh record through the post-UI state
+    class void apply(struct RendererPostUiState* postUi, int action, int slot, int reserved) {  // one fresh record through the post-UI state
         struct SemuActionRecord record;
         memset(&record, 0, sizeof(record));
         record.action = action;
         record.slot = slot;
         record.reserved = reserved;
         record.monotonic_ms = RendererClock.milliseconds();
-        RendererMenuModel.apply(ui, &record, RendererClock.milliseconds());
+        RendererMenuModel.apply(postUi, &record, RendererClock.milliseconds());
     }
 
     class void run(Contract contract, Fixture fixture) {

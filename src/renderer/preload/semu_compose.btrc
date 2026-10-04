@@ -43,6 +43,7 @@ struct SemuComposeState {
     __fn_ptr<int, struct SemuRenderPointerMap*, struct SemuRenderPointerQuery*, struct SemuRenderPointerResult*> map_pointer;
     int touch_index;  // SEMU_RENDER_TOUCH_SURFACE_INDEX, -1 without a touch screen: gates the cursor
     int pointer_index;  // SEMU_RENDER_POINTER_SURFACE_INDEX, -1 unless the emulator aims its window pointer at a screen (Dolphin's Wii Remote IR)
+    int cursor_serial;  // the last sample serial a frame carried, read and written at present only
 };
 
 struct SemuComposePointerSample {  // the window pointer the emulator last reported, framebuffer pixels from the top left
@@ -51,6 +52,7 @@ struct SemuComposePointerSample {  // the window pointer the emulator last repor
     bool pressed;
     float pointer_x;
     float pointer_y;
+    int serial;  // bumped per reported event, so the first frame carrying one counts it as motion
 };
 
 struct SemuComposeState SemuComposition;
@@ -95,6 +97,7 @@ class SemuCompose {
         SemuComposeSample.pressed = pressed;
         SemuComposeSample.pointer_x = pointerX;
         SemuComposeSample.pointer_y = pointerY;
+        SemuComposeSample.serial = SemuComposeSample.serial + 1;
         pthread_mutex_unlock(&SemuComposeSampleLock);
     }
 
@@ -104,7 +107,7 @@ class SemuCompose {
         memcpy(&pointer, &SemuComposeSample, sizeof(struct SemuComposePointerSample));
         pthread_mutex_unlock(&SemuComposeSampleLock);
         SemuCursorPolicy.fill(SemuComposition.touch_index, pointer.known && pointer.inside,
-            (int)pointer.pointer_x, (int)pointer.pointer_y, pointer.pressed,
+            (int)pointer.pointer_x, (int)pointer.pointer_y, pointer.pressed, SemuCursorPolicy.fresh(pointer.serial, &SemuComposition.cursor_serial),
             frame->framebuffer_width, frame->framebuffer_height,
             &frame->cursor.visible, &frame->cursor.x, &frame->cursor.y, &frame->cursor.pressed);
     }

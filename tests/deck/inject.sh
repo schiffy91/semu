@@ -21,7 +21,8 @@
 #   inject.sh --plan FIRST GAP TOKEN...                   # "MS inject TOKEN: what" per X token; sends nothing
 #   inject.sh --choose MOUNTINFO SOCKETS GAME DISPLAY...  # the display rule alone: the injector display or "refused: why"
 #
-# key:CHORD types CHORD (xdotool key --delay 80: the key is held about 40 ms); key:A,B types A, then B
+# key:CHORD types CHORD (xdotool key --delay 80: the key is held about 40 ms), its key names mapped to the
+# X keysyms xdotool needs (ctrl+down types ctrl+Down: a name in the wrong case is ignored); key:A,B types A, then B
 # a second later, so a second press lands inside Semu's 3 s confirm window (Reset, Aspect). move:FX,FY moves the
 # pointer to the fractions FX,FY of the touch screen as drawn now: parked at the top left, then moved
 # relatively, as Steam's trackpad mouse moves it. tap:FX,FY moves the same way, then clicks for
@@ -40,12 +41,35 @@ fraction() {  # FX,FY: prints "FX FY" when both are numbers from 0 to 1
   printf '%s\n' "$1" | awk -F, 'NF == 2 && $1 ~ /^(0|1|0?\.[0-9]+|1\.0+)$/ && $2 ~ /^(0|1|0?\.[0-9]+|1\.0+)$/ { print $1, $2; found = 1 } END { exit !found }'
 }
 
+keysyms() {  # CHORD: Semu's lowercase key names (input.json, the cases) as the X keysyms xdotool needs, which are case-sensitive
+  local word mapped result="" IFS=+
+  for word in $1; do
+    case "$word" in
+      up) mapped=Up ;; down) mapped=Down ;; left) mapped=Left ;; right) mapped=Right ;;
+      backspace) mapped=BackSpace ;; escape) mapped=Escape ;; enter|return) mapped=Return ;; tab) mapped=Tab ;;
+      delete) mapped=Delete ;; insert) mapped=Insert ;; home) mapped=Home ;; end) mapped=End ;;
+      pageup) mapped=Page_Up ;; pagedown) mapped=Page_Down ;;
+      f[1-9]|f1[0-2]) mapped="F${word#f}" ;;
+      *) mapped="$word" ;;
+    esac
+    result="${result:+$result+}$mapped"
+  done
+  printf '%s\n' "$result"
+}
+
 describe() {  # TOKEN: what an X token does (nothing for a pad token); fails on a malformed X token
+  local chord rest typed=""
   case "$1" in
     key:*) case "${1#key:}" in ''|,*|*,|*,,*|*[!A-Za-z0-9_+,]*) return 1 ;; esac  # A,B: a second press inside a confirm window
+           rest="${1#key:}"
+           while :; do  # the keysyms each press types, as a run sends them
+             chord="${rest%%,*}"; typed="${typed:+$typed, then }$(keysyms "$chord")"
+             [ "$chord" = "$rest" ] && break
+             rest="${rest#*,}"
+           done
            case "${1#key:}" in
-             *,*) echo "xdotool key --delay 80 $(printf '%s' "${1#key:}" | sed 's/,/, then /g'), a second apart" ;;
-             *) echo "xdotool key --delay 80 ${1#key:}" ;;
+             *,*) echo "xdotool key --delay 80 $typed, a second apart" ;;
+             *) echo "xdotool key --delay 80 $typed" ;;
            esac ;;
     move:*) fraction "${1#move:}" > /dev/null || return 1; echo "park the pointer, then mousemove_relative to ${1#move:} of the touch screen" ;;
     tap:*) fraction "${1#tap:}" > /dev/null || return 1; echo "park, mousemove_relative to ${1#tap:} of the touch screen, mousedown 1, 0.15 s, mouseup 1" ;;
@@ -187,7 +211,7 @@ for token in "$@"; do
         sent=0; rest="${token#key:}"
         while :; do
           chord="${rest%%,*}"
-          send key --delay 80 "$chord" || sent=$?
+          send key --delay 80 "$(keysyms "$chord")" || sent=$?
           [ "$chord" = "$rest" ] && break
           rest="${rest#*,}"; sleep 1
         done

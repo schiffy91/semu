@@ -31,20 +31,20 @@ int SemuXTestAttempted = 0;
 struct SemuTypedLog {  // the contracts' seam: while recording, play() keeps its steps instead of typing them
     int recording;
     int count;
-    int at[SEMU_TYPED_STEPS];
+    int offset_ms[SEMU_TYPED_STEPS];
     int code[SEMU_TYPED_STEPS];
     int down[SEMU_TYPED_STEPS];
 };
 
 struct SemuTypedLog SemuTypedSteps;
 
-class SemuKeyStep {  // one key edge AT milliseconds after the typing began
-    public int at;
+class SemuKeyStep {  // one key edge offsetMs milliseconds after the typing began
+    public int offsetMs;
     public int code;
     public bool down;
 
-    public SemuKeyStep(int at, int code, bool down) {
-        self.at = at;
+    public SemuKeyStep(int offsetMs, int code, bool down) {
+        self.offsetMs = offsetMs;
         self.code = code;
         self.down = down;
     }
@@ -161,23 +161,23 @@ class SemuPacedTyper {
         if (SemuTypedSteps.recording != 0) {
             for step in steps {
                 if (SemuTypedSteps.count >= SEMU_TYPED_STEPS) { break; }
-                SemuTypedSteps.at[SemuTypedSteps.count] = step.at;
+                SemuTypedSteps.offset_ms[SemuTypedSteps.count] = step.offsetMs;
                 SemuTypedSteps.code[SemuTypedSteps.count] = step.code;
                 SemuTypedSteps.down[SemuTypedSteps.count] = step.down ? 1 : 0;
                 SemuTypedSteps.count++;
             }
             return true;
         }
-        bool x = SemuXTest.ready();
-        if (!x && !SemuUinputKeyboard.open()) { return false; }
+        bool xTestReady = SemuXTest.ready();
+        if (!xTestReady && !SemuUinputKeyboard.open()) { return false; }
         int elapsed = 0;
         Vector<int> typed = [];
         for step in steps {
-            if (step.at > elapsed) {
-                usleep((unsigned int)((step.at - elapsed) * 1000));
-                elapsed = step.at;
+            if (step.offsetMs > elapsed) {
+                usleep((unsigned int)((step.offsetMs - elapsed) * 1000));
+                elapsed = step.offsetMs;
             }
-            if (x) { SemuXTest.key(step.code, step.down); } else { SemuUinputKeyboard.key(step.code, step.down); }
+            if (xTestReady) { SemuXTest.key(step.code, step.down); } else { SemuUinputKeyboard.key(step.code, step.down); }
             if (step.down && !typed.contains(step.code)) { typed.push(step.code); }
         }
         SemuKeyEcho.expect(typed, SemuClock.milliseconds() + (long long)SEMU_ECHO_MS);  // the keys come back as X keys; none is a Semu chord, and none runs twice

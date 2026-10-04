@@ -2,7 +2,9 @@
 // pointer: RetroArch's bridge (runtime_bridge.btrc, from its window pointer) and the standalone
 // compositor (preload/semu_compose.btrc, from Azahar's semu_pointer_sample). It lives beside the
 // RetroArch bridge because only this directory reaches RetroArch's build. The renderer then shows
-// the arrow on motion or a press and hides it when idle (renderer_cursor.btrc).
+// the arrow on motion or a press and hides it when idle (renderer_cursor.btrc). RetroArch's bridge
+// polls the pointer every frame, so its first sample is only a position; Azahar reports a sample only
+// on a mouse event, so a sample new since the last frame is motion: visible 2 says so.
 
 class SemuCursorPolicy {
     class bool shown(int touchIndex, bool allowed, int screenX, int screenY, int framebufferWidth, int framebufferHeight) {  // a touch system, a pointer the game may read, in the window
@@ -10,13 +12,19 @@ class SemuCursorPolicy {
             && screenX < framebufferWidth && screenY < framebufferHeight;
     }
 
-    class void fill(int touchIndex, bool allowed, int screenX, int screenY, bool pressed, int framebufferWidth, int framebufferHeight,
+    class void fill(int touchIndex, bool allowed, int screenX, int screenY, bool pressed, bool fresh, int framebufferWidth, int framebufferHeight,
                     int* visible, int* cursorX, int* cursorY, int* cursorPressed) {  // the frame's cursor fields: the pointer where it shows, zeros elsewhere
         bool shown = SemuCursorPolicy.shown(touchIndex, allowed, screenX, screenY, framebufferWidth, framebufferHeight);
-        *visible = shown ? 1 : 0;
+        *visible = shown ? (fresh ? 2 : 1) : 0;  // 2: an event the emulator reported since the last frame
         *cursorX = shown ? screenX : 0;
         *cursorY = shown ? screenY : 0;
         *cursorPressed = shown && pressed ? 1 : 0;
+    }
+
+    class bool fresh(int serial, int* consumed) {  // true once per new event-driven sample: the frame that first carries it
+        bool result = serial != *consumed;
+        *consumed = serial;
+        return result;
     }
 
     class int touchIndex(const char* value) {  // SEMU_RENDER_TOUCH_SURFACE_INDEX: the touch screen's index, -1 when unset or not a number

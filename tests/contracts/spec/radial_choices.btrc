@@ -98,7 +98,11 @@ class RadialFitSpec {  // the Fit toggle: live, per system, never the fractional
         contract.expect(RadialBed.record(wii, 0, SemuActions.placementSelect(), 0, 0) && RadialBed.record(wii, 1, SemuActions.placementSelect(), 1, 0) && RadialBed.record(wii, 2, SemuActions.placementSelect(), 0, 0), "from fit, Fit goes to bezel, screen, bezel: never back to the fractional fit");
         SemuLaunchPlan wiiu = RadialBed.launch(fixture, "wiiu", "fit-wiiu", "", "Zelda.wux");
         SemuActionExecutor.execute(wiiu, "visual.placement.next", SEMU_SOURCE_X11);
-        contract.expect(InputDeliveryTools.records(wiiu.stateDir) == 1 && RadialBed.record(wiiu, 0, SemuActions.placementSelect(), -1, 0) && !FileSystem.isFile(PathTools.join(wiiu.semuHome, "semu.json")), "without a bezel to place, Fit journals 81/-1 (FIT: NO BEZEL HERE) and saves nothing");
+        contract.expect(InputDeliveryTools.records(wiiu.stateDir) == 1 && RadialBed.record(wiiu, 0, SemuActions.placementSelect(), -1, 0) && !FileSystem.isFile(PathTools.join(wiiu.semuHome, "semu.json")), "without a bezel to place, Fit journals 81/-1 (FIT: NO BEZEL) and saves nothing");
+        SemuLaunchPlan bare = RadialBed.launch(fixture, "gba", "fit-bezel-off", "", "Advance.gba");
+        SemuActionExecutor.execute(bare, "visual.bezels.toggle", SEMU_SOURCE_X11);
+        SemuActionExecutor.execute(bare, "visual.placement.next", SEMU_SOURCE_X11);
+        contract.expect(!bare.bezelsOn && RadialBed.record(bare, 1, SemuActions.placementSelect(), -1, 0) && SemuJson.get(RadialBed.saved(bare), "visual.systems.gba.placement").isNull() && bare.variants.placement.index == 1, "with the bezel switched off, Fit journals 81/-1 (FIT: NO BEZEL), keeps the placement and saves none, so turning the bezel back on brings back the screen the owner had");
         SemuLaunchPlan nds = RadialBed.launch(fixture, "nds", "fit-nds", "", "Mario.nds");
         SemuActionExecutor.execute(nds, "visual.placement.next", SEMU_SOURCE_X11);
         contract.expect(RadialBed.record(nds, 0, SemuActions.placementSelect(), 1, 0) && SemuJson.textAt(RadialBed.saved(nds), "visual.systems.nds.placement").equals("game"), "the DS starts on the whole shell and Fit moves it to the screen placement (both screens, whole steps, no shell)");
@@ -128,14 +132,15 @@ class RadialAspectSpec {  // Aspect: prompt, confirm, save for this game, restar
 
 class RadialResetSpec {  // Reset to Default: ask, then remove this system's own choices and journal the defaults
     class void run(Contract contract, Fixture fixture) {
-        string settings = "{\"visual\":{\"systems\":{\"gba\":{\"bezel_variant\":\"arctic\",\"shader_variant\":\"agb001\",\"placement\":\"bezel\"},\"snes\":{\"placement\":\"game\"}}},\"input\":{\"systems\":{\"gba\":{\"x\":1}}}}";
+        string settings = "{\"visual\":{\"systems\":{\"gba\":{\"bezel_variant\":\"arctic\",\"shader_variant\":\"agb001\",\"placement\":\"bezel\"},\"snes\":{\"placement\":\"game\"}}},\"input\":{\"systems\":{\"gba\":{\"play_mode\":\"docked\",\"players\":{\"1\":{\"pad\":1,\"layout\":\"classic\"}}}}}}";
         SemuLaunchPlan gba = RadialBed.launch(fixture, "gba", "reset", settings, "Advance.gba");
         contract.expect(gba.variants.bezel.index == 1 && gba.variants.shader.index == 1 && gba.variants.placement.index == 0, "gba starts on its saved arctic shell, AGB-001 shader and bezel placement");
         SemuSystemReset.execute(gba, 20000LL);
         contract.expect(InputDeliveryTools.records(gba.stateDir) == 1 && RadialBed.record(gba, 0, SemuActions.resetNotice(), 0, 1) && FileSystem.readText(PathTools.join(gba.semuHome, "semu.json")).equals(settings), "the first Reset press asks for a second (85/0, reserved 1) and changes no setting");
         SemuSystemReset.execute(gba, 22000LL);
         JSONValue saved = RadialBed.saved(gba);
-        contract.expect(SemuJson.get(saved, "visual.systems.gba").isNull() && SemuJson.get(saved, "input.systems.gba").isNull() && SemuJson.textAt(saved, "visual.systems.snes.placement").equals("game"), "the confirming press removes gba's own choices, and only gba's");
+        contract.expect(SemuJson.get(saved, "visual.systems.gba").isNull() && SemuJson.get(saved, "input.systems.gba.players").isNull() && SemuJson.textAt(saved, "visual.systems.snes.placement").equals("game"), "the confirming press removes gba's own choices (its players' pads and layouts), and only gba's");
+        contract.expect(SemuJson.textAt(saved, "input.systems.gba.play_mode").equals("docked"), "a setting the radial does not own (a Switch-style play_mode) survives Reset");
         contract.expect(RadialBed.record(gba, 1, SemuActions.bezelSelect(), 0, 0) && RadialBed.record(gba, 2, SemuActions.shaderSelect(), 0, 0) && RadialBed.record(gba, 3, SemuActions.placementSelect(), 1, 0) && RadialBed.record(gba, 4, SemuActions.resetNotice(), 1, 0), "then journals the defaults (the shell, the GBA LCD, the screen placement) and 85/1");
         contract.expect(gba.variants.bezel.index == 0 && gba.variants.placement.index == 1 && SemuSupervisorRuntime.relaunch == 0, "the launch follows the defaults, live, without a restart");
         SemuSystemReset.execute(gba, 30000LL);

@@ -54,7 +54,8 @@ class SemuVisualCycle {
     }
 
     class void step(SemuLaunchPlan launch, SemuVariantChoice choice, int delta) {  // wraps through the choices (bezels and shaders end on none)
-        if (!choice.available()) {  // nothing to choose here: the renderer says so
+        bool hidden = choice.kind.equals("placement") && !launch.bezelsOn;  // Fit with the bezel off would change nothing on screen and surprise later
+        if (!choice.available() || hidden) {  // nothing to choose here: the renderer says so
             SemuActionJournal.append(launch, SemuVisualCycle.code(choice.kind), -1);
             if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: no " + choice.kind + " to choose for " + launch.system + " here"); }
             return;

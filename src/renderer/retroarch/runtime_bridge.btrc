@@ -121,7 +121,7 @@ class SemuRetroArchFrameBridge {
         SemuCursorPolicy.fill(SemuRetroArchSurfaces.touch_index,
             SemuRetroArchPointer.hover_allowed != 0,
             (int)SemuRetroArchPointer.hover_x, (int)SemuRetroArchPointer.hover_y,
-            SemuRetroArchPointer.hover_pressed != 0,
+            SemuRetroArchPointer.hover_pressed != 0, false,  // polled every frame: a first sample is only a position
             frame->framebuffer_width, frame->framebuffer_height,
             &frame->cursor.visible, &frame->cursor.x, &frame->cursor.y, &frame->cursor.pressed);
         semuRetroArchDisplayUnlock(video_state_get_ptr());
