@@ -415,11 +415,11 @@ class StandaloneSpecContract {
     class void launches(Contract contract) {
         StandaloneSpecBed bed = StandaloneSpecBed();
         SemuLaunchPlan dolphin = bed.launch("dolphin", "wii", "Sports.rvz");
-        StandaloneSpecContract.expectArgv(contract, bed, dolphin, ["-u", PathTools.join(bed.stateRoot("dolphin"), "dolphin-user"), "--config", "Dolphin.Display.Fullscreen=True",
-            "--config", "SYSCONF.IPL.AR=False", "-b", "-e"], bed.romPath("wii", "Sports.rvz"));
+        StandaloneSpecContract.expectArgv(contract, bed, dolphin, ["--config", "SYSCONF.IPL.AR=False", "-u", PathTools.join(bed.stateRoot("dolphin"), "dolphin-user"), "--config", "Dolphin.Display.Fullscreen=True",
+            "-b", "-e"], bed.romPath("wii", "Sports.rvz"));  // the standard output's arguments come first: args end on -e and the game
         // Wii titles render 4:3, not anamorphic 16:9 squashed by the 4:3 pin, on macOS too
-        string macosArguments = SemuJson.strings(bed.fixture.model.emulator("dolphin").platform("macos").get("args")).join(" | ");
-        contract.contains(macosArguments, "--config | SYSCONF.IPL.AR=False", "dolphin macos turns the Wii widescreen answer off");
+        string macosArguments = SemuJson.strings(SemuJson.get(bed.fixture.model.emulator("dolphin").platform("macos"), "outputs.wii.standard.args")).join(" | ");
+        contract.contains(macosArguments, "--config | SYSCONF.IPL.AR=False", "dolphin macos turns the Wii widescreen answer off in the standard output");
         SemuLaunchPlan pcsx2 = bed.launch("pcsx2", "ps2", "Shadow.chd");
         StandaloneSpecContract.expectArgv(contract, bed, pcsx2, ["-batch", "-fullscreen", "--"], bed.romPath("ps2", "Shadow.chd"));
         contract.expect(pcsx2.environment.contains("XDG_CONFIG_HOME=" + PathTools.join(bed.stateRoot("pcsx2"), "config")), "pcsx2 reads its config from the state root");

@@ -22,7 +22,11 @@
       "height": 2160
     },
     "placement": "fit",
-    "performance_overlay": false
+    "performance_overlay": false,
+    "placements": [
+      "bezel",
+      "game"
+    ]
   },
   "ui": {
     "theme": "slate-es-de",

@@ -169,7 +169,7 @@ const BezelRenderer = (() => {
       }
       return { x, y, width, height };
     }
-    static integerPlacement(nativeHeight, screen, placement, aspect, areaWidth, areaHeight, canvas) {  // the picture at a whole multiple of its native height
+    static integerPlacement(nativeHeight, screen, placement, aspect, areaWidth, areaHeight, canvas, fractionalBelow) {  // the picture at a whole multiple of its native height; FRACTIONAL_BELOW: a 3D-era system's opt-in for game
       let area = screen.image;
       if (!area.set) {
         const tubeWidth = float(screen.tube.width * canvas.width), tubeHeight = float(screen.tube.height * canvas.height);
@@ -186,7 +186,7 @@ const BezelRenderer = (() => {
       let multiple = integer(float(pictureHeight / native));
       if (placement === "game") multiple = Math.min(integer(float(areaHeight / native)), integer(float(areaWidth / float(native * shown))));
       let steps = multiple;
-      if (multiple < 1) {
+      if (multiple < 1 || (placement === "game" && multiple < (fractionalBelow || 0))) {  // a system that opts in (display.scaling.game_fractional_below) fills the screen in game placement; bezel stays whole
         const down = float(areaHeight / native), across = float(areaWidth / float(native * shown));
         steps = placement === "game" ? (down < across ? down : across) : float(pictureHeight / native);
       }
@@ -218,7 +218,7 @@ const BezelRenderer = (() => {
       if (variant.layered && variant.canvasCover) canvas = Geometry.coverKeepingTubes(variant, preview.screens.length, areaWidth, areaHeight, canvas);
       const first = variant.screens[0];
       if (preview.placement !== "fit" && preview.screens.length === 1 && first && (first.image.set || first.tube.set)) {
-        canvas = Geometry.integerPlacement(preview.screens[0].h, first, preview.placement, Geometry.singleAspect(preview), areaWidth, areaHeight, canvas);
+        canvas = Geometry.integerPlacement(preview.screens[0].h, first, preview.placement, Geometry.singleAspect(preview), areaWidth, areaHeight, canvas, preview.game_fractional_below);
       }
       return canvas;
     }

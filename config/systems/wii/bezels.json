@@ -2,17 +2,20 @@
   "schema_version": 4,
   "enabled": true,
   "default_variant": "tv",
-  "widescreen_variant": "tv_wide",
   "variants": [
     {
       "id": "tv",
       "label": "Living room CRT",
-      "bezel": "tv-soqueroeu-wii"
+      "bezel": "tv-soqueroeu-wii",
+      "outputs": {
+        "widescreen": "tv_wide"
+      }
     },
     {
       "id": "tv_wide",
       "label": "Living room CRT (widescreen)",
-      "bezel": "tv-soqueroeu-wii-16x9"
+      "bezel": "tv-soqueroeu-wii-16x9",
+      "output": "widescreen"
     },
     {
       "id": "speakers",

@@ -6,13 +6,17 @@
 #include <string.h>
 
 class RendererVariantKeys {
-    class int schema() { return 1; }  // the file's first line: schema=1
+    class int schema() { return 2; }  // the file's first line: schema=2 (placements and outputs joined bezels and shaders)
     class string systemKey() { return "system"; }  // the system the file was written for; a stale one is ignored
     class string bezelsKey() { return "bezels"; }  // variant ids, then none, joined by '|'
     class string bezelLabelsKey() { return "bezel_labels"; }  // toast-safe upper-case labels in the same order
     class string shadersKey() { return "shaders"; }
     class string shaderLabelsKey() { return "shader_labels"; }
-    class string currentKey() { return "current"; }  // bezel,shader indices the launch started on
+    class string placementsKey() { return "placements"; }  // bezel, game, then a default outside the toggle (fit)
+    class string placementLabelsKey() { return "placement_labels"; }
+    class string outputsKey() { return "outputs"; }  // the system's outputs, e.g. standard and widescreen; empty with one
+    class string outputLabelsKey() { return "output_labels"; }
+    class string currentKey() { return "current"; }  // bezel,shader,placement,output indices the launch started on (-1: nothing to choose)
     class string tokenKey() { return "token"; }  // equals the launch's SEMU_MENU_VARIANTS_TOKEN: another session's file is ignored
     class string tokenVariable() { return "SEMU_MENU_VARIANTS_TOKEN"; }
     class int labelCapacity() { return 31; }  // one toast line; the composed toast is cut to the toast's width

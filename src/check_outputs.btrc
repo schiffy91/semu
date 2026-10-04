@@ -1,0 +1,51 @@
+// A system that declares two outputs (Wii 4:3 and 16:9) must be drawable in each: every bound
+// emulator that names outputs for it gives arguments for each one, every bezel variant drawn for an
+// output names a declared one, and the default bezel has a partner for every output.
+
+import Library.JSON;
+import Library.Vector;
+import ./lib/json.btrc;
+import ./model.btrc;
+import ./resolve.btrc;
+import ./emit/rendering.btrc;
+
+class SemuOutputChecker {
+    class Vector<string> ids(SemuSystem system) {
+        Vector<string> result = [];
+        JSONValue outputs = SemuJson.get(system.definition, "display.outputs");
+        for (int index = 0; outputs.isArray() && index < outputs.size(); index++) { result.push(SemuJson.textAt(outputs.at(index), "id")); }
+        return result;
+    }
+
+    class void check(SemuModel model, SemuPlan plan, SemuSystem system, SemuDiagnostics diagnostics) {
+        Vector<string> outputs = SemuOutputChecker.ids(system);
+        if (outputs.isEmpty()) { return; }
+        if (outputs.size() < 2) { diagnostics.add(system.file, "display.outputs", "declare two or more outputs, or none"); }
+        if (!outputs.contains(SemuRenderEnvironment.defaultOutput(system))) { diagnostics.add(system.file, "display.default_output", "names no declared output"); }
+        for binding in system.bindingsFor(plan.platform) {
+            SemuEmulator emulator = model.emulator(binding.emulator);
+            JSONValue declared = emulator == null ? null : SemuJson.get(emulator.platform(plan.platform), "outputs." + system.id);
+            for output in outputs {
+                if (declared == null || !declared.isObject() || !SemuJson.get(declared, output + ".args").isArray()) {
+                    diagnostics.add(system.file, "display.outputs", f"{binding.emulator} gives no platforms.{plan.platform}.outputs.{system.id}.{output}.args: the game would draw one picture for both");
+                }
+            }
+        }
+        JSONValue variants = system.bezels == null ? null : system.bezels.get("variants");
+        for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
+            JSONValue variant = variants.at(index);
+            string own = SemuJson.textAt(variant, "output");
+            if (!own.isEmpty() && !outputs.contains(own)) { diagnostics.add(system.file, "bezels.variants", "variant " + SemuJson.textAt(variant, "id") + " is drawn for an undeclared output " + own); }
+            JSONValue partners = variant.get("outputs");
+            if (partners == null || !partners.isObject()) { continue; }
+            for key in partners.keys() {
+                string partner = SemuJson.text(partners.get(key));
+                if (!SemuRenderEnvironment.variantOutput(system, partner).equals(key)) { diagnostics.add(system.file, "bezels.variants", "variant " + SemuJson.textAt(variant, "id") + " names " + partner + " for " + key + ", which is not drawn for it"); }
+            }
+        }
+        if (!SemuJson.boolAt(system.bezels, "enabled", false)) { return; }
+        for output in outputs {
+            if (SemuRenderEnvironment.outputVariant(system, SemuJson.textAt(system.bezels, "default_variant"), output).isEmpty()) { diagnostics.add(system.file, "bezels.default_variant", "has no bezel for the " + output + " output"); }
+        }
+    }
+}

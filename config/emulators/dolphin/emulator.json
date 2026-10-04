@@ -47,8 +47,6 @@
         "${state_root}/dolphin-user",
         "--config",
         "Dolphin.Display.Fullscreen=True",
-        "--config",
-        "SYSCONF.IPL.AR=False",
         "-b",
         "-e"
       ],
@@ -123,7 +121,27 @@
           "doc": "Dormant until a pack is placed: the library is <paths.mods>/dolphin/textures/<game id>, one link per game folder into ${state_root}/dolphin-user/Load/Textures, for GameCube and Wii alike."
         }
       },
-      "render_preload": true
+      "render_preload": true,
+      "outputs": {
+        "wii": {
+          "standard": {
+            "args": [
+              "--config",
+              "SYSCONF.IPL.AR=False"
+            ]
+          },
+          "widescreen": {
+            "args": [
+              "--config",
+              "SYSCONF.IPL.AR=True",
+              "--config",
+              "Graphics.Settings.CustomAspectRatioWidth=16",
+              "--config",
+              "Graphics.Settings.CustomAspectRatioHeight=9"
+            ]
+          }
+        }
+      }
     },
     "macos": {
       "executable": "${asset_root}/Applications/Dolphin.app/Contents/MacOS/Dolphin",
@@ -168,8 +186,6 @@
         "${state_root}/dolphin-user",
         "--config",
         "Dolphin.Display.Fullscreen=True",
-        "--config",
-        "SYSCONF.IPL.AR=False",
         "-b",
         "-e"
       ],
@@ -177,14 +193,34 @@
         "open": "native"
       },
       "window_shim": true,
-      "render_preload": true
+      "render_preload": true,
+      "outputs": {
+        "wii": {
+          "standard": {
+            "args": [
+              "--config",
+              "SYSCONF.IPL.AR=False"
+            ]
+          },
+          "widescreen": {
+            "args": [
+              "--config",
+              "SYSCONF.IPL.AR=True",
+              "--config",
+              "Graphics.Settings.CustomAspectRatioWidth=16",
+              "--config",
+              "Graphics.Settings.CustomAspectRatioHeight=9"
+            ]
+          }
+        }
+      }
     }
   },
   "doc": {
     "runtime": "Linux executes the pinned source-built Dolphin package from the bundle asset root; macOS runs the Dolphin.app from the same pin.",
     "rendering": "OpenGL is forced in the managed profile. render_preload composes Semu's bezel and shader at the swap, reading the emulator's back buffer and writing the composed frame back: on Linux libsemupreload at the SDL/EGL swap, on macOS the window shim at -[NSOpenGLContext flushBuffer].",
     "user_directory": "The explicit -u path keeps Dolphin's live Config tree under Semu's per-emulator state root on every platform.",
-    "aspect": "--config SYSCONF.IPL.AR=False keeps Wii titles at 4:3: the Wii's default widescreen answer renders them anamorphic 16:9, which the profile's CustomStretch 4:3 pin in GFX.ini would squash. SYSCONF lives in the seeded NAND, not an INI, so the command-line layer is the only route; it outranks game INIs, Dolphin writes it into the session's SYSCONF at boot (BootManager), and GameCube boots ignore it.",
+    "aspect": "Each Wii output is a set of --config arguments (platforms.<os>.outputs.wii, appended after args by the launcher). The standard output passes SYSCONF.IPL.AR=False: the Wii's default widescreen answer renders titles anamorphic 16:9, which the profile's CustomStretch 4:3 pin in GFX.ini would squash. The widescreen output passes SYSCONF.IPL.AR=True and moves the CustomStretch pin to 16:9 (Graphics.Settings.CustomAspectRatioWidth/Height), so a 16:9 title draws the SEMU_RENDER_ASPECT rectangle the 16:9 TV cuts. SYSCONF lives in the seeded NAND, not an INI, so the command-line layer is the only route; Dolphin writes it into the session's SYSCONF at boot (BootManager) and GameCube boots ignore it. The command-line layer sits below game INIs (Enums.h SEARCH_ORDER puts LocalGame and GlobalGame first), so a GameSettings INI that sets the aspect would win; none shipped with 2606a or seeded by Semu does. The output is chosen per game (visual.games.wii.<game>.output), so a 4:3 title is never stretched by another game's 16:9 choice; switching it restarts the game.",
     "playlist": "Dolphin 2606a reads .m3u and .m3u8 itself (Boot.cpp ReadM3UFile), resolving entries against the playlist's folder, so it receives the .m3u unchanged (playlist.open native). Core.AutoDiscChange in the profile lets it insert the next entry when the game asks for another disc.",
     "content": "What Dolphin c77bbaa0 boots, by its last suffix (Source/Core/Core/Boot/Boot.cpp:212 playlists, 238-240 disc images and executables, 268 .dff, 271 .wad, 278 .json mod descriptors). No archive: a .zip or .7z ends in \"Could not recognize file\". The .m3u here is what lets its playlist.open stay native."
   },

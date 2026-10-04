@@ -1,0 +1,200 @@
+// Radial v2 spec, the renderer's and the launcher's side: a placement select changes the geometry
+// after the toast's two frames and survives a context reset; slot -1 and the prompts show their
+// toasts; bezel placement is always whole, screen placement fills only where a 3D-era system opts in,
+// and the DS screen placement drops the shell for the whole-step layout over the background; the
+// Wii's 16:9 output is its own environment, bezel and Dolphin arguments; chords never collide.
+
+#include <stdlib.h>
+#include <string.h>
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/lib/settings.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/check.btrc;
+import ../../../src/emit/rendering.btrc;
+import ../../../src/emit/render_variants.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/renderer/action_abi.btrc;
+import ../../../src/renderer/renderer_config.btrc;
+import ../../../src/renderer/renderer_menu.btrc;
+import ../../../src/renderer/renderer_menu_raster.btrc;
+import ../../../src/renderer/renderer_live_switch.btrc;
+import ../../../src/renderer/renderer_placement.btrc;
+import ./live_variants.btrc;
+import ./placement.btrc;
+import ./standalone.btrc;
+import ./emulator_hotkeys.btrc;
+
+class RadialRenderLive {  // records 81, 82 and 85 as the post-UI phase and the game phase apply them
+    class void run(Contract contract, Fixture fixture) {
+        string state = PathTools.join(fixture.scratch, "radial-render/wii");
+        SemuRenderVariantSet set = SemuRenderVariants.write(fixture.plan, fixture.model.system("wii"), "dolphin", state);
+        LiveVariantTools.environment(fixture, state, set.token);
+        setenv("SEMU_RENDER_SYSTEM_ID", "wii", 1);
+        setenv("SEMU_MENU_ITEMS", fixture.plan.input.menuItemsShown("label", set.shown()).join("|"), 1);
+        setenv("SEMU_MENU_ACTIONS", fixture.plan.input.menuItemsShown("action", set.shown()).join("|"), 1);
+        struct RendererPostUiState post;
+        memset(&post, 0, sizeof(struct RendererPostUiState));
+        RendererMenuModel.initialize(&post);
+        contract.expect(post.catalog.placement_count == 3 && post.catalog.output_count == 2 && post.placement_shown == 2 && post.output_shown == 0 && post.item_count == 10, "the renderer reads wii's three placements and two outputs, starting on fit and 4:3, ten menu rows");
+        long long now = RendererClock.milliseconds();
+        struct SemuActionRecord record;
+        LiveVariantTools.fill(&record, SemuActions.placementSelect(), 0, now, 1ULL);
+        RendererMenuModel.apply(&post, &record, now);
+        contract.expect(post.placement_request == 0 && post.apply_countdown == 2 && post.placement_shown == 0 && strcmp(post.toast, "FIT: BEZEL") == 0, "an 81 record asks for the bezel placement after two frames and toasts FIT: BEZEL");
+        struct RendererConfig config;
+        memset(&config, 0, sizeof(struct RendererConfig));
+        struct RendererLiveChoice live;
+        RendererLiveSwitch.reset(&live);
+        int bezel = -1;
+        int shader = -1;
+        bool firstFrame = RendererVariantRequests.due(&post, live.bezel, live.shader, &bezel, &shader);
+        int early = RendererLiveSwitch.applyPlacement(&post, &config, &live);
+        bool secondFrame = RendererVariantRequests.due(&post, live.bezel, live.shader, &bezel, &shader);
+        int applied = RendererLiveSwitch.applyPlacement(&post, &config, &live);
+        contract.expect(!firstFrame && early == SEMU_RENDER_SWITCH_NONE && !secondFrame && applied == SEMU_RENDER_SWITCH_APPLIED && config.placement == 2 && live.placement == 2 && post.placement_request == -1, "the placement applies on the second frame, sets config.placement to bezel (2) and reloads nothing");
+        config.placement = 0;  // a new context loads the launch's fit again
+        RendererLiveSwitch.reapply(&config, &live);
+        contract.expect(config.placement == 2, "a context reset starts on the live placement");
+        contract.expect(strcmp(RendererMenuRaster.rowValue(&post, 6), "BEZEL") == 0 && strcmp(RendererMenuRaster.rowValue(&post, 7), "4:3") == 0 && RendererMenuRaster.height(&post) == 72 + 10 * 43 + 52, "the FIT row reads BEZEL, the ASPECT row 4:3, and the ten-row menu draws taller than eight rows");
+        LiveVariantTools.fill(&record, SemuActions.outputSelect(), 1, now, 2ULL);
+        record.reserved = 1;
+        RendererMenuModel.apply(&post, &record, now);
+        contract.expect(strcmp(post.toast, "16:9: AGAIN TO REBOOT GAME") == 0 && post.output_shown == 0, "an output prompt says the second press reboots the game and changes nothing yet");
+        LiveVariantTools.fill(&record, SemuActions.outputSelect(), 1, now, 3ULL);
+        RendererMenuModel.apply(&post, &record, now);
+        contract.expect(strcmp(post.toast, "ASPECT 16:9: REBOOTING") == 0 && post.output_shown == 1, "the confirming record says the game reboots on 16:9");
+        LiveVariantTools.fill(&record, SemuActions.bezelSelect(), -1, now, 4ULL);
+        RendererMenuModel.apply(&post, &record, now);
+        contract.expect(strcmp(post.toast, "BEZEL: NONE HERE") == 0 && post.bezel_request == -1, "slot -1 shows the unavailable toast and asks for nothing");
+        LiveVariantTools.fill(&record, SemuActions.resetNotice(), 0, now, 5ULL);
+        record.reserved = 2;
+        RendererMenuModel.apply(&post, &record, now);
+        bool restart = strcmp(post.toast, "RESET: AGAIN TO REBOOT GAME") == 0;
+        LiveVariantTools.fill(&record, SemuActions.resetNotice(), 1, now, 6ULL);
+        RendererMenuModel.apply(&post, &record, now);
+        contract.expect(restart && strcmp(post.toast, "RESET TO DEFAULTS") == 0, "the reset notices: the prompt that warns of the reboot, then RESET TO DEFAULTS");
+        LiveVariantTools.clear();
+    }
+}
+
+class RadialRenderGeometry {  // whole steps for the bezel, the 3D-era opt-in for the screen, the DS without its shell
+    class void run(Contract contract, Fixture fixture) {
+        struct RendererCanvasRect canvas;
+        struct RendererCanvasRect picture;
+        for systemId in ["wii", "gc", "ps2", "dreamcast"] {
+            PlacementSpecGeometry.place(fixture, systemId, 640, 480, 1, 1280, 800, &canvas, &picture);
+            int game = PlacementSpecGeometry.rounded(picture.height);
+            PlacementSpecGeometry.place(fixture, systemId, 640, 480, 2, 1280, 800, &canvas, &picture);
+            int bezel = PlacementSpecGeometry.rounded(picture.height);
+            contract.expect(game == 800 && bezel == 480, systemId + " at 1280x800: the screen placement fills the 800 lines (it opts in below a 2x step), the bezel placement stays at 1x: " + Strings.fromInt(game) + ", " + Strings.fromInt(bezel));
+        }
+        int widths[2] = {1280, 1920};
+        int heights[2] = {800, 1080};
+        for (int size = 0; size < 2; size++) {
+            PlacementSpecGeometry.place(fixture, "snes", 256, 224, 1, widths[size], heights[size], &canvas, &picture);
+            bool snes = PlacementSpecGeometry.rounded(picture.height) % 224 == 0;
+            PlacementSpecGeometry.place(fixture, "gb", 160, 144, 2, widths[size], heights[size], &canvas, &picture);
+            bool gameBoy = PlacementSpecGeometry.rounded(picture.height) % 144 == 0;
+            PlacementSpecGeometry.place(fixture, "psp", 480, 272, 2, widths[size], heights[size], &canvas, &picture);
+            bool psp = PlacementSpecGeometry.rounded(picture.height) % 272 == 0;
+            contract.expect(snes && gameBoy && psp, f"at {widths[size]}x{heights[size]} snes's screen placement and the Game Boy's and PSP's bezel placement stay on whole steps: no system that did not opt in goes fractional");
+        }
+        contract.expect(RendererPlacement.shellHidden(1, 2) && !RendererPlacement.shellHidden(2, 2) && !RendererPlacement.shellHidden(0, 2) && !RendererPlacement.shellHidden(1, 1), "only the screen placement on two screens drops the shell");
+        string compositor = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_compositor.btrc"));
+        contract.expect(compositor.contains("if (bezel && fixed && RendererPlacement.shellHidden(config->placement, frame->surface_count)) { geometry->shell_hidden = 1; }") && compositor.contains("if (bezel && fixed && geometry->shell_hidden == 0) {") && compositor.contains("bool dressed = bezel && geometry->shell_hidden == 0;"), "the compositor skips the shell for it, keeps the background, draws the computed whole-step layout (dual_layout's contract) and plain screens");
+    }
+}
+
+class RadialRenderOutputs {  // the Wii's 16:9 output: its own environment, bezel and Dolphin arguments, per game
+    class void run(Contract contract, Fixture fixture) {
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuPlan plan = SemuResolver.plan(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"visual\":{\"games\":{\"wii\":{\"Sports\":{\"output\":\"widescreen\"}}}}}", diagnostics);
+        SemuSystem wii = fixture.model.system("wii");
+        plan.tokens.put("rom", "/roms/wii/Sports.rvz");
+        string wide = SemuRenderEnvironment.compile(plan, wii, "dolphin", "/state/dolphin", diagnostics).join("\n") + "\n";
+        contract.expect(wide.contains("SEMU_RENDER_ASPECT=16:9\n") && wide.contains("SEMU_RENDER_BEZEL_ID=tv-soqueroeu-wii-16x9\n") && !wide.contains("SEMU_RENDER_BEZEL_ID_B="), "a Wii game on 16:9 draws a 16:9 picture in the 16:9 TV, with no 4:3 partner");
+        SemuRenderVariantSet set = SemuRenderVariants.choose(plan, wii);
+        contract.expect(set.bezel.ids.join("|").equals("tv_wide|none") && set.output.index == 1 && set.bezel.defaultIndex == 0, "on 16:9 the bezel choices are the bezels drawn for it, then none");
+        plan.tokens.put("rom", "/roms/wii/Other.rvz");
+        string other = SemuRenderEnvironment.compile(plan, wii, "dolphin", "/state/dolphin", diagnostics).join("\n") + "\n";
+        contract.expect(other.contains("SEMU_RENDER_ASPECT=4:3\n") && other.contains("SEMU_RENDER_BEZEL_ID=tv-soqueroeu-wii\n") && other.contains("SEMU_RENDER_BEZEL_ID_B=tv-soqueroeu-wii-16x9\n"), "another Wii game stays 4:3 with the 16:9 partner: the output is saved per game, so no 4:3 title is stretched");
+        StandaloneSpecBed bed = StandaloneSpecBed();
+        bed.fixture.plan.settings = SemuSettingsStore.withPath(bed.fixture.plan.settings, ["visual", "games", "wii", "Sports", "output"], 0, JSONValue.makeString("widescreen"));
+        string widescreen = bed.launch("dolphin", "wii", "Sports.rvz").argv.join(" | ");
+        string standard = bed.launch("dolphin", "wii", "Other.rvz").argv.join(" | ");
+        string cube = bed.launch("dolphin", "gc", "Melee.iso").argv.join(" | ");
+        contract.expect(widescreen.contains("--config | SYSCONF.IPL.AR=True | --config | Graphics.Settings.CustomAspectRatioWidth=16 | --config | Graphics.Settings.CustomAspectRatioHeight=9") && !widescreen.contains("IPL.AR=False"), "Dolphin boots the 16:9 game with the Wii's widescreen answer and the 16:9 stretch pin");
+        contract.expect(standard.contains("--config | SYSCONF.IPL.AR=False") && !standard.contains("CustomAspectRatio") && !cube.contains("SYSCONF"), "the 4:3 game keeps the 4:3 answer, and a GameCube boot passes neither");
+        SemuDiagnostics broken = SemuDiagnostics();
+        JSONValue outputs = SemuJson.get(fixture.model.emulator("dolphin").definition, "platforms.linux.outputs.wii");
+        outputs.set("widescreen", JSONValue.makeObject());
+        contract.expect(!SemuChecker.check(fixture.model, fixture.plan, broken) && broken.render().contains("outputs.wii.widescreen.args"), "semu check refuses an output an emulator gives no arguments for: " + broken.render());
+        outputs.set("widescreen", SemuJson.get(Fixture("linux-desktop").model.emulator("dolphin").definition, "platforms.linux.outputs.wii.widescreen"));
+    }
+}
+
+class RadialChordParts {  // "Ctrl+Shift+F" as its modifiers and its final key; "Ctrl++" ends on +
+    class string key(string chord) {
+        if (chord.endsWith("++")) { return "+"; }
+        int plus = Strings.rfind(chord, "+");
+        return plus < 0 ? chord : chord.substring(plus + 1, chord.len() - plus - 1);
+    }
+
+    class Vector<string> modifiers(string chord) {
+        string head = chord.substring(0, chord.len() - RadialChordParts.key(chord).len());
+        Vector<string> result = [];
+        for part in Strings.split(head, "+") { if (!part.isEmpty()) { result.push(part); } }
+        return result;
+    }
+
+    class bool fires(string bound, string sent) {  // a superset matcher fires BOUND when SENT holds its key and every one of its modifiers, and more
+        if (bound.equals(sent) || !RadialChordParts.key(bound).equals(RadialChordParts.key(sent))) { return false; }
+        Vector<string> extra = RadialChordParts.modifiers(sent);
+        for modifier in RadialChordParts.modifiers(bound) { if (!extra.contains(modifier)) { return false; } }
+        return extra.size() > RadialChordParts.modifiers(bound).size();
+    }
+}
+
+class RadialChordCollisions {  // Dolphin's and PCSX2's matchers accept extra modifiers: no chord Steam sends may end on a key they bind with fewer
+    class void run(Contract contract, Fixture fixture) {
+        Vector<string> sent = EmulatorHotkeyTools.steamChords(fixture);
+        contract.expect(sent.contains("Ctrl+Shift+F") && sent.contains("Ctrl+Shift+G") && sent.contains("Ctrl+Shift+R"), "the radials send Fit, Aspect and Reset as Ctrl+Shift chords");
+        contract.expect(RadialChordParts.fires("Ctrl+A", "Ctrl+Shift+A") && !RadialChordParts.fires("Ctrl+A", "Ctrl+Shift+G") && !RadialChordParts.fires("Ctrl+Shift+A", "Ctrl+A") && RadialChordParts.key("Ctrl++").equals("+"), "the superset rule: Ctrl+A fires on Ctrl+Shift+A, never on another key or fewer modifiers");
+        int superset = 0;
+        for emulatorId in EmulatorHotkeyTools.emulators() {
+            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            JSONValue shortcuts = SemuJson.get(emulator.profile, "native_shortcuts");
+            if (!SemuJson.boolAt(shortcuts, "superset_modifiers", false)) { continue; }
+            superset++;
+            contract.expect(!SemuJson.textAt(shortcuts, "superset_source").isEmpty(), emulatorId + " cites the source of its superset matcher");
+            Vector<string> bound = [];
+            JSONValue rows = SemuJson.get(emulator.profile, "hotkeys.keymap");
+            for (int index = 0; rows.isArray() && index < rows.size(); index++) {
+                string action = SemuJson.textAt(rows.at(index), "action");
+                if (emulator.actions.contains(action) && !fixture.plan.input.chord(action).isEmpty()) { bound.push(fixture.plan.input.chord(action)); }
+            }
+            Vector<string> collisions = [];
+            for chord in sent { for own in bound { if (RadialChordParts.fires(own, chord)) { collisions.push(chord + " fires " + own); } } }
+            contract.expect(!bound.isEmpty() && collisions.isEmpty(), emulatorId + ": no chord Steam sends also fires one of its Ctrl bindings: " + collisions.join(", "));
+        }
+        contract.expect(superset == 2, f"Dolphin and PCSX2 declare their superset matchers ({superset})");
+    }
+}
+
+class RadialRenderSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        RadialRenderLive.run(contract, fixture);
+        RadialRenderGeometry.run(contract, fixture);
+        RadialRenderOutputs.run(contract, fixture);
+        RadialChordCollisions.run(contract, Fixture("steam-deck"));
+    }
+}

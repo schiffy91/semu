@@ -20,6 +20,7 @@ pipeline as the Lucide derivatives.
 
 | Semu file | Lucide source icon |
 | --- | --- |
+| `semu-aspect.png` | `ratio` |
 | `semu-back.png` | `undo-2` |
 | `semu-bezel-toggle.png` | `square-dashed` |
 | `semu-bezel.png` | `picture-in-picture-2` |
@@ -27,6 +28,7 @@ pipeline as the Lucide derivatives.
 | `semu-confirm.png` | `circle-check-big` |
 | `semu-down.png` | `circle-arrow-down` |
 | `semu-fast-forward.png` | `fast-forward` |
+| `semu-fit.png` | `scaling` |
 | `semu-fullscreen.png` | `scan` |
 | `semu-gamecube-controller.png` | Original Semu GameCube Controller line drawing |
 | `semu-load.png` | `folder-down` |
@@ -36,6 +38,7 @@ pipeline as the Lucide derivatives.
 | `semu-pause.png` | `circle-pause` |
 | `semu-previous.png` | `circle-chevron-left` |
 | `semu-quit.png` | `power` |
+| `semu-reset.png` | `rotate-ccw` |
 | `semu-rewind.png` | `rewind` |
 | `semu-save.png` | `save` |
 | `semu-screenshot.png` | `camera` |

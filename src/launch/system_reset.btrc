@@ -1,0 +1,41 @@
+// Reset to Default from the radial or the menu: a first press asks for a second within the confirm
+// window; the second removes this system's own choices from semu.json (its bezel, shader, placement,
+// each game's output, its input choices), journals the defaults as absolute selects the renderer
+// applies live, and restarts the game only when the running output was not the default.
+
+import Library.Vector;
+import ../lib/settings.btrc;
+import ../renderer/action_abi.btrc;
+import ./input_state.btrc;
+import ./journal.btrc;
+import ./plan.btrc;
+import ./relaunch.btrc;
+import ./visual_cycle.btrc;
+
+class SemuSystemReset {
+    class bool restarts(SemuLaunchPlan launch) {  // the game draws a non-default output, which only a restart changes
+        SemuVariantChoice output = launch.variants.output;
+        return output.available() && output.defaultIndex >= 0 && output.index != output.defaultIndex;
+    }
+
+    class void execute(SemuLaunchPlan launch, long long now) {
+        if (!SemuRelaunch.confirmed(SemuActions.resetNotice(), 0, now)) {
+            SemuRelaunch.arm(SemuActions.resetNotice(), 0, now);
+            SemuActionJournal.appendWith(launch, SemuActions.resetNotice(), 0, SemuSystemReset.restarts(launch) ? 2 : 1);
+            return;
+        }
+        SemuRelaunch.disarm();
+        bool restart = SemuSystemReset.restarts(launch);
+        if (!launch.semuHome.isEmpty() && !launch.system.isEmpty()) {
+            SemuSettingsStore.removePath(launch.semuHome, ["visual", "systems", launch.system]);
+            SemuSettingsStore.removePath(launch.semuHome, ["visual", "games", launch.system]);
+            SemuSettingsStore.removePath(launch.semuHome, ["input", "systems", launch.system]);
+        }
+        for kind in ["bezel", "shader", "placement"] {  // the defaults, live, as absolute selects
+            SemuVariantChoice choice = launch.variants.choice(kind);
+            if (choice.available() && choice.defaultIndex >= 0) { SemuVisualCycle.apply(launch, choice, choice.defaultIndex); }
+        }
+        SemuActionJournal.appendWith(launch, SemuActions.resetNotice(), 1, 0);
+        if (restart) { SemuRelaunch.request(); }
+    }
+}

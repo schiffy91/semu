@@ -148,20 +148,22 @@ class RendererStateFiles {
 }
 
 class RendererPostUiCompositor {
-    class void menuSize(int screenWidth, int screenHeight, int* width, int* height) {  // the largest whole multiple of the menu texture that fits
+    class int toastHeight() { return 72 + 8 * 43 + 52; }  // a toast sits in the eight-row menu's frame, at that menu's scale
+
+    class void menuSize(int screenWidth, int screenHeight, int textureHeight, int* width, int* height) {  // the largest whole multiple of the drawn menu texture that fits
         int across = screenWidth / SEMU_RENDER_MENU_WIDTH;
-        int down = screenHeight / SEMU_RENDER_MENU_HEIGHT;
+        int down = screenHeight / textureHeight;
         int scale = across < down ? across : down;
         if (scale >= 1) {
             *width = scale * SEMU_RENDER_MENU_WIDTH;
-            *height = scale * SEMU_RENDER_MENU_HEIGHT;
+            *height = scale * textureHeight;
             return;
         }
         float horizontal = (float)screenWidth / (float)SEMU_RENDER_MENU_WIDTH;  // a screen smaller than the texture: shrink to fit
-        float vertical = (float)screenHeight / (float)SEMU_RENDER_MENU_HEIGHT;
+        float vertical = (float)screenHeight / (float)textureHeight;
         float shrink = horizontal < vertical ? horizontal : vertical;
         *width = (int)((float)SEMU_RENDER_MENU_WIDTH * shrink);
-        *height = (int)((float)SEMU_RENDER_MENU_HEIGHT * shrink);
+        *height = (int)((float)textureHeight * shrink);
     }
 
     class bool upload(struct RendererGlApi* gl,
@@ -216,10 +218,11 @@ class RendererPostUiCompositor {
         if (mode == SEMU_RENDER_POST_NOTHING) { return true; }
         bool toastOnly = mode == SEMU_RENDER_POST_TOAST;
         if (toastOnly ? !RendererMenuRaster.renderToast(state) : !RendererMenuRaster.render(state, now)) { return false; }
-        if (!RendererPostUiCompositor.upload(gl, resources, state->menu_pixels, SEMU_RENDER_MENU_WIDTH, SEMU_RENDER_MENU_HEIGHT)) { return false; }
+        int drawn = toastOnly ? RendererPostUiCompositor.toastHeight() : RendererMenuRaster.height(state);  // the texture's top rows: a longer menu grows downward
+        if (!RendererPostUiCompositor.upload(gl, resources, state->menu_pixels, SEMU_RENDER_MENU_WIDTH, drawn)) { return false; }
         int width = 0;
         int height = 0;
-        RendererPostUiCompositor.menuSize(frame->framebuffer_width, frame->framebuffer_height, &width, &height);
+        RendererPostUiCompositor.menuSize(frame->framebuffer_width, frame->framebuffer_height, drawn, &width, &height);
         int x = (frame->framebuffer_width - width) / 2;
         int y = toastOnly ? frame->framebuffer_height - height : (frame->framebuffer_height - height) / 2;  // GL rows start at the bottom: the texture's top row at the screen's
         RendererPostUiCompositor.quad(gl, resources, frame, x, y, width, height);

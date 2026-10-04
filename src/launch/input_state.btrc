@@ -81,6 +81,10 @@ struct SemuSupervisorState {
     int dedupe_count;
     int modal_phase;  // SEMU_MODAL_*: whether the open menu holds the pads
     long long modal_since;  // when that phase began
+    int confirm_action;  // the journal code a first press armed (an output select or a reset), 0 for none
+    int confirm_slot;  // the choice it armed: only the same choice confirms
+    long long confirm_until_ms;  // the confirming press must come before this
+    int relaunch;  // set with quit: stop the emulator, then start the same game again on the new choice
 };
 
 struct SemuSupervisorState SemuSupervisorRuntime;

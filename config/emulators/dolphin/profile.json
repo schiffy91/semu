@@ -433,7 +433,9 @@
       "section": "[Hotkeys]"
     },
     "why": "Once Hotkeys.ini has a section, InputConfig::LoadConfig loads it and ControlGroup::LoadConfig reads every control the file leaves out as an empty expression; HotkeyManager::LoadDefaults (HotkeyManager.cpp:395-476) runs only without the file. Semu writes the whole [Hotkeys] section, so none of the defaults apply, among them Skylanders Portal on Ctrl+P, which would fire beside Toggle Pause.",
-    "fixed": []
+    "fixed": [],
+    "superset_modifiers": true,
+    "superset_source": "dolphin c77bbaa Source/Core/InputCommon/ControlReference/ExpressionParser.cpp:565-590: a hotkey expression fires when its key and modifiers are held, extra modifiers included (\"This also allows superset modifiers to function\"), so Ctrl+A also fires on Ctrl+Shift+A"
   },
   "native_controls": {
     "source": "dolphin 2606a Source/Core/InputCommon/ControllerInterface: SDL/SDLGamepad.h:17-30 (legacy Button N, Axis N+/-, Hat N NESW) and 383-427 (gamepad buttons, axes as XInput-signed halves, motion axes), SDL/SDLGamepad.cpp:93-103,131-136,220-221,472 (outputs and sensors); SteamDeck/SteamDeck.cpp:196-264; Xlib/XInput2.cpp:234-244 (combined modifiers), 441-461 (keys: XKeysymToString of the unshifted keysym, letters upper-cased), 482-493 (Click N, Cursor X/Y +/-)",

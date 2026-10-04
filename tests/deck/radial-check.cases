@@ -54,5 +54,5 @@ gc dolphin - 50 key:ctrl+k key:ctrl+j key:ctrl+shift+b -- Legend of Zelda, The -
 ps2 pcsx2 - 60 key:ctrl+k key:ctrl+j key:ctrl+shift+v -- Devil May Cry (USA).iso
 psp ppsspp - 45 key:ctrl+k key:ctrl+j key:ctrl+shift+b -- Daxter*.iso
 # 13. A system without bezels: visual.bezel.next "(keyboard)" then "no bezel to choose for wiiu
-#     here"; nothing journaled; Cemu keeps running.
+#     here"; journal 79/-1 (the toast BEZEL: NONE HERE); nothing saved; Cemu keeps running.
 wiiu cemu - 100 key:ctrl+shift+b -- MARIO KART 8 (US).wua

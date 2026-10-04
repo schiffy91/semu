@@ -99,8 +99,8 @@ class LiveVariantFileSpec {  // the catalog and a section come from the launch's
         contract.expect(strcmp(RendererVariantFile.label(&catalog, true, 1), "LARGE MAIN, SECOND RIGHT") == 0 && strcmp(RendererVariantFile.label(&catalog, false, 2), "OFF") == 0 && strcmp(RendererVariantFile.label(&catalog, true, 9), "") == 0, "live: catalog labels by index, empty past the end");
         contract.expect(!RendererVariantFile.catalog(path, "gba", token, &catalog) && catalog.loaded == 0, "live: another system's file in the same state dir is ignored");
         contract.expect(!RendererVariantFile.catalog(path, "nds", "another-launch", &catalog) && !RendererVariantFile.catalog(path, "nds", null, &catalog), "live: another launch's file, or none named, is ignored: a preview never replays a session's selects");
-        string stale = PathTools.join(fixture.scratch, "live/schema-2.env");
-        FileSystem.writeText(stale, FileSystem.readText(path).replace("schema=1\n", "schema=2\n"));
+        string stale = PathTools.join(fixture.scratch, "live/schema-1.env");
+        FileSystem.writeText(stale, FileSystem.readText(path).replace("schema=2\n", "schema=1\n"));
         contract.expect(!RendererVariantFile.catalog(stale, "nds", token, &catalog), "live: a file of another schema is ignored");
         struct RendererVariantOverlay overlay;
         contract.expect(RendererVariantFile.section(path, 1, 0, &overlay) && overlay.count > 3 && strcmp(RendererVariantFile.value(&overlay, "SEMU_RENDER_LAYOUT"), "main_right") == 0 && RendererVariantFile.value(&overlay, "SEMU_RENDER_ART") == null, "live: section [1,0] is the large-main-right layout and names no art");
@@ -149,7 +149,7 @@ class LiveVariantMenuSpec {  // the journal's selects and states as the post-UI 
         struct RendererPostUiState state;
         memset(&state, 0, sizeof(struct RendererPostUiState));
         RendererMenuModel.initialize(&state);
-        contract.expect(state.catalog.loaded == 1 && state.bezel_shown == 0 && state.shader_shown == 0 && state.bezel_request == -1 && state.shader_request == -1 && state.item_count == 7, "live: the post-UI state starts on the launch's choices with nothing requested");
+        contract.expect(state.catalog.loaded == 1 && state.bezel_shown == 0 && state.shader_shown == 0 && state.bezel_request == -1 && state.shader_request == -1 && state.placement_request == -1 && state.placement_shown == 0 && state.output_shown == -1 && state.item_count == 10, "live: the post-UI state starts on the launch's choices with nothing requested");
         long long now = RendererClock.milliseconds();
         struct SemuActionRecord bezel;
         LiveVariantTools.fill(&bezel, SemuActions.bezelSelect(), 1, now, 1ULL);

@@ -142,8 +142,10 @@ class RenderVariantCompleteness {  // every system, every combination: only scop
                     RenderVariantFile file = RenderVariantFile(FileSystem.readText(SemuRenderVariants.path(stateDir)));
                     Vector<string> launched = SemuRenderEnvironment.compile(plan, system, emulatorId, stateDir, diagnostics);
                     string cell = systemId + "/" + emulatorId + (overlay.equals("{}") ? "" : " with both switches off");
-                    contract.expect(set.written && file.value("schema").equals("1") && file.value("system").equals(systemId), cell + ": the variants file names its schema and system");
-                    contract.expect(file.value("current").equals(f"{set.bezel.index},{set.shader.index}") && file.section(set.bezel.index, set.shader.index).equals(RenderVariantTools.scopedText(launched, true)), cell + ": the launch's own section is exactly compile's scoped keys");
+                    contract.expect(set.written && file.value("schema").equals("2") && file.value("system").equals(systemId), cell + ": the variants file names its schema and system");
+                    int placement = set.placement.available() ? set.placement.index : -1;
+                    int output = set.output.available() ? set.output.index : -1;
+                    contract.expect(file.value("current").equals(f"{set.bezel.index},{set.shader.index},{placement},{output}") && file.section(set.bezel.index, set.shader.index).equals(RenderVariantTools.scopedText(launched, true)), cell + ": the launch's own section is exactly compile's scoped keys");
                     Vector<string> bezels = SemuRenderVariants.column(set.bezel, SemuRenderEnvironment.bezelVariantId(plan, system));
                     Vector<string> shaders = SemuRenderVariants.column(set.shader, SemuRenderEnvironment.shaderVariantId(plan, system));
                     contract.expect(file.names.size() == bezels.size() * shaders.size(), cell + f": one section per combination ({file.names.size()})");
@@ -183,7 +185,8 @@ class RenderVariantFileSpec {  // the DS file through the CLI, the computed layo
         contract.expect(RenderVariantTools.cliQuietly(words), "semu render-env --variants-file runs for nds");
         RenderVariantFile file = RenderVariantFile(FileSystem.readText(PathTools.join(directory, RendererActionJournal.variantsFileName())));
         contract.expect(file.names.size() == 21, f"nds: 7 bezels x 3 shaders make 21 sections ({file.names.size()})");
-        contract.expect(file.value("bezels").equals("shell|main_right|main_left|side_by_side|stacked|vertical|none") && file.value("shaders").equals("default|grid|none") && file.value("current").equals("0,0"), "nds: the choices in the settings page's order, then none; the launch starts on the defaults");
+        contract.expect(file.value("bezels").equals("shell|main_right|main_left|side_by_side|stacked|vertical|none") && file.value("shaders").equals("default|grid|none") && file.value("current").equals("0,0,0,-1"), "nds: the choices in the settings page's order, then none; the launch starts on the defaults, the whole shell placed and one output");
+        contract.expect(file.value("placements").equals("bezel|game") && file.value("placement_labels").equals("BEZEL|SCREEN") && file.value("outputs").isEmpty() && file.value("output_labels").isEmpty(), "nds: Fit toggles the shell and the screen placement; no second output");
         contract.expect(file.value("bezel_labels").equals("DUIMON SHELL|LARGE MAIN, SECOND RIGHT|LARGE MAIN, SECOND LEFT|SIDE BY SIDE|STACKED|DS VERTICAL SHELL|OFF") && file.value("shader_labels").equals("DS LCD|LCD GRID V2|OFF"), "nds: toast labels, upper case, none as OFF: " + file.value("bezel_labels"));
         contract.contains(file.section(1, 0), "SEMU_RENDER_LAYOUT=main_right\n", "nds [1,0] is the large-main-right layout");
         contract.contains(file.section(1, 0), "SEMU_RENDER_SHADER_PRESET=" + fixture.plan.assetRoot + "/", "sections carry absolute asset paths");
@@ -195,9 +198,10 @@ class RenderVariantFileSpec {  // the DS file through the CLI, the computed layo
         string wiiState = PathTools.join(fixture.scratch, "variants/wii-dolphin-file");
         SemuRenderVariants.write(fixture.plan, wii, "dolphin", wiiState);
         RenderVariantFile wide = RenderVariantFile(FileSystem.readText(SemuRenderVariants.path(wiiState)));
-        contract.expect(wide.value("bezels").equals("tv|tv_wide|speakers|none"), "wii offers tv, tv_wide, speakers and none");
+        contract.expect(wide.value("bezels").equals("tv|speakers|none"), "wii in 4:3 offers tv, speakers and none: the 16:9 TV is drawn only for the 16:9 output");
         contract.contains(wide.section(0, 0), "SEMU_RENDER_BEZEL_ID_B=tv-soqueroeu-wii-16x9\n", "wii's default tv carries its widescreen partner for 16:9 games");
-        contract.expect(!wide.section(1, 0).contains("_B=") && !wide.section(2, 0).contains("_B=") && !wide.section(2, 1).contains("_B="), "a chosen tv_wide or speakers bezel stays itself on 16:9 games");
+        contract.expect(!wide.section(1, 0).contains("_B=") && !wide.section(1, 1).contains("_B="), "the speakers bezel stays itself on 16:9 games");
+        contract.expect(wide.value("placements").equals("bezel|game|fit") && wide.value("placement_labels").equals("BEZEL|SCREEN|FIT") && wide.value("outputs").equals("standard|widescreen") && wide.value("output_labels").equals("4:3|16:9") && wide.value("current").equals("0,0,2,0"), "wii: Fit toggles bezel and screen from the default fit, and the 4:3 output runs: " + wide.value("current"));
     }
 }
 

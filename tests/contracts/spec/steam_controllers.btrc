@@ -53,19 +53,22 @@ class SteamControllerSpecText {  // pieces of a rendered template
 class SteamControllerSpecRadial {  // the quick ring, the menu radial and how a slot fires
     class void run(Contract contract, SteamInputDocument document) {
         string vdf = SteamInputVdf.render(document, SteamControllerSpecText.template(document, "neptune_full"));
-        Vector<string> ring = ["state.save", "state.load", "state.prev", "state.next", "visual.bezel.next", "visual.shader.next", "ui.menu", "ui.screenshot", "app.quit"];
-        contract.expect(document.slots("quick_slots").join(",").equals(ring.join(",")), "the quick ring is save, load, previous and next slot, bezel, shader, menu, screenshot, quit");
+        Vector<string> ring = ["state.save", "state.load", "state.prev", "state.next", "visual.bezel.next", "visual.shader.next", "visual.placement.next", "visual.output.next", "ui.menu", "ui.screenshot", "app.quit"];
+        contract.expect(document.slots("quick_slots").join(",").equals(ring.join(",")), "the quick ring is save, load, previous and next slot, bezel, shader, fit, aspect, menu, screenshot, quit");
         string quick = SteamControllerSpecText.group(vdf, "20");
         for (int index = 0; index < ring.size(); index++) {
             string head = "\"touch_menu_button_" + Strings.fromInt(index + 1) + "\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"key_press LEFT_CONTROL, ";
             contract.contains(quick, head + document.label(ring.get(index)) + ", " + document.icon(ring.get(index)), "ring slot " + Strings.fromInt(index + 1) + " sends " + ring.get(index));
         }
         contract.lacks(quick, "touch_menu_button_0", "the quick radial's centre is empty, so a click released there fires nothing");
-        contract.lacks(quick, "touch_menu_button_10", "the quick ring has exactly nine slots");
+        contract.lacks(quick, "touch_menu_button_12", "the quick ring has exactly eleven slots");
         string menu = SteamControllerSpecText.group(vdf, "21");
         contract.contains(menu, "\"touch_menu_button_0\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"key_press LEFT_CONTROL, Open Menu, semu-menu.png", "the menu radial's centre opens and closes the menu");
         Vector<string> steer = ["Menu Up", "Menu Down", "Menu Confirm", "Menu Back"];
         for (int index = 0; index < steer.size(); index++) { contract.contains(menu, "\"touch_menu_button_" + Strings.fromInt(index + 1) + "\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"key_press LEFT_CONTROL, " + steer.get(index), "the menu ring steers the Semu menu"); }
+        Vector<string> settings = ["Bezel On/Off, semu-bezel-toggle.png", "Shader On/Off, semu-shader-toggle.png", "Reset to Default, semu-reset.png"];
+        for (int index = 0; index < settings.size(); index++) { contract.contains(menu, "\"touch_menu_button_" + Strings.fromInt(index + 5) + "\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"key_press LEFT_CONTROL, " + settings.get(index), "the held menu ring also turns the bezel and the shader off and on and resets the system: " + settings.get(index)); }
+        contract.lacks(menu, "touch_menu_button_8", "the held menu ring has exactly seven slots");
         for identifier in ["20", "21", "22"] {
             string radial = SteamControllerSpecText.group(vdf, identifier);
             contract.contains(radial, "\"touchmenu_button_fire_type\" \"1\"", "a slot fires when the pad click on its icon is released (Steam's button release)");
@@ -73,6 +76,8 @@ class SteamControllerSpecRadial {  // the quick ring, the menu radial and how a 
             contract.expect(SteamControllerSpecText.icons(radial).size() >= 4 && SteamControllerSpecText.distinct(SteamControllerSpecText.icons(radial)), "radial " + identifier + " shows a different icon on every button: " + SteamControllerSpecText.icons(radial).join(" "));
         }
         for needle in ["key_press LEFT_SHIFT, Next Bezel, semu-bezel.png", "key_press B, Next Bezel, semu-bezel.png", "key_press LEFT_SHIFT, Next Shader, semu-shader.png", "key_press V, Next Shader, semu-shader.png"] { contract.contains(quick, needle, "Next Bezel and Next Shader press Ctrl+Shift+B and Ctrl+Shift+V"); }
+        for needle in ["key_press F, Fit (Bezel/Screen), semu-fit.png", "key_press G, Aspect (4:3/16:9), semu-aspect.png", "key_press LEFT_SHIFT, Fit (Bezel/Screen), semu-fit.png"] { contract.contains(quick, needle, "Fit and Aspect press Ctrl+Shift+F and Ctrl+Shift+G"); }
+        contract.contains(menu, "key_press R, Reset to Default, semu-reset.png", "Reset to Default presses Ctrl+Shift+R");
         JSONValue templates = document.templates();
         for (int index = 0; index < templates.size(); index++) { contract.lacks(SteamInputVdf.render(document, templates.at(index)), "key_press ESCAPE", "no template presses Esc, which exits RetroArch"); }
     }

@@ -13,7 +13,8 @@
 #
 # SEMU_REV=<rev> builds that commit instead of this checkout's tracked files; SEMU_PS2_BIOS=DIR
 # mounts a PS2 BIOS folder; WAIT seconds before the first chord (default 120); PLACEMENT=bezel
-# shows a handheld's whole shell instead of the cropped integer picture. Each case writes
+# shows a handheld's whole shell instead of the cropped integer picture; CHORDS="ctrl+shift+f ctrl+shift+r,ctrl+shift+r"
+# presses more radial chords after the menu, each with its toast and picture (a,b: twice, a second apart). Each case writes
 # OUT/<n>-<emulator>.result (actions seen, journal records, switch receipts, saved choices) and
 # captures to judge by eye: three in the two seconds after each chord, as software GL draws slowly.
 set -eu
@@ -34,7 +35,7 @@ if [ "${1:-}" != "--inside" ]; then
   name="semu-live-switch-$(date +%Y%m%d%H%M%S)"  # left behind exited
   echo "container $name, results in $out"
   exec podman run --name "$name" --platform linux/amd64 --privileged --shm-size=4g -v semu-nix-x86:/nix -v semu-nix-cache:/root/.cache/nix \
-    -v "$repository":/src:ro -v "$out":/out "${mounts[@]}" -e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" \
+    -v "$repository":/src:ro -v "$out":/out "${mounts[@]}" -e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" -e CHORDS="${CHORDS:-}" -e SETTLE="${SETTLE:-}" \
     -e NIX_CONFIG="experimental-features = nix-command flakes
 filter-syscalls = false
 sandbox = false
@@ -101,7 +102,20 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
   press ctrl+m; sleep 3
   shot "$out/$label-6-menu.png"
   press ctrl+m; sleep 2
+  step=7
+  for chord in ${CHORDS:-}; do  # the radial's newer slots, e.g. ctrl+shift+f (Fit) and ctrl+shift+r twice (Reset): the toast, then the picture
+    for key in ${chord//,/ }; do press "$key"; [ "$key" = "${chord##*,}" ] || sleep 1; done  # a,b: pressed a second apart, inside a confirm window
+    burst "$out/$label-$step-${chord//,/-}"
+    sleep 3; shot "$out/$label-$step-${chord//,/-}-after.png"
+    step=$((step + 1))
+  done
+  if [ -n "${SETTLE:-}" ]; then sleep "$SETTLE"; shot "$out/$label-final.png"; fi  # SETTLE seconds later, e.g. the game Aspect restarted on its new output
   journal="$root/state/$emulator/semu-render-actions.bin"
+  leaf=""  # the running emulator's argv (after an Aspect restart, the second one's)
+  for process in /proc/[0-9]*; do
+    line="$(tr '\0' ' ' < "$process/cmdline" 2>/dev/null || true)"
+    case "$line" in *"$rom"*) case "$line" in *semu\ launch*) ;; *) leaf="$line" ;; esac ;; esac
+  done
   alive=yes; kill -0 "$launcher" 2>/dev/null || alive=no
   kill -TERM "$launcher" 2>/dev/null || true
   status=0; wait "$launcher" 2>/dev/null || status=$?
@@ -111,7 +125,10 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
     echo "listening=$(grep -c 'semu: listening for keys' "$out/$label.log" || true)"
     echo "bezel_actions=$(grep -c 'semu: action visual.bezel.next (keyboard)' "$out/$label.log" || true) shader_actions=$(grep -c 'semu: action visual.shader.next (keyboard)' "$out/$label.log" || true)"
     echo "variants_file=$(head -c 300 "$root/state/$emulator/semu-render-variants.env" 2>/dev/null | head -7 | tr '\n' ' ')"
-    echo "journal_records(action slot)=$(od -A n -t d4 -w56 -v "$journal" 2>/dev/null | while read -r -a words; do printf '%s %s; ' "${words[6]}" "${words[8]}"; done)"  # 32-bit words 6 and 8 of each 56-byte record
+    echo "journal_records(action slot reserved)=$(od -A n -t d4 -w56 -v "$journal" 2>/dev/null | while read -r -a words; do printf '%s %s %s; ' "${words[6]}" "${words[8]}" "${words[9]}"; done)"  # 32-bit words 6, 8 and 9 of each 56-byte record
+    echo "leaf_argv=$leaf"
+    echo "restarts=$(grep -c 'semu: restarting' "$out/$label.log" || true) aspect_actions=$(grep -c 'semu: action visual.output.next' "$out/$label.log" || true)"
+    echo "placements=$(grep -c 'semu-renderer: placement' "$out/$label.log" || true) reset_actions=$(grep -c 'semu: action system.reset' "$out/$label.log" || true) fit_actions=$(grep -c 'semu: action visual.placement.next' "$out/$label.log" || true)"
     echo "switches=$(grep -o 'phase=switch.*' "$root/state/$emulator/semu-render-evidence.log" 2>/dev/null | grep -o 'bezel_art=[^ ]*\|shader_preset=[^ ]*\|layout=[^ ]*\|bezel_index=[^ ]*\|shader_index=[^ ]*\|reload_ms=[^ ]*\|frame_ms=[^ ]*' | tr '\n' ' ')"
     echo "renderer_switch_lines=$(grep -c 'semu-renderer: switched to' "$out/$label.log" || true)"
     echo "saved=$("$jq" -c '.visual' "$root/home/semu/semu.json" 2>/dev/null || echo none)"

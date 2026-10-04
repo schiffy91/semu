@@ -11,7 +11,8 @@ import ./renderer_config.btrc;
 import ./renderer_variants.btrc;
 import ./action_abi.btrc;
 int SEMU_RENDER_MENU_WIDTH = 384;
-int SEMU_RENDER_MENU_HEIGHT = 468;  // header, up to eight rows, slot line
+int SEMU_RENDER_MENU_HEIGHT = 640;  // the texture: header, up to twelve rows, slot line; RendererMenuRaster.height draws what a menu needs
+int SEMU_RENDER_MENU_ROWS = 12;
 int SEMU_RENDER_MAX_CAPTURE_FRAME = 900;
 int SEMU_RENDER_MAX_CAPTURE_ATTEMPTS = 8;
 int SEMU_RENDER_ACTION_POLL_INTERVAL = 2;
@@ -41,19 +42,22 @@ struct RendererPostUiState {
     unsigned long long next_action_frame;
     long journal_offset;
     int item_count;
-    char labels[8 * 24];  // eight 24-byte labels
-    char actions[8 * 32];  // SEMU_MENU_ACTIONS: each row's action, so the BEZEL and SHADER rows show their value
+    char labels[12 * 24];  // twelve 24-byte labels
+    char actions[12 * 32];  // SEMU_MENU_ACTIONS: each row's action, so a value row (BEZEL, SHADER, FIT, ASPECT) shows its value
     int bezels_toggles;  // requests the renderer applies to its config after consuming the journal
     int shaders_toggles;
     int bezel_request;  // a select's index for the game phase to apply; -1 while none waits
     int shader_request;
+    int placement_request;
     int apply_countdown;  // game frames before the requests apply, so the toast is on screen first
     int bezel_shown;  // the choice the menu row names: the latest select's, else the launch's
     int shader_shown;
+    int placement_shown;
+    int output_shown;  // the running output: a new one takes effect when the game restarts
     char toast[48];
     long long toast_until_ms;  // 0 with no toast
     int toast_pending;  // a LOADING toast waits for its shader chain to build
-    char toasts[1024];  // SEMU_MENU_TOASTS, the input.json templates
+    char toasts[2048];  // SEMU_MENU_TOASTS, the input.json templates
     struct RendererVariantCatalog catalog;
     unsigned long long last_sequence;
     unsigned char* menu_pixels;
@@ -188,9 +192,9 @@ class RendererMenuModel {
 
     class void loadItems(struct RendererPostUiState* state) {  // SEMU_MENU_ITEMS and SEMU_MENU_ACTIONS: the supervisor mirrors the order
         char* value = getenv("SEMU_MENU_ITEMS");
-        state->item_count = RendererMenuModel.split(value == null ? "RESUME|QUIT GAME" : value, state->labels, 24, 8);
+        state->item_count = RendererMenuModel.split(value == null ? "RESUME|QUIT GAME" : value, state->labels, 24, SEMU_RENDER_MENU_ROWS);
         memset(state->actions, 0, sizeof(state->actions));
-        RendererMenuModel.split(getenv("SEMU_MENU_ACTIONS"), state->actions, 32, 8);
+        RendererMenuModel.split(getenv("SEMU_MENU_ACTIONS"), state->actions, 32, SEMU_RENDER_MENU_ROWS);
         char* toasts = getenv("SEMU_MENU_TOASTS");
         snprintf(state->toasts, sizeof(state->toasts), "%s", toasts == null ? "" : toasts);
     }
@@ -201,6 +205,8 @@ class RendererMenuModel {
             && RendererVariantFile.catalog(path, getenv("SEMU_RENDER_SYSTEM_ID"), getenv(RendererVariantKeys.tokenVariable()), &state->catalog);
         state->bezel_shown = found ? state->catalog.current_bezel : -1;
         state->shader_shown = found ? state->catalog.current_shader : -1;
+        state->placement_shown = found ? state->catalog.current_placement : -1;
+        state->output_shown = found ? state->catalog.current_output : -1;
     }
 
     class void initialize(struct RendererPostUiState* state) {
@@ -218,6 +224,7 @@ class RendererMenuModel {
         state->shaders_toggles = 0;
         state->bezel_request = -1;
         state->shader_request = -1;
+        state->placement_request = -1;
         state->apply_countdown = 0;
         state->toast[0] = 0;
         state->toast_until_ms = 0LL;
@@ -232,23 +239,49 @@ class RendererMenuModel {
         state->slot = slot;
     }
 
+    class void notice(struct RendererPostUiState* state, int action, char* suffix, char* label, long long now) {  // the action's NAME_toast, e.g. visual.placement.next:unavailable
+        char actionId[96];
+        snprintf(actionId, sizeof(actionId), "%s:%s", SemuActions.toastAction(action), suffix);
+        RendererToast.show(state, actionId, "", label, now);
+    }
+
     class void select(struct RendererPostUiState* state, struct SemuActionRecord* record, long long now) {  // an absolute choice: replaying it twice asks for the same section
-        bool bezel = record->action == SemuActions.bezelSelect();
-        int count = bezel ? state->catalog.bezel_count : state->catalog.shader_count;
-        if (state->catalog.loaded == 0 || record->slot < 0 || record->slot >= count) { return; }
-        if (bezel) {
+        int action = record->action;
+        bool fresh = RendererToast.fresh(record, now);
+        if (record->slot < 0) {  // nothing to choose on this system: say so, change nothing
+            if (fresh) { RendererMenuModel.notice(state, action, "unavailable", "", now); }
+            return;
+        }
+        if (state->catalog.loaded == 0 || record->slot >= RendererVariantFile.count(&state->catalog, action)) { return; }
+        char* label = RendererVariantFile.choiceLabel(&state->catalog, action, record->slot);
+        if (action == SemuActions.outputSelect()) {  // the game draws its output from boot: the record prompts, or confirms the restart
+            if (fresh && record->reserved != 0) { RendererMenuModel.notice(state, action, "confirm", label, now); }
+            if (fresh && record->reserved == 0) { RendererMenuModel.notice(state, action, "done", label, now); }
+            if (record->reserved == 0) { state->output_shown = record->slot; }
+            return;
+        }
+        if (action == SemuActions.bezelSelect()) {
             state->bezel_request = record->slot;
             state->bezels_toggles = 0;  // a choice overrides the On/Off toggles before it
-        } else {
+            state->bezel_shown = record->slot;
+        } else if (action == SemuActions.shaderSelect()) {
             state->shader_request = record->slot;
             state->shaders_toggles = 0;
+        } else {
+            state->placement_request = record->slot;  // geometry only: nothing reloads
+            state->placement_shown = record->slot;
         }
         state->apply_countdown = 2;
-        if (RendererToast.fresh(record, now)) {
-            if (bezel) { RendererToast.show(state, "visual.bezel.next", "", RendererVariantFile.label(&state->catalog, true, record->slot), now); }
-            else { RendererToast.shader(state, record->slot, now); }
-        }
-        if (bezel) { state->bezel_shown = record->slot; } else { state->shader_shown = record->slot; }
+        if (fresh && action == SemuActions.shaderSelect()) { RendererToast.shader(state, record->slot, now); }
+        else if (fresh) { RendererToast.show(state, SemuActions.toastAction(action), "", label, now); }
+        if (action == SemuActions.shaderSelect()) { state->shader_shown = record->slot; }
+    }
+
+    class void reset(struct RendererPostUiState* state, struct SemuActionRecord* record, long long now) {  // slot 0 asks for the confirming press (reserved 2: and the game reboots), 1 is done
+        if (!RendererToast.fresh(record, now)) { return; }
+        if (record->slot == 1) { RendererMenuModel.notice(state, record->action, "done", "", now); }
+        else if (record->reserved == 2) { RendererMenuModel.notice(state, record->action, "restart", "", now); }
+        else { RendererMenuModel.notice(state, record->action, "confirm", "", now); }
     }
 
     class void apply(struct RendererPostUiState* state,
@@ -280,8 +313,11 @@ class RendererMenuModel {
             state->bezels_toggles++;
         } else if (action == SemuActions.shadersToggle()) {
             state->shaders_toggles++;
-        } else if (action == SemuActions.bezelSelect() || action == SemuActions.shaderSelect()) {
+        } else if (action == SemuActions.bezelSelect() || action == SemuActions.shaderSelect()
+                || action == SemuActions.placementSelect() || action == SemuActions.outputSelect()) {
             RendererMenuModel.select(state, record, now);
+        } else if (action == SemuActions.resetNotice()) {
+            RendererMenuModel.reset(state, record, now);
         }
     }
 }
@@ -289,11 +325,12 @@ class RendererMenuModel {
 class RendererVariantRequests {  // when the game phase applies a select, and which section
     class bool due(struct RendererPostUiState* state, int liveBezel, int liveShader, int* bezel, int* shader) {  // true once per change, after the countdown
         if (state == null || state->initialized == 0 || state->catalog.loaded == 0
-            || (state->bezel_request < 0 && state->shader_request < 0)) { return false; }
+            || (state->bezel_request < 0 && state->shader_request < 0 && state->placement_request < 0)) { return false; }
         if (state->apply_countdown > 0) {
             state->apply_countdown--;
             if (state->apply_countdown > 0) { return false; }
         }
+        if (state->bezel_request < 0 && state->shader_request < 0) { return false; }  // only a placement waits: RendererLiveSwitch.applyPlacement takes it
         int fromBezel = liveBezel >= 0 ? liveBezel : state->catalog.current_bezel;  // never switched: the launch's own section
         int fromShader = liveShader >= 0 ? liveShader : state->catalog.current_shader;
         *bezel = state->bezel_request >= 0 ? state->bezel_request : fromBezel;

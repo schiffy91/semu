@@ -14,9 +14,10 @@ int SEMU_RENDER_SWITCH_NONE = 0;  // nothing due this frame
 int SEMU_RENDER_SWITCH_APPLIED = 1;
 int SEMU_RENDER_SWITCH_MISSING = -1;  // the variants file lacks the requested section: the picture stays
 
-struct RendererLiveChoice {  // the variants-file section a select applied
+struct RendererLiveChoice {  // the variants-file section a select applied, and the placement
     int bezel;  // -1 before any select
     int shader;
+    int placement;  // RendererConfig.placement a placement select set; -1 before any
     struct RendererVariantOverlay overlay;  // that section's keys, re-applied over a freshly loaded config
 };
 
@@ -25,6 +26,7 @@ class RendererLiveSwitch {
         memset(live, 0, sizeof(struct RendererLiveChoice));
         live->bezel = -1;
         live->shader = -1;
+        live->placement = -1;
     }
 
     class int apply(struct RendererPostUiState* state, struct RendererConfig* config, struct RendererLiveChoice* live, int* imagesStale) {  // SEMU_RENDER_SWITCH_*, once the request's countdown ends
@@ -48,8 +50,19 @@ class RendererLiveSwitch {
         return SEMU_RENDER_SWITCH_APPLIED;
     }
 
+    class int applyPlacement(struct RendererPostUiState* state, struct RendererConfig* config, struct RendererLiveChoice* live) {  // a placement select, once the countdown ends: the geometry follows next frame, nothing reloads
+        if (state == null || state->placement_request < 0 || state->apply_countdown > 0) { return SEMU_RENDER_SWITCH_NONE; }
+        char* placement = RendererVariantFile.placementId(&state->catalog, state->placement_request);
+        state->placement_request = -1;
+        if (placement[0] == 0) { return SEMU_RENDER_SWITCH_MISSING; }
+        config->placement = RendererConfiguration.placementCode(placement);
+        live->placement = config->placement;
+        return SEMU_RENDER_SWITCH_APPLIED;
+    }
+
     class void reapply(struct RendererConfig* config, struct RendererLiveChoice* live) {  // a freshly loaded config (a new context) starts on the live choice
         if (live->bezel >= 0 && live->overlay.text != null) { RendererConfiguration.reloadVariants(config, &live->overlay); }
+        if (live->placement >= 0) { config->placement = live->placement; }
     }
 
     class bool imagesDue(int ready, int loaded, int stale) {  // a fresh context's first load, or a live choice since the last one

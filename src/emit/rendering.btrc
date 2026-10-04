@@ -298,14 +298,70 @@ class SemuRenderEnvironment {
 
     class JSONValue drawnShaderVariant(SemuPlan plan, SemuSystem system) { return SemuRenderEnvironment.drawnShaderVariantFor(plan, system, SemuRenderEnvironment.shaderVariantId(plan, system)); }
 
-    class string widescreenFor(SemuSystem system, string bezelId) {  // the 16:9 partner only of the default bezel; a chosen one stays itself
-        string widescreen = SemuJson.textAt(system.bezels, "widescreen_variant");
-        return !widescreen.isEmpty() && !widescreen.equals(bezelId) && bezelId.equals(SemuJson.textAt(system.bezels, "default_variant")) ? widescreen : "";
+    class string gameKey(SemuPlan plan) { return SemuRenderEnvironment.gameKeyOf(plan.tokens.get("rom")); }  // the launched game
+
+    class string gameKeyOf(string path) {  // a game's file name without its extension: visual.games.<system>.<key>
+        string rom = PathTools.basename(path);
+        int dot = Strings.rfind(rom, ".");
+        return dot > 0 ? rom.substring(0, dot) : rom;
+    }
+
+    class JSONValue gameSettings(SemuPlan plan, SemuSystem system) {  // visual.games.<system>.<game>, walked key by key: a game's name may hold dots
+        JSONValue games = SemuJson.get(plan.settings, "visual.games." + system.id);
+        string key = SemuRenderEnvironment.gameKey(plan);
+        return games != null && games.isObject() && !key.isEmpty() && games.has(key) ? games.get(key) : JSONValue.makeNull();
+    }
+
+    class string defaultOutput(SemuSystem system) {  // display.default_output, else the first declared output; "" with none
+        JSONValue outputs = SemuJson.get(system.definition, "display.outputs");
+        string declared = SemuJson.textAt(system.definition, "display.default_output");
+        return declared.isEmpty() && outputs.isArray() && outputs.size() > 0 ? SemuJson.textAt(outputs.at(0), "id") : declared;
+    }
+
+    class JSONValue output(SemuSystem system, string outputId) {
+        JSONValue outputs = SemuJson.get(system.definition, "display.outputs");
+        for (int index = 0; outputs.isArray() && index < outputs.size(); index++) {
+            if (SemuJson.textAt(outputs.at(index), "id").equals(outputId)) { return outputs.at(index); }
+        }
+        return JSONValue.makeNull();
+    }
+
+    class string outputId(SemuPlan plan, SemuSystem system) {  // the game's own output, else the system's default; "" where a system draws one
+        JSONValue outputs = SemuJson.get(system.definition, "display.outputs");
+        if (!outputs.isArray() || outputs.size() < 2) { return ""; }
+        string chosen = SemuJson.textAt(SemuRenderEnvironment.gameSettings(plan, system), "output");
+        return SemuRenderEnvironment.output(system, chosen).isObject() ? chosen : SemuRenderEnvironment.defaultOutput(system);
+    }
+
+    class string variantOutput(SemuSystem system, string variantId) {  // the output a variant is drawn for: its own `output`, else the default
+        string own = SemuJson.textAt(SemuRenderEnvironment.findVariant(system.bezels, variantId), "output");
+        return own.isEmpty() ? SemuRenderEnvironment.defaultOutput(system) : own;
+    }
+
+    class string outputVariant(SemuSystem system, string variantId, string outputId) {  // the variant that draws OUTPUT for VARIANT: itself, its `outputs` partner, else the default variant's
+        if (SemuRenderEnvironment.variantOutput(system, variantId).equals(outputId)) { return variantId; }
+        string partner = SemuJson.textAt(SemuRenderEnvironment.findVariant(system.bezels, variantId), "outputs." + outputId);
+        if (!partner.isEmpty()) { return partner; }
+        string fallback = SemuJson.textAt(system.bezels, "default_variant");
+        return fallback.equals(variantId) ? "" : SemuRenderEnvironment.outputVariant(system, fallback, outputId);
+    }
+
+    class string partnerPackage(SemuSystem system, string variantId) {  // under the default output, the variant's partner for another output: a 16:9 title switches to it
+        JSONValue outputs = SemuJson.get(SemuRenderEnvironment.findVariant(system.bezels, variantId), "outputs");
+        if (!outputs.isObject()) { return ""; }
+        for key in outputs.keys().sorted() { return SemuRenderEnvironment.packageId(system, SemuJson.text(outputs.get(key))); }
+        return "";
     }
 
     class string packageId(SemuSystem system, string variantId) {
         JSONValue variant = SemuRenderEnvironment.findVariant(system.bezels, variantId);
         return variant.isObject() ? SemuJson.textAt(variant, "bezel") : "";
+    }
+
+    class string packageFor(SemuPlan plan, SemuSystem system, string variantId) {  // the bezel drawn for the game's output
+        string output = SemuRenderEnvironment.outputId(plan, system);
+        if (output.isEmpty()) { return SemuRenderEnvironment.packageId(system, variantId); }
+        return SemuRenderEnvironment.packageId(system, SemuRenderEnvironment.outputVariant(system, variantId, output));
     }
 
     class bool usable(SemuPlan plan, JSONValue package) {  // a fixed bezel needs its plate or one drawable layer here; computed layouts need nothing
@@ -415,7 +471,7 @@ class SemuRenderEnvironment {
         if (shaderId.isEmpty() && SemuJson.boolAt(system.shaders, "enabled", false)) {
             shaderPath = SemuRenderAssets.shader(plan, SemuJson.textAt(system.shaders, "screen"));  // single-preset manifests name the screen directly
         }
-        JSONValue package = wantBezels ? packages.load(plan, SemuRenderEnvironment.packageId(system, bezelId)) : JSONValue.makeNull();
+        JSONValue package = wantBezels ? packages.load(plan, SemuRenderEnvironment.packageFor(plan, system, bezelId)) : JSONValue.makeNull();  // a second output draws the variant's own package for it
         if (wantBezels && !package.isObject()) {
             diagnostics.add(system.file, "bezels.variants", "bezel variant '" + bezelId + "' names no package under config/bezels");
         }
@@ -436,9 +492,13 @@ class SemuRenderEnvironment {
         if (placement.isEmpty()) { placement = SemuJson.textAt(system.bezels, "placement"); }  // the system's own default, e.g. game for handhelds
         if (placement.isEmpty()) { placement = SemuJson.textAt(settings, "visual.placement"); }
         env.set("SEMU_RENDER_PLACEMENT", placement.equals("game") || placement.equals("bezel") ? placement : "fit");  // integer picture: shell cropped, or shell whole
+        int fractionalBelow = SemuJson.intAt(system.definition, "display.scaling.game_fractional_below", 0);  // a 3D-era system opts in: screen placement fills the screen when its whole step would be smaller
+        if (fractionalBelow > 1) { env.set("SEMU_RENDER_GAME_FRACTIONAL_BELOW", Strings.fromInt(fractionalBelow)); }
         JSONValue display = system.definition.get("display");
-        int aspectW = SemuJson.intAt(display, "aspect.w", 0);
-        int aspectH = SemuJson.intAt(display, "aspect.h", 0);
+        string outputId = SemuRenderEnvironment.outputId(plan, system);
+        JSONValue aspect = outputId.isEmpty() ? display : SemuRenderEnvironment.output(system, outputId);  // the game's output decides the picture's shape
+        int aspectW = SemuJson.intAt(aspect, "aspect.w", 0);
+        int aspectH = SemuJson.intAt(aspect, "aspect.h", 0);
         if (aspectW > 0 && aspectH > 0) { env.set("SEMU_RENDER_ASPECT", f"{aspectW}:{aspectH}"); }
         double refresh = atof(SemuRenderEnvironment.numberOr(display, "refresh_hz", "60"));  // the system's refresh rate, else NTSC's 60
         if (refresh <= 0.0) { refresh = 60.0; }
@@ -448,9 +508,9 @@ class SemuRenderEnvironment {
         SemuRenderEnvironment.surfaces(env, system, diagnostics);
         if (bezels || !shaderPath.isEmpty()) {
             SemuRenderEnvironment.variant(env, plan, system, "", bezels ? package : JSONValue.makeNull(), shaderPath, shaderId, diagnostics);
-            string widescreen = SemuRenderEnvironment.widescreenFor(system, bezelId);
-            if (bezels && !widescreen.isEmpty()) {
-                JSONValue wide = packages.load(plan, SemuRenderEnvironment.packageId(system, widescreen));
+            string partner = outputId.isEmpty() || outputId.equals(SemuRenderEnvironment.defaultOutput(system)) ? SemuRenderEnvironment.partnerPackage(system, bezelId) : "";
+            if (bezels && !partner.isEmpty()) {
+                JSONValue wide = packages.load(plan, partner);
                 if (SemuRenderEnvironment.usable(plan, wide)) { SemuRenderEnvironment.variant(env, plan, system, "_B", wide, shaderPath, shaderId, diagnostics); }
             }
         }

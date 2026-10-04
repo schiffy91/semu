@@ -120,10 +120,11 @@ class SemuCli {
         }
         string emulatorId = self.option("emulator", "retroarch");
         string variants = self.option("variants-file", "");  // DIR: also every combination, DIR standing in as the state dir
+        if (!self.option("rom", "").isEmpty()) { plan.tokens.put("rom", self.option("rom", "")); }  // a game's own choices, e.g. its Wii output
         string stateRoot = variants.isEmpty() ? PathTools.join(plan.stateRoot(), emulatorId) : FileSystem.absolutePath(variants);
         for entry in SemuRenderEnvironment.compile(plan, system, emulatorId, stateRoot, diagnostics) { Console.log(entry); }
         if (plan.input != null) {
-            for entry in plan.input.menuEnvironment() { Console.log(entry); }  // the menu's rows and the toasts, as the launch gives them
+            for entry in plan.input.menuEnvironment(SemuRenderVariants.choose(plan, system).shown()) { Console.log(entry); }  // the menu's rows and the toasts, as the launch gives them
         }
         if (!variants.isEmpty()) {
             SemuRenderVariantSet set = SemuRenderVariants.write(plan, system, emulatorId, stateRoot);
@@ -152,10 +153,27 @@ class SemuCli {
             return 1;
         }
         if (!launch.notice.isEmpty()) { Console.error("semu: " + launch.notice); }  // the game still starts
+        int status = self.play(launch);
+        for (int restarts = 0; status >= 0 && SemuSupervisor.relaunching() && restarts < 8; restarts++) {  // a choice the emulator reads at boot: the same game again, planned anew from semu.json; ES-DE keeps waiting on this process
+            SemuDiagnostics again = SemuDiagnostics();
+            SemuModel fresh = SemuModel.load(self.configRoot(), again);
+            SemuPlan replanned = self.resolve(fresh, again);
+            launch = SemuLauncher.plan(fresh, replanned, self.line.operand(1), self.option("system", ""), self.option("core", ""), self.option("rom", ""), again);
+            if (!launch.ok()) {
+                Console.error("semu: could not restart the game: " + launch.error);
+                return 1;
+            }
+            Console.error("semu: restarting " + launch.rom);
+            status = self.play(launch);
+        }
+        return status < 0 ? 1 : status;
+    }
+
+    public int play(SemuLaunchPlan launch) {  // start the emulator and supervise it to its end; -1 when it could not start
         int child = SemuProcessGroup.start(launch.argv, launch.environment);
         if (child < 0) {
             Console.error("semu: could not start " + launch.argv.get(0));
-            return 1;
+            return -1;
         }
         return SemuSupervisor.run(child, launch);
     }

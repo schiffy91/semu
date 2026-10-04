@@ -304,15 +304,25 @@ class BezelPreview {  // what the launcher gives the renderer when a system show
         aspect.set("w", JSONValue.makeInt(SemuJson.intAt(definition, "display.aspect.w", 0)));
         aspect.set("h", JSONValue.makeInt(SemuJson.intAt(definition, "display.aspect.h", 0)));
         preview.set("aspect", aspect);
-        string widescreen = SemuJson.textAt(bezels, "widescreen_variant");
-        preview.set("presentation", JSONValue.makeFloat(!widescreen.isEmpty() && widescreen.equals(variantId) ? 1.777778 : 0.0));  // the wide variant shows a 16:9 title, as gallery.sh renders it
+        preview.set("presentation", JSONValue.makeFloat(BezelPreview.outputAspect(definition, SemuJson.textAt(variant, "output"))));  // a variant drawn for a second output (the Wii's 16:9 TV) shows that picture, as gallery.sh renders it
         string placement = SemuJson.textAt(bezels, "placement");  // the system's own default, else the setting
         if (placement.isEmpty()) { placement = SemuJson.textAt(settings, "visual.placement"); }
         preview.set("placement", JSONValue.makeString(placement.equals("game") || placement.equals("bezel") ? placement : "fit"));
+        preview.set("game_fractional_below", JSONValue.makeInt(SemuJson.intAt(definition, "display.scaling.game_fractional_below", 0)));  // SEMU_RENDER_GAME_FRACTIONAL_BELOW
         preview.set("gap", JSONValue.makeFloat(BezelNumber.of(SemuJson.get(settings, "visual.dual_screen_gap"))));  // SEMU_RENDER_DUAL_GAP, a fraction of the width
         preview.set("frame_width", JSONValue.makeFloat(BezelNumber.of(SemuJson.get(settings, "visual.frame_width"))));  // a drawn frame's width when its package names none
         preview.set("shader", BezelPreview.shader(shaders, settings));
         return preview;
+    }
+
+    class double outputAspect(JSONValue definition, string outputId) {  // the declared output's width over height, 0 for the system's own
+        JSONValue outputs = SemuJson.get(definition, "display.outputs");
+        for (int index = 0; !outputId.isEmpty() && outputs.isArray() && index < outputs.size(); index++) {
+            JSONValue output = outputs.at(index);
+            int height = SemuJson.intAt(output, "aspect.h", 0);
+            if (SemuJson.textAt(output, "id").equals(outputId) && height > 0) { return (double)SemuJson.intAt(output, "aspect.w", 0) / (double)height; }
+        }
+        return 0.0;
     }
 
     class JSONValue shader(JSONValue shaders, JSONValue settings) {  // the default shader variant's preset (per screen when it names one each); null when the system has none

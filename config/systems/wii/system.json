@@ -42,7 +42,8 @@
       "mode": "integer_preferred",
       "basis": "native_game_surface",
       "fit": "contain",
-      "fallback": "fractional_downscale"
+      "fallback": "fractional_downscale",
+      "game_fractional_below": 2
     },
     "screens": [
       {
@@ -57,19 +58,31 @@
       "w": 4,
       "h": 3
     },
-    "widescreen": {
-      "aspect": {
-        "w": 16,
-        "h": 9
-      },
-      "detect": "emulator_reported_content_aspect",
-      "fallback": "default_aspect",
-      "switch_at": "frame_boundary"
-    },
     "doc": {
-      "native": "Real 1x emulator output (was a 256x240 placeholder that corrupted integer placement)."
+      "native": "Real 1x emulator output (was a 256x240 placeholder that corrupted integer placement).",
+      "outputs": "The two pictures a Wii game can draw, chosen per game from the radial's Aspect or the menu's ASPECT row (visual.games.wii.<game>.output): Dolphin's platforms.<os>.outputs.wii arguments, the SEMU_RENDER_ASPECT and the bezel variant drawn for that output. Dolphin pins the answer at boot, so a change restarts the game after a confirming press.",
+      "game_fractional_below": "Screen (game) placement fills the screen fractionally when its whole step would be below 2: a 480-line picture holds only 1x on an 800-line screen. Bezel placement stays whole."
     },
-    "refresh_hz": 59.94
+    "refresh_hz": 59.94,
+    "outputs": [
+      {
+        "id": "standard",
+        "label": "4:3",
+        "aspect": {
+          "w": 4,
+          "h": 3
+        }
+      },
+      {
+        "id": "widescreen",
+        "label": "16:9",
+        "aspect": {
+          "w": 16,
+          "h": 9
+        }
+      }
+    ],
+    "default_output": "standard"
   },
   "doc": {
     "hardware": "consumer CRT/component TV",

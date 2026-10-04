@@ -43,6 +43,8 @@ import ./spec/editor.btrc;
 import ./spec/core_colour.btrc;
 import ./spec/bezel_emit.btrc;
 import ./spec/placement.btrc;
+import ./spec/radial_choices.btrc;
+import ./spec/radial_render.btrc;
 import ./spec/performance.btrc;
 import ./spec/playlist.btrc;
 import ./spec/content.btrc;
@@ -454,7 +456,6 @@ class BezelPackageContract {  // every calibrated package: the picture sits insi
             SemuSystem system = fixture.model.system(id);
             JSONValue variants = system.bezels == null ? null : system.bezels.get("variants");
             if (variants == null || !variants.isArray()) { continue; }
-            string widescreen = SemuJson.textAt(system.bezels, "widescreen_variant");
             JSONValue display = system.definition.get("display");
             JSONValue screens = display.get("screens");
             for (int index = 0; index < variants.size(); index++) {
@@ -474,7 +475,8 @@ class BezelPackageContract {  // every calibrated package: the picture sits insi
                     if (screens.size() == 1) {
                         JSONValue aspect = display.get("aspect");
                         if (aspect != null && aspect.isObject()) { declared = BezelPackageContract.aspectOf(aspect); }
-                        if (!widescreen.isEmpty() && widescreen.equals(SemuJson.textAt(variant, "id"))) { declared = 16.0 / 9.0; }
+                        double drawn = BezelPreview.outputAspect(system.definition, SemuJson.textAt(variant, "output"));  // a variant drawn for a second output: that output's shape
+                        if (drawn > 0.0) { declared = drawn; }
                     }
                     double actual = BezelPackageContract.aspectOf(screen.get("image"));
                     double mismatch = declared > 0.0 && actual > 0.0 ? (actual > declared ? actual / declared : declared / actual) - 1.0 : 1.0;
@@ -899,7 +901,7 @@ class UnifiedInputContract {  // one action vocabulary: chords parse, routes are
         fixture.plan.tokens.put("roms", roms);
         SemuLaunchPlan launch = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "", "Tetris.zip", fixture.diagnostics);
         contract.expect(launch.ok(), "launch plan for the input contract resolves: " + launch.error);
-        contract.expect(launch.menuLabels.size() == 7 && launch.menuActions.get(0).equals("ui.menu.back") && launch.menuActions.get(6).equals("app.quit"), "menu items reach the supervisor in order");
+        contract.expect(launch.menuLabels.size() == 9 && launch.menuActions.get(0).equals("ui.menu.back") && launch.menuActions.get(6).equals("visual.placement.next") && launch.menuActions.get(7).equals("system.reset") && launch.menuActions.get(8).equals("app.quit") && !launch.menuActions.contains("visual.output.next"), "menu items reach the supervisor in order: gb shows FIT (a bezel to place) and no ASPECT (one output)");
         contract.expect(launch.environment.contains("SEMU_MENU_ITEMS=" + launch.menuLabels.join("|")), "menu labels reach the renderer");
         contract.expect(launch.chordModifier.equals("select") && launch.chordButtons.contains("north") && launch.chordActions.get(launch.chordButtons.indexOf("north")).equals("ui.menu"), "Select+Y opens the Semu menu");
         contract.expect(launch.actionChords.contains("state.save=Ctrl+S") && launch.pauseAction.equals("ui.pause"), "action chords and the pause action are carried");
@@ -981,6 +983,8 @@ int main() {
     EditorSpecContract.run(contract);
     BezelEmitSpecContract.run(contract);
     PlacementSpecContract.run(contract);
+    RadialChoicesSpecContract.run(contract);
+    RadialRenderSpecContract.run(contract);
     PerformanceSpecContract.run(contract);
     ModsSpecContract.run(contract);
     ModelContract.run(contract);

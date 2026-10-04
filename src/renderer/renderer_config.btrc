@@ -43,6 +43,7 @@ struct RendererConfig {
     int bezels_enabled;
     int integer_scaling;  // one screen without a fixed bezel; two screens always integer
     int placement;  // SEMU_RENDER_PLACEMENT: 0 fit, 1 game (integer, shell cropped), 2 bezel (integer, shell whole)
+    int game_fractional_below;  // SEMU_RENDER_GAME_FRACTIONAL_BELOW: a 3D-era system's game placement fills the screen below this whole step; 0 never
     int active_variant;
     float display_aspect;
     float frames_per_second;
@@ -54,6 +55,11 @@ struct RendererConfig {
 };
 
 class RendererConfiguration {
+    class int placementCode(char* value) {  // fit 0, game 1, bezel 2: SEMU_RENDER_PLACEMENT and the variants file's placement ids
+        if (value == null) { return 0; }
+        return strcmp(value, "game") == 0 ? 1 : (strcmp(value, "bezel") == 0 ? 2 : 0);
+    }
+
     class void reloadVariants(struct RendererConfig* config, struct RendererVariantOverlay* overlay) {  // A and B from one section; C and D stay undeclared
         if (config == null || overlay == null) { return; }
         RendererLookup.overlay = overlay;
@@ -208,7 +214,9 @@ class RendererConfiguration {
         value = getenv("SEMU_RENDER_INTEGER_SCALE");
         if (value != null && value[0] == '1') { config->integer_scaling = 1; }
         value = getenv("SEMU_RENDER_PLACEMENT");
-        config->placement = value == null ? 0 : (strcmp(value, "game") == 0 ? 1 : (strcmp(value, "bezel") == 0 ? 2 : 0));
+        config->placement = RendererConfiguration.placementCode(value);
+        value = getenv("SEMU_RENDER_GAME_FRACTIONAL_BELOW");
+        config->game_fractional_below = value == null ? 0 : atoi(value);
         value = getenv("SEMU_RENDER_ASPECT");
         if (value != null) {
             float width = 0.0f;

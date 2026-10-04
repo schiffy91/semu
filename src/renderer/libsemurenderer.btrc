@@ -128,6 +128,9 @@ class SemuRendererLiveVariants {  // a select from the journal: its section repl
     class void apply() {  // in the game phase, once the toast has been on screen for two frames
         long long started = RendererClock.milliseconds();
         int switched = RendererLiveSwitch.apply(&SemuRenderer.post_ui, &SemuRenderer.config, &SemuRenderer.live, &SemuRenderer.resources.variant_images_stale);
+        if (RendererLiveSwitch.applyPlacement(&SemuRenderer.post_ui, &SemuRenderer.config, &SemuRenderer.live) == SEMU_RENDER_SWITCH_APPLIED && getenv("SEMU_RENDER_DEBUG") != null) {
+            fprintf(stderr, "semu-renderer: placement %d\n", SemuRenderer.config.placement);  // the geometry follows on this frame
+        }
         if (switched != SEMU_RENDER_SWITCH_APPLIED) { return; }
         SemuRenderer.switch_started_ms = started;  // the receipt and the toast count the switch from here
         SemuRenderer.switch_images_ms = 0LL;

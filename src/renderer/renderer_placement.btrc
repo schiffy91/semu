@@ -7,14 +7,14 @@ import ./renderer_abi.btrc;
 import ./renderer_config.btrc;
 
 class RendererPlacement {
-    class void canvas(struct SemuRenderFrameGl* frame, struct RendererVariantConfig* variant, int placement, float aspect, int areaWidth, int areaHeight, int sourceWidth, int sourceHeight, struct RendererCanvasRect* canvas) {  // SOURCE: the layered canvas, else the art plate
+    class void canvas(struct SemuRenderFrameGl* frame, struct RendererVariantConfig* variant, int placement, int fractionalBelow, float aspect, int areaWidth, int areaHeight, int sourceWidth, int sourceHeight, struct RendererCanvasRect* canvas) {  // SOURCE: the layered canvas, else the art plate; FRACTIONAL_BELOW: a 3D-era system's opt-in for game
         RendererCompositionContract.contain(areaWidth, areaHeight, sourceWidth, sourceHeight, canvas);
         bool layered = variant->layer_count > 0 && variant->canvas_width > 0;
         if (layered && variant->canvas_cover != 0) { RendererPlacement.coverKeepingTubes(frame, variant, areaWidth, areaHeight, canvas); }
-        if (placement != 0 && frame->surface_count == 1 && (variant->screens[0].image.set != 0 || variant->screens[0].tube.set != 0)) { RendererPlacement.integerPlacement(frame, variant, placement, aspect, areaWidth, areaHeight, canvas); }
+        if (placement != 0 && frame->surface_count == 1 && (variant->screens[0].image.set != 0 || variant->screens[0].tube.set != 0)) { RendererPlacement.integerPlacement(frame, variant, placement, fractionalBelow, aspect, areaWidth, areaHeight, canvas); }
     }
 
-    class void integerPlacement(struct SemuRenderFrameGl* frame, struct RendererVariantConfig* variant, int placement, float aspect, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas) {  // the picture at a whole multiple of its native height
+    class void integerPlacement(struct SemuRenderFrameGl* frame, struct RendererVariantConfig* variant, int placement, int fractionalBelow, float aspect, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas) {  // the picture at a whole multiple of its native height
         struct RendererScreenConfig* screen = &variant->screens[0];
         struct RendererNormalizedHole area = screen->image;  // the calibrated picture rectangle, else the opening less its inset, as placeInTube fits the game
         if (area.set == 0) {
@@ -41,7 +41,8 @@ class RendererPlacement {
             multiple = down < across ? down : across;
         }
         float steps = (float)multiple;
-        if (multiple < 1) {  // larger than the screen at 1x (PPSSPP's internal resolution set for a bigger display): the scaling fallback, fractional_downscale, never an overflow
+        bool fills = placement == 1 && multiple < fractionalBelow;  // game on a system that opts in (display.scaling.game_fractional_below): a 480-line picture fills the 800-line screen instead of sitting at 1x; bezel stays whole
+        if (multiple < 1 || fills) {  // larger than the screen at 1x (PPSSPP's internal resolution set for a bigger display): the scaling fallback, fractional_downscale, never an overflow
             float down = (float)areaHeight / native;
             float across = (float)areaWidth / (native * shown);
             steps = placement == 1 ? (down < across ? down : across) : pictureHeight / native;
@@ -60,6 +61,8 @@ class RendererPlacement {
             if (canvas->height <= (float)areaHeight) { canvas->y = canvas->y + RendererPlacement.wholePixels(((float)areaHeight - canvas->height) * 0.5f - canvas->y); }
         }
     }
+
+    class bool shellHidden(int placement, int surfaceCount) { return placement == 1 && surfaceCount == 2; }  // DS and 3DS screen placement: no shell, the whole-step layout over the background
 
     class float wholePixels(float shift) {  // rounded half away from zero
         return shift >= 0.0f ? (float)(int)(shift + 0.5f) : -(float)(int)(0.5f - shift);

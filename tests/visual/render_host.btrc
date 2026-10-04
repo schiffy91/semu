@@ -311,7 +311,9 @@ class RenderHost {
 }
 
 class RenderHostSwitch {  // --switch B,S: a bezel and a shader select in the journal, as the supervisor appends them
-    class bool append(int action, int slot, unsigned long long sequence) {
+    class bool append(int action, int slot, unsigned long long sequence) { return RenderHostSwitch.appendWith(action, slot, 0, sequence); }
+
+    class bool appendWith(int action, int slot, int reserved, unsigned long long sequence) {
         char path[8192];
         if (!RendererStatePaths.path(path, sizeof(path), RendererActionJournal.fileName())) { return false; }
         FILE* file = fopen(path, "ab");
@@ -325,6 +327,7 @@ class RenderHostSwitch {  // --switch B,S: a bezel and a shader select in the jo
         record.action = action;
         record.radial = RendererActionJournal.direct();
         record.slot = slot;
+        record.reserved = reserved;
         snprintf(record.source, sizeof(record.source), "%s", "render-host");
         bool written = fwrite(&record, sizeof(record), 1, file) == (size_t)1;
         fclose(file);
@@ -340,6 +343,15 @@ class RenderHostSwitch {  // --switch B,S: a bezel and a shader select in the jo
         for (int row = -1; menuRow != null && row < atoi(menuRow); row++) {
             sequence = sequence + 1ULL;
             RenderHostSwitch.append(row < 0 ? SemuActions.menuToggle() : SemuActions.menuDown(), 0, sequence);
+        }
+        char* selects = getenv("RENDER_HOST_SELECT");  // CODE,SLOT[,RESERVED];... any journal record, e.g. 81,1 for a placement or 79,-1 for nothing to choose
+        for (char* entry = selects; entry != null && entry[0] != 0; entry = strchr(entry, (int)';') == null ? null : strchr(entry, (int)';') + 1) {
+            int code = 0;
+            int slot = 0;
+            int reserved = 0;
+            if (sscanf(entry, "%d,%d,%d", &code, &slot, &reserved) < 2) { Console.error("render-host: RENDER_HOST_SELECT takes CODE,SLOT[,RESERVED] entries joined by ;"); return 64; }
+            sequence = sequence + 1ULL;
+            if (!RenderHostSwitch.appendWith(code, slot, reserved, sequence)) { Console.error("render-host: no journal under SEMU_RENDER_STATE_DIR"); return 1; }
         }
         if (bezel >= 0) { sequence = sequence + 1ULL; if (!RenderHostSwitch.append(SemuActions.bezelSelect(), bezel, sequence)) { Console.error("render-host: no journal under SEMU_RENDER_STATE_DIR"); return 1; } }
         if (shader >= 0) { sequence = sequence + 1ULL; if (!RenderHostSwitch.append(SemuActions.shaderSelect(), shader, sequence)) { Console.error("render-host: no journal under SEMU_RENDER_STATE_DIR"); return 1; } }

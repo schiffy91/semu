@@ -134,6 +134,21 @@
       "label": "Next Shader",
       "icon": "semu-shader.png",
       "chord": "Ctrl+Shift+V"
+    },
+    "visual.placement.next": {
+      "label": "Fit (Bezel/Screen)",
+      "icon": "semu-fit.png",
+      "chord": "Ctrl+Shift+F"
+    },
+    "visual.output.next": {
+      "label": "Aspect (4:3/16:9)",
+      "icon": "semu-aspect.png",
+      "chord": "Ctrl+Shift+G"
+    },
+    "system.reset": {
+      "label": "Reset to Default",
+      "icon": "semu-reset.png",
+      "chord": "Ctrl+Shift+R"
     }
   },
   "hotkey_bindings": [
@@ -192,6 +207,7 @@
   ],
   "binding_icons": {
     "files": [
+      "semu-aspect.png",
       "semu-back.png",
       "semu-bezel-toggle.png",
       "semu-bezel.png",
@@ -199,6 +215,7 @@
       "semu-confirm.png",
       "semu-down.png",
       "semu-fast-forward.png",
+      "semu-fit.png",
       "semu-fullscreen.png",
       "semu-gamecube-controller.png",
       "semu-load.png",
@@ -208,6 +225,7 @@
       "semu-pause.png",
       "semu-previous.png",
       "semu-quit.png",
+      "semu-reset.png",
       "semu-rewind.png",
       "semu-save.png",
       "semu-screenshot.png",
@@ -230,6 +248,8 @@
       "state.next",
       "visual.bezel.next",
       "visual.shader.next",
+      "visual.placement.next",
+      "visual.output.next",
       "ui.menu",
       "ui.screenshot",
       "app.quit"
@@ -239,7 +259,10 @@
       "ui.menu.up",
       "ui.menu.down",
       "ui.menu.confirm",
-      "ui.menu.back"
+      "ui.menu.back",
+      "visual.bezels.toggle",
+      "visual.shaders.toggle",
+      "system.reset"
     ],
     "menu_center": "ui.menu",
     "system_layers": [
@@ -554,12 +577,12 @@
     }
   },
   "doc": {
-    "radial": "show_labels=false makes every radial icon-only so Steam never substitutes modifier glyphs such as Ctrl, so the icons within one radial (ring and centre) must differ. A radial is ring slots touch_menu_button_1..20 plus an optional centre, touch_menu_button_0. fire_type 1 is Steam's button release: rest a thumb on the left pad, slide to an icon, click the pad and the slot fires when that click is released; lifting the thumb without clicking fires nothing. haptic_intensity is the tick each button gives, as on Steam's own radials. The default preset puts quick_slots on the left pad: Save, Load, Previous Slot, Next Slot, Next Bezel, Next Shader, Menu, Screenshot and Quit, with an empty centre so a click released in the middle fires nothing. Holding View or an upper grip enters the hotkey preset, whose left-pad radial is menu_slots (Up, Down, Confirm, Back) with Open Menu in the centre. Declarative system_layers add held left-pad radials; their ordered slots give stable extension codes from the generic native ABI extension base. The Wii layer is held with either lower grip (L5/R5, Steam's button_back_left and button_back_right) and declares Wiimote, Nunchuk, Classic and GameCube as slots 0 through 3; its Ctrl+Shift+F9..F12 chords stay inside the held layer. No binding may send a key without a modifier: the game receives Steam's keys too, and Esc (ui.escape) exits RetroArch, so the hotkey set's R3 is Menu Back.",
+    "radial": "show_labels=false makes every radial icon-only so Steam never substitutes modifier glyphs such as Ctrl, so the icons within one radial (ring and centre) must differ. A radial is ring slots touch_menu_button_1..20 plus an optional centre, touch_menu_button_0. fire_type 1 is Steam's button release: rest a thumb on the left pad, slide to an icon, click the pad and the slot fires when that click is released; lifting the thumb without clicking fires nothing. haptic_intensity is the tick each button gives, as on Steam's own radials. The default preset puts quick_slots on the left pad: Save, Load, Previous Slot, Next Slot, Next Bezel, Next Shader, Fit (bezel or screen, live), Aspect (4:3 or 16:9 where a system has both; a second press restarts the game), Menu, Screenshot and Quit, with an empty centre so a click released in the middle fires nothing. Holding View or an upper grip enters the hotkey preset, whose left-pad radial is menu_slots (Up, Down, Confirm, Back, Bezel On/Off, Shader On/Off and Reset to Default, which asks for a second press) with Open Menu in the centre. Declarative system_layers add held left-pad radials; their ordered slots give stable extension codes from the generic native ABI extension base. The Wii layer is held with either lower grip (L5/R5, Steam's button_back_left and button_back_right) and declares Wiimote, Nunchuk, Classic and GameCube as slots 0 through 3; its Ctrl+Shift+F9..F12 chords stay inside the held layer. No binding may send a key without a modifier: the game receives Steam's keys too, and Esc (ui.escape) exits RetroArch, so the hotkey set's R3 is Menu Back.",
     "quit_chord": "The physical View/Menu buttons emit XInput SELECT/START unchanged. window_ms is the maximum verifier interval for the pair; the process-group watcher terminates as soon as it observes both buttons held. Radial and HKB quit press the app.quit chord and Select+Start as well.",
     "controllers": "One entry per Steam controller_type Semu ships a template for. vocabulary names the sources and inputs Steam accepts on it (from Valve's own templates for that controller: controller_base/templates and chord_*.vdf) plus how many radial buttons it has; every name a template emits must be in it. layout names the Semu layout drawn on it. neptune is the Deck; triton, the new Steam Controller, uses the Deck's names and gets the Deck layout unchanged; gordon, the 2015 Steam Controller, has no d-pad, right stick or upper grips. Only the controller of the default template names controller_file and configset_file: the Steam Controllers ship as templates, picked once under Controller Settings, because their per-user file names were never observed.",
     "layouts": "A layout is presets walked in order (preset 0 is the gamepad Steam starts in). Each preset maps a source to a group kind the renderer draws: face, dpad, left_stick, right_stick, trackpad_stick (the right pad as the right stick, output_joystick 1 as in Valve's gordon template), left_trigger, right_trigger, pointer (Steam's mouse; a soft click is a left click, which DS and 3DS read as a tap), switches, quick_radial, menu_radial, layer_radial and the hotkey_ kinds, which draw the hotkey_bindings and fall back to the plain kind when nothing is bound. held_by lists the inputs (and activator, Full_Press unless named) that enter the preset while held; letting go returns to the gamepad. switches maps each switch input to the XInput button it passes through; grips maps a system layer's activators to this layout's inputs, and a layout without them gets no such layer. gordon: the left pad is the quick radial, the right pad the pointer, holding the left grip makes the left pad a d-pad and holding the right grip makes the right pad the right stick.",
     "templates": "Exactly one template carries default:true, and it is for the controller with a controller_file and configset_file (the Deck). semu steam input writes every template into templates_dir and the icons into binding_icons_dir, then the default template as each Steam user's controller_file under application_config_dir, and adds \"semu\" { \"autosave\" \"1\" } to that user's configset_file under configset_dir, keeping every other byte (a dated .semu-*.bak first, nothing written when the entry is already there): that entry is what makes Steam load the per-user file for the Semu shortcut instead of its Last Resort template. Steam rewrites configsets when it exits, so without --steam-root the command refuses while Steam runs. Each file is written beside its destination and renamed over it, and symlinked destinations are refused. Under each deprecated_config_ids folder only that controller_file is removed.",
-    "binding_icons": "Every action declares a non-keyboard Semu PNG, and every action a binding may send has its own. icons/PROVENANCE.md names each one's source; packaging/steam/render-icons.sh renders the Lucide ones from that table and --check proves every committed icon re-renders at RMSE 0. Legacy VDF bindings encode the icon filename and its two colors as comma-delimited metadata, matching Valve's radial-menu format. Physical Deck acceptance: after semu steam input with Steam stopped, the Semu shortcut loads Semu: Steam Deck - Neptune FULL (controller_ui.txt: Local Selection Path for its App ID, config/semu/controller_neptune.vdf); open all three left-trackpad radials and see the 9 + 5 + 4 declared icons with no Ctrl or key glyphs; activate the quick and menu slots, then verify each Wii mode reaches its Dolphin consumer.",
+    "binding_icons": "Every action declares a non-keyboard Semu PNG, and every action a binding may send has its own. icons/PROVENANCE.md names each one's source; packaging/steam/render-icons.sh renders the Lucide ones from that table and --check proves every committed icon re-renders at RMSE 0. Legacy VDF bindings encode the icon filename and its two colors as comma-delimited metadata, matching Valve's radial-menu format. Physical Deck acceptance: after semu steam input with Steam stopped, the Semu shortcut loads Semu: Steam Deck - Neptune FULL (controller_ui.txt: Local Selection Path for its App ID, config/semu/controller_neptune.vdf); open all three left-trackpad radials and see the 11 + 8 + 4 declared icons with no Ctrl or key glyphs; activate the quick and menu slots, then verify each Wii mode reaches its Dolphin consumer.",
     "platforms": "All destinations lie under ${home}/.local/share/Steam, the same on both Linux targets. semu steam input --steam-root DIR puts the same layout under DIR instead (the tests use a scratch root) and refuses any path that leaves it. ${steam_user} is every userdata directory except 0 and anonymous, so every Steam user gets the default profile and the configset entry.",
     "actions": "The complete native input vocabulary. Each action declares its chord, semantic label, and manifest-backed Semu PNG. These entries and hotkey_bindings render only the Steam Input templates; the native keymap and the supervisor read config/input/<target>/input.json, and a contract keeps both chord tables identical. Which emulators honor each action is declared per emulator in config/emulators/<emu>/emulator.json input.actions; ui.menu.{up,down,confirm,back} are consumed by the renderer menu, Wii controller actions are consumed by Dolphin's in-process mode selector, and ui.escape is desktop-only (no binding may send it). This file is shared: the linux-desktop and steam-deck targets name it as steam.input."
   }

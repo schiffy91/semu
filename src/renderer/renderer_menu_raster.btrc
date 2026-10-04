@@ -110,11 +110,20 @@ class RendererMenuRaster {
         return length < 1 ? 0 : length * 6 * scale - scale;
     }
 
-    class char* rowValue(struct RendererPostUiState* state, int item) {  // the BEZEL and SHADER rows' current choice, else ""
+    class char* rowValue(struct RendererPostUiState* state, int item) {  // a value row's current choice (BEZEL, SHADER, FIT, ASPECT), else ""
         char* action = state->actions + item * 32;
         if (strcmp(action, "visual.bezel.next") == 0) { return RendererVariantFile.label(&state->catalog, true, state->bezel_shown); }
         if (strcmp(action, "visual.shader.next") == 0) { return RendererVariantFile.label(&state->catalog, false, state->shader_shown); }
+        if (strcmp(action, "visual.placement.next") == 0) { return RendererVariantFile.choiceLabel(&state->catalog, SemuActions.placementSelect(), state->placement_shown); }
+        if (strcmp(action, "visual.output.next") == 0) { return RendererVariantFile.choiceLabel(&state->catalog, SemuActions.outputSelect(), state->output_shown); }
         return "";
+    }
+
+    class int height(struct RendererPostUiState* state) {  // the rows the menu draws: header, rows, slot line; never under the eight-row size, so a short menu keeps its scale
+        int rows = RendererMenuModel.itemCount(state);
+        if (rows < 8) { rows = 8; }
+        if (rows > SEMU_RENDER_MENU_ROWS) { rows = SEMU_RENDER_MENU_ROWS; }
+        return 72 + rows * 43 + 52;
     }
 
     class void rowText(struct RendererPostUiState* state, int item, char* buffer, int capacity) {  // "BEZEL  DUIMON SHELL", cut to the row
@@ -137,7 +146,7 @@ class RendererMenuRaster {
     class bool render(struct RendererPostUiState* state, long long now) {  // the menu; a toast takes the header's place
         if (state == null || !RendererMenuRaster.buffer(state)) { return false; }
         RendererMenuRaster.rectangle(state->menu_pixels, 0, 0,
-            SEMU_RENDER_MENU_WIDTH, SEMU_RENDER_MENU_HEIGHT,
+            SEMU_RENDER_MENU_WIDTH, RendererMenuRaster.height(state),
             14, 18, 22, 242);
         RendererMenuRaster.rectangle(state->menu_pixels, 0, 0,
             SEMU_RENDER_MENU_WIDTH, 58, 18, 112, 120, 255);

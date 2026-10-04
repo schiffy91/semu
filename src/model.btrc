@@ -150,31 +150,44 @@ class SemuInput {
     public int chordWindowMs() { return SemuJson.intAt(self.definition, "quit_chord.window_ms", 250); }
 
     public Vector<string> menuItems(string field) {  // one field of every menu.items row, in menu order
+        Vector<string> every = [];
+        JSONValue items = SemuJson.get(self.definition, "menu.items");
+        for (int index = 0; items != null && items.isArray() && index < items.size(); index++) { every.push(SemuJson.textAt(items.at(index), "when")); }
+        return self.menuItemsShown(field, every);
+    }
+
+    public Vector<string> menuItemsShown(string field, Vector<string> shown) {  // the rows this launch shows: a row with `when` only where that choice offers two or more
         Vector<string> result = [];
         JSONValue items = SemuJson.get(self.definition, "menu.items");
-        for (int index = 0; items != null && items.isArray() && index < items.size(); index++) { result.push(SemuJson.textAt(items.at(index), field)); }
+        for (int index = 0; items != null && items.isArray() && index < items.size(); index++) {
+            string when = SemuJson.textAt(items.at(index), "when");
+            if (when.isEmpty() || shown.contains(when)) { result.push(SemuJson.textAt(items.at(index), field)); }
+        }
         return result;
     }
 
-    public string toasts() {  // "action=template|...": every declared toast, in action id order; a loading_toast as action:loading
+    public string toasts() {  // "action=template|...": every declared toast in action id order; a NAME_toast as action:NAME
         Vector<string> entries = [];
         JSONValue actions = self.definition.get("actions");
         if (actions == null || !actions.isObject()) { return ""; }
         for action in actions.keys().sorted() {
-            string toast = SemuJson.textAt(actions.get(action), "toast");
+            JSONValue definition = actions.get(action);
+            string toast = SemuJson.textAt(definition, "toast");
             if (!toast.isEmpty()) { entries.push(action + "=" + toast); }
-            string loading = SemuJson.textAt(actions.get(action), "loading_toast");  // shown while a shader chain compiles
-            if (!loading.isEmpty()) { entries.push(action + ":loading=" + loading); }
+            for key in definition.keys().sorted() {  // loading_toast while a shader chain compiles, confirm_toast, unavailable_toast, done_toast
+                if (!key.endsWith("_toast") || SemuJson.textAt(definition, key).isEmpty()) { continue; }
+                entries.push(action + ":" + key.substring(0, key.len() - 6) + "=" + SemuJson.textAt(definition, key));
+            }
         }
         return entries.join("|");
     }
 
-    public Vector<string> menuEnvironment() {  // what the renderer reads to draw the menu and its toasts
+    public Vector<string> menuEnvironment(Vector<string> shown) {  // what the renderer reads to draw the menu and its toasts
         Vector<string> result = [];
-        Vector<string> labels = self.menuItems("label");
+        Vector<string> labels = self.menuItemsShown("label", shown);
         if (!labels.isEmpty()) {
             result.push("SEMU_MENU_ITEMS=" + labels.join("|"));
-            result.push("SEMU_MENU_ACTIONS=" + self.menuItems("action").join("|"));  // a cycle row draws its current value
+            result.push("SEMU_MENU_ACTIONS=" + self.menuItemsShown("action", shown).join("|"));  // a value row draws its current value
         }
         string toasts = self.toasts();
         if (!toasts.isEmpty()) { result.push("SEMU_MENU_TOASTS=" + toasts); }

@@ -253,8 +253,9 @@ class SemuLauncher {
         launch.shadersOn = SemuJson.boolAt(plan.settings, "visual.crt_shaders", true);
         if (plan.input == null) { return; }
         JSONValue definition = plan.input.definition;
-        launch.menuLabels = plan.input.menuItems("label");  // the renderer draws this list, the supervisor mirrors it
-        launch.menuActions = plan.input.menuItems("action");
+        Vector<string> shown = launch.variants.shown();  // a FIT or ASPECT row only where that choice offers two or more
+        launch.menuLabels = plan.input.menuItemsShown("label", shown);  // the renderer draws this list, the supervisor mirrors it
+        launch.menuActions = plan.input.menuItemsShown("action", shown);
         bool pauses = SemuJson.textAt(emulator.definition, "menu.pause").equals("emulator");  // pausing one that stops presenting would hide the menu
         launch.pauseAction = pauses ? SemuJson.textAt(definition, "menu.pause_action") : "";
         launch.chordModifier = SemuJson.textAt(definition, "gamepad_chords.modifier");
@@ -273,7 +274,7 @@ class SemuLauncher {
                 if (!chord.isEmpty()) { launch.actionChords.push(action + "=" + chord); }
             }
         }
-        for entry in plan.input.menuEnvironment() { launch.environment.push(entry); }  // SEMU_MENU_ITEMS, _ACTIONS and _TOASTS
+        for entry in plan.input.menuEnvironment(shown) { launch.environment.push(entry); }  // SEMU_MENU_ITEMS, _ACTIONS and _TOASTS
     }
 
     class SemuLaunchPlan plan(SemuModel model, SemuPlan plan, string emulatorId, string systemId, string core, string rom, SemuDiagnostics diagnostics) {
@@ -354,6 +355,7 @@ class SemuLauncher {
         if (!SemuSeeds.seed(plan, platform, launch)) { return launch; }
         launch.argv.push(executable);
         for argument in SemuJson.strings(SemuJson.get(platform, "state.extra_args")) { launch.argv.push(plan.tokens.resolve(argument)); }
+        for argument in SemuJson.strings(SemuJson.get(platform, "outputs." + systemId + "." + SemuRenderEnvironment.outputId(plan, system) + ".args")) { launch.argv.push(plan.tokens.resolve(argument)); }  // the game's output (Wii 4:3 or 16:9), before args that end on the content
         for argument in SemuJson.strings(platform.get("args")) { launch.argv.push(plan.tokens.resolve(argument)); }
         for argument in content.arguments { launch.argv.push(plan.tokens.resolve(argument)); }  // only a playlist Semu opened carries these
         if (SemuJson.get(platform, "retroarch").isObject()) {

@@ -105,13 +105,41 @@
     "visual.bezel.next": {
       "label": "Next Bezel",
       "chord": "Ctrl+Shift+B",
-      "toast": "BEZEL: {label}"
+      "toast": "BEZEL: {label}",
+      "unavailable_toast": "BEZEL: NONE HERE"
     },
     "visual.shader.next": {
       "label": "Next Shader",
       "chord": "Ctrl+Shift+V",
       "toast": "SHADER: {label}",
-      "loading_toast": "LOADING {label}"
+      "loading_toast": "LOADING {label}",
+      "unavailable_toast": "SHADER: NONE HERE"
+    },
+    "visual.placement.next": {
+      "label": "Fit (Bezel/Screen)",
+      "chord": "Ctrl+Shift+F",
+      "toast": "FIT: {label}",
+      "unavailable_toast": "FIT: NO BEZEL HERE",
+      "choices": {
+        "bezel": "BEZEL",
+        "game": "SCREEN",
+        "fit": "FIT"
+      }
+    },
+    "visual.output.next": {
+      "label": "Aspect (4:3/16:9)",
+      "chord": "Ctrl+Shift+G",
+      "toast": "ASPECT: {label}",
+      "confirm_toast": "{label}: AGAIN TO REBOOT GAME",
+      "done_toast": "ASPECT {label}: REBOOTING",
+      "unavailable_toast": "ASPECT: ONE ONLY"
+    },
+    "system.reset": {
+      "label": "Reset to Default",
+      "chord": "Ctrl+Shift+R",
+      "confirm_toast": "RESET: PRESS AGAIN",
+      "restart_toast": "RESET: AGAIN TO REBOOT GAME",
+      "done_toast": "RESET TO DEFAULTS"
     }
   },
   "quit_chord": {
@@ -170,12 +198,26 @@
         "action": "visual.shader.next"
       },
       {
+        "label": "FIT",
+        "action": "visual.placement.next",
+        "when": "placements"
+      },
+      {
+        "label": "ASPECT",
+        "action": "visual.output.next",
+        "when": "outputs"
+      },
+      {
+        "label": "RESET TO DEFAULT",
+        "action": "system.reset"
+      },
+      {
         "label": "QUIT GAME",
         "action": "app.quit"
       }
     ],
     "pause_action": "ui.pause",
-    "doc": "The native Semu menu the renderer draws over any emulator with a compositor. The supervisor mirrors this list: the same journal drives the drawn selection and the executed action. BEZEL and SHADER step this system's own choice through its variants, then off (confirm or right forward, left back), live and saved as visual.systems.<id>.bezel_variant or shader_variant, never the global switches, which stay the default for systems without their own choice. An action's toast is what the renderer shows for a moment after it runs (SEMU_MENU_TOASTS): {slot} is the slot as the emulator numbers it (SLOT 3), empty with one fixed slot; {label} is the chosen variant's label, OFF for none; any bezel or shader change shows the Next Bezel or Next Shader toast, and a shader that must compile first shows its loading_toast until it is built. pause_action reaches only emulators whose emulator.json menu.pause is emulator (seen to keep presenting while paused); the others keep running under the menu, and an emulator without a compositor gets no menu."
+    "doc": "The native Semu menu the renderer draws over any emulator with a compositor. The supervisor mirrors this list: the same journal drives the drawn selection and the executed action. A row with `when` shows only where that choice offers two or more (placements: a bezel to place; outputs: a system with two pictures, Wii 4:3 and 16:9); the renderer draws up to twelve. BEZEL, SHADER, FIT and ASPECT are value rows: confirm or right steps forward, left back. BEZEL and SHADER step this system's own choice through its variants, then off, live and saved as visual.systems.<id>.bezel_variant or shader_variant, never the global switches, which stay the default for systems without their own choice. FIT switches live between the whole bezel and the screen (game) placement, both at a whole-number scale, saved as visual.systems.<id>.placement. ASPECT asks for a second press, then restarts the game on the other output, saved for that game only (visual.games.<id>.<game>.output). RESET TO DEFAULT asks for a second press, then removes the system's own choices and applies the defaults live (restarting only when the running output was not the default). An action's toast is what the renderer shows for a moment after it runs (SEMU_MENU_TOASTS): {slot} is the slot as the emulator numbers it (SLOT 3), empty with one fixed slot; {label} is the chosen value's label, OFF for none; any change shows the action's toast, and a NAME_toast is the toast for one outcome: loading while a shader chain compiles, unavailable where the system has nothing to choose, confirm and restart when a second press is needed, done when it acted. pause_action reaches only emulators whose emulator.json menu.pause is emulator (seen to keep presenting while paused); the others keep running under the menu, and an emulator without a compositor gets no menu."
   },
   "gamepad_chords": {
     "modifier": "select",

@@ -270,6 +270,8 @@
       "section": "[Hotkeys]"
     },
     "why": "PCSX2 binds hotkeys from PCSX2.ini [Hotkeys]: an input profile, and with it UseProfileHotkeyBindings, is applied only through a per-game settings ini naming it (UpdateGameSettingsLayer reads EmuCore.InputProfileName from the game layer alone), so the [EmuCore] InputProfileName in PCSX2.ini loads nothing and the profile's [Hotkeys] are written for per-game use only. A hotkey PCSX2.ini leaves out stays unbound (AddHotkeyBindings skips empty lists), and Pad::SetDefaultHotkeyConfig (SIO/Pad/Pad.cpp:216-262, which also puts Toggle Pause on Space and Toggle Turbo on Tab) runs only when settings are reset, which SettingsVersion = 1 prevents; its defaults would put Zoom In and Zoom Out on Ctrl+Plus and Ctrl+Minus (Semu's fast forward and rewind) and the pause menu on Escape.",
-    "fixed": []
+    "fixed": [],
+    "superset_modifiers": true,
+    "superset_source": "pcsx2 bc8151d pcsx2/Input/InputManager.cpp:1080-1170: a chord binding fires whenever all of its keys are down, and only a longer bound chord cancels it, so Ctrl+A also fires on Ctrl+Shift+A"
   }
 }

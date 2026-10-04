@@ -38,7 +38,8 @@
       "mode": "integer_preferred",
       "basis": "native_game_surface",
       "fit": "contain",
-      "fallback": "fractional_downscale"
+      "fallback": "fractional_downscale",
+      "game_fractional_below": 2
     },
     "screens": [
       {

@@ -36,10 +36,10 @@ class VisualCycleBed {  // a scratch nds launch: its own journal and semu.json, 
         FileSystem.mkdirp(launch.semuHome);
         if (!settings.isEmpty()) { FileSystem.writeText(PathTools.join(launch.semuHome, "semu.json"), settings); }
         SemuPlan plan = RenderVariantTools.plan(fixture, settings.isEmpty() ? "{}" : settings);
-        launch.variants.bezel = SemuRenderVariants.choice(plan, fixture.model.system("nds"), "bezel");
-        launch.variants.shader = SemuRenderVariants.choice(plan, fixture.model.system("nds"), "shader");
-        launch.menuLabels = fixture.plan.input.menuItems("label");
-        launch.menuActions = fixture.plan.input.menuItems("action");
+        launch.variants = SemuRenderVariants.choose(plan, fixture.model.system("nds"));
+        Vector<string> shown = launch.variants.shown();
+        launch.menuLabels = fixture.plan.input.menuItemsShown("label", shown);
+        launch.menuActions = fixture.plan.input.menuItemsShown("action", shown);
         launch.menuDrawn = true;
         return launch;
     }
@@ -76,7 +76,7 @@ class VisualCycleSteps {  // next, wrap, the global switch untouched, nothing to
         SemuLaunchPlan bare = VisualCycleBed.launch(fixture, "bare", "");
         bare.variants = SemuRenderVariantSet();
         SemuActionExecutor.execute(bare, "visual.bezel.next", SEMU_SOURCE_X11);
-        contract.expect(InputDeliveryTools.records(bare.stateDir) == 0 && !FileSystem.isFile(PathTools.join(bare.semuHome, "semu.json")), "without a variants file nothing is journaled or saved");
+        contract.expect(InputDeliveryTools.records(bare.stateDir) == 1 && InputDeliveryTools.record(bare.stateDir, 0, SemuActions.bezelSelect(), -1) && !FileSystem.isFile(PathTools.join(bare.semuHome, "semu.json")), "with nothing to choose Next Bezel journals slot -1, for the renderer's BEZEL: NONE HERE, and saves nothing");
         memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
     }
 }
@@ -103,7 +103,7 @@ class VisualCycleSwitches {  // the On/Off chords: none, then back to the last r
 class VisualCycleMenu {  // the BEZEL and SHADER rows: confirm or right steps on, left steps back, the menu stays open
     class void run(Contract contract, Fixture fixture) {
         SemuLaunchPlan launch = VisualCycleBed.launch(fixture, "menu", "");
-        contract.expect(launch.menuActions.size() == 7 && launch.menuActions.get(4).equals("visual.bezel.next") && launch.menuActions.get(5).equals("visual.shader.next") && launch.menuLabels.get(4).equals("BEZEL") && launch.menuLabels.get(5).equals("SHADER"), "the menu's fifth and sixth rows are BEZEL and SHADER, seven rows in all");
+        contract.expect(launch.menuActions.size() == 9 && launch.menuActions.get(4).equals("visual.bezel.next") && launch.menuActions.get(5).equals("visual.shader.next") && launch.menuLabels.get(4).equals("BEZEL") && launch.menuLabels.get(5).equals("SHADER") && launch.menuLabels.get(6).equals("FIT") && launch.menuLabels.get(7).equals("RESET TO DEFAULT"), "the nds menu's fifth to eighth rows are BEZEL, SHADER, FIT and RESET TO DEFAULT, nine rows in all (no ASPECT: one output)");
         struct SemuInputDevice pad;
         memset(&pad, 0, sizeof(pad));
         pad.gamepad = 1;

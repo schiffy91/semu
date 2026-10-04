@@ -49,6 +49,13 @@ class SemuActions {
     class int statePrev() { return SemuActions.stateNext() + 1; }
     class int bezelSelect() { return SemuActions.statePrev() + 1; }  // slot carries the absolute index into the variants file's bezels
     class int shaderSelect() { return SemuActions.bezelSelect() + 1; }
+    // Past 80 the slot is still an absolute index into the variants file's lists, and -1 means this
+    // system has nothing to choose (the action's unavailable toast). reserved carries a prompt: 1 on
+    // an output select or a reset notice asks for the confirming press (2: and that press reboots the
+    // game). 83 layout select, 84 player assign and 86 menu page are reserved for the players page.
+    class int placementSelect() { return SemuActions.shaderSelect() + 1; }  // 81: the system's placements, bezel or screen
+    class int outputSelect() { return SemuActions.shaderSelect() + 2; }  // 82: the system's outputs, 4:3 or 16:9
+    class int resetNotice() { return SemuActions.shaderSelect() + 5; }  // 85: slot 0 armed, 1 done
 
     class void resetExtensions() {
         memset(SemuActionExtensionIds, 0,
@@ -97,6 +104,9 @@ class SemuActions {
         if (actionId.equals("state.prev")) { return SemuActions.statePrev(); }
         if (actionId.equals("visual.bezel.select")) { return SemuActions.bezelSelect(); }
         if (actionId.equals("visual.shader.select")) { return SemuActions.shaderSelect(); }
+        if (actionId.equals("visual.placement.select")) { return SemuActions.placementSelect(); }
+        if (actionId.equals("visual.output.select")) { return SemuActions.outputSelect(); }
+        if (actionId.equals("system.reset.notice")) { return SemuActions.resetNotice(); }
         if (actionId.equals("app.quit")) { return SemuActions.appQuit(); }
         if (actionId.equals("ui.screenshot")) { return SemuActions.screenshot(); }
         if (actionId.equals("ui.escape")) { return SemuActions.escape(); }
@@ -117,6 +127,9 @@ class SemuActions {
         if (action == SemuActions.statePrev()) { return "state.prev"; }
         if (action == SemuActions.bezelSelect()) { return "visual.bezel.select"; }
         if (action == SemuActions.shaderSelect()) { return "visual.shader.select"; }
+        if (action == SemuActions.placementSelect()) { return "visual.placement.select"; }
+        if (action == SemuActions.outputSelect()) { return "visual.output.select"; }
+        if (action == SemuActions.resetNotice()) { return "system.reset.notice"; }
         if (action == SemuActions.appQuit()) { return "app.quit"; }
         if (action == SemuActions.screenshot()) { return "ui.screenshot"; }
         if (action == SemuActions.escape()) { return "ui.escape"; }
@@ -126,6 +139,9 @@ class SemuActions {
     class string toastAction(int action) {  // whose input.json toast a record shows: a select is the cycle's outcome
         if (action == SemuActions.bezelSelect()) { return "visual.bezel.next"; }
         if (action == SemuActions.shaderSelect()) { return "visual.shader.next"; }
+        if (action == SemuActions.placementSelect()) { return "visual.placement.next"; }
+        if (action == SemuActions.outputSelect()) { return "visual.output.next"; }
+        if (action == SemuActions.resetNotice()) { return "system.reset"; }
         return SemuActions.id(action);
     }
 
@@ -153,7 +169,10 @@ class SemuActions {
             || action == SemuActions.bezelsToggle()
             || action == SemuActions.shadersToggle()
             || action == SemuActions.bezelSelect()
-            || action == SemuActions.shaderSelect();
+            || action == SemuActions.shaderSelect()
+            || action == SemuActions.placementSelect()
+            || action == SemuActions.outputSelect()
+            || action == SemuActions.resetNotice();
     }
 }
 

@@ -11,7 +11,9 @@ import ./process.btrc;
 import ./plan.btrc;
 
 class SemuActionJournal {  // the renderer reads these records; same ABI as action_abi
-    class bool append(SemuLaunchPlan launch, int action, int slot) {
+    class bool append(SemuLaunchPlan launch, int action, int slot) { return SemuActionJournal.appendWith(launch, action, slot, 0); }
+
+    class bool appendWith(SemuLaunchPlan launch, int action, int slot, int reserved) {  // RESERVED: a prompt (see SemuActions), 0 for a plain record
         if (launch.stateDir.isEmpty() || action == SemuActions.none()) { return false; }
         string path = PathTools.join(launch.stateDir, RendererActionJournal.fileName());
         FILE* file = fopen(path, "ab");
@@ -26,6 +28,7 @@ class SemuActionJournal {  // the renderer reads these records; same ABI as acti
         record.action = action;
         record.radial = RendererActionJournal.direct();
         record.slot = slot;
+        record.reserved = reserved;
         size_t sourceCapacity = sizeof(record.source);
         snprintf(record.source, sourceCapacity, "%s", "semu");
         size_t recordSize = sizeof(record);

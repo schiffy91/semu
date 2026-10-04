@@ -317,9 +317,10 @@ class RendererGeometry {
             geometry->frame_width = (float)frameWidth;
             geometry->framed = 1;
         }
-        if (bezel && fixed) {
+        if (bezel && fixed && RendererPlacement.shellHidden(config->placement, frame->surface_count)) { geometry->shell_hidden = 1; }  // DS and 3DS screen placement: the shell goes, the background stays, both screens at their whole step
+        if (bezel && fixed && geometry->shell_hidden == 0) {
             struct RendererCanvasRect canvas;
-            RendererPlacement.canvas(frame, variant, config->placement, singleAspect, areaWidth, areaHeight,
+            RendererPlacement.canvas(frame, variant, config->placement, config->game_fractional_below, singleAspect, areaWidth, areaHeight,
                 layered ? variant->canvas_width : resources->art_width[variantIndex],
                 layered ? variant->canvas_height : resources->art_height[variantIndex], &canvas);  // contained, covered, then at the placement's whole step
             geometry->bezel_x = canvas.x;
@@ -1181,16 +1182,17 @@ class RendererCompositor {
         bool background = bezel && resources->background_loaded[variantIndex] != 0
             && geometry->background_width > 0.0f;
         bool framed = bezel && geometry->framed != 0;
+        bool dressed = bezel && geometry->shell_hidden == 0;  // the screens wear the package's look only with its shell
         resources->bezel_actual = (art || framed) ? 1 : 0;
         for (int index = 0; index < 2; index++) {
             int lane = index < geometry->lane_count ? index : second;
-            RendererCompositor.laneUniforms(gl, resources, &variant->screens[lane], &geometry->lanes[lane], geometry, bezel, index);
+            RendererCompositor.laneUniforms(gl, resources, &variant->screens[lane], &geometry->lanes[lane], geometry, dressed, index);
         }
         float rotation0 = filtered[0] != 0 ? 0.0f : (float)geometry->lanes[0].rotation / 90.0f;
         float rotation1 = filtered[second] != 0 ? 0.0f : (float)geometry->lanes[second].rotation / 90.0f;
         RendererCompositor.set4(gl, resources->uniform_rotation, rotation0, rotation1, 0.0f, 0.0f);
-        bool glass0 = bezel && resources->glass_loaded[variantIndex * 2] != 0 && variant->screens[0].look_set != 0;
-        bool glass1 = bezel && geometry->lane_count > 1 && resources->glass_loaded[variantIndex * 2 + 1] != 0 && variant->screens[1].look_set != 0;
+        bool glass0 = dressed && resources->glass_loaded[variantIndex * 2] != 0 && variant->screens[0].look_set != 0;
+        bool glass1 = dressed && geometry->lane_count > 1 && resources->glass_loaded[variantIndex * 2 + 1] != 0 && variant->screens[1].look_set != 0;
         RendererCompositor.set4(gl, resources->uniform_reflect,
             glass0 ? variant->screens[0].reflect : 0.0f, glass1 ? variant->screens[1].reflect : 0.0f,
             glass0 ? 1.0f : 0.0f, glass1 ? 1.0f : 0.0f);
@@ -1209,8 +1211,8 @@ class RendererCompositor {
         RendererCompositor.set4(gl, resources->uniform_frame_color,
             variant->frame_r, variant->frame_g, variant->frame_b, 1.0f);
         RendererCompositor.set4(gl, resources->uniform_bulge,
-            bezel ? variant->screens[0].bulge_x : 0.0f, bezel ? variant->screens[0].bulge_y : 0.0f,
-            bezel ? variant->screens[second].bulge_x : 0.0f, bezel ? variant->screens[second].bulge_y : 0.0f);
+            dressed ? variant->screens[0].bulge_x : 0.0f, dressed ? variant->screens[0].bulge_y : 0.0f,
+            dressed ? variant->screens[second].bulge_x : 0.0f, dressed ? variant->screens[second].bulge_y : 0.0f);
         if (resources->uniform_menu_on >= 0) {
             gl->uniform_1f(resources->uniform_menu_on, 0.0f);
         }

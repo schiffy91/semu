@@ -881,6 +881,85 @@ Status: being designed (workflow mods-design, with critique) while the radial se
   forwarders and blank cursor, cursor-arrow.sh's rows equal renderer_cursor's arrow) and deck_harness (the
   capture times, the one-grep lookup ahead of the due time, the step notes, the arrow verdict); 11 mutations
   each failed their checks.
+- Item 3 (radial v2), part 1 (Fit, Aspect, Reset, the menu rows; controller layouts and players follow):
+  built 2026-10-04, checked in the render host and the podman VM; the Deck is open (it needs a release and
+  `semu-deck-cli steam input` with Steam stopped, which installs the new slots). Rulings, as reversible
+  defaults (the owner being unattended):
+  - The default placement does not change (fit on TVs, game on gb/gbc/gba/psp, bezel on the DS and 3DS,
+    whose shell looks the same in fit and bezel). Fit toggles this system between bezel (the whole shell at
+    its largest whole step) and screen (game: the largest whole step the screen holds, the shell cropped),
+    live through journal code 81 (the renderer's config.placement after the toast's two frames, nothing
+    reloads, kept across a context reset) and saved as `visual.systems.<id>.placement`. A default outside
+    the toggle (fit) sits after it in the variants file's placements, so the toggle never returns to it;
+    Reset does. Bezel placement is always whole. Screen placement goes fractional only where a 3D-era
+    system opts in through `display.scaling.game_fractional_below: 2` (wii, gc, ps2, dreamcast): their
+    480 lines hold only 1x on the 800-line screen, so screen fills it (800 lines, 1.67x) and bezel stays 1x.
+    On the DS and 3DS, screen drops the shell (`RendererPlacement.shellHidden`) and draws the computed
+    whole-step layout (stacked, 2x at 1280x800) over the package's wood background, screens plain.
+  - Aspect: a system declares `display.outputs` (Wii: standard 4:3, widescreen 16:9) and each bound
+    emulator its arguments per output (Dolphin `platforms.<os>.outputs.wii`: SYSCONF.IPL.AR=False, or True
+    with the CustomStretch pin moved to 16:9), placed before args, which end on `-e` and the game. Bezel
+    variants say which output they are drawn for (`output`) and their partner for another (`outputs`): the
+    Wii's tv_wide is drawn for 16:9 and leaves the 4:3 cycle, and stays the 4:3 TV's _B partner. The output
+    is chosen per game (`visual.games.<id>.<game file stem>.output`), so a 4:3 title is never stretched by
+    another game's choice. Dolphin pins it at boot, so the first press only prompts ("16:9: AGAIN TO REBOOT
+    GAME", code 82 reserved 1) and saves nothing; a second press of the same choice within 3 s saves it,
+    says "ASPECT 16:9: REBOOTING" and restarts the game in place: the supervisor stops the emulator as on
+    quit, waits for its group, and `semu launch` plans the same game again from semu.json (at most 8 times;
+    ES-DE keeps waiting on the same process). An outside stop never restarts. The command-line layer sits
+    below game INIs (Enums.h SEARCH_ORDER), so a GameSettings INI setting the aspect would win; none does.
+    The checker refuses an output an emulator gives no arguments for, a variant drawn for an undeclared
+    output, and a default bezel with no bezel for an output.
+  - Reset to Default asks for a second press within 3 s (code 85 slot 0; reserved 2 when the running output
+    is not the default: "RESET: AGAIN TO REBOOT GAME"), then removes `visual.systems.<id>`,
+    `visual.games.<id>` and `input.systems.<id>` from semu.json (SemuSettingsStore.remove, which leaves a
+    malformed file untouched), journals the default bezel, shader and placement as absolute selects (live)
+    and 85 slot 1 ("RESET TO DEFAULTS"), and restarts only to change the output back.
+  - Nothing to choose says so: a select with slot -1 shows the action's unavailable toast (BEZEL: NONE
+    HERE, SHADER: NONE HERE, FIT: NO BEZEL HERE, ASPECT: ONE ONLY). Toasts stay data: any `NAME_toast` of
+    an input.json action reaches the renderer as `action:NAME` (loading, unavailable, confirm, restart, done).
+  - Chords: Fit Ctrl+Shift+F, Aspect Ctrl+Shift+G, Reset Ctrl+Shift+R. Aspect is not Ctrl+Shift+A: Dolphin
+    (ExpressionParser.cpp:565-590) and PCSX2 (InputManager.cpp:1080-1170) fire a binding when extra modifiers
+    are held, so it would also load a state (Ctrl+A). Their profiles declare `native_shortcuts.
+    superset_modifiers` with the source, and a generic contract refuses any chord Steam sends whose key a
+    superset matcher binds with fewer modifiers.
+  - The radials: the quick ring is Save, Load, Previous and Next Slot, Next Bezel, Next Shader, Fit,
+    Aspect, Menu, Screenshot and Quit (11, centre empty); the held ring (View, L4, R4) is Up, Down,
+    Confirm, Back, Bezel On/Off, Shader On/Off and Reset to Default, Open Menu in the centre. Icons from
+    Lucide (scaling, ratio, rotate-ccw) through render-icons.sh. The Semu menu shows FIT where a bezel can
+    be placed and ASPECT where a system has two outputs (a row's `when`), RESET TO DEFAULT everywhere; it
+    holds up to twelve rows and draws only as tall as its rows (never below the eight-row size, so short
+    menus and the toasts keep their scale); left and right step every value row. On macOS, whose supervisor
+    reads no keyboard, they are reached from the pad's menu (Select+Y).
+  Contracts: radial_choices.btrc (codes and toasts; remove; Fit on gba, wii, wiiu and nds; Aspect's
+  prompt, window, per-game save and restart; Reset's prompt, removal, defaults and Wii restart; the menu
+  rows), radial_render.btrc (an 81 record through the post-UI state, applyPlacement and reapply; the
+  prompts and unavailable toasts; the rows' values and height; whole steps for bezel placement and the
+  opt-in fill; the DS shell; the Wii's 16:9 environment, bezel choices and Dolphin arguments per game; the
+  outputs checker; the superset-modifier collisions), and the updated variants, Steam ring, Dolphin argv
+  and menu checks. 16 mutations each failed their checks: remove doing nothing, applyPlacement or its
+  reapply dropped, the opt-in dropped or applied to bezel placement, a silent nothing-to-choose, Aspect
+  saving on the first press or per system, the output arguments ignored, Reset without its window or its
+  defaults, the menu filter dropped, Aspect on Ctrl+Shift+A, the DS shell kept, the outputs check
+  unhooked, the prompt toast dropped.
+  Render host (1280x800, Read by eye): snes and wii toast FIT: BEZEL then show the whole TV at a whole
+  step, and FIT: SCREEN then crop it (snes 3x; wii filling the 800 lines); nds FIT: SCREEN shows both
+  screens stacked at 2x on the wood without the shell; gba FIT: BEZEL the whole shell; the wii menu reads
+  FIT BEZEL and ASPECT 4:3 over ten rows; the prompts and the unavailable toast read as written; a Wii game
+  on 16:9 fills the 16:9 TV's hole.
+  Observed in the podman VM (Xvfb 1280x800, llvmpipe; tests/integration/live-switch.sh with
+  CHORDS="ctrl+shift+f ctrl+shift+r,ctrl+shift+r ctrl+shift+g,ctrl+shift+g", typed as XTest the way Steam
+  does): RetroArch gba (240p Test Suite) drew the menu with FIT SCREEN and RESET TO DEFAULT; Fit journaled
+  81/0, the renderer logged the placement and drew the whole arctic shell at a whole step with FIT: BEZEL;
+  Reset journaled 85/0 (RESET: PRESS AGAIN) and, a second later, 79/0, 80/0, 81/1 and 85/1: the shell, the
+  GBA LCD and the screen placement came back live (RESET TO DEFAULTS) and semu.json lost its gba entry;
+  Aspect journaled 82/-1 (ASPECT: ONE ONLY). Real Dolphin 2606a with City Folk (mounted read-only): the menu
+  showed FIT FIT and ASPECT 4:3; after Fit and Reset, Aspect twice saved
+  visual.games.wii."Animal Crossing - City Folk (USA, Asia) (En,Fr,Es) (Rev 1)".output = widescreen,
+  stopped Dolphin and started it again in the same `semu launch` (restarts=1), whose argv held
+  `--config SYSCONF.IPL.AR=True --config Graphics.Settings.CustomAspectRatioWidth=16 --config
+  Graphics.Settings.CustomAspectRatioHeight=9`; a minute later the game's 16:9 strap screen filled the 16:9
+  TV, its variants file offering tv_wide and none.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 

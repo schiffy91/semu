@@ -18,6 +18,20 @@ class SemuSettingsStore {  // $SEMU_HOME/semu.json: the one user-owned settings 
         return result;
     }
 
+    class JSONValue withoutPath(JSONValue root, Vector<string> path, int index) {  // immutable deep delete: the named subtree goes, its siblings stay
+        JSONValue result = JSONValue.makeObject();
+        if (root == null || !root.isObject()) { return result; }
+        string name = path.get(index);
+        for key in root.keys() {
+            if (!key.equals(name)) {
+                result.set(key, root.get(key));
+            } else if (index < path.size() - 1 && root.get(key).isObject()) {
+                result.set(key, SemuSettingsStore.withoutPath(root.get(key), path, index + 1));
+            }
+        }
+        return result;
+    }
+
     class bool readable(string semuHome) {  // absent, or a JSON object; malformed files are never replaced
         string file = PathTools.join(semuHome, "semu.json");
         if (!FileSystem.exists(file)) { return true; }
@@ -25,11 +39,29 @@ class SemuSettingsStore {  // $SEMU_HOME/semu.json: the one user-owned settings 
         return current != null && !current.isError() && current.isObject();
     }
 
-    class bool put(string semuHome, string path, JSONValue value) {  // false, file untouched, when semu.json is malformed
+    class JSONValue current(string semuHome) {  // the file's object, or an empty one when there is none
         string file = PathTools.join(semuHome, "semu.json");
-        if (!SemuSettingsStore.readable(semuHome)) { return false; }
-        JSONValue current = FileSystem.isFile(file) ? SemuJson.readFile(file) : JSONValue.makeObject();
-        JSONValue updated = SemuSettingsStore.withPath(current, Strings.split(path, "."), 0, value);
-        return SemuPaths.writeOwned(semuHome, file, updated.stringifyPretty(2) + "\n");
+        return FileSystem.isFile(file) ? SemuJson.readFile(file) : JSONValue.makeObject();
+    }
+
+    class bool put(string semuHome, string path, JSONValue value) {  // false, file untouched, when semu.json is malformed
+        return SemuSettingsStore.putPath(semuHome, Strings.split(path, "."), value);
+    }
+
+    class bool putPath(string semuHome, Vector<string> path, JSONValue value) {  // the path's parts may hold dots, e.g. a game's file name
+        if (path.isEmpty() || !SemuSettingsStore.readable(semuHome)) { return false; }
+        JSONValue updated = SemuSettingsStore.withPath(SemuSettingsStore.current(semuHome), path, 0, value);
+        return SemuPaths.writeOwned(semuHome, PathTools.join(semuHome, "semu.json"), updated.stringifyPretty(2) + "\n");
+    }
+
+    class bool remove(string semuHome, string path) {  // false, file untouched, when semu.json is malformed; nothing to remove is fine
+        return SemuSettingsStore.removePath(semuHome, Strings.split(path, "."));
+    }
+
+    class bool removePath(string semuHome, Vector<string> path) {
+        if (path.isEmpty() || !SemuSettingsStore.readable(semuHome)) { return false; }
+        if (!FileSystem.isFile(PathTools.join(semuHome, "semu.json"))) { return true; }
+        JSONValue updated = SemuSettingsStore.withoutPath(SemuSettingsStore.current(semuHome), path, 0);
+        return SemuPaths.writeOwned(semuHome, PathTools.join(semuHome, "semu.json"), updated.stringifyPretty(2) + "\n");
     }
 }

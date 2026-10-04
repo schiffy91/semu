@@ -16,6 +16,7 @@ import ./journal.btrc;
 import ./process.btrc;
 import ./plan.btrc;
 import ./visual_cycle.btrc;
+import ./system_reset.btrc;
 
 class SemuActionRouter {  // where an action goes: the renderer, the emulator, or the process group
     class string retroarchCommand(string action) {  // saves and loads name Semu's slot; RetroArch's counter stays
@@ -34,7 +35,7 @@ class SemuActionRouter {  // where an action goes: the renderer, the emulator, o
     }
 
     class bool semuOwned(string action) {
-        return action.startsWith("ui.menu") || action.equals("app.quit") || action.startsWith("visual.");
+        return action.startsWith("ui.menu") || action.equals("app.quit") || action.startsWith("visual.") || action.equals("system.reset");
     }
 
     class string route(string action, bool retroarch, bool fromKeyboard) {  // "semu" | "udp:<COMMAND>" | "inject" | "none"
@@ -189,7 +190,9 @@ class SemuActionExecutor {  // execution of one action id (SemuActions is the re
         if (SemuSupervisorRuntime.menu_visible == 0 || SemuSupervisorRuntime.menu_selected >= launch.menuActions.size()) { return; }
         string item = launch.menuActions.get(SemuSupervisorRuntime.menu_selected);
         if (item.startsWith("visual.")) {
-            SemuVisualCycle.execute(launch, item);  // a BEZEL or SHADER row steps on; the menu stays open
+            SemuVisualCycle.execute(launch, item);  // a value row steps on; the menu stays open
+        } else if (item.equals("system.reset")) {
+            SemuSystemReset.execute(launch, SemuClock.milliseconds());  // asks for a second press; the menu stays open
         } else if (item.equals("app.quit")) {
             SemuSupervisorRuntime.quit = 1;
         } else {
@@ -229,9 +232,11 @@ class SemuActionExecutor {  // execution of one action id (SemuActions is the re
         } else if (action.equals("ui.menu.confirm")) {
             SemuActionExecutor.confirm(launch);
         } else if (action.equals("ui.menu.left") || action.equals("ui.menu.right")) {
-            SemuVisualCycle.menuStep(launch, action.equals("ui.menu.right") ? 1 : -1);  // only the BEZEL and SHADER rows step
+            SemuVisualCycle.menuStep(launch, action.equals("ui.menu.right") ? 1 : -1);  // only the value rows step
         } else if (action.startsWith("visual.")) {
             SemuVisualCycle.execute(launch, action);
+        } else if (action.equals("system.reset")) {
+            SemuSystemReset.execute(launch, SemuClock.milliseconds());
         } else {
             SemuActionExecutor.toEmulator(launch, action, fromKeyboard);
         }
