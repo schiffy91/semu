@@ -28,3 +28,5 @@ dreamcast flycast - 30 60 -- Resident Evil - Code - Veronica.m3u/Resident Evil -
 dreamcast retroarch flycast 30 60 -- Resident Evil - Code - Veronica.m3u/Resident Evil - Code - Veronica.m3u
 ps2 pcsx2 - 45 90 -- Devil May Cry 2 (USA).m3u/Devil May Cry 2 (USA).m3u
 gc dolphin - 45 90 -- Resident Evil (USA).m3u/Resident Evil (USA).m3u
+# A heavier Wii scene for speed (M13 item 4): Mario Kart Wii races its attract demo after its title idles.
+wii dolphin - 60 120 180 -- Mario Kart Wii (USA)*.wbfs

@@ -46,6 +46,13 @@
           "classic": "Classic",
           "gamecube": "None"
         }
+      },
+      "performance_overlay": {
+        "source": "settings.visual.performance_overlay",
+        "map": {
+          "true": "True",
+          "false": "False"
+        }
       }
     },
     "line_groups": {
@@ -104,6 +111,7 @@
     "aspect": "GFX.ini pins AspectRatio = 5 (AspectMode::CustomStretch) at 4:3, the gc and wii display.aspect, so Dolphin draws exactly the SEMU_RENDER_ASPECT rectangle the compositor cuts (1067x800 on the Deck). Auto, the default, and Force 4:3 both draw at the VI's analog aspect (about 1.26 on GameCube), which left Dolphin's own black bars inside the cut. Both custom values are set because they default to 1:1.",
     "disc_change": "Dolphin.ini [Core] AutoDiscChange = True: Dolphin loads a GameCube playlist itself but defaults MAIN_AUTO_DISC_CHANGE to false, so at the disc-change prompt the game would eject and wait for a file dialog Semu never shows. With it on, Dolphin inserts the next playlist entry when the game stops the motor or ejects. It acts only on a boot from an .m3u, so single discs and Wii titles are unaffected.",
     "save_states": "Save and load bind Dolphin's Save to Selected Slot and Load from Selected Slot (HotkeyManager.cpp:143,155, groups :320-321), the slot Increase/Decrease Selected State Slot moves, so the slot Semu shows is the one Dolphin uses. Dolphin keeps the selected slot in Qt.ini [Emulation] StateSlot (DolphinQt/Settings.cpp:576-584); Semu writes that file with slot 1 each launch, which is where Semu's counter starts too (MainWindow.cpp:300-301, 1582-1596 wrap 1..10).",
+    "speed": "Dolphin 2606a (c77bbaa) ships desktop defaults that stutter on the Deck: single core (MainSettings.cpp:59-65, DEFAULT_CPU_THREAD true only on Android) and synchronous shader compiles (GraphicsSettings.cpp:110-111), so every new shader stalls a frame. Dolphin.ini [Core] CPUThread = True runs the GPU thread beside the CPU thread; a GameSettings INI that needs one core (98 say CPUThread = False) still wins, as GlobalGame is searched ahead of Base (Common/Config/Enums.h:39-47). GFX.ini ShaderCompilationMode = 2 is AsynchronousUberShaders, the UI's Hybrid Ubershaders (VideoConfig.h:43-49): an ubershader draws while the specialised shader compiles in the background, which OpenGL on radeonsi supports (OGLConfig.cpp:688-690). WaitForShadersBeforeStarting stays at Dolphin's False: with ubershaders on it would queue every ubershader pipeline and block the boot until all compiled (ShaderCache.cpp:69-75), a long black screen on the first boot after a release. visual.performance_overlay turns on ShowFPS, ShowSpeed and LogRenderTimeToFile, which writes one line per frame to Logs/render_times.txt and per VI to Logs/vblank_times.txt in the user directory (PerformanceMetrics.h:53-54, PerformanceTracker.cpp:187-198); Dolphin draws the overlay at the window's top-right (PerformanceMetrics.cpp:170-171), outside the 4:3 picture the compositor cuts on a 16:10 screen, so on the Deck the log is the measure.",
     "quit": "General/Stop is bound only on macOS: on Linux the supervisor reads every keyboard and quits the process group itself, so Ctrl+Q is Semu's alone there.",
     "wiimote": "The Wii Remote, Nunchuk and Classic Controller read their buttons, d-pad, sticks and triggers from ${pad}, the SDL pad GCPadNew uses (Steam's virtual pad in Game Mode), with Dolphin's SDL control names; only motion (IMUAccelerometer, IMUGyroscope) reads ${wiimote}, the Deck's own controller through Dolphin's SteamDeck backend, which opens hidraw (SteamDeck.cpp:143,175). So the open Semu menu's EVIOCGRAB of the pads covers every Wii button, the Deck's grips (L4, R4, L5, R5), which Steam's template holds for its Hotkeys and Wii presets, reach no Wii control, and each name exists on the device it is read from (native_controls). The keyboard alternates on the XInput2 pointer device are written (`KEY` & !`Ctrl`): every Semu chord holds Ctrl, so a chord Steam types never also presses a Wii button. Keys are backticked: Dolphin lexes a bare digit as a number (ExpressionParser.cpp:172-181, 252-253), so the old Buttons/1 = 1|... and Buttons/2 = 2|... held 1 and 2 down for good."
   },
@@ -301,6 +309,7 @@
         "WiimoteSource2 = 0",
         "WiimoteSource3 = 0",
         "GFXBackend = OGL",
+        "CPUThread = True",
         "AutoDiscChange = True",
         "",
         "[Interface]",
@@ -317,7 +326,11 @@
         "[Settings]",
         "AspectRatio = 5",
         "CustomAspectRatioWidth = 4",
-        "CustomAspectRatioHeight = 3"
+        "CustomAspectRatioHeight = 3",
+        "ShaderCompilationMode = 2",
+        "ShowFPS = ${performance_overlay}",
+        "ShowSpeed = ${performance_overlay}",
+        "LogRenderTimeToFile = ${performance_overlay}"
       ]
     },
     {

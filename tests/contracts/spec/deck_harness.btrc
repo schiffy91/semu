@@ -66,6 +66,10 @@ class DeckHarnessScripts {  // read as text: the parts of a run that only the De
         contract.contains(check, "gamescopectl screenshot \"$shot\" ${3:+\"$3\"}", "a capture passes its screenshot type");
         contract.contains(check, "echo \"$((at + 500)) shot cursor-$((step + 1)) 3\"", "the shot after a move or tap includes gamescope's cursor plane");
         contract.contains(check, "The state root stays the owner's", "the isolation note says what it does not isolate");
+        string matrix = FileSystem.readText(PathTools.join(fixture.project, "tests/deck/system-matrix.sh"));
+        contract.contains(matrix, "%s ${SEMU_MATRIX_SETTINGS:+--settings-json \"$SEMU_MATRIX_SETTINGS\"} --rom \"$SEMU_MATRIX_ROM\"", "a matrix launch takes SEMU_MATRIX_SETTINGS as its highest overlay, so the owner's semu.json is never written");
+        contract.contains(matrix, "file=\"$state/dolphin/dolphin-user/Logs/$log.txt\"", "a Dolphin case reads the frame logs from Dolphin's user directory in the Deck's state root");
+        contract.contains(matrix, "grep -q 'semu-compose: first frame' \"$dir/run.log\"", "a case notes when its first frame was composed, the boot time");
         int refusal = injector.indexOf("|| { echo \"inject: $injector; nothing sent\"; exit 3; }");
         int firstKey = injector.indexOf("send key --delay 80");
         contract.expect(refusal > 0 && firstKey > refusal, f"the injector exits on a refused display before it can type ({refusal} < {firstKey})");

@@ -384,7 +384,7 @@ class StandaloneSpecContract {
                 + "-" + guid.substring(16, 4) + "-" + guid.substring(20, 12);
             contract.expect(StandaloneSpecContract.identity(fixture, "ryujinx_controller_id").equals(derived), f"{target} ryujinx pad id is Ryujinx's CRC-stripped form of the SDL GUID: {derived}");
         }
-        contract.expect(SemuJson.textAt(player, "backend").equals("GamepadSDL2") && SemuJson.textAt(player, "player_index").equals("Player1"), target + " ryujinx player one reads SDL2");
+        contract.expect(SemuJson.textAt(player, "backend").equals("GamepadSDL2") && players.size() == 1, target + " ryujinx player one reads SDL2");  // its slot follows the play mode (performance.btrc)
         contract.expect(SemuJson.textAt(config, "graphics_backend").equals("Vulkan"), target + " ryujinx runs Vulkan for VK_LAYER_SEMU_compositor");
         contract.expect(SemuJson.boolAt(config, "start_fullscreen", false) && !SemuJson.boolAt(config, "show_confirm_exit", true), target + " ryujinx fullscreen without an exit prompt");
         contract.expect(!SemuJson.boolAt(config, "check_updates_on_start", true), target + " ryujinx never checks for updates");

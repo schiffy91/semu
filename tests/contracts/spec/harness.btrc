@@ -111,7 +111,7 @@ class HarnessSpecStyle {  // no one- or two-letter names in the multi-disc, chec
         for name in ["render_variants", "key_collisions"] { result.push("src/emit/" + name + ".btrc"); }
         for name in ["variant_keys", "renderer_variants", "renderer_config", "renderer_config_screen", "renderer_live_switch", "renderer_menu", "renderer_menu_raster", "renderer_cursor", "renderer_variant_images", "renderer_placement", "retroarch/surface_math"] { result.push("src/renderer/" + name + ".btrc"); }
         for name in ["configset", "input_document", "input_groups", "input_presets", "input_rules", "input_vdf"] { result.push("src/steam/" + name + ".btrc"); }
-        for name in ["input_delivery", "input_devices", "menu_modal", "retroarch_keyboard", "emulator_hotkeys", "emulator_keyboard", "save_slots", "render_variants", "visual_cycle", "live_variants", "live_switch", "steam_configset", "steam_controllers", "right_trackpad", "placement"] { result.push("tests/contracts/spec/" + name + ".btrc"); }
+        for name in ["input_delivery", "input_devices", "menu_modal", "retroarch_keyboard", "emulator_hotkeys", "emulator_keyboard", "save_slots", "render_variants", "visual_cycle", "live_variants", "live_switch", "steam_configset", "steam_controllers", "right_trackpad", "placement", "performance"] { result.push("tests/contracts/spec/" + name + ".btrc"); }
         return result;
     }
 

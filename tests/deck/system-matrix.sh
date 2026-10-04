@@ -15,11 +15,21 @@
 # saw), cmdline (its argv, one argument per line, read the moment the emulator is first seen, so an
 # emulator that exits at once still shows which file it was given) and result (one line per check);
 # a second case of the same SYSTEM-EMULATOR[-CORE] gets a -2, -3 suffix. OUT/summary collects every
-# result; OUT/done marks the end.
+# result; OUT/done marks the end. The result names the second the first composed frame was logged,
+# so a run right after a release and a second run give the first and second boot times.
+#
+#   SEMU_MATRIX_SETTINGS='{"visual":{"performance_overlay":true}}' system-matrix.sh CASES OUT
+#
+# passes that JSON as every launch's --settings-json, the highest settings overlay, so the owner's
+# semu.json is never written. With the performance overlay on, Dolphin logs one line per frame and
+# per VI; a Dolphin case copies Logs/render_times.txt and vblank_times.txt beside its result and
+# notes their rates (VIs per second against 59.94 or 50 is the emulation speed; presents undercount,
+# as Dolphin skips duplicate frames).
 set -u
 cases="$1"; out="$2"
 roms=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs
 cli="$HOME/Applications/Semu/bin/semu-deck-cli"
+state="$HOME/.local/share/semu"  # the steam-deck target's state_root
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 emulators='retroarch|azahar|dolphin|pcsx2|ppsspp|melonds|flycast|cemu|ryujinx|semu-btrc'
 mkdir -p "$out"
@@ -56,7 +66,7 @@ while IFS= read -r line; do
   if [ -z "$rom" ]; then note "skipped: no ROM matches $system/$pattern"; continue; fi
   note "rom: ${rom#"$roms/"}"
   core_argument=""; [ "$core" = - ] || core_argument="--core $core"
-  printf '#!/bin/sh\nexec "%s" launch %s --system %s %s --rom "$SEMU_MATRIX_ROM"\n' "$cli" "$emulator" "$system" "$core_argument" > "$dir/inner.sh"
+  printf '#!/bin/sh\nexec "%s" launch %s --system %s %s ${SEMU_MATRIX_SETTINGS:+--settings-json "$SEMU_MATRIX_SETTINGS"} --rom "$SEMU_MATRIX_ROM"\n' "$cli" "$emulator" "$system" "$core_argument" > "$dir/inner.sh"
   chmod +x "$dir/inner.sh"
 
   start=$(date +%s)
@@ -82,8 +92,12 @@ while IFS= read -r line; do
     sleep 0.1
   done
 
+  first=""
   for wait in $waits; do
-    while [ $(( $(date +%s) - start )) -lt "$wait" ]; do sleep 1; done
+    while [ $(( $(date +%s) - start )) -lt "$wait" ]; do
+      if [ -z "$first" ] && grep -q 'semu-compose: first frame' "$dir/run.log" 2>/dev/null; then first=$(( $(date +%s) - start )); note "first frame: after $first s"; fi
+      sleep 1
+    done
     running=no; [ -n "$game" ] && kill -0 "$game" 2>/dev/null && running=yes
     shot="$dir/at-$wait.png"
     [ -n "$display" ] && GAMESCOPE_WAYLAND_DISPLAY="$display" timeout 20 gamescopectl screenshot "$shot" > /dev/null 2>&1
@@ -119,6 +133,14 @@ while IFS= read -r line; do
     note "cleanup: orphans $(for pid in $orphans; do printf '%s(%s) ' "$pid" "$(cat "/proc/$pid/comm" 2>/dev/null)"; done)"
     for pid in $orphans; do kill -TERM "$pid" 2>/dev/null; done; sleep 2
     for pid in $orphans; do kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null; done
+  fi
+  if [ "$emulator" = dolphin ]; then  # Dolphin's frame logs, written only while the performance overlay is on
+    for log in render_times vblank_times; do
+      file="$state/dolphin/dolphin-user/Logs/$log.txt"
+      [ "$file" -nt "$dir/inner.sh" ] || continue
+      cp "$file" "$dir/$log.txt"
+      note "$log: $(awk '{ value[NR] = $1; total += $1 } END { for (line = int(NR / 2) + 1; line <= NR; line++) { late += value[line]; count++ } if (total > 0 && late > 0) printf "%d lines, %.2f per second overall, %.2f per second in the second half", NR, 1000 * NR / total, 1000 * count / late }' "$file")"
+    done
   fi
   grep -E 'semu-compose: first frame|semu:|error|Error|fatal|Fatal' "$dir/run.log" | grep -v -i 'fontconfig' | head -12 | sed 's/^/log: /' >> "$dir/result"
   { echo "== $name"; cat "$dir/result"; } >> "$out/summary"

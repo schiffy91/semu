@@ -25,6 +25,13 @@
         "width": 1280,
         "height": 800
       }
+    },
+    "input": {
+      "systems": {
+        "switch": {
+          "play_mode": "handheld"
+        }
+      }
     }
   },
   "steam": {

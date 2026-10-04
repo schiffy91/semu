@@ -700,6 +700,90 @@ Status: being designed (workflow mods-design, with critique) while the radial se
   Open, the owner's call: at 1920x1080 the PSP's 3x shell (1178 px) is taller than the screen, so the
   picture stays centred, a thin wood strip shows at the top and the button bar is half cut; centring the
   shell there needs a per-system rule, and applied to all it pushes the gb, gbc and gba pictures to the top.
+- Item 4 (Wii and Wii U lag): cause named 2026-10-04, Semu's settings built and checked in the podman VM;
+  the Deck's speed numbers are open (task 14's matrix). The main limit is the SD card, which only the owner
+  can change. Measured read-only on the Deck: 2.9 MB/s sequential (64 MiB of Kirby's Epic Yarn's .wbfs in
+  4 MiB direct reads took 23.5 s), 48-105 ms per random 128 KiB read (Skyward Sword's .wbfs), and 53.7 ms
+  per read since boot; on 2026-10-04, 4 h after a boot, /sys/block/mmcblk0/stat again said 57 ms per read
+  (27565 reads, 1584 s of read time, 2.5 MB/s while busy) against 0.29 ms on the internal NVMe, which reads
+  2.0 GB/s. The bus negotiated UHS-I SDR104 correctly; the card is a SanDisk SD1T5 1.4 TiB from 05/2024
+  (A1, V10), and a healthy A1/A2 card does about 85-90 MB/s and 1-2 ms in a Deck. So a game streams its
+  disc 30 to 50 times slower than the slot allows: Cemu spent 17.5 s between its recompiler and Vulkan
+  start reading Smash's .wua, and Dolphin's LoadGameIntoMemory would need about 23 minutes for a 4 GB Wii
+  disc. Every cache (Dolphin's shaders, Cemu's shader cache, Ryujinx's PTC, Mesa's) already lives on the
+  NVMe under ~/.local/share/semu. In the matrix Mario Kart 8 presented 46-48 fps against 59.94; a second
+  limit, Semu's own, is named here and not fixed: the Vulkan layer (Cemu, Ryujinx, Azahar) waits on the
+  GPU at every present, fences in `submit` and glFinish in `compose` (semu_vulkan_core.btrc:279-327),
+  even when Wii U draws no bezel and no shader. Passing such frames straight to present is the design's
+  passthrough task, open because it must keep the 3DS's whole-step layout with the bezel off.
+  The owner's options: test the card read-only in another reader and replace it (the biggest win); or,
+  on the owner's word, keep the Wii and Wii U games being played on /home (201 GB free). That crosses
+  filesystems, so it is a copy, never a rename (the mods migration's `--allow-copy` rule), and Semu does
+  not move ROMs unasked.
+  Builds: no emulator is a debug build. Every Linux emulator compiles from its pinned source as Release
+  (nixpkgs cmake setup-hook :88; dotnet Release for Ryujinx; RetroArch and its cores without DEBUG, at
+  their release optimisation), with no assertions linked (0 `__assert_fail` imports in Dolphin and Cemu).
+  - Cemu is GCC 15 at -O2 with LTO: nixpkgs swaps CMake's Release flags for `-DNDEBUG`
+    (pkgs/by-name/ce/cemu/package.nix:113-114), leaving the cc-wrapper's -O2, and Cemu turns LTO on
+    (CMakeLists.txt:74-75). Flathub's build, the one most Decks run, is the same class: the freedesktop
+    SDK's GCC at RelWithDebInfo (-O2, LTO on; it installs `Cemu_relwithdebinfo`). Upstream's AppImage is
+    clang-15 at -O3 with LTO (.github/workflows/build.yml:42, 69). -O3 is logged, not taken: GCC at -O3
+    is a combination no upstream channel ships or tests, the gain is a few percent, and nothing here can
+    play a Wii U game to catch a miscompile (the VM's Cemu segfaulted in its PPC interpreter on lavapipe on
+    2026-09-25; the Deck is read-only for this work). Matching upstream exactly means clang with lld,
+    verified on the Deck.
+  - PCSX2 is clang 21, Release, Multi-ISA, without LTO (nixpkgs pcsx2/package.nix:50, 70-74); upstream
+    links with `-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON` and lld (linux_build_qt.yml:137-142). Logged,
+    not taken: it needs lld wired into the recipe and the render hook's static loader archive linked under
+    LTO, a long rebuild for a few percent on PS2, which the owner did not report as slow.
+  Settings Semu owns (reversible defaults, the owner being unattended):
+  - Dolphin runs dual core: Dolphin.ini [Core] `CPUThread = True`. Dolphin 2606a enables it only on
+    Android (MainSettings.cpp:59-65), so every Wii and GameCube game ran CPU and GPU emulation on one
+    thread; the 98 GameSettings INIs that need one core still win (GlobalGame before Base, Enums.h:39-47).
+  - Dolphin compiles shaders behind hybrid ubershaders: GFX.ini `ShaderCompilationMode = 2`
+    (AsynchronousUberShaders), so a new shader no longer stalls a frame; OpenGL on radeonsi compiles in the
+    background (OGLConfig.cpp:688-690). `WaitForShadersBeforeStarting` stays at Dolphin's False: with
+    ubershaders on it would queue every ubershader pipeline before the boot (ShaderCache.cpp:69-75).
+  - `visual.performance_overlay` (VISUALS: SPEED OVERLAY AND FRAME LOG, off by default) turns on Dolphin's
+    ShowFPS, ShowSpeed and LogRenderTimeToFile, which writes Logs/render_times.txt per presented frame and
+    vblank_times.txt per VI in Dolphin's user directory. The overlay sits at the window's top-right, outside
+    the 4:3 picture the compositor cuts on the Deck, so there the log is the measure.
+    `tests/deck/system-matrix.sh` takes `SEMU_MATRIX_SETTINGS` as every launch's `--settings-json` (the
+    owner's semu.json is never written), copies a Dolphin case's two logs and notes their rates (VIs per
+    second against 59.94 is the speed; presents undercount, as Dolphin skips duplicate frames), and notes
+    when the first frame was composed, so a run after a release and a second run give the first and second
+    boot times. A heavier case joins: Mario Kart Wii's attract race at 60, 120 and 180 s.
+  - The Deck plays the Switch handheld: `input.systems.switch.play_mode` is docked in defaults.json and
+    handheld in the steam-deck target (`semu settings put input.systems.switch.play_mode docked` docks it
+    back). Handheld writes Ryujinx `docked_mode: false`, so games read the handheld operation mode
+    (ICommonStateGetter.cs:92-94) and render at their 720p-class handheld resolution for the 800-line panel
+    instead of 1080p (the TOTK Optimizer's own [Handheld] block asks for 1280x720), and the pad becomes the
+    Handheld controller. Checked against Ryujinx 1.3.3's rules (e2143d43): a Handheld controller always sits
+    at the Handheld index (NpadDevices.cs:142-145) and is dropped while docked (:103 in Validate, :186 in
+    Remap), so docked keeps the Pro Controller at Player1; undocked, Validate counts the Handheld pad for
+    every title that accepts the Handheld style and id, which every handheld-playable title does, so the
+    controller applet (ControllerApplet.cs:88) returns without a dialog. Both of the owner's Switch titles
+    (Animal Crossing, Tears of the Kingdom) play handheld. A TV-only title would show the applet, as a real
+    Switch asks for detached Joy-Cons.
+  Contracts: performance.btrc (dual core, hybrid ubershaders and no boot wait on linux-desktop, steam-deck
+  and macos; the three overlay keys False by default and True with the setting; the VISUALS switch; the
+  Switch modes per target and under overrides, each a pairing Ryujinx accepts; an unknown mode is a
+  diagnostic) and deck_harness's matrix lines; 13 mutations each failed their checks.
+  Observed in the podman VM (Rosetta, llvmpipe and lavapipe, Xvfb at 1280x800; GameCube and Wii Animal
+  Crossing, New Horizons, the keys and firmware mounted read-only), this tree against HEAD 27862dc:
+  - Dolphin with this profile ran a "CPU thread" and a "Video thread" where HEAD's ran one "CPU-GPU thread"
+    (the names Core.cpp:327-329 give them); its ubershader pipeline cache filled to 14.2 MB in the
+    background, HEAD's stayed at 48 bytes; the first frame was composed as fast on both, 6.6 s on a first
+    boot and 4.4 s on the second (GameCube), 7.2 s on the Wii disc's first boot, and the title screens draw
+    the same. With the overlay on, render_times.txt and vblank_times.txt filled (1316 VI lines in 120 s of
+    City Folk, about 10.6 per second: software rendering under Rosetta, not a speed figure), and the overlay
+    showed nowhere inside the cut.
+  - Ryujinx through the steam-deck target, with a replica of Steam's virtual pad
+    (tests/visual/virtual_pad.btrc): handheld logged "Configured Controller Handheld to Handheld" and
+    "Connected Controller Handheld to Handheld"; New Horizons asked for ProController, Handheld and
+    JoyconPair on Player1 and Handheld, and in 3 minutes no controller applet and no "No matching
+    controllers" line followed. Docked logged "EnableDockedMode set to: True" and the Pro Controller at
+    Player1. Lavapipe does not take the game past its boot frames, so its picture waits for the Deck.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 

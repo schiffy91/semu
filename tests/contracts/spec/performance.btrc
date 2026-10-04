@@ -1,0 +1,117 @@
+// Performance spec (M13 item 4, the Wii and Wii U lag). The SD card is the main limit and only the owner can
+// change it; these are the settings Semu owns. Dolphin runs dual core with hybrid ubershaders and never blocks
+// its boot on precompiling them; the speed overlay also logs Dolphin's frame and VI times, the measure on the
+// Deck, where the overlay sits outside the 4:3 cut. The Deck plays the Switch undocked with the pad as the
+// Handheld controller, the pairing Ryujinx 1.3.3's controller applet accepts undocked, while a TV keeps it
+// docked with a Pro Controller at Player1 (NpadDevices.cs:103, 142-145, 186).
+
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/profiles.btrc;
+import ../../../src/emit/settings_ui.btrc;
+
+class PerformanceSpecRender {  // one rendered profile file for a target under a settings overlay, state in the fixture's scratch
+    class SemuPlan plan(Fixture fixture, string target, string settings, SemuDiagnostics diagnostics) {
+        string paths = "{\"paths\":{\"state_root\":\"" + PathTools.join(fixture.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(fixture.scratch, "content") + "\"}}";
+        JSONValue overlay = SemuJson.merge(JSONValue.parse(paths), JSONValue.parse(settings));
+        return SemuResolver.plan(fixture.model, target, fixture.plan.semuHome, fixture.plan.assetRoot, overlay.stringify(), diagnostics);
+    }
+
+    class string file(Fixture fixture, string target, string settings, string emulatorId, string relative, SemuDiagnostics diagnostics) {
+        SemuPlan plan = PerformanceSpecRender.plan(fixture, target, settings, diagnostics);
+        for rendered in SemuProfiles.render(fixture.model, plan, fixture.model.emulator(emulatorId), diagnostics) {
+            if (rendered.path.equals(relative)) { return rendered.content; }
+        }
+        return "";
+    }
+
+    class string section(string text, string name) {  // the lines of one INI section, each ending in a newline
+        string result = "";
+        bool inside = false;
+        for line in Strings.split(text, "\n") {
+            if (line.startsWith("[")) { inside = line.equals("[" + name + "]"); continue; }
+            if (inside) { result = result + line + "\n"; }
+        }
+        return result;
+    }
+}
+
+class PerformanceSpecDolphin {
+    class void overlay(Contract contract, Fixture fixture, string target, string settings, string wanted) {
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        string graphics = PerformanceSpecRender.section(PerformanceSpecRender.file(fixture, target, settings, "dolphin", "dolphin-user/Config/GFX.ini", diagnostics), "Settings");
+        for key in ["ShowFPS", "ShowSpeed", "LogRenderTimeToFile"] {
+            contract.expect(diagnostics.ok() && graphics.contains(key + " = " + wanted + "\n"), f"{target} dolphin {key} = {wanted} with settings {settings}: " + diagnostics.render());
+        }
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        for target in ["linux-desktop", "steam-deck", "macos"] {
+            SemuDiagnostics diagnostics = SemuDiagnostics();
+            string main = PerformanceSpecRender.file(fixture, target, "{}", "dolphin", "dolphin-user/Config/Dolphin.ini", diagnostics);
+            string graphics = PerformanceSpecRender.file(fixture, target, "{}", "dolphin", "dolphin-user/Config/GFX.ini", diagnostics);
+            contract.expect(diagnostics.ok(), target + " dolphin renders cleanly: " + diagnostics.render());
+            // Dolphin 2606a turns dual core on only on Android (MainSettings.cpp:59-65); a game INI saying False still wins
+            contract.contains(PerformanceSpecRender.section(main, "Core"), "CPUThread = True\n", target + " dolphin runs dual core");
+            // AsynchronousUberShaders (VideoConfig.h:43-49): an ubershader draws while the specialised shader compiles
+            contract.contains(PerformanceSpecRender.section(graphics, "Settings"), "ShaderCompilationMode = 2\n", target + " dolphin compiles shaders behind hybrid ubershaders");
+            // with ubershaders on, waiting queues every ubershader pipeline before the boot (ShaderCache.cpp:69-75)
+            contract.lacks(graphics, "WaitForShadersBeforeStarting", target + " dolphin never blocks its boot on precompiling ubershaders");
+            PerformanceSpecDolphin.overlay(contract, fixture, target, "{}", "False");
+            PerformanceSpecDolphin.overlay(contract, fixture, target, "{\"visual\":{\"performance_overlay\":true}}", "True");
+        }
+        SemuPlan plan = PerformanceSpecRender.plan(fixture, "steam-deck", "{\"visual\":{\"performance_overlay\":true}}", SemuDiagnostics());
+        JSONValue document = SemuSettingsUi.document(fixture.model, plan);
+        JSONValue fields = SemuJson.get(document, "sections").at(0).get("fields");
+        bool offered = false;
+        for (int index = 0; index < fields.size(); index++) {
+            JSONValue field = fields.at(index);
+            if (SemuJson.textAt(field, "key").equals("visual.performance_overlay")) { offered = SemuJson.textAt(field, "type").equals("boolean") && SemuJson.boolAt(field, "value", false); }
+        }
+        contract.expect(offered, "the VISUALS page offers the speed overlay as a switch showing its current value");
+    }
+}
+
+class PerformanceSpecSwitch {
+    class void expectMode(Contract contract, Fixture fixture, string target, string settings, string mode) {
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        JSONValue config = JSONValue.parse(PerformanceSpecRender.file(fixture, target, settings, "ryujinx", "config/Ryujinx/Config.json", diagnostics));
+        JSONValue players = config == null || config.isError() ? null : config.get("input_config");
+        JSONValue player = players != null && players.isArray() && players.size() == 1 ? players.at(0) : JSONValue.makeObject();
+        JSONValue docked = config == null || config.isError() ? null : config.get("docked_mode");
+        bool handheld = mode.equals("handheld");
+        bool undocked = docked != null && docked.isBool() && !docked.asBool();
+        string slot = SemuJson.textAt(player, "player_index");
+        string kind = SemuJson.textAt(player, "controller_type");
+        string label = f"{target} with settings {settings}: Ryujinx runs {mode} (docked_mode {SemuJson.text(docked)}, {kind} at {slot})";
+        contract.expect(diagnostics.ok() && docked != null && docked.isBool() && undocked == handheld, label + ", docked_mode a JSON boolean: " + diagnostics.render());
+        contract.expect(slot.equals(handheld ? "Handheld" : "Player1") && kind.equals(handheld ? "Handheld" : "ProController"), label + ", one pad in the slot that mode uses");
+        // Ryujinx's own rules: a Handheld controller sits at the Handheld index and only while undocked
+        contract.expect(kind.equals("Handheld") == slot.equals("Handheld") && kind.equals("Handheld") == undocked, label + ", a pairing Ryujinx's controller applet accepts");
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        PerformanceSpecSwitch.expectMode(contract, fixture, "steam-deck", "{}", "handheld");
+        PerformanceSpecSwitch.expectMode(contract, fixture, "linux-desktop", "{}", "docked");
+        PerformanceSpecSwitch.expectMode(contract, fixture, "macos", "{}", "docked");
+        PerformanceSpecSwitch.expectMode(contract, fixture, "steam-deck", "{\"input\":{\"systems\":{\"switch\":{\"play_mode\":\"docked\"}}}}", "docked");
+        PerformanceSpecSwitch.expectMode(contract, fixture, "linux-desktop", "{\"input\":{\"systems\":{\"switch\":{\"play_mode\":\"handheld\"}}}}", "handheld");
+        SemuDiagnostics refused = SemuDiagnostics();
+        PerformanceSpecRender.file(fixture, "steam-deck", "{\"input\":{\"systems\":{\"switch\":{\"play_mode\":\"tabletop\"}}}}", "ryujinx", "config/Ryujinx/Config.json", refused);
+        contract.expect(!refused.ok() && refused.render().contains("docked_mode"), "an unknown Switch play mode is a diagnostic, never a guessed Config.json: " + refused.render());
+    }
+}
+
+class PerformanceSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        PerformanceSpecDolphin.run(contract, fixture);
+        PerformanceSpecSwitch.run(contract, fixture);
+    }
+}

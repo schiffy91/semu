@@ -20,6 +20,27 @@
       },
       "use_hypervisor": {
         "source": "platform.ryujinx.use_hypervisor"
+      },
+      "docked_mode": {
+        "source": "settings.input.systems.switch.play_mode",
+        "map": {
+          "docked": "true",
+          "handheld": "false"
+        }
+      },
+      "player_index": {
+        "source": "settings.input.systems.switch.play_mode",
+        "map": {
+          "docked": "Player1",
+          "handheld": "Handheld"
+        }
+      },
+      "controller_type": {
+        "source": "settings.input.systems.switch.play_mode",
+        "map": {
+          "docked": "ProController",
+          "handheld": "Handheld"
+        }
       }
     },
     "line_groups": {}
@@ -31,7 +52,8 @@
   },
   "doc": {
     "purpose": "Ryujinx 1.3.3 active configuration, emitted into the isolated --root-data-dir. ${controller_identity} is steam_input.json device_identities.ryujinx_controller_id; ${emulator_name} selects the profile output root.",
-    "input": "Player1 is the target Steam virtual controller through GamepadSDL2. Switch face-button letters cross the SDL/Xbox layout intentionally. Motion is disabled by target policy; rumble remains enabled.",
+    "input": "Player one is the target Steam virtual controller through GamepadSDL2. Switch face-button letters cross the SDL/Xbox layout intentionally. Motion is disabled by target policy; rumble remains enabled.",
+    "play_mode": "settings input.systems.switch.play_mode is how the console is held: docked (defaults.json) is a TV Switch with a Pro Controller as Player1; handheld (the steam-deck target) undocks it and makes the pad the Handheld controller, the Joy-Cons on the console. Games read the mode (GetOperationMode, ICommonStateGetter.cs:92-94) and render at their handheld resolution, 720p class for the Deck's 800-line panel instead of 1080p, and Ryujinx drops to the handheld performance mode (Horizon.cs:319). The controller follows Ryujinx 1.3.3's applet rules (e2143d43): a Handheld controller always sits at the Handheld index (NpadDevices.cs:142-145) and is removed while docked (:103 in Validate, :186 in Remap), so docked mode keeps the Pro Controller at Player1. Undocked, Validate counts the Handheld pad for every title that accepts the Handheld style and id, which is every title playable handheld, so the controller applet (ControllerApplet.cs:88) returns without a dialog; a TV-only title would show it, as a real Switch asks for detached Joy-Cons.",
     "ownership": "Semu converges only Config.json. Ryujinx-owned firmware, NAND content, and native game saves under bis/ are not profile files and are never overwritten."
   },
   "files": [
@@ -66,7 +88,7 @@
         "system_time_offset": 0,
         "match_system_time": true,
         "use_input_global_config": false,
-        "docked_mode": true,
+        "docked_mode": "${docked_mode}",
         "enable_discord_integration": false,
         "check_updates_on_start": false,
         "update_checker_type": "Off",
@@ -223,8 +245,8 @@
             "backend": "GamepadSDL2",
             "id": "${controller_identity}",
             "name": "Steam Virtual Gamepad",
-            "controller_type": "ProController",
-            "player_index": "Player1"
+            "controller_type": "${controller_type}",
+            "player_index": "${player_index}"
           }
         ],
         "rainbow_speed": 1.0,

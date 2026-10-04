@@ -20,7 +20,8 @@
       "width": 3840,
       "height": 2160
     },
-    "placement": "fit"
+    "placement": "fit",
+    "performance_overlay": false
   },
   "ui": {
     "theme": "slate-es-de",
@@ -30,6 +31,9 @@
     "systems": {
       "wii": {
         "controller_mode": "nunchuk"
+      },
+      "switch": {
+        "play_mode": "docked"
       }
     }
   },
