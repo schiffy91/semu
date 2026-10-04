@@ -10,7 +10,10 @@ import ../resolve.btrc;
 import ../emit/profiles.btrc;
 import ../emit/rendering.btrc;
 import ../emit/render_variants.btrc;
+import ../mods/install.btrc;
+import ../mods/report.btrc;
 import ./playlist.btrc;
+import ./seeds.btrc;
 
 class SemuLaunchPlan {
     public Vector<string> argv;
@@ -43,6 +46,7 @@ class SemuLaunchPlan {
     public bool bezelsOn;
     public bool shadersOn;
     public SemuRenderVariantSet variants;  // the bezel and shader choices the menu and radial cycle
+    public Vector<string> mods;  // each mod entry and what the launch did with it, for --print-plan
 
     public SemuLaunchPlan() {
         self.argv = [];
@@ -75,6 +79,7 @@ class SemuLaunchPlan {
         self.bezelsOn = true;
         self.shadersOn = true;
         self.variants = SemuRenderVariantSet();
+        self.mods = [];
     }
 
     public bool ok() { return self.error.isEmpty() && !self.argv.isEmpty(); }
@@ -93,6 +98,7 @@ class SemuLaunchPlan {
         result.set("rom", JSONValue.makeString(self.rom));
         result.set("playlist", JSONValue.makeString(self.playlist));
         result.set("notice", JSONValue.makeString(self.notice));
+        result.set("mods", SemuJson.array(self.mods));
         result.set("quit_chord_window_ms", JSONValue.makeInt(self.chordWindowMs));
         JSONValue quitButtons = JSONValue.makeArray();
         for button in self.quitButtons { quitButtons.push(JSONValue.makeString(button)); }
@@ -183,81 +189,6 @@ class SemuLauncher {
         Vector<string> lines = [];
         for key in overrides.keys().sorted() { lines.push(f"{key} = \"{plan.tokens.resolve(SemuJson.text(overrides.get(key)))}\""); }
         return lines.join("\n") + "\n";
-    }
-
-    // A seed appears whole or not at all: copied beside the target first, then renamed into place.
-    // An interrupted copy leaves only the .semu-partial sibling, which the next launch replaces;
-    // a partial target would otherwise count as seeded forever.
-    class bool copyWhole(string source, string target, string flags, SemuLaunchPlan launch) {
-        string partial = target + ".semu-partial";
-        SemuPaths.prepareDirectory(PathTools.dirname(target));
-        if (FileSystem.exists(partial) || FileSystem.isSymlink(partial)) { ChildProcess.run("rm", ["-rf", partial]); }
-        ExecResult copy = ChildProcess.run("cp", [flags, source, partial]);
-        ExecResult move = copy.ok() && !FileSystem.exists(target) ? ChildProcess.run("mv", [partial, target]) : copy;
-        if (!copy.ok() || !move.ok()) {
-            ChildProcess.run("rm", ["-rf", partial]);
-            launch.error = f"could not seed {target} from {source}: {copy.ok() ? move.stderr() : copy.stderr()}";
-            return false;
-        }
-        if (FileSystem.exists(partial)) { ChildProcess.run("rm", ["-rf", partial]); }  // the target appeared meanwhile: it wins
-        return true;
-    }
-
-    class bool copyMissing(string source, string target, SemuLaunchPlan launch) {  // adds what the target lacks, never replaces; links are copied as their contents
-        if (!FileSystem.exists(target) && !FileSystem.isSymlink(target)) {  // nothing there yet: one copy of the whole tree cannot replace anything
-            return SemuLauncher.copyWhole(source, target, "-RpL", launch);
-        }
-        for name in FileSystem.listDir(source) {
-            string from = PathTools.join(source, name);
-            string to = PathTools.join(target, name);
-            if (FileSystem.isDir(from)) {
-                if (FileSystem.isSymlink(to) || (FileSystem.exists(to) && !FileSystem.isDir(to))) { continue; }
-                if (!SemuLauncher.copyMissing(from, to, launch)) { return false; }
-                continue;
-            }
-            if (FileSystem.exists(to) || FileSystem.isSymlink(to) || !FileSystem.isFile(from) || name.endsWith(".semu-partial")) { continue; }
-            if (!SemuLauncher.copyWhole(from, to, "-pL", launch)) { return false; }
-        }
-        return true;
-    }
-
-    class bool seed(SemuPlan plan, JSONValue platform, SemuLaunchPlan launch) {  // copy keys, firmware and system files into state; never overwrite, never write the library
-        JSONValue seeds = SemuJson.get(platform, "state.seeds");
-        if (seeds == null || !seeds.isArray()) { return true; }
-        string stateRoot = plan.path("state_root");
-        for (int index = 0; index < seeds.size(); index++) {
-            JSONValue seed = seeds.at(index);
-            string target = plan.tokens.resolve(SemuJson.textAt(seed, "target"));
-            string mode = SemuJson.textAt(seed, "copy");  // once_if_target_absent, or missing_files: add what a directory lacks on every launch
-            bool declared = (mode.equals("once_if_target_absent") || mode.equals("missing_files")) && SemuJson.textAt(seed, "source_access").equals("read_only") && !SemuJson.boolAt(seed, "overwrite", true);
-            bool contained = !stateRoot.isEmpty() && SemuPaths.inside(stateRoot, target) && !FileSystem.isSymlink(target) && SemuPaths.ancestorsAreRealDirectories(stateRoot, target);
-            if (!declared || !contained) {
-                launch.error = f"seed {index} must copy from read-only sources, without overwriting, into a real path under {stateRoot}: {target}";
-                return false;
-            }
-            if (mode.equals("missing_files")) {
-                for source in SemuJson.strings(seed.get("sources")) {
-                    string candidate = plan.tokens.resolve(source);
-                    if (FileSystem.isDir(candidate) && !FileSystem.isSymlink(candidate)) {
-                        if (!SemuLauncher.copyMissing(candidate, target, launch)) { return false; }
-                        break;
-                    }
-                }
-                continue;
-            }
-            if (FileSystem.exists(target)) { continue; }
-            for source in SemuJson.strings(seed.get("sources")) {
-                string candidate = plan.tokens.resolve(source);
-                if (FileSystem.isSymlink(candidate)) {  // a copied link would write through into the library
-                    launch.error = "seed source is a symlink: " + candidate;
-                    return false;
-                }
-                if (!FileSystem.exists(candidate)) { continue; }
-                if (!SemuLauncher.copyWhole(candidate, target, "-R", launch)) { return false; }
-                break;
-            }
-        }
-        return true;
     }
 
     class void stateEnvironment(SemuLaunchPlan launch, SemuPlan plan, SemuEmulator emulator, JSONValue platform) {
@@ -408,6 +339,9 @@ class SemuLauncher {
             }
         }
         for name in ["saves", "states", "screenshots"] { SemuPaths.prepareDirectory(PathTools.join(plan.path("content_root"), name)); }
+        SemuModInstallReport mods = SemuModInstaller.install(plan, emulator, system);  // library mods linked before the profiles that switch them on
+        launch.mods = mods.lines;
+        if (!mods.notice.isEmpty()) { launch.notice = launch.notice.isEmpty() ? mods.notice : launch.notice + "; " + mods.notice; }
         Vector<SemuProfileFile> files = SemuProfiles.render(model, plan, emulator, diagnostics);
         if (!diagnostics.ok() || !SemuProfiles.write(stateRoot, files, diagnostics)) {
             launch.error = "profile generation failed: " + diagnostics.render();
@@ -417,7 +351,7 @@ class SemuLauncher {
             string resolved = plan.tokens.resolve(directory);
             if (SemuPaths.inside(stateRoot, resolved)) { SemuPaths.prepareDirectory(resolved); }
         }
-        if (!SemuLauncher.seed(plan, platform, launch)) { return launch; }
+        if (!SemuSeeds.seed(plan, platform, launch)) { return launch; }
         launch.argv.push(executable);
         for argument in SemuJson.strings(SemuJson.get(platform, "state.extra_args")) { launch.argv.push(plan.tokens.resolve(argument)); }
         for argument in SemuJson.strings(platform.get("args")) { launch.argv.push(plan.tokens.resolve(argument)); }

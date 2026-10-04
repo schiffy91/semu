@@ -1,0 +1,145 @@
+// Mods spec, the primitives (M13 item 0): Semu makes and removes only its own links, under real folders of the
+// root it owns, never over a real file or folder; it removes a folder only when it is empty and a file only
+// when it is a real file; it reads a header, never a pack. Everything lives in scratch.
+
+import Library.Bytes;
+import Library.FileSystem;
+import Library.IO;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/mods/kind.btrc;
+
+class ModsSpecTree {  // scratch trees and their snapshots
+    class void write(string path, string content) {
+        FileSystem.mkdirp(PathTools.dirname(path));
+        FileSystem.writeText(path, content);
+    }
+
+    class void writeBytes(string path, Vector<int> values) {
+        FileSystem.mkdirp(PathTools.dirname(path));
+        Bytes bytes = Bytes();
+        for value in values { bytes.append(value); }
+        File file = File(path, "wb");
+        file.writeBytes(bytes);
+        file.close();
+    }
+
+    class string sized(int count) {  // COUNT bytes of text
+        string result = "";
+        for (int index = 0; index < count; index++) { result = result + "x"; }
+        return result;
+    }
+
+    class void walk(string root, string relative, Vector<string> lines) {
+        string directory = relative.isEmpty() ? root : PathTools.join(root, relative);
+        Vector<string> names = FileSystem.listDir(directory);
+        names.sort();
+        for name in names {
+            string inner = relative.isEmpty() ? name : relative + "/" + name;
+            string path = PathTools.join(root, inner);
+            if (FileSystem.isSymlink(path)) {
+                lines.push(inner + " -> " + FileSystem.readLink(path));
+            } else if (FileSystem.isDir(path)) {
+                lines.push(inner + "/");
+                ModsSpecTree.walk(root, inner, lines);
+            } else {
+                lines.push(inner + " = " + FileSystem.readText(path));
+            }
+        }
+    }
+
+    class string snapshot(string root) {  // every name, link target and file content under ROOT
+        Vector<string> lines = [];
+        if (FileSystem.isDir(root)) { ModsSpecTree.walk(root, "", lines); }
+        return lines.join("\n");
+    }
+
+    class int count(Vector<string> lines, string needle) {
+        int found = 0;
+        for line in lines { if (line.contains(needle)) { found++; } }
+        return found;
+    }
+}
+
+class ModsSpecPaths {
+    class void links(Contract contract, string root) {
+        string pack = PathTools.join(root, "library/pack");
+        string other = PathTools.join(root, "library/other");
+        ModsSpecTree.write(PathTools.join(pack, "tex.png"), "png");
+        ModsSpecTree.write(PathTools.join(other, "tex.png"), "other");
+        string state = PathTools.join(root, "state");
+        FileSystem.mkdirp(PathTools.join(state, "load"));
+        string link = PathTools.join(state, "load/0004000000033600");
+        contract.expect(SemuPaths.linkOwned(state, link, pack) && FileSystem.readLink(link).equals(pack), "linkOwned makes the link to the library entry");
+        contract.expect(!FileSystem.isSymlink(link + ".semu-link") && FileSystem.readText(PathTools.join(pack, "tex.png")).equals("png"), "no .semu-link is left and the entry's files are unchanged");
+        contract.expect(SemuPaths.linkOwned(state, link, other) && FileSystem.readLink(link).equals(other), "a second linkOwned replaces Semu's link with the new target");
+        string empty = PathTools.join(state, "load/empty");
+        string full = PathTools.join(state, "load/full");
+        string file = PathTools.join(state, "load/file");
+        FileSystem.mkdirp(empty);
+        ModsSpecTree.write(PathTools.join(full, "keep.png"), "keep");
+        ModsSpecTree.write(file, "file");
+        string elsewhere = PathTools.join(root, "elsewhere");
+        FileSystem.mkdirp(elsewhere);
+        FileSystem.symlink(elsewhere, PathTools.join(state, "linked"));
+        string before = ModsSpecTree.snapshot(root);
+        contract.expect(!SemuPaths.linkOwned(state, PathTools.join(state, "../escape"), pack), "linkOwned refuses root/../escape");
+        contract.expect(!SemuPaths.linkOwned(state, PathTools.join(state, "linked/title"), pack), "linkOwned refuses a path under a symlinked folder");
+        contract.expect(!SemuPaths.linkOwned(state, empty, pack) && !SemuPaths.linkOwned(state, full, pack) && !SemuPaths.linkOwned(state, file, pack), "linkOwned never replaces an empty folder, a full folder or a file");
+        contract.expect(!SemuPaths.linkOwned("", link, pack) && !SemuPaths.linkOwned("state", link, pack) && !SemuPaths.linkOwned(state, state, pack), "linkOwned refuses an empty or relative root and the root itself");
+        contract.expect(ModsSpecTree.snapshot(root).equals(before) && !FileSystem.exists(PathTools.join(root, "escape")) && FileSystem.listDir(elsewhere).isEmpty(), "every refusal leaves the tree byte-identical");
+        contract.expect(!SemuPaths.removeOwnedLink(state, link, pack), "removeOwnedLink refuses a link that names another target");
+        contract.expect(!SemuPaths.removeOwnedLink(state, empty, pack) && !SemuPaths.removeOwnedLink(state, file, pack), "removeOwnedLink refuses a real folder and a file");
+        contract.expect(SemuPaths.removeOwnedLink(state, link, other) && !FileSystem.isSymlink(link) && FileSystem.readText(PathTools.join(other, "tex.png")).equals("other"), "removeOwnedLink unlinks Semu's link and the entry it named survives with its files");
+        FileSystem.symlink(PathTools.join(root, "library"), PathTools.join(state, "through"));
+        contract.expect(!SemuPaths.removeOwnedLink(state, PathTools.join(state, "through/pack"), pack) && FileSystem.isDir(pack), "removeOwnedLink refuses a path reached through a linked folder");
+    }
+
+    class void folders(Contract contract, string root) {
+        string state = PathTools.join(root, "state");
+        string empty = PathTools.join(state, "empty");
+        string full = PathTools.join(state, "full");
+        string emptyTarget = PathTools.join(root, "empty-target");
+        FileSystem.mkdirp(empty);
+        FileSystem.mkdirp(emptyTarget);
+        ModsSpecTree.write(PathTools.join(full, "keep"), "keep");
+        FileSystem.symlink(emptyTarget, PathTools.join(state, "to-empty"));
+        string library = PathTools.join(root, "library");
+        FileSystem.mkdirp(PathTools.join(library, "title/empty-mod"));
+        FileSystem.symlink(PathTools.join(library, "title"), PathTools.join(state, "title"));
+        contract.expect(SemuPaths.removeEmptyDirectory(state, empty) && !FileSystem.exists(empty), "removeEmptyDirectory removes an empty folder");
+        contract.expect(!SemuPaths.removeEmptyDirectory(state, full) && FileSystem.isFile(PathTools.join(full, "keep")), "removeEmptyDirectory refuses a folder that holds a file");
+        contract.expect(!SemuPaths.removeEmptyDirectory(state, PathTools.join(state, "to-empty")) && FileSystem.isDir(emptyTarget), "removeEmptyDirectory refuses a link to an empty folder, which survives");
+        contract.expect(!SemuPaths.removeEmptyDirectory(state, emptyTarget), "removeEmptyDirectory refuses a folder outside the root");
+        contract.expect(!SemuPaths.removeEmptyDirectory(state, PathTools.join(state, "title/empty-mod")) && FileSystem.isDir(PathTools.join(library, "title/empty-mod")), "removeEmptyDirectory never reaches into the library through a linked title folder");
+        string written = PathTools.join(state, "custom/title.ini");
+        ModsSpecTree.write(written, "setting=1");
+        ModsSpecTree.write(PathTools.join(root, "outside.ini"), "outside");
+        FileSystem.symlink(PathTools.join(root, "outside.ini"), PathTools.join(state, "custom/linked.ini"));
+        contract.expect(!SemuPaths.removeOwnedFile(state, PathTools.join(state, "custom/linked.ini")) && FileSystem.isFile(PathTools.join(root, "outside.ini")), "removeOwnedFile refuses a link to a file, which survives");
+        contract.expect(!SemuPaths.removeOwnedFile(state, full), "removeOwnedFile refuses a folder");
+        contract.expect(SemuPaths.removeOwnedFile(state, written) && !FileSystem.exists(written), "removeOwnedFile removes a file Semu wrote");
+    }
+
+    class void headers(Contract contract, string root) {
+        string patch = PathTools.join(root, "code.ips");
+        ModsSpecTree.write(patch, "PATCH-records-EOF");
+        ModsSpecTree.write(PathTools.join(root, "short.bin"), "abc");
+        contract.expect(SemuPaths.readPrefix(patch, 5).toStringLossy().equals("PATCH"), "readPrefix reads the first five bytes of an IPS patch");
+        contract.expect(SemuPaths.readPrefix(PathTools.join(root, "short.bin"), 64).length() == 3 && SemuPaths.readPrefix(PathTools.join(root, "absent"), 4).length() == 0, "readPrefix stops at a short file and reads nothing of a missing one");
+        Bytes clean = Bytes.fromString("BPS1");
+        for value in [72, 128, 128, 128] { clean.append(value); }  // source 200 bytes, target 0, metadata 0
+        Bytes metadata = Bytes.fromString("BPS1");
+        for value in [128, 128, 129] { metadata.append(value); }
+        contract.expect(SemuModCheck.bpsMetadata(clean) == 0 && SemuModCheck.bpsMetadata(metadata) == 1 && SemuModCheck.bpsMetadata(Bytes.fromString("BPS1")) == -1, "the BPS header's third beat number is its metadata size, -1 when cut short");
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        ModsSpecPaths.links(contract, PathTools.join(fixture.scratch, "mods-links"));
+        ModsSpecPaths.folders(contract, PathTools.join(fixture.scratch, "mods-folders"));
+        ModsSpecPaths.headers(contract, PathTools.join(fixture.scratch, "mods-headers"));
+    }
+}

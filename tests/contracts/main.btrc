@@ -58,6 +58,7 @@ import ./spec/save_slots.btrc;
 import ./spec/render_variants.btrc;
 import ./spec/visual_cycle.btrc;
 import ./spec/live_variants.btrc;
+import ./spec/mods.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -981,6 +982,7 @@ int main() {
     BezelEmitSpecContract.run(contract);
     PlacementSpecContract.run(contract);
     PerformanceSpecContract.run(contract);
+    ModsSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);

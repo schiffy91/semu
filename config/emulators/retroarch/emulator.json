@@ -196,7 +196,11 @@
             ],
             "target": "${state_root}/system"
           }
-        ]
+        ],
+        "mods": {
+          "kinds": [],
+          "doc": "The libretro routes are exceptions with no kind: a core reads its packs inside RetroArch's save or system folder (content_root, which Syncthing carries, or ${state_root}/system), behind a core option per core, and RetroArch rewrites the loaded .cht on every unload (command.c:1394-1417), so a linked cheat would be written into the library. ROM soft-patches (.ips, .bps, .ups beside the ROM) already apply for the cores that load content into memory (runloop.c:4918-4975). Mods for 3DS, PSP and Dreamcast install for the standalone emulators."
+        }
       },
       "firmware": {
         "dir": "${emulation_root}/RetroArch/config/system",
@@ -602,7 +606,11 @@
             ],
             "target": "${state_root}/system"
           }
-        ]
+        ],
+        "mods": {
+          "kinds": [],
+          "doc": "The libretro routes are exceptions with no kind: a core reads its packs inside RetroArch's save or system folder (content_root, which Syncthing carries, or ${state_root}/system), behind a core option per core, and RetroArch rewrites the loaded .cht on every unload (command.c:1394-1417), so a linked cheat would be written into the library. ROM soft-patches (.ips, .bps, .ups beside the ROM) already apply for the cores that load content into memory (runloop.c:4918-4975). Mods for 3DS, PSP and Dreamcast install for the standalone emulators."
+        }
       },
       "firmware": {
         "dir": "${emulation_root}/RetroArch/config/system",

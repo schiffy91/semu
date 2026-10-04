@@ -137,6 +137,8 @@
         "DisplayCropTo16x9 = False",
         "IgnoreScreenInsets = True",
         "VSync = True",
+        "ReplaceTextures = ${mods.textures}",
+        "SaveNewTextures = False",
         "",
         "[Control]",
         "ShowTouchControls = False",

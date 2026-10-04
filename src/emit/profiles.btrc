@@ -8,6 +8,7 @@ import ../lib/paths.btrc;
 import ../model.btrc;
 import ../resolve.btrc;
 import ./key_collisions.btrc;
+import ../mods/kind.btrc;
 
 class SemuChords {
     class Vector<string> known() { return ["Ctrl", "Alt", "Shift", "Meta"]; }
@@ -227,6 +228,7 @@ class SemuProfileContext {
         result.put("state_root", self.stateRoot());
         result.put("asset_root", self.plan.assetRoot);
         result.put("content_root", self.plan.path("content_root"));
+        for group in SemuModKind.settingGroups(self.plan, self.emulator) { result.put("mods." + group, SemuModKind.settingValue(self.plan, self.emulator, group)); }  // an installed kind switches its group on
         JSONValue definitions = SemuJson.get(self.emulator.profile, "compiler.bindings");
         if (!definitions.isObject()) { return result; }
         for name in definitions.keys().sorted() {

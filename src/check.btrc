@@ -4,6 +4,7 @@ import Library.Vector;
 import ./lib/json.btrc;
 import ./model.btrc;
 import ./resolve.btrc;
+import ./mods/declarations.btrc;
 
 // What one binding opens, from emulator.json "content": a standalone emulator lists its own
 // extensions; a core-loading emulator lists each core's, plus the archives it unpacks for a core
@@ -155,7 +156,7 @@ class SemuChecker {
         if (!valid) { diagnostics.add(file, field, "needs marks (and may name unquotable), each one character"); }
     }
 
-    class void checkEmulator(SemuPlan plan, SemuEmulator emulator, SemuDiagnostics diagnostics) {
+    class void checkEmulator(SemuModel model, SemuPlan plan, SemuEmulator emulator, SemuDiagnostics diagnostics) {
         string file = PathTools.join(emulator.directory, "emulator.json");
         if (emulator.name.isEmpty()) { diagnostics.add(file, "name", "missing"); }
         JSONValue platform = emulator.platform(plan.platform);
@@ -167,6 +168,7 @@ class SemuChecker {
         if (executable.isEmpty()) { diagnostics.add(file, "platforms." + plan.platform + ".executable", "missing"); }
         SemuChecker.checkPlaylist(file, plan.platform, platform, diagnostics);
         SemuContent.check(file, emulator, platform, diagnostics);
+        SemuModDeclarations.check(model, plan, emulator, file, diagnostics);  // mod kinds and update choices: vocabulary, one target each, inside state
         JSONValue files = emulator.profile.get("files");
         if (files == null || !files.isArray()) { diagnostics.add(emulator.profileFile, "files", "must be an array"); }
         JSONValue compiler = emulator.profile.get("compiler");
@@ -181,8 +183,9 @@ class SemuChecker {
         for systemId in plan.systems { SemuChecker.checkSystem(model, plan, model.system(systemId), diagnostics); }
         for emulatorId in plan.emulators {
             SemuEmulator emulator = model.emulator(emulatorId);
-            if (emulator != null) { SemuChecker.checkEmulator(plan, emulator, diagnostics); }
+            if (emulator != null) { SemuChecker.checkEmulator(model, plan, emulator, diagnostics); }
         }
+        SemuModDeclarations.checkLibrary(plan, diagnostics);
         return diagnostics.ok();
     }
 }

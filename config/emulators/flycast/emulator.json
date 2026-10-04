@@ -102,7 +102,34 @@
               "${bios}/dc_flash.bin"
             ]
           }
-        ]
+        ],
+        "mods": {
+          "kinds": [
+            {
+              "id": "textures",
+              "library": "textures",
+              "target": "${state_root}/data/flycast/textures",
+              "install": "link",
+              "levels": [
+                {}
+              ],
+              "reads": [
+                ".png",
+                "/"
+              ],
+              "setting": "textures",
+              "about": "Texture packs: one folder per game id as Flycast names it (its product number), holding the pack's .png files in any subfolders, as Flycast's data textures/<game id>.",
+              "doc": "Flycast v2.7 falls back to textures/<game id> in its data folder, ${state_root}/data/flycast (oslib.cpp:262-292, main.cpp:74-95), found through stat (stdclass.cpp:103-107), and scans it as a tree root (CustomTexture.cpp:44-71); dumps go to texdump/ (oslib.cpp:295-303), so nothing writes inside a pack. rend.CustomTextures is on only while a pack is installed and rend.PreloadCustomTextures stays off (option.cpp:79-80, CustomTexture.cpp:52-53)."
+            }
+          ],
+          "settings": {
+            "textures": {
+              "on": "yes",
+              "off": "no"
+            }
+          },
+          "doc": "Dormant until a pack is placed: the library is <paths.mods>/flycast/textures/<game id>, one link per game folder into ${state_root}/data/flycast/textures."
+        }
       },
       "firmware": {
         "dir": "${emulation_root}/bios/dreamcast",

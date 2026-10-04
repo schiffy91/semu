@@ -1,0 +1,85 @@
+// The mods library as one kind sees it: <mods>/<emulator>/<library>, walked level by level. Every folder at the
+// linked depth becomes an entry, with the reason it cannot be linked when there is one: a name the level does
+// not accept, nothing the emulator reads, a failed check, a .semu-off marker that parks it, or a twin whose
+// name links to the same place. Only reads the library; an absent or empty root offers nothing.
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../lib/paths.btrc;
+import ../resolve.btrc;
+import ./kind.btrc;
+
+class SemuModEntry {
+    public string relative;  // library-relative, e.g. <title id>/<mod name>
+    public string source;  // the library path as paths.mods spells it, never the real path, so a link reads naturally
+    public string linkRelative;  // target-relative, each level's name in its link case
+    public string problem;  // "" when it can be linked
+    public bool file;  // a container file linked on its own
+
+    public SemuModEntry(string relative, string source, string linkRelative, string problem, bool file) {
+        self.relative = relative;
+        self.source = source;
+        self.linkRelative = linkRelative;
+        self.problem = problem;
+        self.file = file;
+    }
+
+    public string title() {  // the first level: the title the entry belongs to
+        int slash = self.linkRelative.indexOf("/");
+        return slash < 0 ? self.linkRelative : self.linkRelative.substring(0, slash);
+    }
+}
+
+class SemuModLibrary {
+    class string parkMarker() { return ".semu-off"; }
+
+    class bool configured(SemuPlan plan) { return !plan.path("mods").isEmpty(); }  // an empty paths.mods turns mods off
+
+    class bool available(SemuPlan plan) { return SemuModLibrary.configured(plan) && FileSystem.isDir(plan.path("mods")); }  // false while the drive is not mounted
+
+    class Vector<SemuModEntry> entries(SemuPlan plan, SemuModKind kind) {
+        Vector<SemuModEntry> result = [];
+        string base = kind.libraryPath(plan);
+        if (base.isEmpty() || kind.levels.isEmpty() || !FileSystem.isDir(base)) { return result; }
+        SemuModLibrary.walk(kind, base, 0, "", "", false, result);
+        SemuModLibrary.markTwins(result);
+        return result;
+    }
+
+    class void walk(SemuModKind kind, string directory, int level, string relative, string linkRelative, bool parked, Vector<SemuModEntry> result) {
+        SemuModLevel rule = kind.levels.get(level);
+        Vector<string> names = FileSystem.listDir(directory);
+        names.sort();
+        for name in names {
+            if (name.startsWith(".")) { continue; }  // .DS_Store, the park marker and other hidden files
+            string path = PathTools.join(directory, name);
+            string entryRelative = relative.isEmpty() ? name : relative + "/" + name;
+            string entryLink = (linkRelative.isEmpty() ? "" : linkRelative + "/") + rule.linkName(name);
+            if (!FileSystem.isDir(path)) {  // a README beside the entries is skipped; a declared container file is an entry
+                if (rule.files.contains(name) && FileSystem.isFile(path)) { result.push(SemuModEntry(entryRelative, path, entryLink, parked ? "parked by " + SemuModLibrary.parkMarker() : "", true)); }
+                continue;
+            }
+            bool parkedHere = parked || FileSystem.exists(PathTools.join(path, SemuModLibrary.parkMarker()));
+            string problem = rule.matches(name) ? "" : "name is not " + rule.rule();
+            if (problem.isEmpty() && level < kind.deepest()) {
+                SemuModLibrary.walk(kind, path, level + 1, entryRelative, entryLink, parkedHere, result);
+                continue;
+            }
+            if (problem.isEmpty()) { problem = parkedHere ? "parked by " + SemuModLibrary.parkMarker() : kind.problem(path); }
+            result.push(SemuModEntry(entryRelative, path, entryLink, problem, false));
+        }
+    }
+
+    class void markTwins(Vector<SemuModEntry> entries) {  // two library names that link to one name: neither is linked, so no launch flips between them
+        Vector<string> twins = [];
+        for (int index = 0; index < entries.size(); index++) {
+            for (int other = index + 1; other < entries.size(); other++) {
+                if (entries.get(index).linkRelative.equals(entries.get(other).linkRelative)) { twins.push(entries.get(index).linkRelative); }
+            }
+        }
+        for entry in entries {
+            if (twins.contains(entry.linkRelative)) { entry.problem = "duplicate: another library name links as " + entry.linkRelative; }
+        }
+    }
+}

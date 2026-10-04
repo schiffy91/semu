@@ -1,0 +1,78 @@
+// What Semu put into one emulator's state for its mods: ${state_root}/semu-mods.tsv, one line per link or file
+// (type, kind, path, link target). Only what is listed here is ever removed again, so a folder the emulator
+// made or a link someone else made is never touched.
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../lib/paths.btrc;
+
+class SemuModRecord {
+    public string type;  // link or file
+    public string kind;
+    public string path;
+    public string target;  // a link's target; "-" for a file
+
+    public SemuModRecord(string type, string kind, string path, string target) {
+        self.type = type;
+        self.kind = kind;
+        self.path = path;
+        self.target = target;
+    }
+
+    public string line() { return self.type + "\t" + self.kind + "\t" + self.path + "\t" + self.target; }
+}
+
+class SemuModManifest {
+    public string path;
+    public string original;  // the text read, so an unchanged manifest is not rewritten
+    public Vector<SemuModRecord> records;
+
+    public SemuModManifest(string path, string original) {
+        self.path = path;
+        self.original = original;
+        self.records = [];
+        for line in Strings.split(original, "\n") {
+            Vector<string> fields = Strings.split(line, "\t");
+            if (fields.size() == 4 && (fields.get(0).equals("link") || fields.get(0).equals("file"))) { self.records.push(SemuModRecord(fields.get(0), fields.get(1), fields.get(2), fields.get(3))); }
+        }
+    }
+
+    class string fileName() { return "semu-mods.tsv"; }
+
+    class SemuModManifest read(string stateRoot) {
+        string path = PathTools.join(stateRoot, SemuModManifest.fileName());
+        bool readable = FileSystem.isFile(path) && !FileSystem.isSymlink(path);
+        return SemuModManifest(path, readable ? FileSystem.readText(path) : "");
+    }
+
+    public Vector<SemuModRecord> of(string type, string kind) {
+        Vector<SemuModRecord> result = [];
+        for record in self.records { if (record.type.equals(type) && record.kind.equals(kind)) { result.push(record); } }
+        return result;
+    }
+
+    public bool owns(string path) {
+        for record in self.records { if (record.path.equals(path)) { return true; } }
+        return false;
+    }
+
+    public void replace(string type, string kind, Vector<SemuModRecord> fresh) {  // this kind's records of this type become FRESH
+        Vector<SemuModRecord> kept = [];
+        for record in self.records { if (!record.type.equals(type) || !record.kind.equals(kind)) { kept.push(record); } }
+        for record in fresh { kept.push(record); }
+        self.records = kept;
+    }
+
+    public string text() {
+        Vector<string> lines = [];
+        for record in self.records { lines.push(record.line()); }
+        return lines.isEmpty() ? "" : lines.join("\n") + "\n";
+    }
+
+    public bool write(string stateRoot) {
+        string text = self.text();
+        if (text.equals(self.original)) { return true; }
+        return SemuPaths.writeOwned(stateRoot, self.path, text);
+    }
+}

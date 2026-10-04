@@ -80,7 +80,35 @@
               "${emulation_root}/PCSX2/config/sstates"
             ]
           }
-        ]
+        ],
+        "mods": {
+          "kinds": [
+            {
+              "id": "textures",
+              "library": "textures",
+              "target": "${state_root}/config/PCSX2/textures",
+              "install": "link",
+              "levels": [
+                {
+                  "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"
+                }
+              ],
+              "reads": [
+                "replacements/"
+              ],
+              "setting": "textures",
+              "about": "Texture replacements: one folder per game serial (e.g. SLUS-20312) holding replacements/ with the pack's files in any subfolders, as PCSX2's textures/<serial>/replacements.",
+              "doc": "PCSX2 v2.6.3 reads <Textures>/<serial>/replacements recursively (GSTextureReplacements.cpp:262-265, 395-431), Textures being the profile's relative textures folder in its data root, and follows links (FileSystem.cpp:2114-2120); it creates <serial>/dumps and replacements only while dumping (:270-286), which Semu never turns on. LoadTextureReplacements is on only while a pack is installed, asynchronous, and never precached (Pcsx2Config.cpp:774-776)."
+            }
+          ],
+          "settings": {
+            "textures": {
+              "on": "true",
+              "off": "false"
+            }
+          },
+          "doc": "Dormant until a pack is placed: the library is <paths.mods>/pcsx2/textures/<serial>, one link per game folder into ${state_root}/config/PCSX2/textures."
+        }
       },
       "firmware": {
         "dir": "${emulation_root}/PCSX2/config/bios",

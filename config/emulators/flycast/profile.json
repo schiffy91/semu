@@ -80,6 +80,8 @@
         "PerGameVmu = yes",
         "BoxartDisplayMode = no",
         "FetchBoxart = no",
+        "rend.CustomTextures = ${mods.textures}",
+        "rend.PreloadCustomTextures = no",
         "",
         "[Dreamcast]",
         "AutoLoadState = no",

@@ -36,7 +36,7 @@ class EmulatorRuntimeSpecTools {
     }
 
     class SemuPlan plan(Fixture fixture, string targetId, string extraSettings) {  // the fixture's scratch paths plus extra settings
-        string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(fixture.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(fixture.scratch, "content") + "\"}" + extraSettings + "}";
+        string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(fixture.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(fixture.scratch, "content") + "\",\"mods\":\"" + PathTools.join(fixture.scratch, "mods") + "\"}" + extraSettings + "}";
         return SemuResolver.plan(fixture.model, targetId, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, fixture.diagnostics);
     }
 
@@ -65,7 +65,7 @@ class EmulatorRuntimeSpecTools {
 
     class bool seedOk(SemuPlan plan, JSONValue declaration) {
         SemuLaunchPlan launch = SemuLaunchPlan();
-        return SemuLauncher.seed(plan, EmulatorRuntimeSpecTools.seedPlatform(declaration), launch) && launch.error.isEmpty();
+        return SemuSeeds.seed(plan, EmulatorRuntimeSpecTools.seedPlatform(declaration), launch) && launch.error.isEmpty();
     }
 }
 

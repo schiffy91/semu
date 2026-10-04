@@ -1,0 +1,226 @@
+// The checker's rules for platforms.<os>.state.mods and state.updates: the kind vocabulary (every field known,
+// every value one Semu acts on), one library folder and one target per kind, targets inside the emulator's
+// state and clear of its seeds, its profile files and each other, settings groups that exist, and a library
+// that Syncthing, the state root and the ROM and BIOS folders never hold.
+
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+import ../emit/profiles.btrc;
+
+class SemuModDeclarations {
+    class bool validName(string identifier) {  // lowercase letters, digits, - and _
+        if (identifier.isEmpty()) { return false; }
+        for (int position = 0; position < identifier.len(); position++) {
+            int value = identifier.charAt(position);
+            if (!((value >= 97 && value <= 122) || (value >= 48 && value <= 57) || value == 45 || value == 95)) { return false; }
+        }
+        return true;
+    }
+
+    class void known(JSONValue object, Vector<string> fields, string file, string field, SemuDiagnostics diagnostics) {  // the vocabulary: an unknown field is a typo Semu would silently ignore
+        for key in object.keys() { if (!fields.contains(key)) { diagnostics.add(file, field + "." + key, "is not a field Semu reads here: " + fields.join(", ")); } }
+    }
+
+    class bool stateTarget(string value) { return value.startsWith("${state_root}/") && !value.contains("..") && value.len() > 14; }
+
+    class bool overlaps(string left, string right) { return SemuPaths.inside(left, right) || SemuPaths.inside(right, left); }
+
+    class Vector<string> profilePaths(SemuModel model, SemuPlan plan, SemuEmulator emulator) {  // each profile file as ${state_root}/<relative>
+        Vector<string> result = [];
+        string saved = plan.tokens.get("state_root");
+        SemuProfileContext context = SemuProfileContext(model, plan, emulator, SemuDiagnostics());
+        SemuBindings bindings = context.bindings();
+        JSONValue files = emulator.profile.get("files");
+        for (int index = 0; files != null && files.isArray() && index < files.size(); index++) {
+            string relative = SemuProfiles.relativePath(context, SemuJson.textAt(files.at(index), "path"), bindings);
+            if (!relative.isEmpty()) { result.push("${state_root}/" + relative); }
+        }
+        if (saved.isEmpty()) { plan.tokens.remove("state_root"); } else { plan.tokens.put("state_root", saved); }  // checking leaves the global state root bound
+        return result;
+    }
+
+    class void checkLevels(JSONValue levels, string file, string field, SemuDiagnostics diagnostics) {
+        if (!levels.isArray() || levels.size() < 1 || levels.size() > 3) {
+            diagnostics.add(file, field, "needs one to three folder levels, the last one linked");
+            return;
+        }
+        for (int index = 0; index < levels.size(); index++) {
+            JSONValue level = levels.at(index);
+            string place = f"{field}.{index}";
+            if (!level.isObject()) {
+                diagnostics.add(file, place, "must be an object");
+                continue;
+            }
+            SemuModDeclarations.known(level, ["length", "characters", "link_case", "files"], file, place, diagnostics);
+            if (level.has("length") && (!level.get("length").isInt() || level.get("length").asInt() < 0)) { diagnostics.add(file, place + ".length", "must be a whole number, 0 for any"); }
+            if (level.has("characters") && !level.get("characters").isString()) { diagnostics.add(file, place + ".characters", "must be a string"); }
+            string linkCase = SemuJson.textAt(level, "link_case");
+            if (level.has("link_case") && !linkCase.equals("upper") && !linkCase.equals("lower")) { diagnostics.add(file, place + ".link_case", "must be upper or lower"); }
+            if (!level.has("files")) { continue; }
+            bool plain = level.get("files").isArray();
+            for name in SemuJson.strings(level.get("files")) { if (name.contains("/") || name.startsWith(".")) { plain = false; } }
+            if (!plain) { diagnostics.add(file, place + ".files", "plain file names, each linked on its own at this level"); }
+        }
+    }
+
+    class void checkChecks(JSONValue checks, string file, string field, SemuDiagnostics diagnostics) {
+        if (checks.isNull()) { return; }
+        if (!checks.isArray()) {
+            diagnostics.add(file, field, "must be an array");
+            return;
+        }
+        for (int index = 0; index < checks.size(); index++) {
+            JSONValue check = checks.at(index);
+            string place = f"{field}.{index}";
+            string named = SemuJson.textAt(check, "file");
+            int rules = (check.has("starts_with") ? 1 : 0) + (check.has("size") ? 1 : 0) + (check.has("format") ? 1 : 0);
+            bool valid = check.isObject() && !named.isEmpty() && !named.contains("..") && !named.startsWith("/") && rules == 1;
+            valid = valid && (!check.has("starts_with") || !SemuJson.textAt(check, "starts_with").isEmpty());
+            valid = valid && (!check.has("size") || (check.get("size").isInt() && check.get("size").asInt() >= 0 && check.get("size").asInt() <= 1048576));
+            valid = valid && (!check.has("format") || SemuJson.textAt(check, "format").equals("bps"));
+            if (!valid) { diagnostics.add(file, place, "needs a relative file and exactly one of starts_with, size (at most 1 MiB) or format bps"); }
+            if (check.isObject()) { SemuModDeclarations.known(check, ["file", "starts_with", "size", "format"], file, place, diagnostics); }
+        }
+    }
+
+    class void checkKind(JSONValue kind, JSONValue settings, string file, string field, SemuDiagnostics diagnostics) {
+        SemuModDeclarations.known(kind, ["id", "library", "target", "install", "levels", "reads", "checks", "setting", "title_settings", "about", "doc"], file, field, diagnostics);
+        if (!SemuModDeclarations.validName(SemuJson.textAt(kind, "id"))) { diagnostics.add(file, field + ".id", "must be lowercase letters, digits, - or _"); }
+        if (!SemuModDeclarations.validName(SemuJson.textAt(kind, "library"))) { diagnostics.add(file, field + ".library", "must be one folder name under <mods>/<emulator>/, lowercase"); }
+        if (!SemuModDeclarations.stateTarget(SemuJson.textAt(kind, "target"))) { diagnostics.add(file, field + ".target", "must be a path under ${state_root}/ without .."); }
+        if (!SemuJson.textAt(kind, "install").equals("link")) { diagnostics.add(file, field + ".install", "must be link: Semu links mods and never copies them"); }
+        SemuModDeclarations.checkLevels(SemuJson.get(kind, "levels"), file, field + ".levels", diagnostics);
+        Vector<string> reads = SemuJson.strings(SemuJson.get(kind, "reads"));
+        if (reads.isEmpty() || reads.size() != SemuJson.get(kind, "reads").size()) { diagnostics.add(file, field + ".reads", "names what the emulator reads in an entry: * anything, / any folder, x/ a folder, .ext a suffix, or a file"); }
+        SemuModDeclarations.checkChecks(SemuJson.get(kind, "checks"), file, field + ".checks", diagnostics);
+        string setting = SemuJson.textAt(kind, "setting");
+        if (kind.has("setting") && (setting.isEmpty() || !SemuJson.get(settings, setting).isObject())) { diagnostics.add(file, field + ".setting", "names no group in state.mods.settings: " + setting); }
+        if (kind.has("title_settings")) {
+            JSONValue title = kind.get("title_settings");
+            string path = SemuJson.textAt(title, "path");
+            bool valid = title.isObject() && SemuModDeclarations.stateTarget(path) && path.contains("${entry}") && SemuJson.get(title, "lines").isArray();
+            if (!valid) { diagnostics.add(file, field + ".title_settings", "needs a path under ${state_root}/ naming ${entry} and an array of lines"); }
+            if (title.isObject()) { SemuModDeclarations.known(title, ["path", "lines"], file, field + ".title_settings", diagnostics); }
+        }
+        for name in ["about", "doc"] { if (SemuJson.textAt(kind, name).isEmpty()) { diagnostics.add(file, field + "." + name, "missing: say what it is and why linking is safe"); } }
+    }
+
+    class void checkSettings(JSONValue settings, string file, string field, SemuDiagnostics diagnostics) {
+        if (settings.isNull()) { return; }
+        if (!settings.isObject()) {
+            diagnostics.add(file, field, "must map each group to its on and off values");
+            return;
+        }
+        for group in settings.keys() {
+            JSONValue values = settings.get(group);
+            bool valid = SemuModDeclarations.validName(group) && values.isObject() && !SemuJson.textAt(values, "on").isEmpty() && !SemuJson.textAt(values, "off").isEmpty();
+            if (!valid) { diagnostics.add(file, field + "." + group, "a lowercase group with non-empty on and off values"); }
+        }
+    }
+
+    class void checkTargets(SemuModel model, SemuPlan plan, SemuEmulator emulator, JSONValue kinds, string file, string field, SemuDiagnostics diagnostics) {  // one library folder and one target per kind, clear of each other, the seeds and the profile files
+        Vector<string> taken = [];
+        JSONValue seeds = SemuJson.get(emulator.platform(plan.platform), "state.seeds");
+        for (int index = 0; seeds.isArray() && index < seeds.size(); index++) { taken.push(SemuJson.textAt(seeds.at(index), "target")); }
+        for path in SemuModDeclarations.profilePaths(model, plan, emulator) { taken.push(path); }
+        int fixed = taken.size();
+        Vector<string> ids = [];
+        Vector<string> libraries = [];
+        for (int index = 0; index < kinds.size(); index++) {
+            string identifier = SemuJson.textAt(kinds.at(index), "id");
+            string library = SemuJson.textAt(kinds.at(index), "library");
+            string target = SemuJson.textAt(kinds.at(index), "target");
+            if (ids.contains(identifier)) { diagnostics.add(file, f"{field}.{index}.id", "is declared twice: " + identifier); }
+            if (libraries.contains(library)) { diagnostics.add(file, f"{field}.{index}.library", "two kinds share one library folder: " + library); }
+            for (int other = 0; other < taken.size() && !target.isEmpty(); other++) {
+                if (!SemuModDeclarations.overlaps(target, taken.get(other))) { continue; }
+                string what = other < fixed ? "a seed or profile file" : "another kind's target";
+                diagnostics.add(file, f"{field}.{index}.target", f"{target} overlaps {what}: {taken.get(other)}");
+            }
+            ids.push(identifier);
+            libraries.push(library);
+            taken.push(target);
+        }
+    }
+
+    class void checkProfile(SemuEmulator emulator, JSONValue settings, SemuDiagnostics diagnostics) {  // every ${mods.<group>} the profile binds is a declared group
+        string text = emulator.profile.stringify();
+        int start = text.indexOf("${mods.");
+        while (start >= 0) {
+            string rest = text.substring(start + 7, text.len() - start - 7);
+            int close = rest.indexOf("}");
+            string group = close < 0 ? rest : rest.substring(0, close);
+            if (!SemuJson.get(settings, group).isObject()) { diagnostics.add(emulator.profileFile, "files", "${mods." + group + "} names no group in state.mods.settings on this platform"); }
+            int next = rest.indexOf("${mods.");
+            start = next < 0 ? -1 : start + 7 + next;
+        }
+    }
+
+    class void checkUpdates(JSONValue updates, string file, string field, SemuDiagnostics diagnostics) {  // one choice file per title, from update files named [<id>][v<version>]
+        if (updates.isNull()) { return; }
+        if (!updates.isObject()) {
+            diagnostics.add(file, field, "must be an object");
+            return;
+        }
+        SemuModDeclarations.known(updates, ["directory", "extensions", "title", "version_prefix", "target", "json", "about", "doc"], file, field, diagnostics);
+        if (!SemuJson.textAt(updates, "directory").startsWith("${")) { diagnostics.add(file, field + ".directory", "must start at a path token, e.g. ${roms}/"); }
+        Vector<string> extensions = SemuJson.strings(SemuJson.get(updates, "extensions"));
+        bool lowered = !extensions.isEmpty();
+        for extension in extensions { if (!extension.startsWith(".") || !extension.equals(extension.toLower())) { lowered = false; } }
+        if (!lowered) { diagnostics.add(file, field + ".extensions", "lowercase extensions starting with a dot"); }
+        JSONValue title = SemuJson.get(updates, "title");
+        string updateSuffix = SemuJson.textAt(title, "update_suffix");
+        string baseSuffix = SemuJson.textAt(title, "base_suffix");
+        string spelling = SemuJson.textAt(title, "case");
+        bool titled = title.isObject() && SemuJson.intAt(title, "length", 0) > updateSuffix.len() && !updateSuffix.isEmpty() && updateSuffix.len() == baseSuffix.len() && (spelling.equals("upper") || spelling.equals("lower"));
+        if (!titled) { diagnostics.add(file, field + ".title", "needs a length, update_suffix and base_suffix of one length, and case upper or lower"); }
+        if (SemuJson.textAt(updates, "version_prefix").isEmpty()) { diagnostics.add(file, field + ".version_prefix", "missing"); }
+        string target = SemuJson.textAt(updates, "target");
+        if (!SemuModDeclarations.stateTarget(target) || !target.contains("${title}")) { diagnostics.add(file, field + ".target", "must be a path under ${state_root}/ naming ${title}"); }
+        if (!SemuJson.get(updates, "json").isObject()) { diagnostics.add(file, field + ".json", "the choice file as a JSON object, with ${selected} and ${paths}"); }
+        for name in ["about", "doc"] { if (SemuJson.textAt(updates, name).isEmpty()) { diagnostics.add(file, field + "." + name, "missing"); } }
+    }
+
+    class void checkLibrary(SemuPlan plan, SemuDiagnostics diagnostics) {  // where the library may sit; empty turns mods off
+        string library = plan.path("mods");
+        if (library.isEmpty()) { return; }
+        if (!PathTools.isAbsolute(library) || library.contains("${")) {
+            diagnostics.add(plan.target.id, "settings.paths.mods", "must be an absolute path, or empty to turn mods off: " + library);
+            return;
+        }
+        for name in ["content_root", "state_root"] {
+            string other = plan.path(name);
+            if (!other.isEmpty() && SemuModDeclarations.overlaps(library, other)) { diagnostics.add(plan.target.id, "settings.paths.mods", f"{library} overlaps {name} {other}: " + (name.equals("content_root") ? "Syncthing would carry the packs" : "emulators rewrite their state")); }
+        }
+        for name in ["roms", "bios"] {
+            string other = plan.path(name);
+            if (!other.isEmpty() && SemuPaths.inside(other, library)) { diagnostics.add(plan.target.id, "settings.paths.mods", f"{library} lies inside {name} {other}"); }
+        }
+    }
+
+    class void check(SemuModel model, SemuPlan plan, SemuEmulator emulator, string file, SemuDiagnostics diagnostics) {
+        string field = f"platforms.{plan.platform}.state.mods";
+        JSONValue mods = SemuJson.get(emulator.platform(plan.platform), "state.mods");
+        JSONValue settings = SemuJson.get(mods, "settings");
+        SemuModDeclarations.checkProfile(emulator, settings, diagnostics);
+        SemuModDeclarations.checkUpdates(SemuJson.get(emulator.platform(plan.platform), "state.updates"), file, f"platforms.{plan.platform}.state.updates", diagnostics);
+        if (mods.isNull()) { return; }
+        JSONValue kinds = SemuJson.get(mods, "kinds");
+        if (!mods.isObject() || !kinds.isArray()) {
+            diagnostics.add(file, field, "must be an object with a kinds array");
+            return;
+        }
+        SemuModDeclarations.known(mods, ["kinds", "settings", "doc"], file, field, diagnostics);
+        SemuModDeclarations.checkSettings(settings, file, field + ".settings", diagnostics);
+        for (int index = 0; index < kinds.size(); index++) {
+            if (!kinds.at(index).isObject()) { diagnostics.add(file, f"{field}.kinds.{index}", "must be an object"); }
+            else { SemuModDeclarations.checkKind(kinds.at(index), settings, file, f"{field}.kinds.{index}", diagnostics); }
+        }
+        SemuModDeclarations.checkTargets(model, plan, emulator, kinds, file, field + ".kinds", diagnostics);
+    }
+}

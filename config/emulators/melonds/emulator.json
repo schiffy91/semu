@@ -105,7 +105,11 @@
           "${state_root}/data/melonDS/saves",
           "${state_root}/data/melonDS/states",
           "${state_root}/data/melonDS/cheats"
-        ]
+        ],
+        "mods": {
+          "kinds": [],
+          "doc": "melonDS replaces no textures and loads no LayeredFS, so it has no mod kind; its cheats need [Instance0] EnableCheats and a .mch file per ROM (EmuInstance.cpp:836-852), a later kind."
+        }
       },
       "firmware": {
         "dir": "${emulation_root}/bios",

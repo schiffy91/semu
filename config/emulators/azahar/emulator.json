@@ -106,7 +106,102 @@
               "${emulation_root}/Azahar/data/sdmc"
             ]
           }
-        ]
+        ],
+        "mods": {
+          "kinds": [
+            {
+              "id": "layeredfs",
+              "library": "mods",
+              "target": "${state_root}/data/azahar-emu/load/mods",
+              "install": "link",
+              "levels": [
+                {
+                  "length": 16,
+                  "characters": "0123456789ABCDEFabcdef",
+                  "link_case": "upper"
+                }
+              ],
+              "reads": [
+                "exheader.bin",
+                "code.ips",
+                "code.bps",
+                "code.bin",
+                "icon.bin",
+                "banner.bnr",
+                "logo.bcma.lz",
+                "exefs/",
+                "romfs/",
+                "romfs_ext/"
+              ],
+              "checks": [
+                {
+                  "file": "code.ips",
+                  "starts_with": "PATCH"
+                },
+                {
+                  "file": "exefs/code.ips",
+                  "starts_with": "PATCH"
+                },
+                {
+                  "file": "code.bps",
+                  "format": "bps"
+                },
+                {
+                  "file": "exefs/code.bps",
+                  "format": "bps"
+                },
+                {
+                  "file": "exheader.bin",
+                  "size": 2048
+                }
+              ],
+              "about": "LayeredFS and code mods: one folder per 16-digit title id holding code.ips or code.bps, exheader.bin, exefs/, romfs/ and romfs_ext/, exactly as a mod's instructions put them in Azahar's load/mods/<title id>.",
+              "doc": "Azahar fbd3fb0 reads load/mods/<016X> only, uppercase (ncch_container.cpp:275-277): exheader.bin (:275-292), the first of exefs/code.ips, exefs/code.bps, code.ips, code.bps (:500-541), code.bin, icon.bin, banner.bnr and logo.bcma.lz at the title level or under exefs/ (:551-567), romfs/ and romfs_ext/ as LayeredFS (:627-637). A header Azahar refuses stops the game from booting (patch.cpp:21-24 PATCH, :161-164 BPS1 with no metadata; core/loader/ncch.cpp:167-169), so such an entry is reported and not linked. Nothing writes there outside an explicit RomFS dump (layered_fs.cpp:551-579), and it follows links through stat (file_util.cpp:179, 207), so each title folder is linked."
+            },
+            {
+              "id": "textures",
+              "library": "textures",
+              "target": "${state_root}/data/azahar-emu/load/textures",
+              "install": "link",
+              "levels": [
+                {
+                  "length": 16,
+                  "characters": "0123456789ABCDEFabcdef",
+                  "link_case": "upper"
+                }
+              ],
+              "reads": [
+                ".png",
+                ".dds",
+                "pack.json",
+                "/"
+              ],
+              "title_settings": {
+                "path": "${state_root}/config/azahar-emu/custom/${entry}.ini",
+                "lines": [
+                  "[Renderer]",
+                  "resolution_factor\\use_global=false",
+                  "resolution_factor\\default=false",
+                  "resolution_factor=${composed_scale}",
+                  "",
+                  "[Utility]",
+                  "async_custom_loading\\use_global=false",
+                  "async_custom_loading\\default=false",
+                  "async_custom_loading=true",
+                  "custom_textures\\use_global=false",
+                  "custom_textures\\default=false",
+                  "custom_textures=true",
+                  "preload_textures\\use_global=false",
+                  "preload_textures\\default=false",
+                  "preload_textures=false"
+                ]
+              },
+              "about": "HD texture packs: one folder per 16-digit title id holding the pack's .png or .dds files (any subfolders) and its pack.json if it has one, as Azahar's load/textures/<title id>. Only a game with a pack loads textures, at the scale Semu draws its top screen.",
+              "doc": "custom_tex_manager.cpp:315-320 creates load/textures/<016X> only when it is absent, an empty real folder in state that the next launch replaces with the link; :374-386 scans the pack recursively; dumps go to dump/ (:175-200, 247-252), so nothing writes inside a linked pack. The switch is per title: config/azahar-emu/custom/<016X>.ini, loaded by program id at boot (citra_qt.cpp:1507-1514, config.cpp:114-115), with use_global=false (ReadGlobalSetting, config.cpp:192-199); every other game keeps custom_textures off and pays nothing (rasterizer_cache.h:1022, custom_tex_manager.cpp:290-293). Packs load lazily on worker threads (async_custom_loading, :300-311) and are never preloaded, which would read every texture before boot (:207-239). resolution_factor (0-10, settings.h:551) renders the game at the whole multiple Semu draws its top screen at, 2 at 1280x800, so the pack is not sampled down to 400x240."
+            }
+          ],
+          "doc": "The library is <paths.mods>/azahar/<library>/<title id>; each title folder is linked into ${state_root}/data/azahar-emu/load, which stays a real folder."
+        }
       },
       "firmware": {
         "dir": "${emulation_root}/bios",
@@ -205,7 +300,102 @@
               "${emulation_root}/Azahar/data/sdmc"
             ]
           }
-        ]
+        ],
+        "mods": {
+          "kinds": [
+            {
+              "id": "layeredfs",
+              "library": "mods",
+              "target": "${state_root}/data/azahar-emu/load/mods",
+              "install": "link",
+              "levels": [
+                {
+                  "length": 16,
+                  "characters": "0123456789ABCDEFabcdef",
+                  "link_case": "upper"
+                }
+              ],
+              "reads": [
+                "exheader.bin",
+                "code.ips",
+                "code.bps",
+                "code.bin",
+                "icon.bin",
+                "banner.bnr",
+                "logo.bcma.lz",
+                "exefs/",
+                "romfs/",
+                "romfs_ext/"
+              ],
+              "checks": [
+                {
+                  "file": "code.ips",
+                  "starts_with": "PATCH"
+                },
+                {
+                  "file": "exefs/code.ips",
+                  "starts_with": "PATCH"
+                },
+                {
+                  "file": "code.bps",
+                  "format": "bps"
+                },
+                {
+                  "file": "exefs/code.bps",
+                  "format": "bps"
+                },
+                {
+                  "file": "exheader.bin",
+                  "size": 2048
+                }
+              ],
+              "about": "LayeredFS and code mods: one folder per 16-digit title id holding code.ips or code.bps, exheader.bin, exefs/, romfs/ and romfs_ext/, exactly as a mod's instructions put them in Azahar's load/mods/<title id>.",
+              "doc": "Azahar fbd3fb0 reads load/mods/<016X> only, uppercase (ncch_container.cpp:275-277): exheader.bin (:275-292), the first of exefs/code.ips, exefs/code.bps, code.ips, code.bps (:500-541), code.bin, icon.bin, banner.bnr and logo.bcma.lz at the title level or under exefs/ (:551-567), romfs/ and romfs_ext/ as LayeredFS (:627-637). A header Azahar refuses stops the game from booting (patch.cpp:21-24 PATCH, :161-164 BPS1 with no metadata; core/loader/ncch.cpp:167-169), so such an entry is reported and not linked. Nothing writes there outside an explicit RomFS dump (layered_fs.cpp:551-579), and it follows links through stat (file_util.cpp:179, 207), so each title folder is linked."
+            },
+            {
+              "id": "textures",
+              "library": "textures",
+              "target": "${state_root}/data/azahar-emu/load/textures",
+              "install": "link",
+              "levels": [
+                {
+                  "length": 16,
+                  "characters": "0123456789ABCDEFabcdef",
+                  "link_case": "upper"
+                }
+              ],
+              "reads": [
+                ".png",
+                ".dds",
+                "pack.json",
+                "/"
+              ],
+              "title_settings": {
+                "path": "${state_root}/config/azahar-emu/custom/${entry}.ini",
+                "lines": [
+                  "[Renderer]",
+                  "resolution_factor\\use_global=false",
+                  "resolution_factor\\default=false",
+                  "resolution_factor=${composed_scale}",
+                  "",
+                  "[Utility]",
+                  "async_custom_loading\\use_global=false",
+                  "async_custom_loading\\default=false",
+                  "async_custom_loading=true",
+                  "custom_textures\\use_global=false",
+                  "custom_textures\\default=false",
+                  "custom_textures=true",
+                  "preload_textures\\use_global=false",
+                  "preload_textures\\default=false",
+                  "preload_textures=false"
+                ]
+              },
+              "about": "HD texture packs: one folder per 16-digit title id holding the pack's .png or .dds files (any subfolders) and its pack.json if it has one, as Azahar's load/textures/<title id>. Only a game with a pack loads textures, at the scale Semu draws its top screen.",
+              "doc": "custom_tex_manager.cpp:315-320 creates load/textures/<016X> only when it is absent, an empty real folder in state that the next launch replaces with the link; :374-386 scans the pack recursively; dumps go to dump/ (:175-200, 247-252), so nothing writes inside a linked pack. The switch is per title: config/azahar-emu/custom/<016X>.ini, loaded by program id at boot (citra_qt.cpp:1507-1514, config.cpp:114-115), with use_global=false (ReadGlobalSetting, config.cpp:192-199); every other game keeps custom_textures off and pays nothing (rasterizer_cache.h:1022, custom_tex_manager.cpp:290-293). Packs load lazily on worker threads (async_custom_loading, :300-311) and are never preloaded, which would read every texture before boot (:207-239). resolution_factor (0-10, settings.h:551) renders the game at the whole multiple Semu draws its top screen at, 2 at 1280x800, so the pack is not sampled down to 400x240."
+            }
+          ],
+          "doc": "The library is <paths.mods>/azahar/<library>/<title id>; each title folder is linked into ${state_root}/data/azahar-emu/load, which stays a real folder."
+        }
       },
       "firmware": {
         "dir": "${emulation_root}/bios",

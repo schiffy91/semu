@@ -1,0 +1,135 @@
+// platforms.<os>.state.updates: the update files the owner keeps beside the ROMs, one choice file per title in
+// the emulator's state naming the highest version, so a save made on an update loads on that update. A title
+// is the first bracketed id in a file name that ends in the update suffix, its base id the same with the base
+// suffix; the version is the bracketed number after the version prefix. ROMs that are not mounted change
+// nothing; a title whose updates are gone loses Semu's choice file.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+import ./manifest.btrc;
+import ./report.btrc;
+
+class SemuTitleUpdate {
+    public string title;  // the base title id, in the declared case
+    public string path;
+    public long version;
+
+    public SemuTitleUpdate(string title, string path, long version) {
+        self.title = title;
+        self.path = path;
+        self.version = version;
+    }
+}
+
+class SemuTitleUpdates {
+    class string manifestKind() { return "state.updates"; }  // no mod kind id can hold a dot
+
+    class bool hexadecimal(string value) {
+        string digits = "0123456789abcdefABCDEF";
+        for (int position = 0; position < value.len(); position++) {
+            if (!digits.contains(value.substring(position, 1))) { return false; }
+        }
+        return !value.isEmpty();
+    }
+
+    class long number(string digits) {  // -1 unless every character is a digit
+        long value = 0;
+        for (int position = 0; position < digits.len(); position++) {
+            int digit = digits.charAt(position) - 48;
+            if (digit < 0 || digit > 9 || value > 100000000000000) { return -1; }
+            value = value * 10 + (long)digit;
+        }
+        return digits.isEmpty() ? -1 : value;
+    }
+
+    class SemuTitleUpdate parse(JSONValue declaration, string directory, string name) {  // null for a name that is not an update
+        int length = SemuJson.intAt(declaration, "title.length", 16);
+        string updateSuffix = SemuJson.textAt(declaration, "title.update_suffix");
+        string baseSuffix = SemuJson.textAt(declaration, "title.base_suffix");
+        string prefix = SemuJson.textAt(declaration, "version_prefix");
+        string title = "";
+        long version = -1;
+        for part in Strings.split(name, "[") {
+            int close = part.indexOf("]");
+            if (close < 1) { continue; }
+            string token = part.substring(0, close);
+            bool update = token.len() == length && SemuTitleUpdates.hexadecimal(token) && token.toLower().endsWith(updateSuffix.toLower()) && updateSuffix.len() == baseSuffix.len();
+            if (title.isEmpty() && update) { title = token.substring(0, length - updateSuffix.len()) + baseSuffix; }
+            if (version < 0 && !prefix.isEmpty() && token.startsWith(prefix)) { version = SemuTitleUpdates.number(token.substring(prefix.len(), token.len() - prefix.len())); }
+        }
+        if (title.isEmpty() || version < 0) { return null; }
+        string spelled = SemuJson.textAt(declaration, "title.case").equals("upper") ? title.toUpper() : title.toLower();
+        return SemuTitleUpdate(spelled, PathTools.join(directory, name), version);
+    }
+
+    class Vector<SemuTitleUpdate> scan(JSONValue declaration, string directory) {  // sorted by name, so equal versions resolve the same way every launch
+        Vector<SemuTitleUpdate> result = [];
+        if (!FileSystem.isDir(directory)) { return result; }
+        Vector<string> extensions = SemuJson.strings(declaration.get("extensions"));
+        Vector<string> names = FileSystem.listDir(directory);
+        names.sort();
+        for name in names {
+            bool listed = false;
+            for extension in extensions { if (name.toLower().endsWith(extension)) { listed = true; } }
+            if (!listed || name.startsWith(".") || !FileSystem.isFile(PathTools.join(directory, name))) { continue; }
+            SemuTitleUpdate update = SemuTitleUpdates.parse(declaration, directory, name);
+            if (update != null) { result.push(update); }
+        }
+        return result;
+    }
+
+    class JSONValue render(JSONValue template, string selected, Vector<string> paths) {  // "${selected}" is the chosen file, "${paths}" every file of the title
+        if (template.isObject()) {
+            JSONValue result = JSONValue.makeObject();
+            for key in template.keys() { result.set(key, SemuTitleUpdates.render(template.get(key), selected, paths)); }
+            return result;
+        }
+        if (template.isString() && template.asString().equals("${paths}")) { return SemuJson.array(paths); }
+        if (template.isString()) { return JSONValue.makeString(template.asString().replace("${selected}", selected)); }
+        return template;
+    }
+
+    class void write(SemuPlan plan, SemuEmulator emulator, string stateRoot, SemuModManifest manifest, SemuModInstallReport report) {
+        JSONValue declaration = SemuJson.get(emulator.platform(plan.platform), "state.updates");
+        if (!declaration.isObject()) { return; }
+        string roms = plan.romsRoot();
+        if (roms.isEmpty() || !FileSystem.isDir(roms)) {
+            report.add("updates: the ROM folder is absent, nothing changed");
+            return;
+        }
+        Vector<SemuTitleUpdate> updates = SemuTitleUpdates.scan(declaration, plan.tokens.resolve(SemuJson.textAt(declaration, "directory")));
+        Vector<string> titles = [];
+        for update in updates { if (!titles.contains(update.title)) { titles.push(update.title); } }
+        Vector<SemuModRecord> files = [];
+        for title in titles {
+            SemuTitleUpdate chosen = null;
+            Vector<string> paths = [];
+            for update in updates {
+                if (!update.title.equals(title)) { continue; }
+                paths.push(update.path);
+                if (chosen == null || update.version > chosen.version) { chosen = update; }
+            }
+            string path = plan.tokens.resolve(SemuJson.textAt(declaration, "target").replace("${title}", title));
+            string content = SemuTitleUpdates.render(declaration.get("json"), chosen.path, paths).stringifyPretty(2) + "\n";
+            bool current = FileSystem.isFile(path) && !FileSystem.isSymlink(path) && FileSystem.readText(path).equals(content);
+            if (path.contains("${") || (!current && !SemuPaths.writeOwned(stateRoot, path, content))) {
+                report.note("updates: could not write " + path);
+                continue;
+            }
+            report.add(f"updates {title}: {PathTools.basename(chosen.path)}");
+            files.push(SemuModRecord("file", SemuTitleUpdates.manifestKind(), path, "-"));
+        }
+        for record in manifest.of("file", SemuTitleUpdates.manifestKind()) {
+            bool kept = false;
+            for file in files { if (file.path.equals(record.path)) { kept = true; } }
+            if (!kept && SemuPaths.removeOwnedFile(stateRoot, record.path)) { report.add("updates: " + record.path + " removed, its title has no update left"); }
+        }
+        manifest.replace("file", SemuTitleUpdates.manifestKind(), files);
+    }
+}

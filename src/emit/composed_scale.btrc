@@ -1,0 +1,86 @@
+// The whole multiple of a system's first screen that the compositor draws on this target's display, from the
+// launch's own render environment and the compositor's arithmetic without GL: a fixed bezel's canvas contained
+// (or covered while every opening stays on screen), the picture fitted to its rectangle, the step the
+// placement takes; without a fixed bezel the whole-step layout of all screens. An emulator rendering at this
+// internal resolution matches what is shown: finer is thrown away, coarser is blurred up.
+
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+import ./rendering.btrc;
+
+#include <math.h>
+#include <stdlib.h>
+
+class SemuComposedScale {
+    class string entry(Vector<string> environment, string name) {  // NAME's value, else ""
+        string prefix = name + "=";
+        for line in environment { if (line.startsWith(prefix)) { return line.substring(prefix.len(), line.len() - prefix.len()); } }
+        return "";
+    }
+
+    class Vector<double> numbers(string value, string separator) {
+        Vector<double> result = [];
+        for part in Strings.split(value, separator) { if (!part.isEmpty()) { result.push(atof(part)); } }
+        return result;
+    }
+
+    class int whole(double steps) { return steps < 1.0 ? 1 : (int)floor(steps + 0.0001); }  // never below 1, and 2.9999 from float noise is 3
+
+    class bool tubesOnScreen(Vector<string> environment, int count, double width, double height, double areaWidth, double areaHeight) {  // coverKeepingTubes: a covered canvas keeps every opening on screen
+        double left = (areaWidth - width) * 0.5;
+        double top = (areaHeight - height) * 0.5;
+        for (int index = 0; index < count && index < 2; index++) {
+            Vector<double> tube = SemuComposedScale.numbers(SemuComposedScale.entry(environment, f"SEMU_RENDER_SCREEN_{index}"), ",");
+            if (tube.size() != 4) { continue; }
+            double openingLeft = left + tube[0] * width;
+            double openingTop = top + tube[1] * height;
+            if (openingLeft < 0.0 || openingTop < 0.0 || openingLeft + tube[2] * width > areaWidth || openingTop + tube[3] * height > areaHeight) { return false; }
+        }
+        return true;
+    }
+
+    class int bezelled(Vector<string> environment, int count, Vector<double> native, double shown, double areaWidth, double areaHeight, string placement) {
+        Vector<double> canvas = SemuComposedScale.numbers(SemuComposedScale.entry(environment, "SEMU_RENDER_CANVAS"), ",");
+        Vector<double> picture = SemuComposedScale.numbers(SemuComposedScale.entry(environment, "SEMU_RENDER_SCREEN_0_IMAGE"), ",");
+        if (picture.size() != 4) { picture = SemuComposedScale.numbers(SemuComposedScale.entry(environment, "SEMU_RENDER_SCREEN_0"), ","); }
+        if (canvas.size() != 2 || picture.size() != 4 || canvas[0] < 1.0 || canvas[1] < 1.0) { return 0; }
+        double scale = fmin(areaWidth / canvas[0], areaHeight / canvas[1]);
+        double cover = fmax(areaWidth / canvas[0], areaHeight / canvas[1]);
+        if (SemuComposedScale.entry(environment, "SEMU_RENDER_CANVAS_FIT").equals("cover") && SemuComposedScale.tubesOnScreen(environment, count, canvas[0] * cover, canvas[1] * cover, areaWidth, areaHeight)) { scale = cover; }
+        double width = picture[2] * canvas[0] * scale;
+        double height = picture[3] * canvas[1] * scale;
+        if (width / height > shown) { width = height * shown; } else { height = width / shown; }
+        if (count == 1 && placement.equals("game")) { return SemuComposedScale.whole(fmin(areaHeight / native[1], areaWidth / (native[1] * shown))); }  // game: the largest step the screen holds
+        return SemuComposedScale.whole(height / native[1]);
+    }
+
+    class int computed(Vector<string> environment, int count, Vector<double> native, double shown, double areaWidth, double areaHeight) {  // whole steps of every screen, stacked unless the layout sets them side by side
+        if (count < 2) { return SemuComposedScale.whole(fmin(areaHeight / native[1], areaWidth / (native[1] * shown))); }
+        Vector<double> second = SemuComposedScale.numbers(SemuComposedScale.entry(environment, "SEMU_RENDER_SURFACE_1_NATIVE"), "x");
+        if (second.size() != 2) { return SemuComposedScale.whole(fmin(areaHeight / native[1], areaWidth / native[0])); }
+        double gap = floor(atof(SemuComposedScale.entry(environment, "SEMU_RENDER_DUAL_GAP")) * areaWidth + 0.5);
+        string layout = SemuComposedScale.entry(environment, "SEMU_RENDER_LAYOUT");
+        bool stacked = layout.isEmpty() || layout.equals("fixed") || layout.equals("stacked");
+        if (stacked) { return SemuComposedScale.whole(fmin(areaWidth / fmax(native[0], second[0]), (areaHeight - gap) / (native[1] + second[1]))); }
+        return SemuComposedScale.whole(fmin((areaWidth - gap) / (native[0] + second[0]), areaHeight / fmax(native[1], second[1])));
+    }
+
+    class int of(SemuPlan plan, SemuSystem system, string emulatorId) {
+        if (system == null) { return 1; }
+        Vector<string> environment = SemuRenderEnvironment.compile(plan, system, emulatorId, "", SemuDiagnostics());
+        double areaWidth = (double)SemuJson.intAt(plan.settings, "visual.display.width", 1280);
+        double areaHeight = (double)SemuJson.intAt(plan.settings, "visual.display.height", 800);
+        Vector<double> native = SemuComposedScale.numbers(SemuComposedScale.entry(environment, "SEMU_RENDER_SURFACE_0_NATIVE"), "x");
+        if (native.size() != 2 || native[0] < 1.0 || native[1] < 1.0 || areaWidth < 1.0 || areaHeight < 1.0) { return 1; }
+        int count = Strings.toInt(SemuComposedScale.entry(environment, "SEMU_RENDER_SURFACE_COUNT"));
+        Vector<double> aspect = SemuComposedScale.numbers(SemuComposedScale.entry(environment, "SEMU_RENDER_ASPECT"), ":");
+        double shown = count == 1 && aspect.size() == 2 && aspect[1] > 0.0 ? aspect[0] / aspect[1] : native[0] / native[1];  // one screen shows at its declared aspect
+        bool fixed = SemuComposedScale.entry(environment, "SEMU_RENDER_BEZELS").equals("1") && SemuComposedScale.entry(environment, "SEMU_RENDER_LAYOUT").equals("fixed");
+        int framed = fixed ? SemuComposedScale.bezelled(environment, count, native, shown, areaWidth, areaHeight, SemuComposedScale.entry(environment, "SEMU_RENDER_PLACEMENT")) : 0;
+        return framed > 0 ? framed : SemuComposedScale.computed(environment, count, native, shown, areaWidth, areaHeight);
+    }
+}

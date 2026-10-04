@@ -1,0 +1,177 @@
+// Mods spec, the real declarations through a launch (M13 item 0, decisions M1 and M3): every emulator declares its
+// kinds (Dolphin, PCSX2, PPSSPP and Flycast switch textures on only while a pack is installed); Azahar's LayeredFS mods
+// and texture packs and Ryujinx's mods link from <mods>/<emulator>/<library> before the profiles are written;
+// a mod whose header Azahar would refuse is reported and never linked; Azahar keeps custom textures off for
+// every game and turns them on, with the composed scale as its internal resolution, only in the per-title file
+// of a game with a pack; Ryujinx boots the highest update in switch/updates. Library and ROMs are scratch.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/composed_scale.btrc;
+import ../../../src/emit/profiles.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/mods/kind.btrc;
+import ../../../src/mods/install.btrc;
+import ./standalone.btrc;
+import ./render_env.btrc;
+import ./mods_paths.btrc;
+
+#include <stdio.h>
+
+class ModsSpecOwner {  // a scratch library and ROM folder shaped like the owner's
+    class void library(string mods) {
+        ModsSpecTree.write(PathTools.join(mods, "azahar/mods/0004000000033600/code.ips"), "PATCH-records-EOF");
+        ModsSpecTree.write(PathTools.join(mods, "azahar/mods/0004000000033600/exheader.bin"), ModsSpecTree.sized(2048));
+        ModsSpecTree.writeBytes(PathTools.join(mods, "azahar/mods/0004000000125500/code.bps"), [66, 80, 83, 49, 72, 128, 128, 128, 0, 0]);
+        ModsSpecTree.write(PathTools.join(mods, "azahar/mods/0004000000125500/code_faster_aim.bps"), "BPS1 alternate");
+        ModsSpecTree.write(PathTools.join(mods, "azahar/mods/0004000000125500/exheader.bin"), ModsSpecTree.sized(2048));
+        ModsSpecTree.write(PathTools.join(mods, "azahar/mods/0004000000125500/romfs/layout/a.gar"), "gar");
+        ModsSpecTree.write(PathTools.join(mods, "azahar/mods/0004000000077700/code.bin"), "a whole code.bin");
+        ModsSpecTree.write(PathTools.join(mods, "azahar/mods/0004000000044400/code.ips"), "XATCH-EOF");
+        ModsSpecTree.write(PathTools.join(mods, "azahar/mods/0004000000055500/exheader.bin"), ModsSpecTree.sized(2047));
+        ModsSpecTree.writeBytes(PathTools.join(mods, "azahar/mods/0004000000066600/code.bps"), [66, 80, 83, 49, 128, 128, 129, 0]);
+        ModsSpecTree.write(PathTools.join(mods, "azahar/textures/0004000000033600/tex1_x.png"), "png");
+        FileSystem.mkdirp(PathTools.join(mods, "azahar/textures/00040000000AEB00"));
+        string mod = PathTools.join(mods, "ryujinx/contents/0100f2c0115b6000/!!!TOTK Optimizer");
+        for file in ["exefs/main.npdm", "exefs/subsdk3", "romfs/UltraCam/maxlastbreath.ini"] { ModsSpecTree.write(PathTools.join(mod, file), file); }
+    }
+
+    class void updates(StandaloneSpecBed bed) {
+        string zelda = "The Legend of Zelda Tears of the Kingdom ";
+        for name in [zelda + "[0100F2C0115B6800][v196608].nsp", zelda + "[0100F2C0115B6800][v393216].nsp", zelda + "[0100F2C0115B7001][v0].nsp", "Other [0100ABCD12340800][v65536].nsp", "notes.txt"] { bed.write(bed.romPath("switch", "updates/" + name), ""); }
+    }
+}
+
+class ModsSpecLaunch {
+    class void declarations(Contract contract, Fixture fixture) {  // decision M1: every emulator declares its kinds, dormant ones included; RetroArch and melonDS say why they have none
+        Vector<string> emulators = ["azahar", "cemu", "dolphin", "flycast", "melonds", "pcsx2", "ppsspp", "retroarch", "ryujinx"];
+        Vector<string> wanted = ["azahar:mods>${state_root}/data/azahar-emu/load/mods azahar:textures>${state_root}/data/azahar-emu/load/textures cemu:graphicpacks>${state_root}/data/Cemu/graphicPacks dolphin:textures>${state_root}/dolphin-user/Load/Textures flycast:textures>${state_root}/data/flycast/textures pcsx2:textures>${state_root}/config/PCSX2/textures ppsspp:textures>${state_root}/config/ppsspp/PSP/TEXTURES ryujinx:contents>${state_root}/config/Ryujinx/mods/contents", "azahar:mods>${state_root}/data/azahar-emu/load/mods azahar:textures>${state_root}/data/azahar-emu/load/textures dolphin:textures>${state_root}/dolphin-user/Load/Textures ryujinx:contents>${state_root}/config/Ryujinx/mods/contents"];
+        Vector<string> platforms = ["linux", "macos"];
+        for (int which = 0; which < platforms.size(); which++) {
+            Vector<string> found = [];
+            for emulatorId in emulators {
+                JSONValue platform = fixture.model.emulator(emulatorId).platform(platforms.get(which));
+                if (platform == null || !platform.isObject()) { continue; }
+                JSONValue mods = SemuJson.get(platform, "state.mods");
+                contract.expect(mods.isObject() && SemuJson.get(mods, "kinds").isArray() && !SemuJson.textAt(mods, "doc").isEmpty(), emulatorId + " " + platforms.get(which) + " declares its mod kinds and says where its library is, or why it has none");
+                JSONValue kinds = SemuJson.get(mods, "kinds");
+                for (int index = 0; kinds.isArray() && index < kinds.size(); index++) { found.push(emulatorId + ":" + SemuJson.textAt(kinds.at(index), "library") + ">" + SemuJson.textAt(kinds.at(index), "target")); }
+            }
+            contract.expect(found.join(" ").equals(wanted.get(which)), platforms.get(which) + ": each emulator's kinds link into its own state: " + found.join(" "));
+        }
+    }
+
+    class string rendered(StandaloneSpecBed bed, SemuEmulator emulator, string file) {  // one profile file as the next launch would write it
+        for written in SemuProfiles.render(bed.fixture.model, bed.fixture.plan, emulator, SemuDiagnostics()) { if (written.path.endsWith(file)) { return written.content; } }
+        return "";
+    }
+
+    class void dormant(Contract contract) {  // a texture switch stays off until a pack is in the library, then the game folder is linked and the switch is on
+        Vector<string> cases = ["dolphin|gc|GALE01|tex1_a.png|GFX.ini|HiresTextures = |True|False", "pcsx2|ps2|SLUS-20312|replacements/a.png|PCSX2.ini|LoadTextureReplacements = |true|false", "ppsspp|psp|ULUS10041|textures.ini|ppsspp.ini|ReplaceTextures = |True|False", "flycast|dreamcast|T1401N|a.png|emu.cfg|rend.CustomTextures = |yes|no"];
+        for row in cases {
+            Vector<string> field = Strings.split(row, "|");
+            StandaloneSpecBed bed = StandaloneSpecBed();
+            SemuEmulator emulator = bed.fixture.model.emulator(field.get(0));
+            contract.contains(ModsSpecLaunch.rendered(bed, emulator, field.get(4)), field.get(5) + field.get(7) + "\n", field.get(0) + " keeps its texture switch off with no pack");
+            ModsSpecTree.write(PathTools.join(bed.fixture.plan.path("mods"), field.get(0) + "/textures/" + field.get(2) + "/" + field.get(3)), "pack");
+            bed.fixture.plan.tokens.put("state_root", bed.stateRoot(field.get(0)));
+            SemuModInstallReport report = SemuModInstaller.install(bed.fixture.plan, emulator, bed.fixture.model.system(field.get(1)));
+            string target = SemuModKind.declared(bed.fixture.plan, emulator).get(0).target;
+            contract.expect(FileSystem.readLink(PathTools.join(target, field.get(2))).equals(PathTools.join(bed.fixture.plan.path("mods"), field.get(0) + "/textures/" + field.get(2))), field.get(0) + " links the game's pack folder into its state: " + report.lines.join("; "));
+            contract.contains(ModsSpecLaunch.rendered(bed, emulator, field.get(4)), field.get(5) + field.get(6) + "\n", field.get(0) + " turns its texture switch on while a pack is installed");
+        }
+    }
+
+    class string ini(StandaloneSpecBed bed, string relative) { return FileSystem.readText(PathTools.join(bed.stateRoot("azahar"), relative)); }
+
+    class void azahar(Contract contract) {
+        StandaloneSpecBed bed = StandaloneSpecBed();
+        string mods = bed.fixture.plan.path("mods");
+        ModsSpecOwner.library(mods);
+        string before = ModsSpecTree.snapshot(mods);
+        SemuLaunchPlan launch = bed.launch("azahar", "n3ds", "Zelda.3ds");
+        string report = launch.mods.join("\n");
+        string load = PathTools.join(bed.stateRoot("azahar"), "data/azahar-emu/load");
+        contract.expect(launch.ok(), "the azahar launch goes ahead: " + launch.error);
+        for title in ["0004000000033600", "0004000000125500", "0004000000077700"] { contract.expect(FileSystem.readLink(PathTools.join(load, "mods/" + title)).equals(PathTools.join(mods, "azahar/mods/" + title)), "the LayeredFS mod " + title + " is linked into load/mods: " + report); }
+        contract.expect(FileSystem.readLink(PathTools.join(load, "textures/0004000000033600")).equals(PathTools.join(mods, "azahar/textures/0004000000033600")) && !FileSystem.exists(PathTools.join(load, "textures/00040000000AEB00")), "the texture pack is linked and the empty title folder is not");
+        for title in ["0004000000044400", "0004000000055500", "0004000000066600"] { contract.expect(!FileSystem.exists(PathTools.join(load, "mods/" + title)) && !FileSystem.isSymlink(PathTools.join(load, "mods/" + title)), "a mod Azahar would refuse is not linked: " + title); }
+        for reason in ["0004000000044400: code.ips does not start with PATCH", "0004000000055500: exheader.bin is 2047 bytes, not 2048", "0004000000066600: code.bps carries metadata", "00040000000AEB00: empty"] { contract.contains(report, reason, "the launch reports why"); }
+        contract.expect(JSONValue.parse(launch.json()).get("mods").isArray(), "the printed plan carries the mods lines");
+        string global = ModsSpecLaunch.ini(bed, "config/azahar-emu/qt-config.ini");
+        for line in ["[Utility]\n", "custom_textures=false\n", "custom_textures\\default=false\n", "preload_textures=false\n", "preload_textures\\default=false\n", "async_custom_loading=true\n", "async_custom_loading\\default=false\n", "dump_textures=false\n", "Shortcuts\\Main%20Window\\Toggle%20Custom%20Textures\\KeySeq=\n"] { contract.contains(global, line, "the global qt-config.ini keeps textures off for every game, lazy and never preloaded"); }
+        contract.lacks(global, "custom_textures=true", "custom textures are never on globally");
+        contract.lacks(global, "preload_textures=true", "packs are never preloaded");
+        int scale = SemuComposedScale.of(bed.fixture.plan, bed.fixture.model.system("n3ds"), "azahar");
+        string title = ModsSpecLaunch.ini(bed, "config/azahar-emu/custom/0004000000033600.ini");
+        for line in ["[Renderer]\n", "resolution_factor\\use_global=false\n", f"resolution_factor={scale}\n", "[Utility]\n", "custom_textures\\use_global=false\n", "custom_textures=true\n", "preload_textures=false\n", "async_custom_loading=true\n"] { contract.contains(title, line, "the game with a pack switches textures on for itself, at the composed scale"); }
+        contract.expect(!FileSystem.exists(PathTools.join(bed.stateRoot("azahar"), "config/azahar-emu/custom/0004000000125500.ini")), "a game with only a LayeredFS mod gets no per-title texture settings");
+        contract.expect(ModsSpecTree.snapshot(mods).equals(before), "the library is byte-identical after the launch");
+        rename(PathTools.join(mods, "azahar/textures/0004000000033600"), PathTools.join(bed.fixture.scratch, "pack-taken-out"));
+        bed.launch("azahar", "n3ds", "Zelda.3ds");
+        contract.expect(!FileSystem.exists(PathTools.join(bed.stateRoot("azahar"), "config/azahar-emu/custom/0004000000033600.ini")) && !FileSystem.isSymlink(PathTools.join(load, "textures/0004000000033600")), "a pack taken out of the library loses its link and its per-title settings on the next launch");
+    }
+
+    class void ryujinx(Contract contract) {
+        StandaloneSpecBed bed = StandaloneSpecBed();
+        string mods = bed.fixture.plan.path("mods");
+        ModsSpecOwner.updates(bed);
+        SemuLaunchPlan plain = bed.launch("ryujinx", "switch", "Zelda.nsp");
+        string config = FileSystem.readText(PathTools.join(bed.stateRoot("ryujinx"), "config/Ryujinx/Config.json"));
+        ModsSpecOwner.library(mods);
+        string before = ModsSpecTree.snapshot(mods);
+        SemuLaunchPlan launch = bed.launch("ryujinx", "switch", "Zelda.nsp");
+        string root = PathTools.join(bed.stateRoot("ryujinx"), "config/Ryujinx");
+        string title = PathTools.join(root, "mods/contents/0100f2c0115b6000");
+        contract.expect(plain.ok() && launch.ok(), "both ryujinx launches go ahead: " + launch.error);
+        contract.expect(FileSystem.isDir(title) && !FileSystem.isSymlink(title) && FileSystem.readLink(PathTools.join(title, "!!!TOTK Optimizer")).equals(PathTools.join(mods, "ryujinx/contents/0100f2c0115b6000/!!!TOTK Optimizer")), "the TotK mod is linked inside a real title folder: " + launch.mods.join("\n"));
+        contract.expect(!FileSystem.exists(PathTools.join(root, "games/0100f2c0115b6000/mods.json")), "no mods.json is written: an unlisted mod is enabled");
+        contract.expect(FileSystem.readText(PathTools.join(root, "Config.json")).equals(config), "Config.json is byte-identical to a launch with an empty library");
+        contract.expect(ModsSpecTree.snapshot(mods).equals(before), "the library is unchanged");
+        string updates = PathTools.join(bed.roms, "switch/updates/");
+        JSONValue chosen = SemuJson.readFile(PathTools.join(root, "games/0100f2c0115b6000/updates.json"));
+        string zelda = updates + "The Legend of Zelda Tears of the Kingdom ";
+        contract.expect(SemuJson.textAt(chosen, "selected").equals(zelda + "[0100F2C0115B6800][v393216].nsp"), "TotK boots its highest update, v393216: " + chosen.stringify());
+        contract.expect(SemuJson.strings(chosen.get("paths")).join("|").equals(zelda + "[0100F2C0115B6800][v196608].nsp|" + zelda + "[0100F2C0115B6800][v393216].nsp"), "both of its updates are listed, never its DLC: " + chosen.stringify());
+        contract.expect(SemuJson.textAt(SemuJson.readFile(PathTools.join(root, "games/0100abcd12340000/updates.json")), "selected").equals(updates + "Other [0100ABCD12340800][v65536].nsp"), "another title gets its own choice file");
+        contract.expect(!FileSystem.exists(PathTools.join(root, "games/0100f2c0115b7000")) && !FileSystem.exists(PathTools.join(root, "games/0100f2c0115b7001")), "a DLC file is no update");
+        rename(zelda + "[0100F2C0115B6800][v393216].nsp", PathTools.join(bed.fixture.scratch, "v393216.nsp"));
+        bed.launch("ryujinx", "switch", "Zelda.nsp");
+        contract.expect(SemuJson.textAt(SemuJson.readFile(PathTools.join(root, "games/0100f2c0115b6000/updates.json")), "selected").equals(zelda + "[0100F2C0115B6800][v196608].nsp"), "with v393216 gone the choice falls to v196608");
+        string saved = FileSystem.readText(PathTools.join(root, "games/0100f2c0115b6000/updates.json"));
+        bed.fixture.plan.tokens.put("roms", PathTools.join(bed.fixture.scratch, "unmounted"));
+        bed.fixture.plan.tokens.put("state_root", bed.stateRoot("ryujinx"));
+        SemuModInstaller.install(bed.fixture.plan, bed.fixture.model.emulator("ryujinx"), bed.fixture.model.system("switch"));  // a launch would stop at the missing ROM first
+        contract.expect(FileSystem.readText(PathTools.join(root, "games/0100f2c0115b6000/updates.json")).equals(saved), "ROMs that are not mounted change no choice file");
+        bed.fixture.plan.tokens.put("roms", bed.roms);
+        rename(zelda + "[0100F2C0115B6800][v196608].nsp", PathTools.join(bed.fixture.scratch, "v196608.nsp"));
+        bed.launch("ryujinx", "switch", "Zelda.nsp");
+        contract.expect(!FileSystem.exists(PathTools.join(root, "games/0100f2c0115b6000/updates.json")) && FileSystem.isFile(PathTools.join(root, "games/0100abcd12340000/updates.json")), "a title with no update left loses Semu's choice file, the other keeps its own");
+    }
+
+    class void scale(Contract contract) {  // the composed scale on the Deck, from the same arithmetic the placement spec pins
+        Fixture deck = Fixture("steam-deck");
+        RenderEnvSpecAssets.packages(deck.plan.assetRoot, deck.plan.configRoot);  // the bezel layers exist, as in the bundle
+        contract.expect(SemuComposedScale.of(deck.plan, deck.model.system("n3ds"), "azahar") == 2, "the 3DS top screen is composed at 2x on the Deck's 1280x800, so Azahar renders a pack at 2x");
+        contract.expect(SemuComposedScale.of(deck.plan, deck.model.system("psp"), "ppsspp") == 2 && SemuComposedScale.of(deck.plan, deck.model.system("gb"), "retroarch") == 5, "one screen in game placement takes the largest step the screen holds: the PSP at 2x, the Game Boy at 5x");
+        SemuPlan docked = SemuResolver.plan(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"display\":{\"width\":1920,\"height\":1080}}}", SemuDiagnostics());
+        contract.expect(SemuComposedScale.of(docked, deck.model.system("n3ds"), "azahar") == 3, "at 1920x1080 the 3DS top screen is 3x");
+        SemuPlan bare = SemuResolver.plan(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"bezels\":false}}", SemuDiagnostics());
+        contract.expect(SemuComposedScale.of(bare, deck.model.system("n3ds"), "azahar") == 1, "without the shell both screens stack at the largest whole step, 1x at 1280x800");
+    }
+
+    class void run(Contract contract) {
+        ModsSpecLaunch.declarations(contract, Fixture("linux-desktop"));
+        ModsSpecLaunch.azahar(contract);
+        ModsSpecLaunch.ryujinx(contract);
+        ModsSpecLaunch.scale(contract);
+        ModsSpecLaunch.dormant(contract);
+    }
+}

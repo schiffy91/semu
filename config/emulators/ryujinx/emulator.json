@@ -71,7 +71,56 @@
               "${bios}/switch/bis"
             ]
           }
-        ]
+        ],
+        "mods": {
+          "kinds": [
+            {
+              "id": "contents",
+              "library": "contents",
+              "target": "${state_root}/config/Ryujinx/mods/contents",
+              "install": "link",
+              "levels": [
+                {
+                  "length": 16,
+                  "characters": "0123456789ABCDEFabcdef",
+                  "link_case": "lower"
+                },
+                {
+                  "files": [
+                    "romfs.bin",
+                    "exefs.nsp"
+                  ]
+                }
+              ],
+              "reads": [
+                "*"
+              ],
+              "about": "Mods: one folder per 16-digit title id, inside it one folder per mod holding exefs/, romfs/ or cheats/ (deeper folders work too), or the container files romfs.bin and exefs.nsp beside them, as Ryujinx's mods/contents/<title id>/<mod>.",
+              "doc": "Ryujinx 1.3.3 (e2143d43) finds contents/<x16> case-insensitively and takes the first match (ModLoader.cs:160-161, 300-312), so an existing title folder in state is reused rather than doubled; it takes every child folder as a mod, descending until romfs, exefs or cheats (:163-201), and romfs.bin and exefs.nsp beside them (:278-294); a mod missing from games/<tid>/mods.json is enabled (:173-185, 263-275). It creates contents/<tid> only when absent (:204-213) and writes inside a mod only from the mod manager and cheat window, which a fullscreen launch never opens, so each mod folder and container file is linked inside a real title folder."
+            }
+          ],
+          "doc": "The library is <paths.mods>/ryujinx/contents/<title id>/<mod>; no setting is needed, a mod Ryujinx finds is on."
+        },
+        "updates": {
+          "directory": "${roms}/switch/updates",
+          "extensions": [
+            ".nsp"
+          ],
+          "title": {
+            "length": 16,
+            "update_suffix": "800",
+            "base_suffix": "000",
+            "case": "lower"
+          },
+          "version_prefix": "v",
+          "target": "${state_root}/config/Ryujinx/games/${title}/updates.json",
+          "json": {
+            "selected": "${selected}",
+            "paths": "${paths}"
+          },
+          "about": "Updates beside the ROMs in switch/updates, named like the owner's [0100F2C0115B6800][v393216].nsp: the highest version of each title is the one Ryujinx boots, the version saves and mods were made on.",
+          "doc": "Ryujinx 1.3.3 boots the update games/<base id x16>/updates.json selects (NcaExtensions.cs:144-163), a snake_case {selected, paths} (TitleUpdateMetadata.cs, JsonHelper.cs:21-28), and only for a patch of that base title ((id & ~0x1FFF) == base, :154-157): an update id is the base id plus 0x800. Its own update window writes the file (TitleUpdatesHelper.cs:54-77), never opened in a fullscreen launch; autoload runs only on a game-list reload (MainWindow.axaml.cs:707-720). Without it Semu's Ryujinx booted 1.0.0 of Tears of the Kingdom, whose save and mod are on v393216."
+        }
       },
       "firmware": {
         "dir": "${state_root}/config/Ryujinx/system",
@@ -134,7 +183,56 @@
               "${bios}/switch/bis"
             ]
           }
-        ]
+        ],
+        "mods": {
+          "kinds": [
+            {
+              "id": "contents",
+              "library": "contents",
+              "target": "${state_root}/config/Ryujinx/mods/contents",
+              "install": "link",
+              "levels": [
+                {
+                  "length": 16,
+                  "characters": "0123456789ABCDEFabcdef",
+                  "link_case": "lower"
+                },
+                {
+                  "files": [
+                    "romfs.bin",
+                    "exefs.nsp"
+                  ]
+                }
+              ],
+              "reads": [
+                "*"
+              ],
+              "about": "Mods: one folder per 16-digit title id, inside it one folder per mod holding exefs/, romfs/ or cheats/ (deeper folders work too), or the container files romfs.bin and exefs.nsp beside them, as Ryujinx's mods/contents/<title id>/<mod>.",
+              "doc": "Ryujinx 1.3.3 (e2143d43) finds contents/<x16> case-insensitively and takes the first match (ModLoader.cs:160-161, 300-312), so an existing title folder in state is reused rather than doubled; it takes every child folder as a mod, descending until romfs, exefs or cheats (:163-201), and romfs.bin and exefs.nsp beside them (:278-294); a mod missing from games/<tid>/mods.json is enabled (:173-185, 263-275). It creates contents/<tid> only when absent (:204-213) and writes inside a mod only from the mod manager and cheat window, which a fullscreen launch never opens, so each mod folder and container file is linked inside a real title folder."
+            }
+          ],
+          "doc": "The library is <paths.mods>/ryujinx/contents/<title id>/<mod>; no setting is needed, a mod Ryujinx finds is on."
+        },
+        "updates": {
+          "directory": "${roms}/switch/updates",
+          "extensions": [
+            ".nsp"
+          ],
+          "title": {
+            "length": 16,
+            "update_suffix": "800",
+            "base_suffix": "000",
+            "case": "lower"
+          },
+          "version_prefix": "v",
+          "target": "${state_root}/config/Ryujinx/games/${title}/updates.json",
+          "json": {
+            "selected": "${selected}",
+            "paths": "${paths}"
+          },
+          "about": "Updates beside the ROMs in switch/updates, named like the owner's [0100F2C0115B6800][v393216].nsp: the highest version of each title is the one Ryujinx boots, the version saves and mods were made on.",
+          "doc": "Ryujinx 1.3.3 boots the update games/<base id x16>/updates.json selects (NcaExtensions.cs:144-163), a snake_case {selected, paths} (TitleUpdateMetadata.cs, JsonHelper.cs:21-28), and only for a patch of that base title ((id & ~0x1FFF) == base, :154-157): an update id is the base id plus 0x800. Its own update window writes the file (TitleUpdatesHelper.cs:54-77), never opened in a fullscreen launch; autoload runs only on a game-list reload (MainWindow.axaml.cs:707-720). Without it Semu's Ryujinx booted 1.0.0 of Tears of the Kingdom, whose save and mod are on v393216."
+        }
       },
       "firmware": {
         "dir": "${state_root}/config/Ryujinx/system",

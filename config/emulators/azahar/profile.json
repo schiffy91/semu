@@ -35,6 +35,7 @@
         "always": [
           "Main%20Window\\Rotate%20Screens%20Upright",
           "Main%20Window\\Swap%20Screens",
+          "Main%20Window\\Toggle%20Custom%20Textures",
           "Main%20Window\\Toggle%20Screen%20Layout"
         ]
       }
@@ -165,7 +166,17 @@
         "singleWindowMode=true",
         "singleWindowMode\\default=false",
         "@lines:keymap_hotkeys",
-        "@lines:native_default_blanks"
+        "@lines:native_default_blanks",
+        "",
+        "[Utility]",
+        "async_custom_loading=true",
+        "async_custom_loading\\default=false",
+        "custom_textures=false",
+        "custom_textures\\default=false",
+        "dump_textures=false",
+        "dump_textures\\default=false",
+        "preload_textures=false",
+        "preload_textures\\default=false"
       ]
     }
   ],
@@ -174,8 +185,9 @@
     "identity": "${controller_guid} comes from the target's input.json device_identities.azahar_controller_guid and is kept in each binding for reference; with maptype:all Azahar does not match it. It is the SDL GUID string as SDL 2.26+ prints it, with the name CRC in bytes 2-3 (Steam's virtual pad, Microsoft X-Box 360 pad 0, is 030079f6de280000ff11000001000000, as ES-DE logs it on the Deck). AzaharEmitter validates the 32-hex GUID and emits nothing when it is absent or malformed.",
     "touch": "Azahar's emu_window touch device consumes ABI-native bottom-screen coordinates from Semu surface 1. The source patch captures only successful presses and clamps captured movement; Steam Input routes the Deck's right trackpad as the pointer source. Motion remains Azahar's explicit motion emulator until the target declares and verifies a DSU motion source.",
     "storage": "Custom storage is disabled so NAND, SDMC saves, and save states remain below the isolated XDG data root. External aes_keys.txt and seeddb.bin sources are copied once into that root by emulator.json seeds.",
-    "hotkeys": "Azahar reads its hotkeys only from [UI] as Shortcuts\\<group>\\<name>\\KeySeq (config.cpp:747-768, inside ReadUIValues), so the keymap rows and the blanks live in [UI]; each carries KeySeq\\default=false, or a default Azahar saved earlier wins. Chords are Qt portable text, the main Enter key spelled Return (Qt's Enter is the keypad key); a value with a comma is quoted (quote_commas), or QSettings reads it as an empty list. native_default_blanks writes every Azahar default whose key sequence is a Semu chord empty unless it is one of Semu's rows here: Audio Mute (Ctrl+M, the Semu menu), the 3D factor (Ctrl+- and Ctrl++), Multiplayer Browse Public Rooms (Ctrl+B), Toggle Frame Advancing (Ctrl+A), Toggle Status Bar (Ctrl+S), Exit Fullscreen (Esc) and, on Linux where the supervisor quits, Exit Azahar (Ctrl+Q). Qt fires neither of two shortcuts that share a sequence, so a leftover default would also silence Semu's own row. Swap Screens, Toggle Screen Layout and Rotate Screens Upright are always empty: SemuCompose re-derives Azahar's layout (semu_compose.btrc), so any of them would break the composed picture and touch. Quit is Semu's on Linux (the supervisor stops the process group), so Exit Azahar is bound only on macOS, whose supervisor reads no keyboard.",
-    "cursor": "Steam's trackpad mouse is relative, so the player aims with Azahar's own Qt cursor, which Azahar draws as long as the pointer moves. hideInactiveMouse=true makes Azahar blank it 2.5 s after the last motion (default_mouse_timeout, citra_qt.cpp:137 and HideMouseCursor 3721-3731; the pinned default is false, which never hides it), the way Semu's own cursor on RetroArch hides after 3 s; clicks still reach the touch screen."
+    "hotkeys": "Azahar reads its hotkeys only from [UI] as Shortcuts\\<group>\\<name>\\KeySeq (config.cpp:747-768, inside ReadUIValues), so the keymap rows and the blanks live in [UI]; each carries KeySeq\\default=false, or a default Azahar saved earlier wins. Chords are Qt portable text, the main Enter key spelled Return (Qt's Enter is the keypad key); a value with a comma is quoted (quote_commas), or QSettings reads it as an empty list. native_default_blanks writes every Azahar default whose key sequence is a Semu chord empty unless it is one of Semu's rows here: Audio Mute (Ctrl+M, the Semu menu), the 3D factor (Ctrl+- and Ctrl++), Multiplayer Browse Public Rooms (Ctrl+B), Toggle Frame Advancing (Ctrl+A), Toggle Status Bar (Ctrl+S), Exit Fullscreen (Esc) and, on Linux where the supervisor quits, Exit Azahar (Ctrl+Q). Qt fires neither of two shortcuts that share a sequence, so a leftover default would also silence Semu's own row. Swap Screens, Toggle Screen Layout and Rotate Screens Upright are always empty: SemuCompose re-derives Azahar's layout (semu_compose.btrc), so any of them would break the composed picture and touch. Toggle Custom Textures (F7) is always empty too: a stray press would switch a game's texture pack off mid-game. Quit is Semu's on Linux (the supervisor stops the process group), so Exit Azahar is bound only on macOS, whose supervisor reads no keyboard.",
+    "cursor": "Steam's trackpad mouse is relative, so the player aims with Azahar's own Qt cursor, which Azahar draws as long as the pointer moves. hideInactiveMouse=true makes Azahar blank it 2.5 s after the last motion (default_mouse_timeout, citra_qt.cpp:137 and HideMouseCursor 3721-3731; the pinned default is false, which never hides it), the way Semu's own cursor on RetroArch hides after 3 s; clicks still reach the touch screen.",
+    "mods": "[Utility] keeps custom textures off for every game (custom_textures=false with \\default=false: the Deck's earlier file had \\default=true, which made Azahar ignore the value, config.cpp:173-189), loads packs lazily on worker threads (async_custom_loading, custom_tex_manager.cpp:300-311) and never preloads (:207-239: every texture read before boot, up to RAM minus 2 GiB, over an hour for 7.8 GB at the Deck SD's measured 2.9 MB/s). A game with a pack in the library switches textures on for itself only, through the title_settings file the textures kind writes (emulator.json state.mods), so the games without one never hash their textures (rasterizer_cache.h:1022)."
   },
   "native_shortcuts": {
     "source": "azahar fbd3fb0 src/citra_qt/configuration/config.cpp:59-102 (QtConfig::default_hotkeys, all in Main Window)",

@@ -1,0 +1,89 @@
+// Seeds: keys, firmware and system files copied from the read-only library into an emulator's state before
+// it starts. Never overwrite, never write the library.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Process;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../resolve.btrc;
+import ./plan.btrc;
+
+class SemuSeeds {
+    // A seed appears whole or not at all: copied beside the target first, then renamed into place.
+    // An interrupted copy leaves only the .semu-partial sibling, which the next launch replaces;
+    // a partial target would otherwise count as seeded forever.
+    class bool copyWhole(string source, string target, string flags, SemuLaunchPlan launch) {
+        string partial = target + ".semu-partial";
+        SemuPaths.prepareDirectory(PathTools.dirname(target));
+        if (FileSystem.exists(partial) || FileSystem.isSymlink(partial)) { ChildProcess.run("rm", ["-rf", partial]); }
+        ExecResult copy = ChildProcess.run("cp", [flags, source, partial]);
+        ExecResult move = copy.ok() && !FileSystem.exists(target) ? ChildProcess.run("mv", [partial, target]) : copy;
+        if (!copy.ok() || !move.ok()) {
+            ChildProcess.run("rm", ["-rf", partial]);
+            launch.error = f"could not seed {target} from {source}: {copy.ok() ? move.stderr() : copy.stderr()}";
+            return false;
+        }
+        if (FileSystem.exists(partial)) { ChildProcess.run("rm", ["-rf", partial]); }  // the target appeared meanwhile: it wins
+        return true;
+    }
+
+    class bool copyMissing(string source, string target, SemuLaunchPlan launch) {  // adds what the target lacks, never replaces; links are copied as their contents
+        if (!FileSystem.exists(target) && !FileSystem.isSymlink(target)) {  // nothing there yet: one copy of the whole tree cannot replace anything
+            return SemuSeeds.copyWhole(source, target, "-RpL", launch);
+        }
+        for name in FileSystem.listDir(source) {
+            string origin = PathTools.join(source, name);
+            string destination = PathTools.join(target, name);
+            if (FileSystem.isDir(origin)) {
+                if (FileSystem.isSymlink(destination) || (FileSystem.exists(destination) && !FileSystem.isDir(destination))) { continue; }
+                if (!SemuSeeds.copyMissing(origin, destination, launch)) { return false; }
+                continue;
+            }
+            if (FileSystem.exists(destination) || FileSystem.isSymlink(destination) || !FileSystem.isFile(origin) || name.endsWith(".semu-partial")) { continue; }
+            if (!SemuSeeds.copyWhole(origin, destination, "-pL", launch)) { return false; }
+        }
+        return true;
+    }
+
+    class bool seed(SemuPlan plan, JSONValue platform, SemuLaunchPlan launch) {  // copy keys, firmware and system files into state; never overwrite, never write the library
+        JSONValue seeds = SemuJson.get(platform, "state.seeds");
+        if (seeds == null || !seeds.isArray()) { return true; }
+        string stateRoot = plan.path("state_root");
+        for (int index = 0; index < seeds.size(); index++) {
+            JSONValue seed = seeds.at(index);
+            string target = plan.tokens.resolve(SemuJson.textAt(seed, "target"));
+            string mode = SemuJson.textAt(seed, "copy");  // once_if_target_absent, or missing_files: add what a directory lacks on every launch
+            bool declared = (mode.equals("once_if_target_absent") || mode.equals("missing_files")) && SemuJson.textAt(seed, "source_access").equals("read_only") && !SemuJson.boolAt(seed, "overwrite", true);
+            bool contained = !stateRoot.isEmpty() && SemuPaths.inside(stateRoot, target) && !FileSystem.isSymlink(target) && SemuPaths.ancestorsAreRealDirectories(stateRoot, target);
+            if (!declared || !contained) {
+                launch.error = f"seed {index} must copy from read-only sources, without overwriting, into a real path under {stateRoot}: {target}";
+                return false;
+            }
+            if (mode.equals("missing_files")) {
+                for source in SemuJson.strings(seed.get("sources")) {
+                    string candidate = plan.tokens.resolve(source);
+                    if (FileSystem.isDir(candidate) && !FileSystem.isSymlink(candidate)) {
+                        if (!SemuSeeds.copyMissing(candidate, target, launch)) { return false; }
+                        break;
+                    }
+                }
+                continue;
+            }
+            if (FileSystem.exists(target)) { continue; }
+            for source in SemuJson.strings(seed.get("sources")) {
+                string candidate = plan.tokens.resolve(source);
+                if (FileSystem.isSymlink(candidate)) {  // a copied link would write through into the library
+                    launch.error = "seed source is a symlink: " + candidate;
+                    return false;
+                }
+                if (!FileSystem.exists(candidate)) { continue; }
+                if (!SemuSeeds.copyWhole(candidate, target, "-R", launch)) { return false; }
+                break;
+            }
+        }
+        return true;
+    }
+}

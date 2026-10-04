@@ -61,6 +61,7 @@ class StandaloneSpecBed {  // a linux-desktop fixture whose external roots live 
         self.fixture.plan.tokens.put("roms", self.roms);  // never read the real Emulation tree
         self.fixture.plan.tokens.put("emulation_root", self.emulation);
         self.fixture.plan.tokens.put("bios", self.bios);
+        for name in ["mods", "paths.mods"] { self.fixture.plan.tokens.put(name, PathTools.join(self.fixture.scratch, "mods")); }  // the mods library too
     }
 
     public string stateRoot(string emulatorId) { return PathTools.join(self.fixture.plan.stateRoot(), emulatorId); }

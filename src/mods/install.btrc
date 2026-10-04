@@ -1,0 +1,107 @@
+// Links the library's mods into one emulator's state before a launch writes its settings: one symlink per
+// entry at the declared depth, inside real state folders, so whatever the emulator creates lands in its state
+// and nothing is ever copied or written into the library. An empty paths.mods is an explicit off (Semu's own
+// links and title settings go); a library that is not mounted changes nothing. Only links and files the
+// manifest lists are ever removed.
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+import ../emit/composed_scale.btrc;
+import ./kind.btrc;
+import ./library.btrc;
+import ./manifest.btrc;
+import ./report.btrc;
+import ./title_settings.btrc;
+import ./updates.btrc;
+
+class SemuModInstaller {
+    class SemuModInstallReport install(SemuPlan plan, SemuEmulator emulator, SemuSystem system) {  // the caller has bound state_root to this emulator
+        SemuModInstallReport report = SemuModInstallReport();
+        string stateRoot = plan.path("state_root");
+        SemuModManifest manifest = SemuModManifest.read(stateRoot);
+        Vector<SemuModKind> kinds = SemuModKind.declared(plan, emulator);
+        bool off = !SemuModLibrary.configured(plan);
+        if (!kinds.isEmpty() && !off && !SemuModLibrary.available(plan)) {
+            report.add("mods: library absent at " + plan.path("mods") + ", nothing changed");
+        } else {
+            int scale = 0;  // the composed scale, worked out once and only for a kind with title settings
+            for kind in kinds {
+                if (scale == 0 && !kind.titlePath.isEmpty()) { scale = SemuComposedScale.of(plan, system, emulator.id); }
+                SemuModInstaller.reconcile(plan, kind, stateRoot, off, scale, manifest, report);
+            }
+            if (off && !kinds.isEmpty()) { report.add("mods: off (paths.mods is empty)"); }
+        }
+        SemuTitleUpdates.write(plan, emulator, stateRoot, manifest, report);
+        if (!manifest.write(stateRoot)) { report.note("mods: could not write " + manifest.path); }
+        return report;
+    }
+
+    class string existingName(string directory, string name) {  // the spelling of a real folder whose name differs only in case: reused, never doubled
+        if (!FileSystem.isDir(directory)) { return name; }
+        string found = name;
+        for candidate in FileSystem.listDir(directory) {
+            string path = PathTools.join(directory, candidate);
+            if (candidate.equals(name)) { return name; }
+            if (candidate.toLower().equals(name.toLower()) && FileSystem.isDir(path) && !FileSystem.isSymlink(path)) { found = candidate; }
+        }
+        return found;
+    }
+
+    class string linkPath(string target, string linkRelative) {
+        Vector<string> parts = Strings.split(linkRelative, "/");
+        string current = target;
+        for (int index = 0; index + 1 < parts.size(); index++) { current = PathTools.join(current, SemuModInstaller.existingName(current, parts.get(index))); }
+        return PathTools.join(current, parts.last());
+    }
+
+    class string place(string stateRoot, string linkPath, string source, bool owned) {  // "installed..." when the link now names SOURCE
+        if (!SemuPaths.ownedPlace(stateRoot, linkPath) || !SemuPaths.prepareDirectory(PathTools.dirname(linkPath))) { return "skipped: a folder above it in the emulator's state is a link"; }
+        if (FileSystem.isSymlink(linkPath)) {
+            if (FileSystem.readLink(linkPath).equals(source)) { return "installed"; }
+            if (!owned) { return "shadowed by a link Semu did not make"; }
+            return SemuPaths.linkOwned(stateRoot, linkPath, source) ? "installed (relinked)" : "failed: could not relink";
+        }
+        if (FileSystem.isDir(linkPath)) {  // an emulator makes an empty title folder before it looks for a pack
+            if (!SemuPaths.removeEmptyDirectory(stateRoot, linkPath)) { return "shadowed by a folder in the emulator's state"; }
+            return SemuPaths.linkOwned(stateRoot, linkPath, source) ? "installed (replaced the emulator's empty folder)" : "failed: could not link";
+        }
+        if (FileSystem.exists(linkPath)) { return "shadowed by a file in the emulator's state"; }
+        return SemuPaths.linkOwned(stateRoot, linkPath, source) ? "installed" : "failed: could not link";
+    }
+
+    class void reconcile(SemuPlan plan, SemuModKind kind, string stateRoot, bool off, int scale, SemuModManifest manifest, SemuModInstallReport report) {
+        string label = kind.emulator + " " + kind.id;
+        bool contained = !stateRoot.isEmpty() && SemuPaths.ownedPlace(stateRoot, kind.target) && !FileSystem.isSymlink(kind.target);
+        if (!contained || (!off && !SemuPaths.prepareDirectory(kind.target))) {
+            report.note(f"mods: {label} target {kind.target} is not a real folder in the emulator's state; left alone");
+            return;
+        }
+        Vector<SemuModRecord> links = [];
+        Vector<string> titles = [];
+        Vector<SemuModEntry> entries = [];
+        if (!off) { entries = SemuModLibrary.entries(plan, kind); }
+        for entry in entries {
+            if (!entry.problem.isEmpty()) {
+                report.add(f"{label} {entry.relative}: {entry.problem}");
+                continue;
+            }
+            string path = SemuModInstaller.linkPath(kind.target, entry.linkRelative);
+            string outcome = SemuModInstaller.place(stateRoot, path, entry.source, manifest.owns(path));
+            report.add(f"{label} {entry.relative}: {outcome}");
+            if (!outcome.startsWith("installed")) { continue; }
+            links.push(SemuModRecord("link", kind.id, path, entry.source));
+            if (!titles.contains(entry.title())) { titles.push(entry.title()); }
+        }
+        for record in manifest.of("link", kind.id) {
+            bool kept = false;
+            for link in links { if (link.path.equals(record.path)) { kept = true; } }
+            if (!kept && SemuPaths.removeOwnedLink(stateRoot, record.path, record.target)) { report.add(f"{label} {PathTools.basename(record.path)}: link removed, the library no longer offers it"); }
+        }
+        manifest.replace("link", kind.id, links);
+        SemuModTitleSettings.write(plan, kind, stateRoot, titles, scale, manifest, report);
+    }
+}

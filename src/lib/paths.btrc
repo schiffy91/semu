@@ -5,6 +5,7 @@ import Library.Strings;
 import Library.Vector;
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 class SemuPaths {
@@ -96,5 +97,58 @@ class SemuPaths {
     class Bytes readBytes(string path) {  // the stdlib reads only regular files, and a Nix bundle links its files into the store
         string real = UnixFileSystem.realPath(path);
         return FileSystem.readBytes(real.isEmpty() ? path : real);
+    }
+
+    class bool ownedPlace(string root, string path) {  // strictly inside an absolute root, real folders all the way down
+        if (root.isEmpty() || !PathTools.isAbsolute(root) || !SemuPaths.inside(root, path) || SemuPaths.inSourceTree(path)) { return false; }
+        string normal = SemuPaths.normalize(path);
+        return !normal.equals(SemuPaths.normalize(root)) && SemuPaths.ancestorsAreRealDirectories(root, normal);
+    }
+
+    class bool linkOwned(string root, string path, string target) {  // a symlink made beside, then renamed in; never over a real file or folder
+        if (!SemuPaths.ownedPlace(root, path)) { return false; }
+        string normal = SemuPaths.normalize(path);
+        if (FileSystem.exists(normal) && !FileSystem.isSymlink(normal)) { return false; }
+        string temporary = normal + ".semu-link";
+        if (FileSystem.isSymlink(temporary)) { unlink(temporary); }
+        if (FileSystem.exists(temporary) || FileSystem.symlink(target, temporary) != 0) { return false; }
+        if (rename(temporary, normal) != 0) {
+            unlink(temporary);
+            return false;
+        }
+        return true;
+    }
+
+    class bool removeOwnedLink(string root, string path, string target) {  // only a symlink that still names TARGET
+        string normal = SemuPaths.normalize(path);
+        if (!SemuPaths.ownedPlace(root, normal) || !FileSystem.isSymlink(normal) || !FileSystem.readLink(normal).equals(target)) { return false; }
+        return unlink(normal) == 0;
+    }
+
+    class bool removeEmptyDirectory(string root, string path) {  // rmdir refuses a folder that holds anything
+        string normal = SemuPaths.normalize(path);
+        if (!SemuPaths.ownedPlace(root, normal) || FileSystem.isSymlink(normal) || !FileSystem.isDir(normal)) { return false; }
+        return rmdir(normal) == 0;
+    }
+
+    class bool removeOwnedFile(string root, string path) {  // a regular file Semu wrote, never a link or a folder
+        string normal = SemuPaths.normalize(path);
+        if (!SemuPaths.ownedPlace(root, normal) || FileSystem.isSymlink(normal) || !FileSystem.isFile(normal)) { return false; }
+        return unlink(normal) == 0;
+    }
+
+    class Bytes readPrefix(string path, int count) {  // the first COUNT bytes at most: a header, never a whole pack
+        Bytes result = Bytes();
+        if (count < 1 || !FileSystem.isFile(path)) { return result; }
+        FILE* file = fopen(path, "rb");
+        if (file == null) { return result; }
+        char* buffer = (char*)malloc((size_t)count);
+        if (buffer != null) {
+            size_t received = fread(buffer, 1, (size_t)count, file);
+            result.appendRaw(buffer, (int)received);
+            free(buffer);
+        }
+        fclose(file);
+        return result;
     }
 }

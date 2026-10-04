@@ -1,0 +1,21 @@
+// What one launch did with the mods: a line per entry and outcome for --print-plan, and a notice for anything
+// the owner should hear about. Mods never stop a launch.
+
+import Library.Vector;
+
+class SemuModInstallReport {
+    public Vector<string> lines;  // e.g. "<emulator> <kind> <entry>: installed"
+    public string notice;
+
+    public SemuModInstallReport() {
+        self.lines = [];
+        self.notice = "";
+    }
+
+    public void add(string line) { self.lines.push(line); }
+
+    public void note(string message) {  // reported in the launch notice and the lines
+        self.lines.push(message);
+        self.notice = self.notice.isEmpty() ? message : self.notice + "; " + message;
+    }
+}

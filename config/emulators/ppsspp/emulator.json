@@ -63,7 +63,38 @@
         "config_home": "xdg",
         "data_home": "xdg",
         "config_subdir": "ppsspp",
-        "data_subdir": "ppsspp"
+        "data_subdir": "ppsspp",
+        "mods": {
+          "kinds": [
+            {
+              "id": "textures",
+              "library": "textures",
+              "target": "${state_root}/config/ppsspp/PSP/TEXTURES",
+              "install": "link",
+              "levels": [
+                {
+                  "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                }
+              ],
+              "reads": [
+                "textures.ini",
+                "textures.zip",
+                ".png",
+                "/"
+              ],
+              "setting": "textures",
+              "about": "Texture packs: one folder per disc id (e.g. ULUS10041) holding textures.ini with the pack's files, or textures.zip, as PPSSPP's PSP/TEXTURES/<disc id>.",
+              "doc": "PPSSPP v1.20.4 reads PSP/TEXTURES/<disc id> in its memory stick, ${state_root}/config/ppsspp, when it is a folder (TextureReplacer.cpp:78-79), through stat (DirListing.cpp:134-144), preferring textures.zip, else the folder and its textures.ini (:132-150); it writes new/ there only with SaveNewTextures (:83-87), which stays False. ReplaceTextures is on only while a pack is installed (Config.cpp:762-763)."
+            }
+          ],
+          "settings": {
+            "textures": {
+              "on": "True",
+              "off": "False"
+            }
+          },
+          "doc": "Dormant until a pack is placed: the library is <paths.mods>/ppsspp/textures/<disc id>, one link per game folder into the memory stick's PSP/TEXTURES."
+        }
       },
       "render_preload": true
     }

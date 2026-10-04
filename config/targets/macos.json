@@ -13,6 +13,7 @@
       "roms": "${home}/Drive/media/Games/Emulation/ES-DE/ES-DE/ROMs",
       "media": "${home}/Drive/media/Games/Emulation/ES-DE/ES-DE/downloaded_media",
       "bios": "${home}/Drive/media/Games/Emulation/RetroArch/config/system",
+      "mods": "${home}/Drive/media/Games/Emulation/mods",
       "content_root": "${home}/Drive/media/Games/Emulation/Semu",
       "state_root": "${home}/Library/Application Support/Semu",
       "esde_home": "${home}/ES-DE"

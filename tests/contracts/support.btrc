@@ -71,7 +71,7 @@ class Fixture {
         string assets = PathTools.join(self.scratch, "assets");
         FileSystem.mkdirp(PathTools.join(assets, "bin"));
         string home = PathTools.join(self.scratch, "semu-home");
-        string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(self.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(self.scratch, "content") + "\"}}";
+        string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(self.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(self.scratch, "content") + "\",\"mods\":\"" + PathTools.join(self.scratch, "mods") + "\"}}";  // a scratch library: contracts never read the owner's mods
         self.plan = SemuResolver.plan(self.model, target, home, assets, overlay, self.diagnostics);
     }
 

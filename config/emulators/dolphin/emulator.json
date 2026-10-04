@@ -90,7 +90,38 @@
               "${emulation_root}/Dolphin/data/Wii"
             ]
           }
-        ]
+        ],
+        "mods": {
+          "kinds": [
+            {
+              "id": "textures",
+              "library": "textures",
+              "target": "${state_root}/dolphin-user/Load/Textures",
+              "install": "link",
+              "levels": [
+                {
+                  "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                }
+              ],
+              "reads": [
+                ".png",
+                ".dds",
+                ".txt",
+                "/"
+              ],
+              "setting": "textures",
+              "about": "HD texture packs: one folder per game id (the 6-character id, or its first 3 characters for every region) holding the pack's tex1_*.png or .dds files in any subfolders, as Dolphin's Load/Textures/<game id>.",
+              "doc": "Dolphin 2606a looks for Load/Textures/<game id>, else the 3-character id (HiresTextures.cpp:196-214), and walks it as the root of a recursive search for .png and .dds (:97-98, FileSearch.cpp:66-77), so a linked game folder is followed; nothing writes there (dumps go to Dump/Textures, CommonPaths.h:61-63). HiresTextures is on only while a pack is installed; CacheHiresTextures stays False, which would read every texture at boot (:126-131). GFX.ini is global: with no pack Dolphin checks two folder names and loads nothing."
+            }
+          ],
+          "settings": {
+            "textures": {
+              "on": "True",
+              "off": "False"
+            }
+          },
+          "doc": "Dormant until a pack is placed: the library is <paths.mods>/dolphin/textures/<game id>, one link per game folder into ${state_root}/dolphin-user/Load/Textures, for GameCube and Wii alike."
+        }
       },
       "render_preload": true
     },
@@ -99,7 +130,38 @@
       "state": {
         "config_home": "preserve",
         "data_home": "preserve",
-        "profile_config_dir": "${state_root}/dolphin-user/Config"
+        "profile_config_dir": "${state_root}/dolphin-user/Config",
+        "mods": {
+          "kinds": [
+            {
+              "id": "textures",
+              "library": "textures",
+              "target": "${state_root}/dolphin-user/Load/Textures",
+              "install": "link",
+              "levels": [
+                {
+                  "characters": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                }
+              ],
+              "reads": [
+                ".png",
+                ".dds",
+                ".txt",
+                "/"
+              ],
+              "setting": "textures",
+              "about": "HD texture packs: one folder per game id (the 6-character id, or its first 3 characters for every region) holding the pack's tex1_*.png or .dds files in any subfolders, as Dolphin's Load/Textures/<game id>.",
+              "doc": "Dolphin 2606a looks for Load/Textures/<game id>, else the 3-character id (HiresTextures.cpp:196-214), and walks it as the root of a recursive search for .png and .dds (:97-98, FileSearch.cpp:66-77), so a linked game folder is followed; nothing writes there (dumps go to Dump/Textures, CommonPaths.h:61-63). HiresTextures is on only while a pack is installed; CacheHiresTextures stays False, which would read every texture at boot (:126-131). GFX.ini is global: with no pack Dolphin checks two folder names and loads nothing."
+            }
+          ],
+          "settings": {
+            "textures": {
+              "on": "True",
+              "off": "False"
+            }
+          },
+          "doc": "Dormant until a pack is placed: the library is <paths.mods>/dolphin/textures/<game id>, one link per game folder into ${state_root}/dolphin-user/Load/Textures, for GameCube and Wii alike."
+        }
       },
       "args": [
         "-u",

@@ -1,0 +1,46 @@
+// A kind's title_settings: one settings file per title the kind installed, for an emulator that reads settings
+// per game (a texture pack switches textures on for its own game only, at the composed scale). ${entry} is the
+// title's linked name and ${composed_scale} the whole multiple the compositor draws the first screen at. The
+// files are Semu's: rewritten while the title keeps its entry, removed once it has none.
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../lib/paths.btrc;
+import ../resolve.btrc;
+import ./kind.btrc;
+import ./manifest.btrc;
+import ./report.btrc;
+
+class SemuModTitleSettings {
+    class string path(SemuPlan plan, SemuModKind kind, string title) { return plan.tokens.resolve(kind.titlePath.replace("${entry}", title)); }
+
+    class string content(SemuPlan plan, SemuModKind kind, string title, int scale) {
+        Vector<string> lines = [];
+        for line in kind.titleLines { lines.push(line.replace("${entry}", title).replace("${composed_scale}", Strings.fromInt(scale))); }
+        return plan.tokens.resolve(lines.join("\n") + "\n");
+    }
+
+    class void write(SemuPlan plan, SemuModKind kind, string stateRoot, Vector<string> titles, int scale, SemuModManifest manifest, SemuModInstallReport report) {
+        Vector<SemuModRecord> files = [];
+        Vector<string> written = [];
+        for title in titles {
+            if (kind.titlePath.isEmpty() || written.contains(title)) { continue; }
+            string path = SemuModTitleSettings.path(plan, kind, title);
+            string content = SemuModTitleSettings.content(plan, kind, title, scale);
+            bool current = FileSystem.isFile(path) && !FileSystem.isSymlink(path) && FileSystem.readText(path).equals(content);
+            if (path.contains("${") || content.contains("${") || (!current && !SemuPaths.writeOwned(stateRoot, path, content))) {
+                report.note(f"mods: could not write the {kind.emulator} {kind.id} settings for {title}");
+                continue;
+            }
+            written.push(title);
+            files.push(SemuModRecord("file", kind.id, path, "-"));
+        }
+        for record in manifest.of("file", kind.id) {
+            bool kept = false;
+            for file in files { if (file.path.equals(record.path)) { kept = true; } }
+            if (!kept && SemuPaths.removeOwnedFile(stateRoot, record.path)) { report.add(f"{kind.emulator} {kind.id} {PathTools.basename(record.path)}: settings removed with the last entry of its title"); }
+        }
+        manifest.replace("file", kind.id, files);
+    }
+}

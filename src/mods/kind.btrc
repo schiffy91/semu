@@ -1,0 +1,236 @@
+// One kind of mod an emulator reads, as its emulator.json declares it in platforms.<os>.state.mods: where the
+// owner keeps it (<mods>/<emulator>/<library>), where it is linked in the emulator's state, a name rule per
+// folder level (the deepest level is linked, one link per entry), what an entry must hold and the cheap checks
+// its files must pass. Only reads: nothing here writes, and nothing here names an emulator.
+
+import Library.Bytes;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+
+class SemuModLevel {  // the names one folder level accepts, and how its link is spelled
+    public int length;  // 0: any length
+    public string characters;  // "": any character
+    public string linkCase;  // upper, lower, or "" to keep the name
+    public Vector<string> files;  // plain files linked one by one at this level, e.g. a container mod
+
+    public SemuModLevel(JSONValue definition) {
+        self.length = SemuJson.intAt(definition, "length", 0);
+        self.characters = SemuJson.textAt(definition, "characters");
+        self.linkCase = SemuJson.textAt(definition, "link_case");
+        self.files = SemuJson.strings(SemuJson.get(definition, "files"));
+    }
+
+    class bool reserved(string name) {  // hidden names, Semu's scratch names, and names the manifest cannot hold
+        if (name.isEmpty() || name.startsWith(".") || name.contains("/") || name.contains("\t") || name.contains("\n")) { return true; }
+        return name.endsWith(".semu-link") || name.endsWith(".semu-partial") || name.endsWith(".semu-tmp");
+    }
+
+    public bool matches(string name) {
+        if (SemuModLevel.reserved(name) || (self.length > 0 && name.len() != self.length)) { return false; }
+        for (int position = 0; position < name.len() && !self.characters.isEmpty(); position++) {
+            if (!self.characters.contains(name.substring(position, 1))) { return false; }
+        }
+        return true;
+    }
+
+    public string rule() {  // e.g. "16 characters of 0123456789ABCDEFabcdef"
+        string size = self.length > 0 ? f"{self.length} characters" : "a plain name";
+        return self.characters.isEmpty() ? size : size + " of " + self.characters;
+    }
+
+    public string linkName(string name) {
+        if (self.linkCase.equals("upper")) { return name.toUpper(); }
+        if (self.linkCase.equals("lower")) { return name.toLower(); }
+        return name;
+    }
+}
+
+class SemuModCheck {  // one named file in an entry: its first bytes, its exact size, or a BPS header the emulator accepts
+    public string file;
+    public string startsWith;
+    public int size;  // -1: no size rule
+    public string format;  // bps: magic BPS1 and no metadata
+
+    public SemuModCheck(JSONValue definition) {
+        self.file = SemuJson.textAt(definition, "file");
+        self.startsWith = SemuJson.textAt(definition, "starts_with");
+        self.size = SemuJson.intAt(definition, "size", -1);
+        self.format = SemuJson.textAt(definition, "format");
+    }
+
+    class long bpsMetadata(Bytes header) {  // the third beat number after BPS1 (source, target, metadata sizes); -1 when cut short
+        int position = 4;
+        long value = 0;
+        for (int field = 0; field < 3; field++) {
+            value = 0;
+            long shift = 1;
+            bool ended = false;
+            while (!ended) {
+                if (position >= header.length() || shift > 562949953421312) { return -1; }
+                int octet = header.get(position);
+                position++;
+                value += (long)(octet & 127) * shift;
+                if ((octet & 128) != 0) {
+                    ended = true;
+                } else {
+                    shift = shift * 128;
+                    value += shift;
+                }
+            }
+        }
+        return value;
+    }
+
+    public string problem(string entryPath) {  // "" when the file is absent or passes
+        string path = PathTools.join(entryPath, self.file);
+        if (!FileSystem.isFile(path)) { return ""; }
+        if (!self.startsWith.isEmpty() && !SemuPaths.readPrefix(path, self.startsWith.len()).equals(Bytes.fromString(self.startsWith))) {
+            return f"{self.file} does not start with {self.startsWith}";
+        }
+        if (self.size >= 0) {
+            int found = SemuPaths.readPrefix(path, self.size + 1).length();
+            if (found > self.size) { return f"{self.file} is over {self.size} bytes"; }
+            if (found < self.size) { return f"{self.file} is {found} bytes, not {self.size}"; }
+        }
+        if (self.format.equals("bps")) {
+            Bytes header = SemuPaths.readPrefix(path, 64);
+            if (!header.slice(0, 4).equals(Bytes.fromString("BPS1"))) { return f"{self.file} does not start with BPS1"; }
+            if (SemuModCheck.bpsMetadata(header) != 0) { return f"{self.file} carries metadata or a cut header, which the emulator refuses"; }
+        }
+        return "";
+    }
+}
+
+class SemuModKind {
+    public string emulator;
+    public string id;
+    public string library;  // the folder under <mods>/<emulator>/
+    public string target;  // resolved: the folder in the emulator's state the entries are linked into
+    public Vector<SemuModLevel> levels;
+    public Vector<string> reads;
+    public Vector<SemuModCheck> checks;
+    public string setting;  // the settings group this kind switches on, "" for none
+    public string titlePath;  // title_settings.path, unresolved: one settings file per installed title
+    public Vector<string> titleLines;
+    public JSONValue definition;
+
+    public SemuModKind(string emulatorId, JSONValue definition, SemuTokens tokens) {
+        self.emulator = emulatorId;
+        self.definition = definition;
+        self.id = SemuJson.textAt(definition, "id");
+        self.library = SemuJson.textAt(definition, "library");
+        self.target = tokens.resolve(SemuJson.textAt(definition, "target"));
+        self.levels = [];
+        JSONValue levels = SemuJson.get(definition, "levels");
+        for (int index = 0; levels.isArray() && index < levels.size(); index++) { self.levels.push(SemuModLevel(levels.at(index))); }
+        self.reads = SemuJson.strings(SemuJson.get(definition, "reads"));
+        self.checks = [];
+        JSONValue checks = SemuJson.get(definition, "checks");
+        for (int index = 0; checks.isArray() && index < checks.size(); index++) { self.checks.push(SemuModCheck(checks.at(index))); }
+        self.setting = SemuJson.textAt(definition, "setting");
+        self.titlePath = SemuJson.textAt(definition, "title_settings.path");
+        self.titleLines = [];
+        JSONValue lines = SemuJson.get(definition, "title_settings.lines");
+        for (int index = 0; lines.isArray() && index < lines.size(); index++) { self.titleLines.push(SemuJson.text(lines.at(index))); }
+    }
+
+    class JSONValue declaration(SemuPlan plan, SemuEmulator emulator) { return SemuJson.get(emulator.platform(plan.platform), "state.mods"); }
+
+    class Vector<SemuModKind> declared(SemuPlan plan, SemuEmulator emulator) {  // the caller has bound state_root to this emulator
+        Vector<SemuModKind> result = [];
+        JSONValue kinds = SemuJson.get(SemuModKind.declaration(plan, emulator), "kinds");
+        for (int index = 0; kinds.isArray() && index < kinds.size(); index++) {
+            if (kinds.at(index).isObject()) { result.push(SemuModKind(emulator.id, kinds.at(index), plan.tokens)); }
+        }
+        return result;
+    }
+
+    class Vector<string> settingGroups(SemuPlan plan, SemuEmulator emulator) {
+        JSONValue settings = SemuJson.get(SemuModKind.declaration(plan, emulator), "settings");
+        Vector<string> result = [];
+        if (settings.isObject()) { result = settings.keys().sorted(); }
+        return result;
+    }
+
+    class string settingValue(SemuPlan plan, SemuEmulator emulator, string group) {  // on while any kind of the group is installed
+        bool active = false;
+        for kind in SemuModKind.declared(plan, emulator) { if (kind.setting.equals(group) && kind.active()) { active = true; } }
+        return SemuJson.textAt(SemuModKind.declaration(plan, emulator), "settings." + group + (active ? ".on" : ".off"));
+    }
+
+    public int deepest() { return self.levels.size() - 1; }
+
+    public string libraryPath(SemuPlan plan) {  // "" when mods are off
+        string root = plan.path("mods");
+        return root.isEmpty() ? "" : PathTools.join(PathTools.join(root, self.emulator), self.library);
+    }
+
+    public bool readsName(string name, bool directory) {  // "*" anything, "/" any folder, "x/" that folder, ".ext" a file suffix, else that file
+        for wanted in self.reads {
+            if (wanted.equals("*") || (directory && wanted.equals("/"))) { return true; }
+            if (wanted.endsWith("/") && !wanted.equals("/")) {
+                if (directory && name.equals(wanted.substring(0, wanted.len() - 1))) { return true; }
+            } else if (wanted.startsWith(".")) {
+                if (!directory && name.toLower().endsWith(wanted)) { return true; }
+            } else if (!directory && name.equals(wanted)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public string problem(string entryPath) {  // "" for an entry worth linking: holds something the emulator reads and passes every check
+        DirectoryStream stream = DirectoryStream(entryPath);
+        bool anything = false;
+        bool readable = false;
+        while (!readable && stream.next()) {
+            string name = stream.name();
+            if (name.startsWith(".")) { continue; }
+            anything = true;
+            readable = self.readsName(name, FileSystem.isDir(PathTools.join(entryPath, name)));
+        }
+        stream.close();
+        if (!anything) { return "empty"; }
+        if (!readable) { return "holds none of: " + self.reads.join(", "); }
+        for check in self.checks {
+            string failure = check.problem(entryPath);
+            if (!failure.isEmpty()) { return failure; }
+        }
+        return "";
+    }
+
+    class bool holdsAnything(string directory) {
+        DirectoryStream stream = DirectoryStream(directory);
+        bool found = false;
+        while (!found && stream.next()) { found = !stream.name().startsWith("."); }
+        stream.close();
+        return found;
+    }
+
+    public bool populated(string directory, int level) {  // an entry at the linked depth (followed through its link) holds something
+        DirectoryStream stream = DirectoryStream(directory);
+        bool found = false;
+        while (!found && stream.next()) {
+            string name = stream.name();
+            string path = PathTools.join(directory, name);
+            if (SemuModLevel.reserved(name)) { continue; }
+            if (!FileSystem.isDir(path)) {
+                found = self.levels.get(level).files.contains(name) && FileSystem.isFile(path);  // a dangling container link does not count
+            } else if (level >= self.deepest()) {
+                found = SemuModKind.holdsAnything(path);
+            } else {
+                found = self.populated(path, level + 1);
+            }
+        }
+        stream.close();
+        return found;
+    }
+
+    public bool active() { return !self.levels.isEmpty() && FileSystem.isDir(self.target) && self.populated(self.target, 0); }  // what the emulator will see; an empty folder it made does not count
+}

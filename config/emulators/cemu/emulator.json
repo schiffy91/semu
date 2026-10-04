@@ -64,7 +64,26 @@
               "${emulation_root}/Cemu/data/mlc01"
             ]
           }
-        ]
+        ],
+        "mods": {
+          "kinds": [
+            {
+              "id": "graphicpacks",
+              "library": "graphicpacks",
+              "target": "${state_root}/data/Cemu/graphicPacks",
+              "install": "link",
+              "levels": [
+                {}
+              ],
+              "reads": [
+                "rules.txt"
+              ],
+              "about": "Graphic packs: one folder per pack holding its rules.txt, as Cemu's graphicPacks/<pack>.",
+              "doc": "Cemu v2.6 walks graphicPacks and loads every folder holding rules.txt, testing each entry with is_directory and exists, which follow a link, and does not descend further (GraphicPack2.cpp:64-79), so each pack is linked on its own, never a folder of packs (a nested link is not followed). It writes there only from its downloader window, which a fullscreen launch never opens (DownloadGraphicPacksWindow.cpp:91-100). A pack runs once settings.xml names it in GraphicPack (CemuConfig.cpp:178-210), which Semu does not write yet."
+            }
+          ],
+          "doc": "Dormant: the library is <paths.mods>/cemu/graphicpacks/<pack>, one link per pack into ${state_root}/data/Cemu/graphicPacks."
+        }
       },
       "firmware": {
         "dir": "${emulation_root}/Cemu/data",

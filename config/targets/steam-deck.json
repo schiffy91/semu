@@ -13,6 +13,7 @@
       "roms": "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs",
       "media": "/run/media/deck/SD/Emulation/ES-DE/ES-DE/downloaded_media",
       "bios": "/run/media/deck/SD/Emulation/RetroArch/config/system",
+      "mods": "/run/media/deck/SD/Emulation/mods",
       "content_root": "/run/media/deck/SD/Emulation/Semu",
       "state_root": "${home}/.local/share/semu",
       "esde_home": "/run/media/deck/SD/Emulation/ES-DE"

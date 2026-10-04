@@ -1,0 +1,234 @@
+// Mods spec, the link engine (M13 item 0, decisions M2 and M3) on synthetic kinds: one link per entry at the
+// declared depth inside real state folders, the library never written; the emulator's empty folders replaced,
+// its real ones and foreign links left alone; parked, invalid and twin entries never linked; an empty paths.mods
+// turns Semu's links and title settings off, an unmounted library changes nothing; nothing reaches the library
+// through a linked folder in state; the settings group follows what is installed.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/composed_scale.btrc;
+import ../../../src/mods/kind.btrc;
+import ../../../src/mods/library.btrc;
+import ../../../src/mods/install.btrc;
+import ../../../src/mods/report.btrc;
+import ./standalone.btrc;
+import ./mods_paths.btrc;
+
+#include <stdio.h>
+
+class ModsSpecBed {  // azahar on linux-desktop carrying only the synthetic kinds; library and state in scratch
+    public StandaloneSpecBed bed;
+    public SemuEmulator emulator;
+    public string library;  // <mods>/azahar
+    public string state;
+
+    public ModsSpecBed() {
+        self.bed = StandaloneSpecBed();
+        self.emulator = self.bed.fixture.model.emulator("azahar");
+        self.emulator.platform("linux").get("state").set("mods", JSONValue.parse(ModsSpecBed.kinds()));
+        self.library = PathTools.join(self.bed.fixture.plan.path("mods"), "azahar");
+        self.state = self.bed.stateRoot("azahar");
+        self.bed.fixture.plan.tokens.put("state_root", self.state);
+    }
+
+    class string kinds() {
+        string textures = "{'id':'fixture-textures','library':'fixture-textures','target':'${state_root}/data/fixture/load/textures','install':'link','levels':[{'length':16,'characters':'0123456789ABCDEFabcdef','link_case':'upper'}],'reads':['.png','pack.json','/'],'setting':'fixture','title_settings':{'path':'${state_root}/config/fixture/custom/${entry}.ini','lines':['[Fixture]','scale=${composed_scale}','title=${entry}']},'about':'fixture','doc':'fixture'}";
+        string contents = "{'id':'fixture-contents','library':'fixture-contents','target':'${state_root}/config/fixture/mods/contents','install':'link','levels':[{'length':16,'characters':'0123456789ABCDEFabcdef','link_case':'lower'},{'files':['romfs.bin']}],'reads':['*'],'about':'fixture','doc':'fixture'}";
+        return ("{'settings':{'fixture':{'on':'true','off':'false'}},'kinds':[" + textures + "," + contents + "]}").replace("'", "\"");
+    }
+
+    public SemuModInstallReport install() { return SemuModInstaller.install(self.bed.fixture.plan, self.emulator, self.bed.fixture.model.system("n3ds")); }
+
+    public string textures(string relative) {  // the target itself for ""
+        string root = PathTools.join(self.state, "data/fixture/load/textures");
+        return relative.isEmpty() ? root : PathTools.join(root, relative);
+    }
+
+    public string contents(string relative) {
+        string root = PathTools.join(self.state, "config/fixture/mods/contents");
+        return relative.isEmpty() ? root : PathTools.join(root, relative);
+    }
+
+    public string source(string relative) { return PathTools.join(self.library, relative); }
+
+    public void root(string value) { for name in ["mods", "paths.mods"] { self.bed.fixture.plan.tokens.put(name, value); } }
+
+    public SemuModKind kind(string identifier) {
+        for kind in SemuModKind.declared(self.bed.fixture.plan, self.emulator) { if (kind.id.equals(identifier)) { return kind; } }
+        return null;
+    }
+
+    public string manifest() { return FileSystem.readText(PathTools.join(self.state, "semu-mods.tsv")); }
+
+    public string lines(SemuModInstallReport report) { return report.lines.join("\n"); }
+}
+
+class ModsSpecInstall {
+    class void owner(ModsSpecBed bed) {  // the library a careless owner might leave
+        ModsSpecTree.write(bed.source("fixture-textures/0004000000033600/tex1_a.png"), "a");
+        ModsSpecTree.write(bed.source("fixture-textures/00040000000aeb00/pack.json"), "{}");
+        FileSystem.mkdirp(bed.source("fixture-textures/0004000000ABCDEF"));
+        ModsSpecTree.write(bed.source("fixture-textures/0004000000125500/notes.txt"), "notes");
+        ModsSpecTree.write(bed.source("fixture-textures/notatitle/x.png"), "x");
+        ModsSpecTree.write(bed.source("fixture-textures/0004000000011100/tex.png"), "parked");
+        ModsSpecTree.write(bed.source("fixture-textures/0004000000011100/.semu-off"), "");
+        ModsSpecTree.write(bed.source("fixture-textures/README.txt"), "readme");
+        ModsSpecTree.write(bed.source("fixture-textures/.DS_Store"), "finder");
+    }
+
+    class void first(Contract contract) {
+        ModsSpecBed bed = ModsSpecBed();
+        ModsSpecInstall.owner(bed);
+        string before = ModsSpecTree.snapshot(bed.library);
+        string report = bed.lines(bed.install());
+        contract.expect(FileSystem.readLink(bed.textures("0004000000033600")).equals(bed.source("fixture-textures/0004000000033600")), "a title folder is linked to its library path, spelled from paths.mods: " + report);
+        contract.expect(FileSystem.readLink(bed.textures("00040000000AEB00")).equals(bed.source("fixture-textures/00040000000aeb00")) && FileSystem.listDir(bed.textures("")).contains("00040000000AEB00"), "a lowercase title links under its uppercase name, as the level's link case says");
+        Vector<string> linked = FileSystem.listDir(bed.textures(""));
+        contract.expect(linked.size() == 2, "only the two linkable titles are linked: " + linked.join(" "));
+        for wanted in ["0004000000ABCDEF: empty", "0004000000125500: holds none of: .png, pack.json, /", "notatitle: name is not 16 characters of", "0004000000011100: parked by .semu-off"] { contract.contains(report, wanted, "the report gives each skipped entry its reason"); }
+        contract.lacks(report, "README.txt", "a README beside the titles is no entry");
+        contract.lacks(report, ".DS_Store", "a hidden file is no entry");
+        contract.expect(FileSystem.isDir(bed.textures("")) && !FileSystem.isSymlink(bed.textures("")) && !FileSystem.isSymlink(PathTools.dirname(bed.textures(""))), "the target and its parents are real folders in state");
+        contract.expect(!FileSystem.exists(bed.textures("0004000000033600.semu-link")) && !FileSystem.isSymlink(bed.textures("0004000000033600.semu-link")), "no .semu-link is left behind");
+        Vector<string> records = Strings.split(bed.manifest().trim(), "\n");
+        contract.expect(ModsSpecTree.count(records, "link\tfixture-textures\t") == 2 && ModsSpecTree.count(records, "file\tfixture-textures\t") == 2, "the manifest holds the two links and their two title settings: " + bed.manifest());
+        int scale = SemuComposedScale.of(bed.bed.fixture.plan, bed.bed.fixture.model.system("n3ds"), "azahar");
+        string settings = FileSystem.readText(PathTools.join(bed.state, "config/fixture/custom/0004000000033600.ini"));
+        contract.expect(settings.equals(f"[Fixture]\nscale={scale}\ntitle=0004000000033600\n") && FileSystem.isFile(PathTools.join(bed.state, "config/fixture/custom/00040000000AEB00.ini")), "each installed title gets its title settings at the composed scale: " + settings);
+        contract.expect(!FileSystem.exists(PathTools.join(bed.state, "config/fixture/custom/0004000000ABCDEF.ini")), "a title without a linkable entry gets no title settings");
+        contract.expect(ModsSpecTree.snapshot(bed.library).equals(before), "the library is byte-identical after the install");
+        FileSystem.mkdirp(bed.textures("0004000000099999"));  // what the emulator does for a game without a pack
+        contract.expect(ModsSpecTree.snapshot(bed.library).equals(before), "a folder the emulator makes lands in state, never in the library");
+        string manifest = bed.manifest();
+        bed.install();
+        contract.expect(bed.manifest().equals(manifest) && FileSystem.readLink(bed.textures("0004000000033600")).equals(bed.source("fixture-textures/0004000000033600")) && FileSystem.isDir(bed.textures("0004000000099999")), "a second install keeps the links and the manifest, and leaves the emulator's folder");
+        contract.expect(SemuModKind.settingValue(bed.bed.fixture.plan, bed.emulator, "fixture").equals("true"), "the settings group is on while a kind of it is installed");
+        ModsSpecTree.write(bed.source("fixture-textures/00040000000aeb00/.semu-off"), "");
+        bed.install();
+        contract.expect(!FileSystem.isSymlink(bed.textures("00040000000AEB00")) && FileSystem.isFile(bed.source("fixture-textures/00040000000aeb00/pack.json")), "a .semu-off marker parks an installed entry: its link goes, the entry stays where it is");
+        rename(bed.source("fixture-textures/00040000000aeb00/.semu-off"), PathTools.join(bed.bed.fixture.scratch, "marker"));
+        bed.install();
+        contract.expect(FileSystem.isSymlink(bed.textures("00040000000AEB00")), "without the marker it is linked again");
+        string moved = PathTools.join(bed.bed.fixture.scratch, "moved-away");
+        FileSystem.mkdirp(moved);
+        rename(bed.source("fixture-textures/0004000000033600"), PathTools.join(moved, "0004000000033600"));
+        report = bed.lines(bed.install());
+        contract.expect(!FileSystem.isSymlink(bed.textures("0004000000033600")) && FileSystem.isSymlink(bed.textures("00040000000AEB00")), "an entry taken out of the library loses its link and nothing else: " + report);
+        contract.expect(!FileSystem.exists(PathTools.join(bed.state, "config/fixture/custom/0004000000033600.ini")) && FileSystem.isFile(PathTools.join(bed.state, "config/fixture/custom/00040000000AEB00.ini")), "its title settings go with it");
+        ModsSpecInstall.unmounted(contract, bed);
+    }
+
+    class void unmounted(Contract contract, ModsSpecBed bed) {  // an absent root changes nothing; an empty paths.mods is off
+        string root = bed.bed.fixture.plan.path("mods");
+        string state = ModsSpecTree.snapshot(bed.state);
+        rename(root, root + "-unmounted");
+        string report = bed.lines(bed.install());
+        contract.expect(ModsSpecTree.snapshot(bed.state).equals(state), "a library that is not mounted changes nothing in state: " + report);
+        contract.contains(report, "library absent", "the report says the library is absent");
+        rename(root + "-unmounted", root);
+        string empty = PathTools.join(bed.bed.fixture.scratch, "empty-library");
+        FileSystem.mkdirp(empty);
+        bed.root(empty);
+        bed.install();
+        contract.expect(!FileSystem.isSymlink(bed.textures("00040000000AEB00")) && !FileSystem.exists(PathTools.join(bed.state, "config/fixture/custom/00040000000AEB00.ini")), "a library with nothing in it removes Semu's links and title settings");
+        bed.root(root);
+        bed.install();
+        contract.expect(FileSystem.isSymlink(bed.textures("00040000000AEB00")), "pointing back at the library links it again");
+        bed.root("");
+        string offReport = bed.lines(bed.install());
+        contract.expect(!FileSystem.isSymlink(bed.textures("00040000000AEB00")) && !FileSystem.exists(PathTools.join(bed.state, "config/fixture/custom/00040000000AEB00.ini")) && FileSystem.isDir(bed.textures("0004000000099999")), "an empty paths.mods removes Semu's links and title settings, never the emulator's folder: " + offReport);
+        contract.expect(SemuModKind.settingValue(bed.bed.fixture.plan, bed.emulator, "fixture").equals("false") && bed.manifest().isEmpty(), "with mods off the group is off and the manifest is empty");
+    }
+
+    class void precedence(Contract contract) {  // the emulator's own folders and others' links win; its empty folder is replaced
+        ModsSpecBed bed = ModsSpecBed();
+        for title in ["0004000000033600", "00040000000AEB00", "0004000000077700"] { ModsSpecTree.write(bed.source("fixture-textures/" + title + "/tex.png"), title); }
+        FileSystem.mkdirp(bed.textures("0004000000033600"));
+        ModsSpecTree.write(bed.textures("00040000000AEB00/own.png"), "the emulator's own");
+        string elsewhere = PathTools.join(bed.bed.fixture.scratch, "elsewhere");
+        FileSystem.mkdirp(elsewhere);
+        FileSystem.symlink(elsewhere, bed.textures("0004000000077700"));
+        string report = bed.lines(bed.install());
+        contract.expect(FileSystem.readLink(bed.textures("0004000000033600")).equals(bed.source("fixture-textures/0004000000033600")), "an empty folder the emulator made is replaced by the link: " + report);
+        contract.contains(report, "replaced the emulator's empty folder", "the report says so");
+        contract.expect(!FileSystem.isSymlink(bed.textures("00040000000AEB00")) && FileSystem.readText(bed.textures("00040000000AEB00/own.png")).equals("the emulator's own"), "a folder with files in state is left alone");
+        contract.expect(FileSystem.readLink(bed.textures("0004000000077700")).equals(elsewhere), "a link Semu did not make is left alone");
+        contract.contains(report, "00040000000AEB00: shadowed by a folder", "the report names the shadowing folder");
+        contract.contains(report, "0004000000077700: shadowed by a link Semu did not make", "and the foreign link");
+        contract.expect(SemuModKind.settingValue(bed.bed.fixture.plan, bed.emulator, "fixture").equals("true"), "the group is on");
+    }
+
+    class void depth(Contract contract) {  // a title level, then one link per mod and per container file
+        ModsSpecBed bed = ModsSpecBed();
+        ModsSpecTree.write(bed.source("fixture-contents/0100f2c0115b6000/!!!Mod Name/exefs/main.npdm"), "npdm");
+        ModsSpecTree.write(bed.source("fixture-contents/0100f2c0115b6000/romfs.bin"), "romfs");
+        ModsSpecTree.write(bed.source("fixture-contents/0100f2c0115b6000/notes.txt"), "not a container");
+        FileSystem.mkdirp(bed.contents("0100F2C0115B6000"));  // the emulator's own title folder, another case
+        string before = ModsSpecTree.snapshot(bed.library);
+        string report = bed.lines(bed.install());
+        Vector<string> titles = FileSystem.listDir(bed.contents(""));
+        contract.expect(titles.size() == 1 && titles.get(0).equals("0100F2C0115B6000") && !FileSystem.isSymlink(bed.contents("0100F2C0115B6000")), "the existing title folder is reused, real, never doubled in another case: " + titles.join(" "));
+        contract.expect(SemuModInstaller.existingName(bed.contents(""), "0100f2c0115b6000").equals("0100F2C0115B6000") && SemuModInstaller.existingName(bed.contents(""), "0100f2c0115b7000").equals("0100f2c0115b7000"), "the title folder keeps its own spelling on any filesystem; a new one takes the link case");
+        contract.contains(bed.manifest(), bed.contents("0100F2C0115B6000/!!!Mod Name"), "the manifest records the link under that spelling");
+        contract.expect(FileSystem.readLink(bed.contents("0100F2C0115B6000/!!!Mod Name")).equals(bed.source("fixture-contents/0100f2c0115b6000/!!!Mod Name")), "the mod folder is linked inside it: " + report);
+        contract.expect(FileSystem.readLink(bed.contents("0100F2C0115B6000/romfs.bin")).equals(bed.source("fixture-contents/0100f2c0115b6000/romfs.bin")) && !FileSystem.exists(bed.contents("0100F2C0115B6000/notes.txt")), "a declared container file is linked on its own, an undeclared file is not");
+        contract.expect(ModsSpecTree.snapshot(bed.library).equals(before), "the library is unchanged");
+        ModsSpecBed through = ModsSpecBed();  // a title folder in state that is a link into the library
+        ModsSpecTree.write(through.source("fixture-contents/0100f2c0115b6000/!!!Mod Name/exefs/main.npdm"), "npdm");
+        FileSystem.mkdirp(through.source("fixture-contents/0100f2c0115b6000/empty"));
+        FileSystem.mkdirp(through.contents(""));
+        FileSystem.symlink(through.source("fixture-contents/0100f2c0115b6000"), through.contents("0100f2c0115b6000"));
+        string library = ModsSpecTree.snapshot(through.library);
+        string skipped = through.lines(through.install());
+        contract.expect(ModsSpecTree.snapshot(through.library).equals(library), "nothing is linked, removed or made in the library through a linked title folder: " + skipped);
+        contract.contains(skipped, "skipped: a folder above it in the emulator's state is a link", "the report says why");
+    }
+
+    class void refusals(Contract contract) {
+        ModsSpecBed bed = ModsSpecBed();
+        ModsSpecTree.write(bed.source("fixture-textures/0004000000033600/tex.png"), "a");
+        string outside = PathTools.join(bed.bed.fixture.scratch, "outside");
+        FileSystem.mkdirp(outside);
+        FileSystem.mkdirp(PathTools.dirname(bed.textures("")));
+        FileSystem.symlink(outside, bed.textures(""));
+        SemuModInstallReport report = bed.install();
+        contract.expect(FileSystem.listDir(outside).isEmpty() && report.notice.contains("not a real folder in the emulator's state"), "a target that is a link gets a notice and nothing is written through it: " + report.notice);
+        Vector<SemuModEntry> entries = [];
+        for name in ["0004000000033600", "0004000000033601"] { entries.push(SemuModEntry(name.toLower(), "/library/" + name.toLower(), "0004000000033600", "", false)); }
+        entries.push(SemuModEntry("00040000000aeb00", "/library/00040000000aeb00", "00040000000AEB00", "", false));
+        SemuModLibrary.markTwins(entries);
+        contract.expect(entries.get(0).problem.startsWith("duplicate") && entries.get(1).problem.startsWith("duplicate") && entries.get(2).problem.isEmpty(), "two library names that link to one name are both reported as duplicates, the rest untouched");
+        SemuModKind kind = bed.kind("fixture-textures");
+        string empty = PathTools.join(bed.bed.fixture.scratch, "active");
+        kind.target = empty;
+        FileSystem.mkdirp(empty);
+        contract.expect(!kind.active(), "no entry: the kind is not active");
+        FileSystem.mkdirp(PathTools.join(empty, "0004000000099999"));
+        contract.expect(!kind.active(), "an empty real folder the emulator made does not count");
+        FileSystem.symlink(PathTools.join(bed.bed.fixture.scratch, "gone"), PathTools.join(empty, "0004000000088800"));
+        contract.expect(!kind.active(), "a dangling link does not count");
+        FileSystem.symlink(bed.source("fixture-textures/0004000000033600"), PathTools.join(empty, "0004000000033600"));
+        contract.expect(kind.active(), "a link to a folder with a texture makes the kind active");
+        SemuModKind contents = bed.kind("fixture-contents");
+        string container = PathTools.join(bed.bed.fixture.scratch, "active-contents");
+        contents.target = container;
+        FileSystem.mkdirp(PathTools.join(container, "0100f2c0115b6000"));
+        FileSystem.symlink(PathTools.join(bed.bed.fixture.scratch, "gone.bin"), PathTools.join(container, "0100f2c0115b6000/romfs.bin"));
+        contract.expect(!contents.active(), "a dangling container link does not count");
+        ModsSpecTree.write(PathTools.join(container, "0100f2c0115b7000/romfs.bin"), "romfs");
+        contract.expect(contents.active(), "a container file the level declares makes the kind active");
+    }
+
+    class void run(Contract contract) {
+        ModsSpecInstall.first(contract);
+        ModsSpecInstall.precedence(contract);
+        ModsSpecInstall.depth(contract);
+        ModsSpecInstall.refusals(contract);
+    }
+}

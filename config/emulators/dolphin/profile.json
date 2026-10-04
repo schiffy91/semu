@@ -330,7 +330,9 @@
         "ShaderCompilationMode = 2",
         "ShowFPS = ${performance_overlay}",
         "ShowSpeed = ${performance_overlay}",
-        "LogRenderTimeToFile = ${performance_overlay}"
+        "LogRenderTimeToFile = ${performance_overlay}",
+        "HiresTextures = ${mods.textures}",
+        "CacheHiresTextures = False"
       ]
     },
     {
