@@ -660,7 +660,7 @@ Status: being designed (workflow mods-design, with critique) while the radial se
 (M8) finishes its review fixes; implementation follows in the main checkout.
 
 - Item 0 (mods), the core: built 2026-10-04 and observed in the podman VM; the migration (`semu mods
-  migrate`) and the Deck are open. Rulings taken as reversible defaults:
+  migrate`, below) is built; the Deck is open. Rulings taken as reversible defaults:
   - One library per machine, `paths.mods` = `<emulation_root>/mods` on every target (an override in semu.json
     moves it; empty turns mods off), organised by emulator then native kind:
     `azahar/{mods,textures}/<title id>`, `ryujinx/contents/<title id>/<mod>` (or romfs.bin/exefs.nsp
@@ -721,6 +721,31 @@ Status: being designed (workflow mods-design, with critique) while the radial se
     no activation. The library was unchanged. The owner's downloaded packs (154 game folders under
     Cemu/data/graphicPacks/downloadedGraphicPacks) are not moved or enabled: that is the migration's call
     (they are folders of packs, which Cemu does not walk through a link, so each pack would go in on its own).
+  - The migration: built 2026-10-04 and observed on the Mac and in the podman VM; it has not run on the Deck
+    or on the owner's Mac library yet. `semu mods migrate [--dry-run] [--allow-copy] [--detach] [--reverse]`
+    moves each entry a kind's `migrate_from` declares (Azahar and Lime3DS `data/load/{mods,textures}`,
+    Ryujinx `config/mods/contents`, all under `${emulation_root}`) to `<mods>/<emulator>/<library>/<entry>`
+    at the kind's own levels (a Switch mod moves alone; its title folder stays, empty). On one filesystem it
+    is a rename the kernel refuses over an existing destination (renameat2 RENAME_NOREPLACE,
+    renamex_np RENAME_EXCL). Another filesystem is refused unless `--allow-copy`, which copies through
+    `.semu-partial`, counts files and bytes against the source, renames the copy in and keeps the source.
+    A symlinked root or entry is reported and never followed (only the last component is checked, so the
+    Mac's linked ~/Drive works). Empty folders, folders that are not mods and entries already in the library
+    stay where they are; the first declared source wins (Azahar before Lime3DS). One run at a time
+    (`semu-mods-migrate.lock`, a dead holder's lock is taken over); every move is appended to
+    `semu-mods-migrate.tsv` and `--detach` writes `semu-mods-migrate.log`, all in the global state root. A
+    second run moves nothing; `--reverse` renames recorded moves back when their old place is free. Nothing
+    is deleted. Cemu's downloaded packs are not declared: they are folders of packs.
+    Observed: the dry run over the owner's Drive library (read-only) plans 6 renames (OoT 3D and MM3D mods;
+    OoT 3D, ALBW and MM3D textures; TotK Optimizer), 5 Lime3DS duplicates and the two empty 00040000000AEB00
+    folders. A scratch tree on the same Drive APFS volume: both entries kept their inodes, a second run moved
+    nothing, reverse restored them. Podman VM (Linux aarch64, kernel 7.1, overlay): renameat2 kept the inodes
+    and `--detach` logged "done: 3 moved, 1 duplicate, 1 empty". With the library on tmpfs, the run was
+    refused without `--allow-copy` and copied with the sources kept.
+    Owner workflow. Deck: `~/Applications/Semu/bin/semu-deck-cli mods migrate --target steam-deck --dry-run`,
+    then the same command with `--detach`, then `tail ~/.local/share/semu/semu-mods-migrate.log` and
+    `mods list`. Mac: `semu mods migrate --target macos`. Open: both runs. The Deck needs a release with
+    this command, and the owner's libraries are not changed by the agents.
 - Item 1 (N64 glow): built 2026-10-04 and checked in the render host; the Deck is open. Two causes:
   angrylion handed over its black overscan columns, so the lip mirrored black, and the package had the
   weakest reflection of the TVs (0.2, from upstream's HSM_REFLECT_GLOBAL_AMOUNT 20). RetroArch now sets
