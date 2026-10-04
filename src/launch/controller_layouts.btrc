@@ -1,0 +1,170 @@
+// Controller layouts per player. Controller Layout steps player 1's (the radial, the menu's
+// CONTROLLER row), a Wii layer slot picks one for player 1, the players page steps any player's. A
+// layout the emulator switches live goes through its own profile cycle: the player's stored profile
+// is copied over Semu's one file in the cycled folder and the player's Next Profile key is typed,
+// paced, as many times as the folder's sorted listing needs from the emulator's one shared index
+// (with Semu's file alone there, always once). A layout read only at boot, or leaving one, asks for
+// a second press and restarts the game. A choice is saved for the system
+// (input.systems.<id>.players.<n>.layout) and journaled as 83: slot the layout, reserved the player
+// plus 16 times the kind (0 switched, 1 asks for the second press, 2 restarting); slot -1 when there
+// is nothing to choose.
+
+#include <stdio.h>
+#include <stdlib.h>
+
+import Library.Console;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/paths.btrc;
+import ../lib/settings.btrc;
+import ../renderer/action_abi.btrc;
+import ./input_state.btrc;
+import ./journal.btrc;
+import ./paced_keys.btrc;
+import ./plan.btrc;
+import ./player_set.btrc;
+import ./relaunch.btrc;
+
+class SemuControllerLayouts {
+    class int presses(int position, int shared, int count) {  // Next presses from SHARED to POSITION: one to COUNT, never none (a press is what loads the file)
+        if (count < 1) { return 0; }
+        return ((position - shared - 1) % count + count) % count + 1;
+    }
+
+    class void collect(Vector<string> files, string directory) {  // DoFileSearch(directory, ".ini", recursive): real folders walked, any case of the extension
+        if (!FileSystem.isDir(directory)) { return; }
+        for name in FileSystem.listDir(directory) {
+            string path = PathTools.join(directory, name);
+            if (FileSystem.isDir(path) && !FileSystem.isSymlink(path)) {
+                SemuControllerLayouts.collect(files, path);
+            } else if (FileSystem.isFile(path) && name.toLower().endsWith(".ini")) {
+                files.push(path);
+            }
+        }
+    }
+
+    class Vector<string> listing(string directory) {  // the emulator's order: whole paths, sorted bytewise
+        Vector<string> files = [];
+        SemuControllerLayouts.collect(files, directory);
+        files.sort();
+        return files;
+    }
+
+    class void retire(SemuPlayerSet set) {  // the files older releases generated in the cycled folder move out once, never over anything
+        for name in set.retired {
+            string source = PathTools.join(set.directory, name);
+            string target = PathTools.join(set.retiredDirectory, name);
+            if (!FileSystem.isFile(source) || FileSystem.isSymlink(source) || FileSystem.exists(target)) { continue; }
+            if (!SemuPaths.prepareDirectory(set.retiredDirectory) || rename(source, target) != 0) { Console.error("semu: could not move " + source + " out of the profile folder"); }
+        }
+    }
+
+    class bool prepare(SemuPlayerSet set) {  // at launch: Semu's file holds player 1's live layout, so the folder has one Semu profile from the start
+        if (set.directory.isEmpty() || set.active.isEmpty()) { return false; }
+        SemuControllerLayouts.retire(set);
+        int layout = set.layouts.isEmpty() ? -1 : set.layouts.get(0);
+        if (!set.live(layout)) {
+            for (int index = 0; index < set.layoutApply.size() && !set.live(layout); index++) { layout = index; }
+        }
+        if (!set.live(layout) || !FileSystem.isFile(set.storeFile(0, layout))) { return false; }
+        return SemuPaths.prepareDirectory(set.directory) && SemuPaths.replace(PathTools.join(set.directory, set.active), FileSystem.readText(set.storeFile(0, layout)));
+    }
+
+    class int reserved(int player0, int kind) { return player0 + 16 * kind; }
+
+    class bool switchLive(SemuPlayerSet set, int player0, int layout) {  // copy the stored profile in, then type the player's Next Profile key, paced
+        string source = set.storeFile(player0, layout);
+        string active = PathTools.join(set.directory, set.active);
+        if (player0 >= set.chords.size() || !FileSystem.isFile(source) || !SemuPaths.replace(active, FileSystem.readText(source))) { return false; }
+        Vector<string> files = SemuControllerLayouts.listing(set.directory);
+        int position = files.indexOf(active);
+        if (position < 0) { return false; }
+        int count = SemuControllerLayouts.presses(position, set.sharedIndex, files.size());
+        string route = SemuPacedTyper.route();
+        bool typed = SemuPacedTyper.play(SemuPacedTyper.steps(SemuKeyNames.chord(set.chords.get(player0)), count, set.pressMs, set.gapMs));
+        if (typed) { set.sharedIndex = position; }  // the emulator's index now names Semu's file
+        if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: P" + Strings.fromInt(player0 + 1) + " layout " + set.layoutIds.get(layout) + ": " + Strings.fromInt(count) + " press(es) of " + set.chords.get(player0) + " via " + route + (typed ? "" : " failed")); }
+        return typed;
+    }
+
+    class void save(SemuLaunchPlan launch, int player0, int layout) {
+        if (launch.semuHome.isEmpty() || launch.system.isEmpty()) { return; }
+        SemuSettingsStore.putPath(launch.semuHome, ["input", "systems", launch.system, "players", Strings.fromInt(player0 + 1), "layout"], JSONValue.makeString(launch.players.layoutIds.get(layout)));
+    }
+
+    class void select(SemuLaunchPlan launch, int player0, int layout, long long now) {  // LAYOUT for player PLAYER0: live, or prompt then restart
+        SemuPlayerSet set = launch.players;
+        if (!set.layoutsAvailable() || !set.connected(player0) || player0 >= set.count || layout < 0 || layout >= set.layoutApply.size() || set.layoutApply.get(layout).isEmpty()) {
+            SemuActionJournal.appendWith(launch, SemuActions.layoutSelect(), -1, player0);
+            return;
+        }
+        int current = set.layouts.get(player0);
+        if (set.live(layout) && (current < 0 || set.live(current)) && SemuPacedTyper.available()) {  // a lost press is redone by choosing again: the copy and the one press resync it; with no way to type (macOS) it applies by restarting
+            if (!SemuControllerLayouts.switchLive(set, player0, layout)) {
+                SemuActionJournal.appendWith(launch, SemuActions.layoutSelect(), -1, player0);
+                return;
+            }
+            set.layouts.set(player0, layout);
+            SemuControllerLayouts.save(launch, player0, layout);
+            SemuActionJournal.appendWith(launch, SemuActions.layoutSelect(), layout, SemuControllerLayouts.reserved(player0, 0));
+            return;
+        }
+        int armed = player0 * 16 + layout;
+        if (!SemuRelaunch.confirmed(SemuActions.layoutSelect(), armed, now)) {
+            SemuRelaunch.arm(SemuActions.layoutSelect(), armed, now);
+            SemuActionJournal.appendWith(launch, SemuActions.layoutSelect(), layout, SemuControllerLayouts.reserved(player0, 1));
+            return;
+        }
+        set.layouts.set(player0, layout);
+        SemuControllerLayouts.save(launch, player0, layout);
+        SemuActionJournal.appendWith(launch, SemuActions.layoutSelect(), layout, SemuControllerLayouts.reserved(player0, 2));
+        SemuRelaunch.request();
+    }
+
+    class int stepped(SemuPlayerSet set, int from, int delta) {  // the next layout this emulator can apply, wrapping
+        int count = set.layoutApply.size();
+        int index = from < 0 ? -1 : from;
+        for (int tries = 0; tries < count; tries++) {
+            index = ((index + delta) % count + count) % count;
+            if (!set.layoutApply.get(index).isEmpty()) { return index; }
+        }
+        return -1;
+    }
+
+    class void step(SemuLaunchPlan launch, int player0, int delta, long long now) {  // left and right on a CONTROLLER or player row
+        SemuPlayerSet set = launch.players;
+        int current = player0 >= 0 && player0 < set.layouts.size() ? set.layouts.get(player0) : -1;
+        SemuControllerLayouts.select(launch, player0, set.layoutApply.isEmpty() ? -1 : SemuControllerLayouts.stepped(set, current, delta), now);
+    }
+
+    class bool resetRestarts(SemuPlayerSet set) {  // some player's layout returns to the default only by restarting
+        for (int player0 = 0; player0 < set.count && set.defaultLayout >= 0; player0++) {
+            int layout = set.layouts.get(player0);
+            if (set.connected(player0) && layout >= 0 && layout != set.defaultLayout && !(set.live(layout) && set.live(set.defaultLayout))) { return true; }
+        }
+        return false;
+    }
+
+    class void reset(SemuLaunchPlan launch) {  // Reset to Default: every player back to the system's default, live where it can be (the settings are already gone)
+        SemuPlayerSet set = launch.players;
+        for (int player0 = 0; player0 < set.count && set.defaultLayout >= 0; player0++) {
+            int layout = set.layouts.get(player0);
+            if (!set.connected(player0) || layout < 0 || layout == set.defaultLayout) { continue; }
+            if (set.live(layout) && set.live(set.defaultLayout) && SemuControllerLayouts.switchLive(set, player0, set.defaultLayout)) {
+                SemuActionJournal.appendWith(launch, SemuActions.layoutSelect(), set.defaultLayout, SemuControllerLayouts.reserved(player0, 0));
+            }
+            set.layouts.set(player0, set.defaultLayout);
+        }
+    }
+
+    class void next(SemuLaunchPlan launch, long long now) { SemuControllerLayouts.step(launch, 0, 1, now); }  // Controller Layout: player 1's next
+
+    class void pick(SemuLaunchPlan launch, string action, long long now) {  // <system>.controller.<layout>: that layout for player 1
+        int dot = action.len() - 1;
+        while (dot >= 0 && action.charAt(dot) != '.') { dot--; }
+        string layout = action.substring(dot + 1, action.len() - dot - 1);
+        SemuControllerLayouts.select(launch, 0, launch.players.layoutIds.indexOf(layout), now);
+    }
+}

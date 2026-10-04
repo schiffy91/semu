@@ -140,6 +140,21 @@
       "confirm_toast": "RESET: PRESS AGAIN",
       "restart_toast": "RESET: AGAIN TO REBOOT GAME",
       "done_toast": "RESET TO DEFAULTS"
+    },
+    "controller.layout.next": {
+      "label": "Controller Layout",
+      "chord": "Ctrl+Shift+C",
+      "toast": "{slot}: {label}",
+      "confirm_toast": "{slot} {label}: AGAIN TO REBOOT",
+      "done_toast": "{slot} {label}: REBOOTING",
+      "unavailable_toast": "CONTROLLER: ONE LAYOUT"
+    },
+    "ui.players": {
+      "label": "Players",
+      "chord": "Ctrl+Shift+U",
+      "unavailable_toast": "PLAYERS: ONE PLAYER",
+      "unchanged_toast": "PLAYERS: NO CHANGES",
+      "done_toast": "PLAYERS: REBOOTING"
     }
   },
   "quit_chord": {
@@ -208,6 +223,16 @@
         "when": "outputs"
       },
       {
+        "label": "CONTROLLER",
+        "action": "controller.layout.next",
+        "when": "layouts"
+      },
+      {
+        "label": "PLAYERS",
+        "action": "ui.players",
+        "when": "players"
+      },
+      {
         "label": "RESET TO DEFAULT",
         "action": "system.reset"
       },
@@ -217,7 +242,7 @@
       }
     ],
     "pause_action": "ui.pause",
-    "doc": "The native Semu menu the renderer draws over any emulator with a compositor. The supervisor mirrors this list: the same journal drives the drawn selection and the executed action. A row with `when` shows only where that choice offers two or more (placements: a bezel to place; outputs: a system with two pictures, Wii 4:3 and 16:9); the renderer draws up to twelve. BEZEL, SHADER, FIT and ASPECT are value rows: confirm or right steps forward, left back. BEZEL and SHADER step this system's own choice through its variants, then off, live and saved as visual.systems.<id>.bezel_variant or shader_variant, never the global switches, which stay the default for systems without their own choice. FIT switches live between the whole bezel and the screen (game) placement, both at a whole-number scale, saved as visual.systems.<id>.placement. ASPECT asks for a second press, then restarts the game on the other output, saved for that game only (visual.games.<id>.<game>.output). RESET TO DEFAULT asks for a second press, then removes the system's own choices and applies the defaults live (restarting only when the running output was not the default). An action's toast is what the renderer shows for a moment after it runs (SEMU_MENU_TOASTS): {slot} is the slot as the emulator numbers it (SLOT 3), empty with one fixed slot; {label} is the chosen value's label, OFF for none; any change shows the action's toast, and a NAME_toast is the toast for one outcome: loading while a shader chain compiles, unavailable where the system has nothing to choose, confirm and restart when a second press is needed, done when it acted. pause_action reaches only emulators whose emulator.json menu.pause is emulator (seen to keep presenting while paused); the others keep running under the menu, and an emulator without a compositor gets no menu."
+    "doc": "The native Semu menu the renderer draws over any emulator with a compositor. The supervisor mirrors this list: the same journal drives the drawn selection and the executed action. A row with `when` shows only where that choice offers two or more (placements: a bezel to place; outputs: a system with two pictures, Wii 4:3 and 16:9); the renderer draws up to twelve. BEZEL, SHADER, FIT and ASPECT are value rows: confirm or right steps forward, left back. BEZEL and SHADER step this system's own choice through its variants, then off, live and saved as visual.systems.<id>.bezel_variant or shader_variant, never the global switches, which stay the default for systems without their own choice. FIT switches live between the whole bezel and the screen (game) placement, both at a whole-number scale, saved as visual.systems.<id>.placement. ASPECT asks for a second press, then restarts the game on the other output, saved for that game only (visual.games.<id>.<game>.output). CONTROLLER (where a system has several layouts) steps player 1's layout like a value row; a layout read only at boot (GameCube on Wii) asks for a second press and restarts the game. PLAYERS (where the game takes more than one player) opens a page: one row per player with the pad it holds and its layout (confirm moves the player to the next free pad, or none; left and right step its layout), then RESTART GAME, which restarts only after a change, and BACK. Pads are dealt at launch, so a pad change applies when the game restarts. RESET TO DEFAULT asks for a second press, then removes the system's own choices and applies the defaults live (restarting only when the running output was not the default). An action's toast is what the renderer shows for a moment after it runs (SEMU_MENU_TOASTS): {slot} is the slot as the emulator numbers it (SLOT 3), empty with one fixed slot; {label} is the chosen value's label, OFF for none; any change shows the action's toast, and a NAME_toast is the toast for one outcome: loading while a shader chain compiles, unavailable where the system has nothing to choose, confirm and restart when a second press is needed, done when it acted. pause_action reaches only emulators whose emulator.json menu.pause is emulator (seen to keep presenting while paused); the others keep running under the menu, and an emulator without a compositor gets no menu."
   },
   "gamepad_chords": {
     "modifier": "select",
@@ -234,5 +259,28 @@
       "045e:*"
     ],
     "doc": "The plain-controller paradigm: hold Select and press a button. Start+Select stays the quit chord. Button names are positions (north is the top face button); pads listed in xpad_layout_ids (vendor:product, * for any product) are xpad-ordered and report their top button as BTN_WEST, so the supervisor swaps BTN_NORTH and BTN_WEST for them: Steam's virtual pad (28de:11ff) and Microsoft pads. A pad Steam virtualises (named in SDL_GAMECONTROLLER_IGNORE_DEVICES) is read only as Steam's copy, as the game reads it, and one chord read from two pads runs once. On the Deck the trackpad radial emits the keyboard chords instead, which reach the supervisor as X raw keys in Game Mode; both paths produce the same actions."
+  },
+  "players": {
+    "pad_name": "Xbox Controller",
+    "steam_slots_variable": "SteamVirtualGamepadInfo",
+    "steam_pad_prefix": "Microsoft X-Box 360 pad ",
+    "identities": {
+      "dolphin_pad": "SDL/${same_name_index}/${pad_name}",
+      "pcsx2_pad": "SDL-${pad_index}",
+      "cemu_uuid": "${same_guid_index}_${sdl_guid}",
+      "cemu_display_name": "${pad_name}",
+      "ryujinx_controller_id": "${same_ryujinx_index}-${ryujinx_guid}"
+    },
+    "first": {
+      "dolphin_pointer": "${device.dolphin_pointer}",
+      "dolphin_motion": "${device.dolphin_wiimote}",
+      "dolphin_aim": "pointer"
+    },
+    "others": {
+      "dolphin_pointer": "${dolphin_pad}",
+      "dolphin_motion": "${dolphin_pad}",
+      "dolphin_aim": "stick"
+    },
+    "doc": "Who holds which pad. A launch on Linux takes a roster of the gamepads present (evdev, those SDL is not told to ignore), Steam's virtual pads (steam_pad_prefix N) in slot order and named from the slot file Steam names in steam_slots_variable (SDL_steam_virtual_gamepad.c), other pads after them by event node, unnamed ones as pad_name. Each pad gives pad_index (its place), pad_name, same_name_index (pads before it with that name: Dolphin's SDL/<n>/<name>), sdl_guid (SDL 2.26's GUID with the name CRC: Cemu), same_guid_index, ryujinx_guid (the GUID with its CRC zeroed, as Ryujinx prints it) and same_ryujinx_index (pads before it with that one: all of Steam's). identities are rendered per player from those; player 1 on the first pad keeps device_identities as they are. first and others give player 1 and the other players their seat: player 1 aims the Wii Remote with the pointer and reads the Deck's motion; the others aim with their own right stick. Without a roster (macOS) player 1 holds the default pad and the others none."
   }
 }

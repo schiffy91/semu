@@ -66,7 +66,8 @@
     "grammar": "PCSX2's ini wire format: one '<device>/<control>' binding per line (SDL3 setting names: FaceSouth/FaceEast/FaceWest/FaceNorth by position; the SDL2 names A/B/X/Y are migrated only while that pad is already connected, so at startup PCSX2 rejects them), an alternative ('Keyboard/<key>') as the same key repeated on the next line (PCSX2 reads repeated keys as a list and rejects ' | ' as an invalid binding), 'Keyboard/Control & Keyboard/P' hotkey chords (translated by Pcsx2Emitter from the keymap).",
     "menu": "ui.menu is Semu's alone: OpenPauseMenu is not bound, or the radial's Ctrl+M would open PCSX2's pause menu under Semu's and the menu's pause would then unpause it.",
     "hotkeys": "The keymap is written into PCSX2.ini [Hotkeys], the only hotkeys PCSX2 reads without a per-game input profile, and into the Steam Deck input profile as well. Seen in the podman VM 2026-10-03: with the hotkeys only in the profile, Ctrl+P and Ctrl+S did nothing in PCSX2 2.6.3.",
-    "keyboard": "Keyboard/Enter is Qt's keypad Enter (QtKeyCodes.cpp:75-76; the main key is Return), so Start keeps it everywhere. Ctrl++ is written Keyboard/NumpadPlus: Steam types its + as KEYPAD_PLUS, which Qt reports as Key_Plus with the keypad modifier, named NumpadPlus (QtKeyCodes.cpp:514-517, 540-541, 595); main-row Plus would never match."
+    "keyboard": "Keyboard/Enter is Qt's keypad Enter (QtKeyCodes.cpp:75-76; the main key is Return), so Start keeps it everywhere. Ctrl++ is written Keyboard/NumpadPlus: Steam types its + as KEYPAD_PLUS, which Qt reports as Key_Plus with the keypad modifier, named NumpadPlus (QtKeyCodes.cpp:514-517, 540-541, 595); main-row Plus would never match.",
+    "players": "One [PadN] per player (for_each players): player 1 keeps the keyboard alternates; player 2 reads only the SDL pad it holds (${pcsx2_pad}, SDL-<roster index>, PCSX2's order of opened pads), and a player without a pad is Type = None."
   },
   "blocks": {
     "pad_sections": [
@@ -82,75 +83,126 @@
       "DInput = false",
       "XInput = false",
       "",
-      "[Pad1]",
-      "Type = DualShock2",
-      "Up = ${pad}/DPadUp",
+      {
+        "for_each": "players",
+        "when": "first",
+        "lines": [
+          "[Pad${player}]",
+          "Type = DualShock2",
+          "@block:pad_first_body"
+        ]
+      },
+      {
+        "for_each": "players",
+        "when": "others,connected",
+        "lines": [
+          "",
+          "[Pad${player}]",
+          "Type = DualShock2",
+          "@block:pad_other_body"
+        ]
+      },
+      {
+        "for_each": "players",
+        "when": "disconnected",
+        "lines": [
+          "",
+          "[Pad${player}]",
+          "Type = None"
+        ]
+      }
+    ],
+    "pad_first_body": [
+      "Up = ${pcsx2_pad}/DPadUp",
       {
         "keyboard_key": "Up",
         "line": "Up = Keyboard/Up"
       },
-      "Right = ${pad}/DPadRight",
+      "Right = ${pcsx2_pad}/DPadRight",
       {
         "keyboard_key": "Right",
         "line": "Right = Keyboard/Right"
       },
-      "Down = ${pad}/DPadDown",
+      "Down = ${pcsx2_pad}/DPadDown",
       {
         "keyboard_key": "Down",
         "line": "Down = Keyboard/Down"
       },
-      "Left = ${pad}/DPadLeft",
+      "Left = ${pcsx2_pad}/DPadLeft",
       {
         "keyboard_key": "Left",
         "line": "Left = Keyboard/Left"
       },
-      "Triangle = ${pad}/FaceNorth",
+      "Triangle = ${pcsx2_pad}/FaceNorth",
       {
         "keyboard_key": "I",
         "line": "Triangle = Keyboard/I"
       },
-      "Circle = ${pad}/FaceEast",
+      "Circle = ${pcsx2_pad}/FaceEast",
       {
         "keyboard_key": "X",
         "line": "Circle = Keyboard/X"
       },
-      "Cross = ${pad}/FaceSouth",
+      "Cross = ${pcsx2_pad}/FaceSouth",
       {
         "keyboard_key": "Z",
         "line": "Cross = Keyboard/Z"
       },
-      "Square = ${pad}/FaceWest",
+      "Square = ${pcsx2_pad}/FaceWest",
       {
         "keyboard_key": "A",
         "line": "Square = Keyboard/A"
       },
-      "Select = ${pad}/Back",
+      "Select = ${pcsx2_pad}/Back",
       {
         "keyboard_key": "Backspace",
         "line": "Select = Keyboard/Backspace"
       },
-      "Start = ${pad}/Start",
+      "Start = ${pcsx2_pad}/Start",
       {
         "keyboard_key": "KP_Enter",
         "line": "Start = Keyboard/Enter"
       },
-      "L1 = ${pad}/LeftShoulder",
-      "L2 = ${pad}/+LeftTrigger",
-      "R1 = ${pad}/RightShoulder",
-      "R2 = ${pad}/+RightTrigger",
-      "L3 = ${pad}/LeftStick",
-      "R3 = ${pad}/RightStick",
-      "LUp = ${pad}/-LeftY",
-      "LRight = ${pad}/+LeftX",
-      "LDown = ${pad}/+LeftY",
-      "LLeft = ${pad}/-LeftX",
-      "RUp = ${pad}/-RightY",
-      "RRight = ${pad}/+RightX",
-      "RDown = ${pad}/+RightY",
-      "RLeft = ${pad}/-RightX",
-      "",
-      "[Pad2]",
-      "Type = None"
+      "L1 = ${pcsx2_pad}/LeftShoulder",
+      "L2 = ${pcsx2_pad}/+LeftTrigger",
+      "R1 = ${pcsx2_pad}/RightShoulder",
+      "R2 = ${pcsx2_pad}/+RightTrigger",
+      "L3 = ${pcsx2_pad}/LeftStick",
+      "R3 = ${pcsx2_pad}/RightStick",
+      "LUp = ${pcsx2_pad}/-LeftY",
+      "LRight = ${pcsx2_pad}/+LeftX",
+      "LDown = ${pcsx2_pad}/+LeftY",
+      "LLeft = ${pcsx2_pad}/-LeftX",
+      "RUp = ${pcsx2_pad}/-RightY",
+      "RRight = ${pcsx2_pad}/+RightX",
+      "RDown = ${pcsx2_pad}/+RightY",
+      "RLeft = ${pcsx2_pad}/-RightX"
+    ],
+    "pad_other_body": [
+      "Up = ${pcsx2_pad}/DPadUp",
+      "Right = ${pcsx2_pad}/DPadRight",
+      "Down = ${pcsx2_pad}/DPadDown",
+      "Left = ${pcsx2_pad}/DPadLeft",
+      "Triangle = ${pcsx2_pad}/FaceNorth",
+      "Circle = ${pcsx2_pad}/FaceEast",
+      "Cross = ${pcsx2_pad}/FaceSouth",
+      "Square = ${pcsx2_pad}/FaceWest",
+      "Select = ${pcsx2_pad}/Back",
+      "Start = ${pcsx2_pad}/Start",
+      "L1 = ${pcsx2_pad}/LeftShoulder",
+      "L2 = ${pcsx2_pad}/+LeftTrigger",
+      "R1 = ${pcsx2_pad}/RightShoulder",
+      "R2 = ${pcsx2_pad}/+RightTrigger",
+      "L3 = ${pcsx2_pad}/LeftStick",
+      "R3 = ${pcsx2_pad}/RightStick",
+      "LUp = ${pcsx2_pad}/-LeftY",
+      "LRight = ${pcsx2_pad}/+LeftX",
+      "LDown = ${pcsx2_pad}/+LeftY",
+      "LLeft = ${pcsx2_pad}/-LeftX",
+      "RUp = ${pcsx2_pad}/-RightY",
+      "RRight = ${pcsx2_pad}/+RightX",
+      "RDown = ${pcsx2_pad}/+RightY",
+      "RLeft = ${pcsx2_pad}/-RightX"
     ]
   },
   "hotkeys": {

@@ -1021,6 +1021,74 @@ Status: being designed (workflow mods-design, with critique) while the radial se
   `--config SYSCONF.IPL.AR=True --config Graphics.Settings.CustomAspectRatioWidth=16 --config
   Graphics.Settings.CustomAspectRatioHeight=9`; a minute later the game's 16:9 strap screen filled the 16:9
   TV, its variants file offering tv_wide and none.
+- Item 3 (radial v2), part 2 (controller layouts and players): built 2026-10-04, checked in the render host
+  and the podman VM; the Deck is open (a release, then `semu-deck-cli steam input` with Steam stopped for the
+  two new slots). Rulings, as reversible defaults (the owner being unattended):
+  - A system declares `controllers` (Wii: Wii Remote, Nunchuk, Classic, GameCube; default Nunchuk) and
+    `players.max` (wii, gc, n64, dreamcast, switch, wiiu 4; snes, nes, genesis, psx, ps2 2; the rest 1); an
+    emulator `players.max` (RetroArch 8, Dolphin 4, Ryujinx 4, Cemu 4, PCSX2 2; the others 1). A game takes
+    the smaller. Choices are saved per system: `input.systems.<id>.players.<n>.layout` and `.pad`.
+  - Pads are dealt at launch from a roster (Linux: the evdev pads SDL is not told to ignore; Steam's virtual
+    pads first in slot order, named from Steam's `SteamVirtualGamepadInfo` slot file as SDL names them).
+    Each pad carries what emulators match by: SDL 2.26's GUID with the CRC of the evdev name (checked
+    against the Deck's own 030079f6de28..., Cemu), Ryujinx's CRC-less spelling and its own duplicate count,
+    and Dolphin's per-name SDL/<n>/<name>. Player 1 on the first pad keeps the target's device_identities
+    exactly (so a one-pad launch renders as before); player 1 always plays. Without a roster (macOS)
+    player 1 holds the default pad and the others none.
+  - The profile compiler has one new construct, `for_each` over `players` (or `player_layouts`, each
+    connected player with each layout the emulator switches live), on a line, a JSON array element or a
+    whole file, filtered by `when` (row fields). RetroArch writes input_playerN_joypad_index per player (a
+    player without a pad gets an index no pad has, so RetroArch's own default never doubles a pad; without
+    a roster only player 1); Dolphin SIDevice/WiimoteSource per player, [WiimoteN] and [GCPadN] on each
+    player's pad; PCSX2 [Pad2] on player 2's SDL pad, no keyboard; Ryujinx a Pro Controller per further
+    player (Player2-4); Cemu controller1-3.xml as Wii U Pro Controllers (ProController::ButtonId 1-25 on the
+    GamePad's SDL buttons). Player 1 aims the Wii Remote with the pointer and reads the Deck's motion; the
+    others aim with their right stick and have no motion: no file of one player names another's device
+    (a contract over every stored profile and [WiimoteN]).
+  - Wii layouts switch live through Dolphin's own profile cycle (no Dolphin patch): each connected
+    player's live layouts are rendered to Config/Semu Layouts/P<n> <Layout>.ini; a switch copies the
+    player's file over Semu's one file in Config/Profiles/Wiimote and types that player's Next Profile key
+    (Alt+F5..F8, profile.json layout_hotkeys). Dolphin lists that folder sorted at every press and keeps one
+    index for all remotes, so with Semu's file alone there every switch is one press whatever the index
+    was (the resync: a lost press changes nothing and choosing again redoes it); other files are counted
+    from the index Semu tracks since boot. The files older releases generated there (Semu Wiimote,
+    Nunchuk, Classic) move once to Config/Semu Retired Profiles, never over anything. Presses are held
+    40 ms and 40 ms apart (emulator.json controllers; the checker refuses under 30: Dolphin polls every
+    5 ms and needs the release), typed through XTest on the game's display when the supervisor reads keys
+    there (Game Mode's Xwayland), else Semu's uinput keyboard; with neither (macOS) a layout applies by
+    restarting. GameCube (Wii Remote disconnected, read at boot) and leaving it ask for a second press
+    (journal 83 reserved 16 + player) and restart the game (32 + player); Reset returns every player to
+    the default, live where it can. The Undo Load/Save State hotkeys are unbound: Dolphin matches superset
+    modifiers, so the bare F12 fired on Steam's Ctrl+Shift+F12 (the Wii layer's GameCube).
+  - Radial: Controller Layout (Ctrl+Shift+C, Lucide gamepad-2) joins the quick ring after Aspect and steps
+    player 1; Players (Ctrl+Shift+U, Lucide users; not P: Ctrl+P pauses under superset matchers) joins the
+    held ring; the Wii layer's four slots pick that layout for player 1 through the same code. Menu:
+    CONTROLLER (player 1's layout, a value row) where layouts apply, PLAYERS where the game takes more than
+    one. The players page lists P1..Pn with pad and layout, then RESTART GAME and BACK: confirm moves a
+    player to the next pad no one holds (or none; player 1 always holds one), left and right step its
+    layout, RESTART GAME restarts only after a change ("PLAYERS: NO CHANGES"). The supervisor writes the
+    rows to semu-render-players.txt before each record (86 page, 84 pad), so the renderer draws exactly
+    what it mirrors.
+  Contracts: players.btrc (roster order, names, GUIDs; rows, saved pads and the lowest free pad; each
+  emulator's per-player output; the identity contract; the checker) and controller_layouts.btrc (the
+  paced timeline with a fake clock, the press count, XTest's keycode, live switches with a stray profile,
+  GameCube's confirm and restart, Reset, the page's pads, RESTART and BACK, the renderer's page and
+  toasts, a real launch plan dealing players and the menu rows); 21 mutations each failed their checks.
+  Render host (1280x800, by eye): the players page draws the four player rows, RESTART GAME and BACK under
+  the toast P1: CLASSIC, without the slot line.
+  Observed in the podman VM (Xvfb 1280x800, llvmpipe, a rootful run with /dev/input bound;
+  `PADS=2 BASICS=0 tests/integration/live-switch.sh` with two replicas of Steam's pad on slots 0 and 1 and a
+  slot file; real Dolphin 2606a with City Folk mounted read-only): the launch dealt P1 PAD 1 and P2 PAD 2
+  (Dolphin.ini SIDevice1 = 6, WiimoteSource1 = 1); the menu showed CONTROLLER NUNCHUK and PLAYERS among its
+  twelve rows; Ctrl+Shift+C (XTest, as Steam types) journaled 83 slot 2, logged "P1 layout classic: 1
+  press(es) of Alt+F5 via X", inotify saw Dolphin open Semu.ini once, and Dolphin's own message "...profile
+  'Semu' for device 'Wiimote1'" showed on the picture under the toast P1: CLASSIC; semu.json saved
+  players.1.layout classic. Ctrl+Shift+U opened the page (P1 PAD 1 CLASSIC, P2 PAD 2 NUNCHUK, P3 and P4 NO
+  PAD), confirm on P2 made it NO PAD, RESTART GAME restarted City Folk in the same launch: the new plan
+  dealt P1 PAD 1 CLASSIC, P2 NO PAD and P3 PAD 2 (an unsaved player takes the lowest free pad: a player set
+  to none leaves its pad to the next one), Dolphin.ini WiimoteSource0 = 1, WiimoteSource1 = 0, WiimoteSource2
+  = 1. The first VM run found a launch that never dealt its players (the supervisor stopped on an empty
+  roster vector); fixed, and a real-launch contract guards it.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 

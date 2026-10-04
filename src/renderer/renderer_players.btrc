@@ -1,0 +1,41 @@
+// The renderer's side of the players page and the layouts: the page's rows are the file the
+// supervisor writes beside the journal (semu-render-players.txt, one row per line) before each
+// record that changes them, so the renderer draws exactly what the supervisor mirrors; a layout
+// record names its player ("P2") and the layout from SEMU_MENU_LAYOUTS.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+import ./renderer_variants.btrc;
+
+class RendererPlayersPage {
+    class string fileName() { return "semu-render-players.txt"; }
+
+    class int load(char* labels, int width, int capacity) {  // the rows into WIDTH-byte slots; 0 when the file is missing
+        char path[8192];
+        if (labels == null || !RendererStatePaths.path(path, sizeof(path), RendererPlayersPage.fileName())) { return 0; }
+        FILE* file = fopen(path, "rb");
+        if (file == null) { return 0; }
+        int count = 0;
+        char line[128];
+        while (count < capacity && fgets(line, (int)sizeof(line), file) != null) {
+            size_t length = strcspn(line, "\r\n");
+            line[length] = 0;
+            if (length == (size_t)0) { continue; }
+            snprintf(labels + count * width, (size_t)width, "%s", line);
+            count++;
+        }
+        fclose(file);
+        return count;
+    }
+
+    class void seat(char* buffer, int capacity, int player0) {  // "P2": a layout toast's {slot}
+        if (buffer == null || capacity < 4) { return; }
+        snprintf(buffer, (size_t)capacity, "P%d", player0 + 1);
+    }
+
+    class int player(int reserved) { return reserved % 16; }  // 83 and 84 carry the player here
+
+    class int kind(int reserved) { return reserved / 16; }  // 83: 0 switched, 1 asks again, 2 restarting
+}

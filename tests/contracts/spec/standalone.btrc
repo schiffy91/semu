@@ -91,14 +91,13 @@ class StandaloneSpecBed {  // a linux-desktop fixture whose external roots live 
 class StandaloneSpecContract {
     class Vector<string> standaloneIds() { return ["dolphin", "pcsx2", "ppsspp", "flycast", "melonds", "azahar", "cemu", "ryujinx"]; }
 
-    class Vector<string> actionGroups() { return ["hotkeys.keymap", "actions.native", "actions.external", "controller_modes"]; }
+    class Vector<string> actionGroups() { return ["hotkeys.keymap", "actions.native", "actions.external"]; }
 
     class bool filled(JSONValue entry, string key) { return !SemuJson.textAt(entry, key).isEmpty(); }
 
     class bool consumerValid(string group, JSONValue entry) {  // every consumer row names who consumes it
         if (!StandaloneSpecContract.filled(entry, "action")) { return false; }
         if (group.equals("hotkeys.keymap")) { return StandaloneSpecContract.filled(entry, "setting") || StandaloneSpecContract.filled(entry, "native"); }
-        if (group.equals("controller_modes")) { return StandaloneSpecContract.filled(entry, "hotkey_setting"); }
         bool consumer = StandaloneSpecContract.filled(entry, "consumer") || StandaloneSpecContract.filled(entry, "keyboard_consumer");
         if (group.equals("actions.external")) { consumer = consumer || StandaloneSpecContract.filled(entry, "physical_consumer"); }
         return consumer;
@@ -214,9 +213,10 @@ class StandaloneSpecContract {
     class string identity(Fixture fixture, string name) { return SemuJson.textAt(fixture.plan.input.definition, "device_identities." + name); }
 
     class void dolphinProfile(Contract contract, Fixture fixture, string target) {
+        fixture.plan.tokens.put("system", "wii");  // the players and layouts of a Wii launch
         string main = fixture.profile("dolphin", "dolphin-user/Config/Dolphin.ini");
         string pad = fixture.profile("dolphin", "dolphin-user/Config/GCPadNew.ini");
-        string wiimote = fixture.profile("dolphin", "dolphin-user/Config/Profiles/Wiimote/Semu Wiimote.ini");
+        string wiimote = fixture.profile("dolphin", "dolphin-user/Config/Semu Layouts/P1 Wiimote.ini");
         string hotkeys = fixture.profile("dolphin", "dolphin-user/Config/Hotkeys.ini");
         string graphics = fixture.profile("dolphin", "dolphin-user/Config/GFX.ini");
         contract.contains(main, "GFXBackend = OGL", target + " dolphin forces OpenGL");
@@ -225,7 +225,8 @@ class StandaloneSpecContract {
         contract.expect(StandaloneSpecText.ordered(main, ["[Core]", "AutoDiscChange = True", "[Interface]"]), target + " dolphin AutoDiscChange sits in [Core]");
         // CustomStretch 4:3: Dolphin draws exactly the rectangle the compositor cuts (frame_layout.btrc)
         contract.contains(graphics, "[Settings]\nAspectRatio = 5\nCustomAspectRatioWidth = 4\nCustomAspectRatioHeight = 3", target + " dolphin draws 4:3 with no VI aspect");
-        contract.contains(main, "[Semu Controller Modes]\nWiimoteProfile = Semu Wiimote\nNunchukProfile = Semu Nunchuk\nClassicProfile = Semu Classic\nGameCubeProfile = Semu GameCube", target + " dolphin names the mode profiles");
+        contract.contains(main, "[Core]\nSIDevice0 = 6\nWiimoteSource0 = 1\nSIDevice1 = 0\nWiimoteSource1 = 0\n", target + " dolphin connects player 1's Wii Remote and GameCube pad, and no other without a pad");
+        contract.lacks(main, "Semu Controller Modes", target + " dolphin keeps no section it never reads");
         contract.contains(pad, "[GCPad1]\nDevice = " + StandaloneSpecContract.identity(fixture, "dolphin_pad"), target + " dolphin GameCube pad is the target pad");
         contract.contains(wiimote, "Device = " + StandaloneSpecContract.identity(fixture, "dolphin_pointer") + "\nButtons/A = (`Return` & !`Ctrl`)|`Click 1`|`" + StandaloneSpecContract.identity(fixture, "dolphin_pad") + ":Button S`", target + " dolphin Wiimote buttons read the target pad, beside the pointer");
         contract.contains(wiimote, "IMUGyroscope/Pitch Up = `" + StandaloneSpecContract.identity(fixture, "dolphin_wiimote") + ":Gyro Pitch Up`", target + " dolphin Wiimote motion reads the motion device");
@@ -233,8 +234,9 @@ class StandaloneSpecContract {
         contract.contains(hotkeys, "Save State/Save to Selected Slot = @(Ctrl+S)", target + " dolphin saves to the selected slot");
         contract.contains(hotkeys, "General/Toggle Pause = @(Ctrl+P)", target + " dolphin pause chord");
         contract.contains(hotkeys, "Other State Hotkeys/Increase Selected State Slot = @(Ctrl+K)", target + " dolphin next slot chord");
-        contract.contains(hotkeys, "Semu Controller Mode/Wii Remote = @(Ctrl+Shift+F9)", target + " dolphin Wiimote mode chord");
-        contract.contains(hotkeys, "Semu Controller Mode/GameCube Controller = @(Ctrl+Shift+F12)", target + " dolphin GameCube mode chord");
+        contract.contains(hotkeys, "Controller Profile 1/Next Profile = @(Alt+F5)\nController Profile 2/Next Profile = @(Alt+F6)\nController Profile 3/Next Profile = @(Alt+F7)\nController Profile 4/Next Profile = @(Alt+F8)\n", target + " dolphin cycles each player's profile on its own key");
+        contract.lacks(hotkeys, "Semu Controller Mode", target + " dolphin binds no hotkey it does not know");
+        fixture.plan.tokens.remove("system");
     }
 
     class void pcsx2Profile(Contract contract, Fixture fixture, string target) {

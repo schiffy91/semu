@@ -193,10 +193,10 @@ class LaunchSpecSettingsUi {  // controller modes come from config; the launcher
         contract.lacks(source, "\"dolphin\"", "the settings UI names no emulator");
         contract.lacks(source, "input.systems.wii", "the settings UI names no system setting");
         SemuSystem wii = fixture.model.system("wii");
-        string setting = SemuJson.textAt(wii.definition, "controller_mode.setting");
-        contract.expect(!setting.isEmpty() && fixture.model.emulator(SemuJson.textAt(wii.definition, "controller_mode.emulator")) != null, "wii system.json names its controller-mode emulator and setting");
+        string setting = "input.systems.wii.players.1.layout";
+        contract.expect(SemuJson.get(wii.definition, "controllers.layouts").size() == 4 && SemuJson.textAt(wii.definition, "controllers.default").equals("nunchuk"), "wii system.json declares its four controller layouts and the default");
         string document = SemuSettingsUi.document(fixture.model, fixture.plan).stringify();
-        contract.contains(document, "\"key\":\"" + setting + "\"", "the INPUT page offers the configured controller mode");
+        contract.contains(document, "\"key\":\"" + setting + "\"", "the INPUT page offers player 1's Wii layout");
         contract.contains(document, "\"nunchuk\"", "the choices come from the emulator's package");
         string assets = PathTools.join(fixture.scratch, "launch-spec/launcher-assets");
         FileSystem.mkdirp(PathTools.join(assets, "bin"));

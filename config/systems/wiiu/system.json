@@ -24,6 +24,10 @@
       ]
     }
   ],
+  "players": {
+    "max": 4,
+    "doc": "The GamePad plus three Pro Controllers."
+  },
   "display": {
     "scaling": {
       "mode": "integer_preferred",

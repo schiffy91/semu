@@ -17,9 +17,14 @@
 # presses more radial chords after the menu, each with its toast and picture (a,b: twice, a second apart). Each case writes
 # OUT/<n>-<emulator>.result (actions seen, journal records, switch receipts, saved choices) and
 # captures to judge by eye: three in the two seconds after each chord, as software GL draws slowly.
+# PADS=N first plugs N replicas of Steam's virtual pad (slots 0..N-1, named by a Steam slot file: the
+# Deck, then Xbox Series X pads) so the launch deals players; BASICS=0 skips the bezel, shader and menu
+# presses; for Dolphin the result also lists each layout switch, the players dealt, every open of the
+# Wiimote profile folder's files (inotify: Dolphin reading the profile a press loaded) and the Wii Remote
+# sources the last Dolphin.ini holds.
 set -eu
 image=docker.io/nixos/nix:latest
-if [ "${1:-}" != "--inside" ]; then
+if [ "${1:-}" != "--inside" ] && [ "${1:-}" != "--build" ]; then
   out="$(mkdir -p "${1:?usage: live-switch.sh OUT_DIR CASE...}" && cd "$1" && pwd -P)"
   shift
   repository="$(cd "$(dirname "$0")/../.." && pwd -P)"
@@ -34,21 +39,45 @@ if [ "${1:-}" != "--inside" ]; then
   [ -n "${SEMU_PS2_BIOS:-}" ] && mounts+=(-v "$SEMU_PS2_BIOS:/emulation/PCSX2/config/bios:ro")
   name="semu-live-switch-$(date +%Y%m%d%H%M%S)"  # left behind exited
   echo "container $name, results in $out"
-  exec podman run --name "$name" --platform linux/amd64 --privileged --shm-size=4g -v semu-nix-x86:/nix -v semu-nix-cache:/root/.cache/nix \
-    -v "$repository":/src:ro -v "$out":/out "${mounts[@]}" -e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" -e CHORDS="${CHORDS:-}" -e SETTLE="${SETTLE:-}" \
-    -e NIX_CONFIG="experimental-features = nix-command flakes
+  environment=(-e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" -e CHORDS="${CHORDS:-}" -e SETTLE="${SETTLE:-}" -e PADS="${PADS:-0}" -e BASICS="${BASICS:-1}")
+  nixConfig="experimental-features = nix-command flakes
 filter-syscalls = false
 sandbox = false
 max-jobs = 4
-cores = 0" "$image" bash /src/tests/integration/live-switch.sh --inside /out
+cores = 0"
+  if [ "${PADS:-0}" -gt 0 ]; then  # only real root may open the VM's /dev/uinput: build rootless, then run rootful on that store, read-only, with /dev/input bound
+    podman run --name "$name-build" --platform linux/amd64 --privileged -v semu-nix-x86:/nix -v semu-nix-cache:/root/.cache/nix \
+      -v "$repository":/src:ro -v "$out":/out "${environment[@]}" -e NIX_CONFIG="$nixConfig" "$image" bash /src/tests/integration/live-switch.sh --build /out
+    store="$(podman volume inspect semu-nix-x86 --format '{{.Mountpoint}}')"
+    podman machine ssh "sudo podman image exists $image" || podman image save "$image" | podman machine ssh 'sudo podman image load'
+    quoted=""; for mount in "${mounts[@]}"; do quoted="$quoted '$mount'"; done
+    quotedEnvironment=""; for entry in "${environment[@]}"; do quotedEnvironment="$quotedEnvironment '$entry'"; done
+    exec podman machine ssh "sudo podman run --name $name-run --platform linux/amd64 --privileged --security-opt label=disable --shm-size=4g \
+      -v /dev/input:/dev/input -v '$store':/nix:ro -v '$repository':/src:ro -v '$out':/out $quoted $quotedEnvironment $image bash /src/tests/integration/live-switch.sh --inside /out"
+  fi
+  exec podman run --name "$name" --platform linux/amd64 --privileged --shm-size=4g -v semu-nix-x86:/nix -v semu-nix-cache:/root/.cache/nix \
+    -v "$repository":/src:ro -v "$out":/out "${mounts[@]}" "${environment[@]}" -e NIX_CONFIG="$nixConfig" "$image" bash /src/tests/integration/live-switch.sh --inside /out
 fi
 out="$2"
-git config --global --add safe.directory '*'
-source="git+file:///src${SEMU_REV:+?rev=$SEMU_REV}"
-package() { nix build --no-link --inputs-from /src "nixpkgs#$1" >>"$out/nix.log" 2>&1 && nix eval --raw --inputs-from /src "nixpkgs#$1.outPath"; }
-echo "building $source (log: $out/nix.log)"
-bundle="$(nix build --no-link --print-out-paths "$source#packages.x86_64-linux.semu" 2>>"$out/nix.log" | tail -1)"
-mesa="$(package mesa)"; xvfb="$(package xvfb)"; xdotool="$(package xdotool)"; xwd="$(package xwd)"; magick="$(package imagemagick)/bin/magick"; openbox="$(package openbox)"; jq="$(package jq)/bin/jq"
+if [ "$1" = "--build" ] || [ ! -f "$out/paths.env" ]; then  # the bundle and the tools; a rootful run reads them from paths.env
+  git config --global --add safe.directory '*'
+  source="git+file:///src${SEMU_REV:+?rev=$SEMU_REV}"
+  package() { nix build --no-link --inputs-from /src "nixpkgs#$1" >>"$out/nix.log" 2>&1 && nix eval --raw --inputs-from /src "nixpkgs#$1.outPath"; }
+  echo "building $source (log: $out/nix.log)"
+  bundle="$(nix build --no-link --print-out-paths "$source#packages.x86_64-linux.semu" 2>>"$out/nix.log" | tail -1)"
+  mesa="$(package mesa)"; xvfb="$(package xvfb)"; xdotool="$(package xdotool)"; xwd="$(package xwd)"; magick="$(package imagemagick)/bin/magick"; openbox="$(package openbox)"; jq="$(package jq)/bin/jq"
+  inotify="$(package inotify-tools)"
+  pad=""
+  if [ "${PADS:-0}" -gt 0 ]; then  # Steam's virtual pads, one per player
+    btrcpy="$(nix build --no-link --print-out-paths "$source#packages.x86_64-linux.btrcpy" 2>>"$out/nix.log" | tail -1)"; gcc="$(package gcc)"
+    "$btrcpy/bin/btrcpy" --strict-imports --no-cache --no-stdlib /src/tests/visual/virtual_pad.btrc -o "$out/virtual_pad.c" >/dev/null
+    "$gcc/bin/gcc" -std=c11 -O1 -w -I/src/src/launch "$out/virtual_pad.c" -o "$out/virtual_pad" && pad="$out/virtual_pad"
+  fi
+  printf 'bundle=%s\nmesa=%s\nxvfb=%s\nxdotool=%s\nxwd=%s\nmagick=%s\nopenbox=%s\njq=%s\ninotify=%s\npad=%s\n' "$bundle" "$mesa" "$xvfb" "$xdotool" "$xwd" "$magick" "$openbox" "$jq" "$inotify" "$pad" > "$out/paths.env"
+  [ "$1" = "--build" ] && exit 0
+fi
+. "$out/paths.env"
+if [ "${PADS:-0}" -gt 0 ]; then export SDL_JOYSTICK_DISABLE_UDEV=1; fi  # no udev daemon in the container: SDL watches /dev/input itself
 [ -x "$bundle/bin/semu" ] || { echo "FAIL: no bundle" | tee "$out/result"; exit 1; }
 echo "bundle $bundle" | tee "$out/bundle"
 export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe LIBGL_DRIVERS_PATH="$mesa/lib/dri" __GLX_VENDOR_LIBRARY_NAME=mesa
@@ -88,17 +117,32 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
   mkdir -p "$root/home" "$root/emulation"
   visual=""; [ -n "${PLACEMENT:-}" ] && visual=",\"visual\":{\"systems\":{\"$system\":{\"placement\":\"$PLACEMENT\"}}}"
   settings="{\"paths\":{\"roms\":\"/roms\",\"state_root\":\"$root/state\",\"content_root\":\"$root/content\",\"emulation_root\":\"/emulation\",\"bios\":\"$root/emulation\"}$visual}"
+  pads=()
+  if [ -n "$pad" ]; then
+    names=("Steam Deck Controller" "Xbox Series X Controller" "Xbox Series X Controller" "DualSense Wireless Controller")
+    : > "$root/steam-slots"
+    for slot in $(seq 0 $((PADS - 1))); do
+      printf "[slot %s]\nVID=0x28de\nPID=0x11ff\nname=%s\n" "$slot" "${names[$slot]}" >> "$root/steam-slots"
+      "$pad" --steam-virtual-pad-slot "$slot" 900 sleep:1 > "$out/$label-pad$slot.log" 2>&1 & pads+=($!)
+    done
+    export SteamVirtualGamepadInfo="$root/steam-slots"
+    sleep 2
+  fi
   HOME="$root/home" DISPLAY="$display" SEMU_RENDER_DEBUG=1 "$bundle/bin/semu" launch "$emulator" --system "$system" --rom "$rom" \
     --settings-json "$settings" --semu-home "$root/home/semu" > "$out/$label.log" 2>&1 &
   launcher=$!
+  profiles="$root/state/$emulator/dolphin-user/Config/Profiles"
+  ( for second in $(seq 1 60); do [ -d "$profiles" ] && break; sleep 1; done; exec "$inotify/bin/inotifywait" -m -r -e open --timefmt %T --format "%T %w%f %e" "$profiles" ) > "$out/$label.profile-opens" 2>&1 & watcher=$!
   sleep "${WAIT:-120}"
   focus
   sleep 3
   shot "$out/$label-1-before.png"
-  press ctrl+shift+b; burst "$out/$label-2-bezel"  # the toast, while the new bezel decodes
-  sleep 4; shot "$out/$label-3-bezel-after.png"
-  press ctrl+shift+v; burst "$out/$label-4-shader"  # LOADING, then the plain toast once the chain is built
-  sleep 6; shot "$out/$label-5-shader-after.png"
+  if [ "${BASICS:-1}" != 0 ]; then
+    press ctrl+shift+b; burst "$out/$label-2-bezel"  # the toast, while the new bezel decodes
+    sleep 4; shot "$out/$label-3-bezel-after.png"
+    press ctrl+shift+v; burst "$out/$label-4-shader"  # LOADING, then the plain toast once the chain is built
+    sleep 6; shot "$out/$label-5-shader-after.png"
+  fi
   press ctrl+m; sleep 3
   shot "$out/$label-6-menu.png"
   press ctrl+m; sleep 2
@@ -119,6 +163,8 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
   alive=yes; kill -0 "$launcher" 2>/dev/null || alive=no
   kill -TERM "$launcher" 2>/dev/null || true
   status=0; wait "$launcher" 2>/dev/null || status=$?
+  kill "$watcher" 2>/dev/null || true
+  for pid in "${pads[@]}"; do kill "$pid" 2>/dev/null || true; done
   {
     echo "emulator=$emulator system=$system rom=$rom"
     echo "alive_until_the_end=$alive launcher_status=$status"
@@ -127,11 +173,18 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
     echo "variants_file=$(head -c 300 "$root/state/$emulator/semu-render-variants.env" 2>/dev/null | head -7 | tr '\n' ' ')"
     echo "journal_records(action slot reserved)=$(od -A n -t d4 -w56 -v "$journal" 2>/dev/null | while read -r -a words; do printf '%s %s %s; ' "${words[6]}" "${words[8]}" "${words[9]}"; done)"  # 32-bit words 6, 8 and 9 of each 56-byte record
     echo "leaf_argv=$leaf"
-    echo "restarts=$(grep -c 'semu: restarting' "$out/$label.log" || true) aspect_actions=$(grep -c 'semu: action visual.output.next' "$out/$label.log" || true)"
+    echo "restarts=$(grep -a -c 'semu: restarting' "$out/$label.log" || true) aspect_actions=$(grep -c 'semu: action visual.output.next' "$out/$label.log" || true)"
     echo "placements=$(grep -c 'semu-renderer: placement' "$out/$label.log" || true) reset_actions=$(grep -c 'semu: action system.reset' "$out/$label.log" || true) fit_actions=$(grep -c 'semu: action visual.placement.next' "$out/$label.log" || true)"
     echo "switches=$(grep -o 'phase=switch.*' "$root/state/$emulator/semu-render-evidence.log" 2>/dev/null | grep -o 'bezel_art=[^ ]*\|shader_preset=[^ ]*\|layout=[^ ]*\|bezel_index=[^ ]*\|shader_index=[^ ]*\|reload_ms=[^ ]*\|frame_ms=[^ ]*' | tr '\n' ' ')"
     echo "renderer_switch_lines=$(grep -c 'semu-renderer: switched to' "$out/$label.log" || true)"
     echo "saved=$("$jq" -c '.visual' "$root/home/semu/semu.json" 2>/dev/null || echo none)"
+    echo "players=$(grep -a -o "semu: player .*" "$out/$label.log" | cut -c14- | tr "\n" ";")"
+    echo "layout_switches=$(grep -a -E "semu: P[0-9] layout" "$out/$label.log" | tr "\n" ";")"
+    echo "layout_actions=$(grep -a -c "semu: action controller.layout.next" "$out/$label.log" || true) players_actions=$(grep -a -c "semu: action ui.players" "$out/$label.log" || true)"
+    echo "profile_opens=$(grep -c "Semu.ini OPEN" "$out/$label.profile-opens" 2>/dev/null || true) ($(grep "Semu.ini OPEN" "$out/$label.profile-opens" 2>/dev/null | cut -d" " -f1 | tr "\n" " "))"
+    echo "remote_sources=$(grep -E "^(WiimoteSource|SIDevice)" "$root/state/$emulator/dolphin-user/Config/Dolphin.ini" 2>/dev/null | tr "\n" " ")"
+    echo "remote2_device=$(grep -A 1 "^\[Wiimote2\]" "$root/state/$emulator/dolphin-user/Config/WiimoteNew.ini" 2>/dev/null | grep "^Device" | head -1)"
+    echo "saved_input=$("$jq" -c ".input" "$root/home/semu/semu.json" 2>/dev/null || echo none)"
   } > "$out/$label.result"
   cat "$out/$label.result"
 done < "$out/cases"

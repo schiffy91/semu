@@ -46,6 +46,8 @@ import ./spec/bezel_emit.btrc;
 import ./spec/placement.btrc;
 import ./spec/radial_choices.btrc;
 import ./spec/radial_render.btrc;
+import ./spec/players.btrc;
+import ./spec/controller_layouts.btrc;
 import ./spec/performance.btrc;
 import ./spec/playlist.btrc;
 import ./spec/content.btrc;
@@ -932,6 +934,7 @@ class SteamInputContract {  // the Deck template Steam loads: radials carry the 
 }
 
 int main() {
+    setenv("SEMU_PAD_ROSTER", "off", 1);  // launches in the contracts deal synthetic rosters, never this host's pads
     Contract contract = Contract();
     InheritedDefinitionContract.run(contract);
     SettingsWriteContract.run(contract);
@@ -987,6 +990,8 @@ int main() {
     PlacementSpecContract.run(contract);
     RadialChoicesSpecContract.run(contract);
     RadialRenderSpecContract.run(contract);
+    PlayersSpecContract.run(contract);
+    ControllerLayoutsSpecContract.run(contract);
     PerformanceSpecContract.run(contract);
     ModsSpecContract.run(contract);
     ModelContract.run(contract);

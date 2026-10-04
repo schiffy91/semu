@@ -15,6 +15,7 @@ import ./emit/esde.btrc;
 import ./emit/profiles.btrc;
 import ./emit/settings_ui.btrc;
 import ./launch/plan.btrc;
+import ./launch/player_set.btrc;
 import ./emit/rendering.btrc;
 import ./emit/render_variants.btrc;
 import ./launch/process.btrc;
@@ -126,7 +127,14 @@ class SemuCli {
         string stateRoot = variants.isEmpty() ? PathTools.join(plan.stateRoot(), emulatorId) : FileSystem.absolutePath(variants);
         for entry in SemuRenderEnvironment.compile(plan, system, emulatorId, stateRoot, diagnostics) { Console.log(entry); }
         if (plan.input != null) {
-            for entry in plan.input.menuEnvironment(SemuRenderVariants.choose(plan, system).shown()) { Console.log(entry); }  // the menu's rows and the toasts, as the launch gives them
+            SemuEmulator playing = model.emulator(self.option("emulator", ""));
+            for binding in system.bindingsFor(plan.platform) { if (playing == null) { playing = model.emulator(binding.emulator); } }  // else the system's first emulator
+            plan.tokens.put("system", system.id);
+            SemuPlayerSet players = SemuPlayerSets.from(plan, system, playing);
+            Vector<string> shown = SemuRenderVariants.choose(plan, system).shown();
+            players.show(shown);
+            for entry in plan.input.menuEnvironment(shown) { Console.log(entry); }  // the menu's rows and the toasts, as the launch gives them
+            for entry in players.environment() { Console.log(entry); }
         }
         if (!variants.isEmpty()) {
             SemuRenderVariantSet set = SemuRenderVariants.write(plan, system, emulatorId, stateRoot);

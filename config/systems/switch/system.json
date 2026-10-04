@@ -22,6 +22,10 @@
       "emulator": "ryujinx"
     }
   ],
+  "players": {
+    "max": 4,
+    "doc": "Player 1 plus three Pro Controllers."
+  },
   "display": {
     "scaling": {
       "mode": "integer_preferred",

@@ -15,6 +15,7 @@ import Library.Vector;
 import ./input_state.btrc;
 import ./input_filters.btrc;
 import ./actions.btrc;
+import ./controller_layouts.btrc;
 import ./journal.btrc;
 import ./process.btrc;
 import ./plan.btrc;
@@ -258,6 +259,10 @@ class SemuSupervisor {  // one action vocabulary for every emulator, until exit 
         bool chord = SemuQuitChord.configure(&SemuSupervisorRuntime.quit_template, launch.quitButtons, launch.chordWindowMs);
         if (!chord) { Console.error("semu: the quit chord is not usable: " + SemuQuitChord.describe(launch.quitButtons)); }
         SemuActionJournal.reset(launch);
+        SemuControllerLayouts.prepare(launch.players);  // Semu's one profile in the folder the emulator cycles
+        if (getenv("SEMU_RENDER_DEBUG") != null) {
+            for (int player0 = 0; player0 < launch.players.count; player0++) { Console.error("semu: player " + launch.players.row(player0)); }  // the pads dealt at launch
+        }
         SemuInputDevices.scan(launch);
         SemuSupervisor.keySource();
         SemuX11KeyListener.connect(&SemuSupervisorRuntime.key_source);

@@ -125,7 +125,7 @@ class EmulatorRuntimeSpecProfiles {
 }
 
 class EmulatorRuntimeSpecControllerModes {
-    class void run(Contract contract, string targetId) {  // the wii controller setting picks Dolphin's initial mode
+    class void run(Contract contract, string targetId) {  // player 1's saved Wii layout picks Dolphin's Wii Remote source and extension at boot
         Fixture fixture = Fixture(targetId);
         Vector<string> modes = ["wiimote", "nunchuk", "classic", "gamecube"];
         Vector<string> sources = ["1", "1", "1", "0"];
@@ -134,25 +134,29 @@ class EmulatorRuntimeSpecControllerModes {
         for (int index = 0; index < modes.size(); index++) {
             string mode = modes.get(index);
             SemuDiagnostics diagnostics = SemuDiagnostics();
-            SemuPlan plan = EmulatorRuntimeSpecTools.plan(fixture, targetId, ",\"input\":{\"systems\":{\"wii\":{\"controller_mode\":\"" + mode + "\"}}}");
+            SemuPlan plan = EmulatorRuntimeSpecTools.plan(fixture, targetId, ",\"input\":{\"systems\":{\"wii\":{\"players\":{\"1\":{\"layout\":\"" + mode + "\"}}}}}");
+            plan.tokens.put("system", "wii");
             string main = "";
             string wiimote = "";
             string hotkeys = "";
+            int stored = 0;
             for file in SemuProfiles.render(fixture.model, plan, dolphin, diagnostics) {
                 if (file.path.equals("dolphin-user/Config/Dolphin.ini")) { main = file.content; }
                 if (file.path.equals("dolphin-user/Config/WiimoteNew.ini")) { wiimote = file.content; }
                 if (file.path.equals("dolphin-user/Config/Hotkeys.ini")) { hotkeys = file.content; }
+                if (file.path.startsWith("dolphin-user/Config/Semu Layouts/P1 ")) { stored++; }
             }
-            string label = f"{targetId} wii mode {mode}";
+            string label = f"{targetId} wii layout {mode}";
             contract.expect(diagnostics.ok(), label + ": renders without diagnostics: " + diagnostics.render());
-            contract.contains(main, "WiimoteSource0 = " + sources.get(index), label + ": wii remote source");
+            contract.contains(main, "WiimoteSource0 = " + sources.get(index) + "\n", label + ": wii remote source");
+            contract.contains(main, "SIDevice0 = 6\n", label + ": player 1 also holds a GameCube pad");
             contract.contains(wiimote, "Extension = " + extensions.get(index), label + ": wii remote extension");
             contract.contains(wiimote, "Classic/Buttons/A =", label + ": classic bindings stay present");
             contract.contains(wiimote, "Nunchuk/Buttons/C =", label + ": nunchuk bindings stay present");
-            contract.contains(hotkeys, "Semu Controller Mode/Wii Remote = @(Ctrl+Shift+F9)", label + ": wii remote hotkey");
-            contract.contains(hotkeys, "Semu Controller Mode/Wii Remote + Nunchuk = @(Ctrl+Shift+F10)", label + ": nunchuk hotkey");
-            contract.contains(hotkeys, "Semu Controller Mode/Classic Controller = @(Ctrl+Shift+F11)", label + ": classic hotkey");
-            contract.contains(hotkeys, "Semu Controller Mode/GameCube Controller = @(Ctrl+Shift+F12)", label + ": gamecube hotkey");
+            contract.contains(hotkeys, "Controller Profile 1/Next Profile = @(Alt+F5)\n", label + ": player 1's profile cycle key");
+            contract.lacks(hotkeys, "Semu Controller Mode", label + ": no hotkey Dolphin does not know");
+            contract.lacks(hotkeys, "Undo Load State", label + ": no bare F12, which Steam's Ctrl+Shift+F12 would fire");
+            contract.expect(stored == 3, label + ": player 1 has a stored profile per live layout");
         }
     }
 }
@@ -272,7 +276,8 @@ class EmulatorRuntimeSpecOwnership {
         SemuProfiles.render(traversal.model, traversal.plan, traversal.model.emulator("ppsspp"), traversalDiagnostics);
         contract.expect(!traversalDiagnostics.ok(), "a traversing profile path is refused");
         Fixture token = Fixture("steam-deck");
-        token.model.emulator("dolphin").profile.get("controller_modes").at(3).set("profile", JSONValue.makeString("../../../escaped-profile"));
+        token.model.emulator("dolphin").profile.get("controller_layouts").at(0).set("profile", JSONValue.makeString("../../../../escaped-profile"));  // a stored layout profile's name
+        token.plan.tokens.put("system", "wii");
         SemuDiagnostics tokenDiagnostics = SemuDiagnostics();
         Vector<SemuProfileFile> files = SemuProfiles.render(token.model, token.plan, token.model.emulator("dolphin"), tokenDiagnostics);
         string stateRoot = PathTools.join(token.plan.stateRoot(), "dolphin");

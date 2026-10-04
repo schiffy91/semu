@@ -31,6 +31,10 @@
       "controller_mappings": {
         "rows": "controller.mappings",
         "format": "\t\t\t<entry><mapping>${mapping}</mapping><button>${button}</button></entry>"
+      },
+      "pro_mappings": {
+        "rows": "controller.pro_mappings",
+        "format": "\t\t\t<entry><mapping>${mapping}</mapping><button>${button}</button></entry>"
       }
     }
   },
@@ -194,6 +198,133 @@
         "source": "SDL_CONTROLLER_BUTTON_GUIDE",
         "button": 5
       }
+    ],
+    "pro_mappings": [
+      {
+        "mapping": 1,
+        "control": "pro.a",
+        "button": 1
+      },
+      {
+        "mapping": 2,
+        "control": "pro.b",
+        "button": 0
+      },
+      {
+        "mapping": 3,
+        "control": "pro.x",
+        "button": 3
+      },
+      {
+        "mapping": 4,
+        "control": "pro.y",
+        "button": 2
+      },
+      {
+        "mapping": 5,
+        "control": "pro.l",
+        "button": 9
+      },
+      {
+        "mapping": 6,
+        "control": "pro.r",
+        "button": 10
+      },
+      {
+        "mapping": 7,
+        "control": "pro.zl",
+        "button": 42
+      },
+      {
+        "mapping": 8,
+        "control": "pro.zr",
+        "button": 43
+      },
+      {
+        "mapping": 9,
+        "control": "pro.plus",
+        "button": 6
+      },
+      {
+        "mapping": 10,
+        "control": "pro.minus",
+        "button": 4
+      },
+      {
+        "mapping": 11,
+        "control": "pro.home",
+        "button": 5
+      },
+      {
+        "mapping": 12,
+        "control": "pro.up",
+        "button": 11
+      },
+      {
+        "mapping": 13,
+        "control": "pro.down",
+        "button": 12
+      },
+      {
+        "mapping": 14,
+        "control": "pro.left",
+        "button": 13
+      },
+      {
+        "mapping": 15,
+        "control": "pro.right",
+        "button": 14
+      },
+      {
+        "mapping": 16,
+        "control": "pro.stick_l",
+        "button": 7
+      },
+      {
+        "mapping": 17,
+        "control": "pro.stick_r",
+        "button": 8
+      },
+      {
+        "mapping": 18,
+        "control": "pro.stick_l_up",
+        "button": 45
+      },
+      {
+        "mapping": 19,
+        "control": "pro.stick_l_down",
+        "button": 39
+      },
+      {
+        "mapping": 20,
+        "control": "pro.stick_l_left",
+        "button": 44
+      },
+      {
+        "mapping": 21,
+        "control": "pro.stick_l_right",
+        "button": 38
+      },
+      {
+        "mapping": 22,
+        "control": "pro.stick_r_up",
+        "button": 47
+      },
+      {
+        "mapping": 23,
+        "control": "pro.stick_r_down",
+        "button": 41
+      },
+      {
+        "mapping": 24,
+        "control": "pro.stick_r_left",
+        "button": 46
+      },
+      {
+        "mapping": 25,
+        "control": "pro.stick_r_right",
+        "button": 40
+      }
     ]
   },
   "actions": {
@@ -229,8 +360,8 @@
         "\t<type>${controller_type}</type>",
         "\t<controller>",
         "\t\t<api>${controller_api}</api>",
-        "\t\t<uuid>${controller_uuid}</uuid>",
-        "\t\t<display_name>${controller_display_name}</display_name>",
+        "\t\t<uuid>${cemu_uuid}</uuid>",
+        "\t\t<display_name>${cemu_display_name}</display_name>",
         "\t\t<rumble>${controller_rumble}</rumble>",
         "\t\t<axis>",
         "\t\t\t<deadzone>0.1</deadzone>",
@@ -249,7 +380,41 @@
         "\t\t</mappings>",
         "\t</controller>",
         "</emulated_controller>"
-      ]
+      ],
+      "for_each": "players",
+      "when": "first"
+    },
+    {
+      "path": "${emulator_name}/config/controllerProfiles/controller${player0}.xml",
+      "lines": [
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<emulated_controller>",
+        "\t<type>Wii U Pro Controller</type>",
+        "\t<controller>",
+        "\t\t<api>${controller_api}</api>",
+        "\t\t<uuid>${cemu_uuid}</uuid>",
+        "\t\t<display_name>${cemu_display_name}</display_name>",
+        "\t\t<rumble>${controller_rumble}</rumble>",
+        "\t\t<axis>",
+        "\t\t\t<deadzone>0.1</deadzone>",
+        "\t\t\t<range>1</range>",
+        "\t\t</axis>",
+        "\t\t<rotation>",
+        "\t\t\t<deadzone>0.1</deadzone>",
+        "\t\t\t<range>1</range>",
+        "\t\t</rotation>",
+        "\t\t<trigger>",
+        "\t\t\t<deadzone>0.1</deadzone>",
+        "\t\t\t<range>1</range>",
+        "\t\t</trigger>",
+        "\t\t<mappings>",
+        "@lines:pro_mappings",
+        "\t\t</mappings>",
+        "\t</controller>",
+        "</emulated_controller>"
+      ],
+      "for_each": "players",
+      "when": "others,connected"
     },
     {
       "path": "${emulator_name}/config/settings.xml",
@@ -285,7 +450,8 @@
     "controller": "Cemu automatically loads controllerProfiles/controller0.xml for player one before CafeSystem initialization. The 0_ prefix is Cemu's duplicate-GUID index followed by SDL_JoystickGetGUIDString's 32 lowercase hexadecimal digits. Mapping ids are VPAD ButtonId values; button ids are the pinned 2.6 SDL_GameControllerButton values and Controller.h synthetic axis values. The Semu source build ignores per-title controller overrides so this generated profile remains authoritative.",
     "display": "open_pad=false leaves one primary game window. Ctrl+Tab changes whether that main window presents TV or GamePad output; the separate pad window remains closed. Notification Position 0 is ScreenPosition::kDisabled, so Cemu draws no notification box (shader compiles, friends, controllers, warnings) over the game.",
     "storage": "The profile pins only input and UI settings. emulator.json owns the XDG and -m paths that keep normal Wii U title saves inside the isolated MLC root.",
-    "actions": "Native rows are fail-closed invariants checked against steamdeck.skm before emission. Unsupported rows document shared Semu actions that this exact upstream release cannot consume."
+    "actions": "Native rows are fail-closed invariants checked against steamdeck.skm before emission. Unsupported rows document shared Semu actions that this exact upstream release cannot consume.",
+    "players": "One controller<N>.xml per player with a pad (for_each players): player 1 is the Wii U GamePad (controller0.xml), players 2 to 4 Wii U Pro Controllers (controller1-3.xml, ProController::ButtonId 1-25: A, B, X, Y, L, R, ZL, ZR, Plus, Minus, Home, the d-pad, the stick clicks and the eight stick directions, Cemu v2.6 src/input/emulated/ProController.h) on the same SDL button ids as the GamePad. Each uuid is Cemu's <same-GUID index>_<SDL GUID> from the launch's roster; player 1 on the first pad keeps the target's device_identities uuid. Cemu loads controller<N>.xml for player N at boot (InputManager.cpp:75-81)."
   },
   "native_shortcuts": {
     "source": "cemu a6fb0a4 src/gui/MainWindow.cpp:1425-1453",

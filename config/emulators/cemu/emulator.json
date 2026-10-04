@@ -120,5 +120,9 @@
   "menu": {
     "pause": "none",
     "doc": "Cemu declares no pause action, so the Semu menu draws over the running game; on Linux it holds the pad while it is open, so the game sees none of the menu's input."
+  },
+  "players": {
+    "max": 4,
+    "doc": "The GamePad and three Pro Controllers."
   }
 }

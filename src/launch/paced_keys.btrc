@@ -1,0 +1,186 @@
+// Typing an emulator's own hotkey several times so the emulator sees every press. Dolphin polls its
+// hotkeys every 5 ms and counts a press only after it saw the release (HotkeyScheduler.cpp:149-156),
+// so each press is held and followed by a gap, both at least 30 ms (the emulator's press_ms and
+// gap_ms). The keys reach the game's X display through XTest (libxcb-xtest's xcb_test_fake_input,
+// an X keycode being the evdev code plus eight) while the supervisor reads keys there, as in Game
+// Mode's Xwayland, and Semu's uinput keyboard otherwise. steps() is the timeline the contracts
+// check with a fake clock; play() sleeps between its steps.
+
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include "semu_evdev.h"
+#include "semu_x11.h"
+
+import Library.Console;
+import Library.Platform;
+import Library.Vector;
+import ./input_state.btrc;
+import ./input_filters.btrc;
+import ./process.btrc;
+import ./x11_keys.btrc;
+
+void* SemuXTestFakeInput = null;  // xcb_test_fake_input, resolved once
+int SemuXTestAttempted = 0;
+
+#define SEMU_TYPED_STEPS 256
+
+struct SemuTypedLog {  // the contracts' seam: while recording, play() keeps its steps instead of typing them
+    int recording;
+    int count;
+    int at[SEMU_TYPED_STEPS];
+    int code[SEMU_TYPED_STEPS];
+    int down[SEMU_TYPED_STEPS];
+};
+
+struct SemuTypedLog SemuTypedSteps;
+
+class SemuKeyStep {  // one key edge AT milliseconds after the typing began
+    public int at;
+    public int code;
+    public bool down;
+
+    public SemuKeyStep(int at, int code, bool down) {
+        self.at = at;
+        self.code = code;
+        self.down = down;
+    }
+}
+
+class SemuUinputKeyboard {  // Semu's own virtual keyboard: created once, written per key edge
+    class bool open() {
+        if (SemuSupervisorRuntime.uinput_descriptor > 0) { return true; }
+        int flags = (int)O_WRONLY | (int)O_NONBLOCK;
+        int handle = open("/dev/uinput", flags);
+        if (handle < 0) { return false; }
+        unsigned long setEvent = (unsigned long)UI_SET_EVBIT;
+        unsigned long setKey = (unsigned long)UI_SET_KEYBIT;
+        int keyType = EV_KEY;
+        int synType = EV_SYN;
+        ioctl(handle, setEvent, keyType);
+        ioctl(handle, setEvent, synType);
+        for (int code = 1; code < 256; code++) { ioctl(handle, setKey, code); }
+        struct uinput_setup setup;
+        memset(&setup, 0, sizeof(setup));
+        setup.id.bustype = BUS_VIRTUAL;
+        setup.id.vendor = 0x5345;
+        setup.id.product = 0x4d55;
+        int nameCapacity = UINPUT_MAX_NAME_SIZE;
+        snprintf(setup.name, (size_t)nameCapacity, "%s", "Semu Virtual Keyboard");
+        unsigned long deviceSetup = (unsigned long)UI_DEV_SETUP;
+        unsigned long deviceCreate = (unsigned long)UI_DEV_CREATE;
+        if (ioctl(handle, deviceSetup, &setup) < 0 || ioctl(handle, deviceCreate) < 0) {
+            close(handle);
+            return false;
+        }
+        SemuSupervisorRuntime.uinput_descriptor = handle;
+        usleep(200000);  // let the emulator's input layer see the new device
+        return true;
+    }
+
+    class void emit(int type, int code, int value) {
+        struct input_event event;
+        memset(&event, 0, sizeof(event));
+        event.type = (unsigned short)type;
+        event.code = (unsigned short)code;
+        event.value = value;
+        int handle = SemuSupervisorRuntime.uinput_descriptor;
+        ssize_t wrote = write(handle, &event, sizeof(event));
+        (void)wrote;
+    }
+
+    class void key(int code, bool down) {  // one edge and its report
+        int keyType = EV_KEY;
+        int synType = EV_SYN;
+        int synReport = SYN_REPORT;
+        SemuUinputKeyboard.emit(keyType, code, down ? 1 : 0);
+        SemuUinputKeyboard.emit(synType, synReport, 0);
+    }
+}
+
+class SemuXTest {  // fake key events on the X display the supervisor already reads
+    class int keycode(int code) { return code + (int)SEMU_X11_KEYCODE_OFFSET; }
+
+    class bool ready() {  // the key source is a live libxcb connection and libxcb-xtest loaded
+        struct SemuKeySource* source = &SemuSupervisorRuntime.key_source;
+        if (source->kind != SEMU_KEY_SOURCE_XCB || source->connection == null) { return false; }
+        if (SemuXTestAttempted == 0) {
+            SemuXTestAttempted = 1;
+            int flags = (int)RTLD_NOW | (int)RTLD_LOCAL;
+            void* library = dlopen((char*)SEMU_XCB_TEST_LIBRARY, flags);
+            SemuXTestFakeInput = library == null ? null : dlsym(library, "xcb_test_fake_input");
+            if (SemuXTestFakeInput == null && Environment.get("SEMU_RENDER_DEBUG", "").len() > 0) { Console.error("semu: libxcb-xtest did not load; typing through uinput"); }
+        }
+        return SemuXTestFakeInput != null && SemuX11Loaded.flush != null;
+    }
+
+    class void key(int code, bool down) {  // xcb_test_fake_input(connection, type, detail, time, root, x, y, device), then flush
+        void* connection = SemuSupervisorRuntime.key_source.connection;
+        __fn_ptr<unsigned int, void*, unsigned char, unsigned char, unsigned int, unsigned int, short, short, unsigned char> fake;
+        memcpy(&fake, &SemuXTestFakeInput, sizeof(fake));
+        int type = down ? (int)SEMU_X11_KEY_PRESS : (int)SEMU_X11_KEY_RELEASE;
+        fake(connection, (unsigned char)type, (unsigned char)SemuXTest.keycode(code), 0u, 0u, (short)0, (short)0, (unsigned char)0);
+        __fn_ptr<int, void*> flusher;
+        memcpy(&flusher, &SemuX11Loaded.flush, sizeof(flusher));
+        flusher(connection);
+    }
+}
+
+class SemuPacedTyper {
+    class int minimumMs() { return 30; }
+
+    class Vector<SemuKeyStep> steps(Vector<int> codes, int presses, int pressMs, int gapMs) {  // modifiers first and the key last (SemuKeyNames.chord), each press whole
+        Vector<SemuKeyStep> result = [];
+        int hold = pressMs < SemuPacedTyper.minimumMs() ? SemuPacedTyper.minimumMs() : pressMs;
+        int gap = gapMs < SemuPacedTyper.minimumMs() ? SemuPacedTyper.minimumMs() : gapMs;
+        if (codes.isEmpty()) { return result; }
+        int key = codes.get(codes.size() - 1);
+        for (int press = 0; press < presses; press++) {
+            int start = press * (hold + gap);
+            for (int index = 0; index < codes.size() - 1; index++) { result.push(SemuKeyStep(start, codes.get(index), true)); }
+            result.push(SemuKeyStep(start, key, true));
+            result.push(SemuKeyStep(start + hold, key, false));
+            for (int index = codes.size() - 2; index >= 0; index--) { result.push(SemuKeyStep(start + hold, codes.get(index), false)); }
+        }
+        return result;
+    }
+
+    class bool available() {  // some way to type: the recording seam, XTest on the game's display, or Semu's uinput keyboard (none on macOS)
+        return SemuTypedSteps.recording != 0 || SemuXTest.ready() || SemuUinputKeyboard.open();
+    }
+
+    class string route() {  // where play() would type now
+        if (SemuTypedSteps.recording != 0) { return "record"; }
+        return SemuXTest.ready() ? "X" : "uinput";
+    }  // where play() would type now
+
+    class bool play(Vector<SemuKeyStep> steps) {  // false when neither XTest nor uinput is available
+        if (SemuTypedSteps.recording != 0) {
+            for step in steps {
+                if (SemuTypedSteps.count >= SEMU_TYPED_STEPS) { break; }
+                SemuTypedSteps.at[SemuTypedSteps.count] = step.at;
+                SemuTypedSteps.code[SemuTypedSteps.count] = step.code;
+                SemuTypedSteps.down[SemuTypedSteps.count] = step.down ? 1 : 0;
+                SemuTypedSteps.count++;
+            }
+            return true;
+        }
+        bool x = SemuXTest.ready();
+        if (!x && !SemuUinputKeyboard.open()) { return false; }
+        int elapsed = 0;
+        Vector<int> typed = [];
+        for step in steps {
+            if (step.at > elapsed) {
+                usleep((unsigned int)((step.at - elapsed) * 1000));
+                elapsed = step.at;
+            }
+            if (x) { SemuXTest.key(step.code, step.down); } else { SemuUinputKeyboard.key(step.code, step.down); }
+            if (step.down && !typed.contains(step.code)) { typed.push(step.code); }
+        }
+        SemuKeyEcho.expect(typed, SemuClock.milliseconds() + (long long)SEMU_ECHO_MS);  // the keys come back as X keys; none is a Semu chord, and none runs twice
+        return true;
+    }
+}

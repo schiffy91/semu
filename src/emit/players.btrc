@@ -1,0 +1,184 @@
+// Players: which pad each player holds and which controller layout, as rows the profile compiler
+// renders once per player (for_each "players", "player_layouts") and the launcher hands the
+// supervisor. A system declares players.max and controllers.layouts, an emulator players.max; the
+// count is the smaller. Pads come from the launch's roster (plan.pads, in slot order); without one,
+// player 1 holds the target's default pad exactly as device_identities name it and the others none.
+// Player 1 always plays: with no pad assigned it keeps that default pad.
+
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+
+class SemuPlayers {
+    class int maximum(JSONValue definition) {  // players.max, at least 1
+        int declared = SemuJson.intAt(definition, "players.max", 1);
+        return declared < 1 ? 1 : declared;
+    }
+
+    class int count(SemuSystem system, SemuEmulator emulator) {  // the smaller of the system's and the emulator's
+        if (system == null || emulator == null) { return 1; }
+        int systemMaximum = SemuPlayers.maximum(system.definition);
+        int emulatorMaximum = SemuPlayers.maximum(emulator.definition);
+        return systemMaximum < emulatorMaximum ? systemMaximum : emulatorMaximum;
+    }
+
+    class JSONValue layouts(SemuSystem system) {  // controllers.layouts, an empty array for a system without
+        JSONValue declared = system == null ? null : SemuJson.get(system.definition, "controllers.layouts");
+        return declared != null && declared.isArray() ? declared : JSONValue.makeArray();
+    }
+
+    class int layoutIndex(SemuSystem system, string layout) {
+        JSONValue declared = SemuPlayers.layouts(system);
+        for (int index = 0; index < declared.size(); index++) {
+            if (!layout.isEmpty() && SemuJson.textAt(declared.at(index), "id").equals(layout)) { return index; }
+        }
+        return -1;
+    }
+
+    class string defaultLayout(SemuSystem system) {  // controllers.default, else the first layout, else none
+        string declared = system == null ? "" : SemuJson.textAt(system.definition, "controllers.default");
+        if (SemuPlayers.layoutIndex(system, declared) >= 0) { return declared; }
+        JSONValue declaredLayouts = SemuPlayers.layouts(system);
+        return declaredLayouts.size() > 0 ? SemuJson.textAt(declaredLayouts.at(0), "id") : "";
+    }
+
+    class string settingPath(string systemId, int player, string field) { return "input.systems." + systemId + ".players." + Strings.fromInt(player) + "." + field; }
+
+    class string layoutOf(JSONValue settings, SemuSystem system, int player) {  // the player's saved layout, else the system's default
+        if (system == null) { return ""; }
+        string saved = SemuJson.textAt(settings, SemuPlayers.settingPath(system.id, player, "layout"));
+        return SemuPlayers.layoutIndex(system, saved) >= 0 ? saved : SemuPlayers.defaultLayout(system);
+    }
+
+    class bool known(SemuPlan plan) { return plan != null && plan.pads != null && plan.pads.isArray(); }  // a roster was taken at this launch
+
+    class Vector<int> assign(JSONValue settings, string systemId, int count, int padCount) {  // each player's pad, -1 for none: saved choices first, then the lowest free pad
+        Vector<int> result = [];
+        Vector<int> used = [];
+        for (int player = 1; player <= count; player++) {
+            JSONValue saved = SemuJson.get(settings, SemuPlayers.settingPath(systemId, player, "pad"));
+            int pad = saved != null && saved.isInt() ? saved.asInt() : -2;
+            if (pad >= padCount || used.contains(pad) || (pad == -1 && player == 1)) { pad = -2; }  // gone, taken, or player 1 without a pad
+            if (pad >= 0) { used.push(pad); }
+            result.push(pad);
+        }
+        for (int player = 1; player <= count; player++) {
+            if (result.get(player - 1) != -2) { continue; }
+            int free = -1;
+            for (int pad = 0; pad < padCount && free < 0; pad++) { if (!used.contains(pad)) { free = pad; } }
+            if (free >= 0) { used.push(free); }
+            result.set(player - 1, free);
+        }
+        return result;
+    }
+
+    class string fill(string template, JSONValue row, JSONValue device) {  // ${field} from the row, ${device.key} from device_identities
+        string result = template;
+        for key in row.keys() { result = result.replace("${" + key + "}", SemuJson.text(row.get(key))); }
+        if (device != null && device.isObject()) {
+            for key in device.keys() { result = result.replace("${device." + key + "}", SemuJson.text(device.get(key))); }
+        }
+        return result;
+    }
+
+    class void merge(JSONValue row, JSONValue fields) {  // string fields laid over the row
+        if (fields == null || !fields.isObject()) { return; }
+        for key in fields.keys() { row.set(key, JSONValue.makeString(SemuJson.text(fields.get(key)))); }
+    }
+
+    class JSONValue layoutRow(SemuEmulator emulator, string layout) {  // the emulator's controller_layouts row for LAYOUT, else null
+        JSONValue rows = emulator == null ? null : SemuJson.get(emulator.profile, "controller_layouts");
+        for (int index = 0; rows != null && rows.isArray() && index < rows.size(); index++) {
+            if (SemuJson.textAt(rows.at(index), "layout").equals(layout)) { return rows.at(index); }
+        }
+        return null;
+    }
+
+    class void padFields(JSONValue row, JSONValue pad) {  // what the roster knows of the pad a player holds
+        for key in ["name", "same_name_index", "guid", "same_guid_index", "ryujinx_guid", "same_ryujinx_index"] {
+            row.set(key.equals("name") ? "pad_name" : (key.equals("guid") ? "sdl_guid" : key), JSONValue.makeString(SemuJson.textAt(pad, key)));
+        }
+        row.set("pad_index", JSONValue.makeString(SemuJson.textAt(pad, "index")));
+    }
+
+    class void identities(JSONValue row, JSONValue definition, int player, bool fallback, bool connected) {  // players.identities per pad; players.first or players.others by seat
+        JSONValue device = SemuJson.get(definition, "device_identities");
+        JSONValue templates = SemuJson.get(definition, "players.identities");
+        Vector<string> keys = [];
+        if (templates != null && templates.isObject()) { keys = templates.keys(); }
+        for key in keys {
+            string value = connected ? SemuPlayers.fill(SemuJson.text(templates.get(key)), row, device) : "";
+            if (fallback && device != null && device.isObject() && device.has(key)) { value = SemuJson.text(device.get(key)); }  // the target's own default pad, exactly as named
+            row.set(key, JSONValue.makeString(value));
+        }
+        JSONValue seat = SemuJson.get(definition, player == 1 ? "players.first" : "players.others");
+        Vector<string> seated = [];
+        if (connected && seat != null && seat.isObject()) { seated = seat.keys(); }
+        for key in seated {
+            row.set(key, JSONValue.makeString(SemuPlayers.fill(SemuJson.text(seat.get(key)), row, device)));
+        }
+    }
+
+    class JSONValue rows(SemuPlan plan, SemuSystem system, SemuEmulator emulator) {  // one object of string fields per player
+        JSONValue result = JSONValue.makeArray();
+        int count = SemuPlayers.count(system, emulator);
+        bool known = SemuPlayers.known(plan);
+        int padCount = known ? plan.pads.size() : 0;
+        string systemId = system == null ? "" : system.id;
+        Vector<int> pads = SemuPlayers.assign(plan.settings, systemId, count, padCount);
+        JSONValue definition = plan.input == null ? JSONValue.makeObject() : plan.input.definition;
+        for (int player = 1; player <= count; player++) {
+            int pad = known ? pads.get(player - 1) : -1;
+            bool connected = player == 1 || pad >= 0;
+            JSONValue row = JSONValue.makeObject();
+            row.set("player", JSONValue.makeString(Strings.fromInt(player)));
+            row.set("player0", JSONValue.makeString(Strings.fromInt(player - 1)));
+            row.set("connected", JSONValue.makeString(connected ? "1" : ""));
+            row.set("disconnected", JSONValue.makeString(connected ? "" : "1"));
+            row.set("first", JSONValue.makeString(player == 1 ? "1" : ""));
+            row.set("others", JSONValue.makeString(player == 1 ? "" : "1"));
+            row.set("assigned", JSONValue.makeString(known || player == 1 ? "1" : ""));  // a pad index is meaningful: a roster was taken, or the default pad
+            row.set("pad", JSONValue.makeString(Strings.fromInt(pad)));
+            if (pad >= 0) {
+                SemuPlayers.padFields(row, plan.pads.at(pad));
+            } else {
+                int spare = (padCount > 0 ? padCount : 1) + player - 1;  // an index no present pad has, so the emulator's own default never doubles a pad
+                row.set("pad_index", JSONValue.makeString(Strings.fromInt(connected ? 0 : (spare > 15 ? 15 : spare))));
+                row.set("pad_name", JSONValue.makeString(connected ? SemuJson.textAt(definition, "players.pad_name") : ""));
+                for key in ["same_name_index", "same_guid_index", "same_ryujinx_index"] { row.set(key, JSONValue.makeString("0")); }
+                for key in ["sdl_guid", "ryujinx_guid"] { row.set(key, JSONValue.makeString("")); }
+            }
+            SemuPlayers.identities(row, definition, player, connected && player == 1 && pad <= 0, connected);  // player 1 on the first pad is the target's default pad
+            string layout = SemuPlayers.layoutOf(plan.settings, system, player);
+            row.set("layout", JSONValue.makeString(layout));
+            row.set("layout_index", JSONValue.makeString(Strings.fromInt(SemuPlayers.layoutIndex(system, layout))));
+            JSONValue fields = SemuPlayers.layoutRow(emulator, layout);
+            SemuPlayers.merge(row, fields != null ? fields : SemuJson.get(emulator == null ? null : emulator.profile, "players.without_layouts"));
+            SemuPlayers.merge(row, SemuJson.get(emulator == null ? null : emulator.profile, connected ? "players.connected" : "players.disconnected"));
+            result.push(row);
+        }
+        return result;
+    }
+
+    class JSONValue layoutRows(SemuPlan plan, SemuSystem system, SemuEmulator emulator) {  // each connected player with each layout the emulator switches live
+        JSONValue result = JSONValue.makeArray();
+        JSONValue players = SemuPlayers.rows(plan, system, emulator);
+        JSONValue declared = SemuPlayers.layouts(system);
+        for (int index = 0; index < players.size(); index++) {
+            JSONValue player = players.at(index);
+            if (SemuJson.textAt(player, "connected").isEmpty()) { continue; }
+            for (int layout = 0; layout < declared.size(); layout++) {
+                JSONValue fields = SemuPlayers.layoutRow(emulator, SemuJson.textAt(declared.at(layout), "id"));
+                if (fields == null || !SemuJson.textAt(fields, "apply").equals("live")) { continue; }
+                JSONValue row = JSONValue.parse(player.stringify());
+                SemuPlayers.merge(row, fields);
+                row.set("layout_index", JSONValue.makeString(Strings.fromInt(layout)));
+                result.push(row);
+            }
+        }
+        return result;
+    }
+}

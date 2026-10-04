@@ -34,9 +34,6 @@
   },
   "input": {
     "systems": {
-      "wii": {
-        "controller_mode": "nunchuk"
-      },
       "switch": {
         "play_mode": "docked"
       }

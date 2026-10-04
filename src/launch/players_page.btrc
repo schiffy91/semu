@@ -1,0 +1,112 @@
+// The Semu menu's players page: one row per player ("P2  PAD 2  CLASSIC"), then RESTART GAME and
+// BACK. Confirm on a player moves it to the next pad no other player holds, or to none (player 1
+// always holds one); left and right step its layout (SemuControllerLayouts). Pads are dealt at
+// launch, so a pad change waits for RESTART GAME, which restarts only when something differs from
+// the launch. The supervisor writes the rows to semu-render-players.txt beside the journal before
+// each record that changes them; the renderer draws that file. Records: 86 slot 1 opens the page
+// (reserved 1 restarting, 2 nothing changed, 3 rows rewritten), 0 returns to the menu, -1 when the
+// game takes one player; 84 slot the pad (-1 none), reserved the player.
+
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/paths.btrc;
+import ../lib/settings.btrc;
+import ../renderer/action_abi.btrc;
+import ./controller_layouts.btrc;
+import ./input_state.btrc;
+import ./journal.btrc;
+import ./plan.btrc;
+import ./player_set.btrc;
+import ./relaunch.btrc;
+
+class SemuPlayersPage {
+    class string fileName() { return "semu-render-players.txt"; }
+
+    class int rowCount(SemuPlayerSet set) { return set.count + 2; }  // the players, RESTART GAME, BACK
+
+    class Vector<string> rows(SemuPlayerSet set) {
+        Vector<string> result = [];
+        for (int player0 = 0; player0 < set.count; player0++) { result.push(set.row(player0)); }
+        result.push("RESTART GAME");
+        result.push("BACK");
+        return result;
+    }
+
+    class bool write(SemuLaunchPlan launch) {  // before the record that makes the renderer read it
+        if (launch.stateDir.isEmpty()) { return false; }
+        return SemuPaths.writeOwned(launch.stateDir, PathTools.join(launch.stateDir, SemuPlayersPage.fileName()), SemuPlayersPage.rows(launch.players).join("\n") + "\n");
+    }
+
+    class bool open(SemuLaunchPlan launch) {  // the menu is open: show the page, or say the game takes one player
+        SemuPlayerSet set = launch.players;
+        if (!set.playersAvailable()) {
+            SemuActionJournal.appendWith(launch, SemuActions.menuPage(), -1, 0);
+            return false;
+        }
+        set.pageOpen = true;
+        SemuSupervisorRuntime.menu_selected = 0;
+        SemuPlayersPage.write(launch);
+        SemuActionJournal.appendWith(launch, SemuActions.menuPage(), 1, 0);
+        return true;
+    }
+
+    class void back(SemuLaunchPlan launch) {  // to the menu, on its PLAYERS row
+        launch.players.pageOpen = false;
+        int row = launch.menuActions.indexOf("ui.players");
+        SemuSupervisorRuntime.menu_selected = row < 0 ? 0 : row;
+        SemuActionJournal.appendWith(launch, SemuActions.menuPage(), 0, 0);
+    }
+
+    class int nextPad(SemuPlayerSet set, int player0) {  // the next pad no other player holds, then none (never for player 1), wrapping
+        Vector<int> choices = [];
+        int current = set.pads.get(player0);
+        for (int pad = current + 1; pad < set.padCount; pad++) { choices.push(pad); }
+        if (player0 > 0 && current >= 0) { choices.push(-1); }
+        for (int pad = 0; pad < set.padCount && pad <= current; pad++) { choices.push(pad); }
+        for choice in choices {
+            bool taken = false;
+            for (int other = 0; other < set.count; other++) { if (other != player0 && choice >= 0 && set.pads.get(other) == choice) { taken = true; } }
+            if (!taken) { return choice; }
+        }
+        return current;
+    }
+
+    class void assign(SemuLaunchPlan launch, int player0) {  // confirm on a player row
+        SemuPlayerSet set = launch.players;
+        int pad = SemuPlayersPage.nextPad(set, player0);
+        if (set.padCount < 1 || pad == set.pads.get(player0)) {  // no roster, or nowhere else to go
+            SemuActionJournal.appendWith(launch, SemuActions.playerAssign(), -1, player0);
+            return;
+        }
+        set.pads.set(player0, pad);
+        if (!launch.semuHome.isEmpty() && !launch.system.isEmpty()) {
+            SemuSettingsStore.putPath(launch.semuHome, ["input", "systems", launch.system, "players", Strings.fromInt(player0 + 1), "pad"], JSONValue.makeInt(pad));
+        }
+        SemuPlayersPage.write(launch);
+        SemuActionJournal.appendWith(launch, SemuActions.playerAssign(), pad, player0);
+    }
+
+    class void confirm(SemuLaunchPlan launch, long long now) {
+        SemuPlayerSet set = launch.players;
+        int row = SemuSupervisorRuntime.menu_selected;
+        if (row < set.count) {
+            SemuPlayersPage.assign(launch, row);
+        } else if (row == set.count && set.changed()) {
+            SemuActionJournal.appendWith(launch, SemuActions.menuPage(), 1, 1);
+            SemuRelaunch.request();
+        } else if (row == set.count) {
+            SemuActionJournal.appendWith(launch, SemuActions.menuPage(), 1, 2);
+        } else {
+            SemuPlayersPage.back(launch);
+        }
+    }
+
+    class void step(SemuLaunchPlan launch, int delta, long long now) {  // left and right step the selected player's layout
+        int row = SemuSupervisorRuntime.menu_selected;
+        if (row >= launch.players.count) { return; }
+        SemuControllerLayouts.step(launch, row, delta, now);
+        SemuPlayersPage.write(launch);
+        SemuActionJournal.appendWith(launch, SemuActions.menuPage(), 1, 3);
+    }
+}

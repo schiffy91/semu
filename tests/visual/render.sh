@@ -6,6 +6,8 @@
 # -before, -toast (two frames after the supervisor's selects) and -after (eight more).
 # Each cell is `semu render-env --variants-file` against the bundle's data (build/asset-root: plates, presets,
 # layers) fed to build/render-host, its state in a fresh scratch directory. RENDER_HOST_ASPECT=1.7778 for 16:9 titles.
+# RENDER_HOST_PLAYERS="P1  PAD 1  NUNCHUK|P2  NO PAD|RESTART GAME|BACK" writes the players page's rows the
+# supervisor would (journal 86,1 shows them).
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 out="$1"; size="$2"; shift 2
@@ -34,6 +36,7 @@ for cell in "$@"; do
   settings="{\"visual\":{\"systems\":{\"$system\":{${bezel:+\"bezel_variant\":\"$bezel\"}${bezel:+${shader:+,}}${shader:+\"shader_variant\":\"$shader\"}}}}}"
   name="$system${bezel:+-$bezel}${shader:+-$shader}"
   state="$(mktemp -d "$scratch/state.XXXXXX")"
+  [ -z "${RENDER_HOST_PLAYERS:-}" ] || printf "%s\n" "${RENDER_HOST_PLAYERS//|/$'\n'}" > "$state/semu-render-players.txt"
   pictures=("$name")
   placement=""; [ "$switching" != "${switching#*@}" ] && { placement="${switching#*@}"; switching="${switching%%@*}"; [ -n "$switching" ] || switching=":"; }
   if [ -n "$switching" ]; then IFS=: read -r afterBezel afterShader <<<"$switching"; name="$name-to-${afterBezel:-same}-${afterShader:-same}${placement:+-at-$placement}"; pictures=("$name-before" "$name-toast" "$name-after"); fi

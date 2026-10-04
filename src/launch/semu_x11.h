@@ -9,6 +9,9 @@
 #ifndef SEMU_XCB_INPUT_LIBRARY
 #define SEMU_XCB_INPUT_LIBRARY "libxcb-xinput.so.0"  // from the same libxcb package as above
 #endif
+#ifndef SEMU_XCB_TEST_LIBRARY
+#define SEMU_XCB_TEST_LIBRARY "libxcb-xtest.so.0"  // XTest, to type an emulator's own hotkey on its display
+#endif
 
 #define SEMU_X11_GENERIC_EVENT 35  // XCB_GE_GENERIC: an extension event of any length
 #define SEMU_X11_SEND_EVENT_BIT 0x80  // set on events that another client sent
@@ -18,6 +21,8 @@
 #define SEMU_X11_ALL_MASTER_DEVICES 1  // XIAllMasterDevices: one event per key, never per slave
 #define SEMU_X11_KEY_REPEAT_FLAG (1u << 16)  // XIKeyRepeat, in case a server repeats raw keys
 #define SEMU_X11_KEYCODE_OFFSET 8  // an X keycode is the evdev code plus eight
+#define SEMU_X11_KEY_PRESS 2  // XCB_KEY_PRESS, the type xcb_test_fake_input takes
+#define SEMU_X11_KEY_RELEASE 3  // XCB_KEY_RELEASE
 #define SEMU_X11_EVENT_SIZE 32  // every event's fixed part; generic events add words
 #define SEMU_X11_BUFFER 512  // bytes a wire key source holds between reads
 

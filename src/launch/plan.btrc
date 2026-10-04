@@ -1,5 +1,6 @@
 import Library.FileSystem;
 import Library.JSON;
+import Library.Platform;
 import Library.Process;
 import Library.Strings;
 import Library.Vector;
@@ -12,6 +13,8 @@ import ../emit/rendering.btrc;
 import ../emit/render_variants.btrc;
 import ../mods/install.btrc;
 import ../mods/report.btrc;
+import ./pad_roster.btrc;
+import ./player_set.btrc;
 import ./playlist.btrc;
 import ./seeds.btrc;
 
@@ -47,6 +50,7 @@ class SemuLaunchPlan {
     public bool shadersOn;
     public SemuRenderVariantSet variants;  // the bezel and shader choices the menu and radial cycle
     public Vector<string> mods;  // each mod entry and what the launch did with it, for --print-plan
+    public SemuPlayerSet players;  // who holds which pad and layout; the menu's CONTROLLER and PLAYERS act on it
 
     public SemuLaunchPlan() {
         self.argv = [];
@@ -80,6 +84,7 @@ class SemuLaunchPlan {
         self.shadersOn = true;
         self.variants = SemuRenderVariantSet();
         self.mods = [];
+        self.players = SemuPlayerSet();
     }
 
     public bool ok() { return self.error.isEmpty() && !self.argv.isEmpty(); }
@@ -99,6 +104,9 @@ class SemuLaunchPlan {
         result.set("playlist", JSONValue.makeString(self.playlist));
         result.set("notice", JSONValue.makeString(self.notice));
         result.set("mods", SemuJson.array(self.mods));
+        Vector<string> players = [];
+        for (int player0 = 0; player0 < self.players.count && player0 < self.players.pads.size(); player0++) { players.push(self.players.row(player0)); }
+        result.set("players", SemuJson.array(players));  // the players page's rows as dealt at launch
         result.set("quit_chord_window_ms", JSONValue.makeInt(self.chordWindowMs));
         JSONValue quitButtons = JSONValue.makeArray();
         for button in self.quitButtons { quitButtons.push(JSONValue.makeString(button)); }
@@ -254,6 +262,8 @@ class SemuLauncher {
         if (plan.input == null) { return; }
         JSONValue definition = plan.input.definition;
         Vector<string> shown = launch.variants.shown();  // a FIT or ASPECT row only where that choice offers two or more
+        launch.players.show(shown);  // CONTROLLER and PLAYERS where they apply
+        for entry in launch.players.environment() { launch.environment.push(entry); }
         launch.menuLabels = plan.input.menuItemsShown("label", shown);  // the renderer draws this list, the supervisor mirrors it
         launch.menuActions = plan.input.menuItemsShown("action", shown);
         bool pauses = SemuJson.textAt(emulator.definition, "menu.pause").equals("emulator");  // pausing one that stops presenting would hide the menu
@@ -340,6 +350,7 @@ class SemuLauncher {
             }
         }
         for name in ["saves", "states", "screenshots"] { SemuPaths.prepareDirectory(PathTools.join(plan.path("content_root"), name)); }
+        if (plan.pads == null && plan.platform.equals("linux") && !Environment.get("SEMU_PAD_ROSTER", "").equals("off") && plan.input != null) { plan.pads = SemuPadRoster.scan(SemuJson.get(plan.input.definition, "players")); }  // the pads present now, dealt to the players
         SemuModInstallReport mods = SemuModInstaller.install(plan, emulator, system);  // library mods linked before the profiles that switch them on
         launch.mods = mods.lines;
         if (!mods.notice.isEmpty()) { launch.notice = launch.notice.isEmpty() ? mods.notice : launch.notice + "; " + mods.notice; }
@@ -348,6 +359,7 @@ class SemuLauncher {
             launch.error = "profile generation failed: " + diagnostics.render();
             return launch;
         }
+        launch.players = SemuPlayerSets.from(plan, system, emulator);  // the same rows the profiles were rendered from
         for directory in SemuJson.strings(SemuJson.get(platform, "state.create_dirs")) {  // emulator-written dirs the profile points at
             string resolved = plan.tokens.resolve(directory);
             if (SemuPaths.inside(stateRoot, resolved)) { SemuPaths.prepareDirectory(resolved); }

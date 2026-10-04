@@ -1007,5 +1007,9 @@
   "menu": {
     "pause": "emulator",
     "doc": "RetroArch keeps presenting while paused: the Semu menu over a paused Game Boy was captured headlessly (PLAN M8, tests/visual/menu-e2e.sh)."
+  },
+  "players": {
+    "max": 8,
+    "doc": "RetroArch ports; each system says how many it has (players.max)."
   }
 }

@@ -11,11 +11,7 @@
       "state.prev",
       "state.next",
       "state.load",
-      "state.save",
-      "wii.controller.wiimote",
-      "wii.controller.nunchuk",
-      "wii.controller.classic",
-      "wii.controller.gamecube"
+      "state.save"
     ]
   },
   "content": {
@@ -232,5 +228,24 @@
   "menu": {
     "pause": "none",
     "doc": "Seen 2026-10-03 in the podman VM (tests/integration/menu-pause.sh with openbox, Animal Crossing through libsemupreload on llvmpipe): Ctrl+P (Toggle Pause) froze the title screen, and a menu record written while paused stayed invisible until Ctrl+P resumed it, so a paused Dolphin presents nothing. The Semu menu therefore opens over the running game, and on Linux it holds the pad while it is open (EVIOCGRAB once every pad is at rest, released after the closing press), so the game sees none of the menu's input; taps and Steam's radial keys still reach it. Without a window manager Dolphin took no hotkey at all (HotkeysRequireFocus), which gamescope never causes. The Wii Remote and its extensions read that same SDL pad (profile.json doc.wiimote), so the hold covers Wii games too; only the Deck's motion sensors, read raw through hidraw, still reach the game under the menu."
+  },
+  "players": {
+    "max": 4,
+    "doc": "Four Wii Remotes and four GameCube pads (Dolphin.ini SIDevice0-3, WiimoteSource0-3); profile.json renders one row per player."
+  },
+  "controllers": {
+    "switch": "profile_cycle",
+    "directory": "${state_root}/dolphin-user/Config/Profiles/Wiimote",
+    "active": "Semu.ini",
+    "store": "${state_root}/dolphin-user/Config/Semu Layouts",
+    "retired_directory": "${state_root}/dolphin-user/Config/Semu Retired Profiles",
+    "retired": [
+      "Semu Wiimote.ini",
+      "Semu Nunchuk.ini",
+      "Semu Classic.ini"
+    ],
+    "press_ms": 40,
+    "gap_ms": 40,
+    "doc": "A live layout switch copies the player's stored profile (store, rendered at launch per player and layout) over the one file Semu keeps in Dolphin's Wiimote profile folder (active), then types that player's Next Profile chord (profile.json layout_hotkeys). Dolphin lists that folder recursively and sorted at every press and keeps one index for all remotes (InputProfile.cpp:56-71), so with Semu's file alone in it every switch is one press that lands on it whatever the index was: nothing to track, and a lost press changes nothing (press again). Other files there (the owner's own profiles) are counted and the index tracked from the launch, where Dolphin starts at 0. The names in retired, the files Semu's older releases generated there, are moved once to retired_directory (never over a file, never deleted). Dolphin polls hotkeys every 5 ms and needs a release between presses (HotkeyScheduler.cpp:149-156), so each press is held press_ms and followed by gap_ms, at least 30 each (the checker). The keys go to the game's X display through XTest when the supervisor reads keys there (Game Mode's Xwayland), else through Semu's uinput keyboard."
   }
 }

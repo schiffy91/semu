@@ -43,6 +43,7 @@ class SemuPlan {
     public SemuInput input;
     public Vector<string> systems;
     public Vector<string> emulators;
+    public JSONValue pads;  // the pads a launch found, in slot order (SemuPadRoster); null when none was taken
 
     public SemuPlan(SemuTarget target, string configRoot) {
         self.target = target;
@@ -56,6 +57,7 @@ class SemuPlan {
         self.input = null;
         self.systems = [];
         self.emulators = [];
+        self.pads = null;
     }
 
     public string path(string name) { return self.tokens.get(name); }

@@ -1,0 +1,173 @@
+// The pads a launch deals to players (plan.pads): the evdev gamepads present that SDL is not told
+// to ignore, Steam's virtual pads first in slot order and named from Steam's slot file as SDL names
+// them (SDL_steam_virtual_gamepad.c: "[slot N]" sections, "name=" lines; the slot is the N of the
+// pad's evdev name), then any other pad by event node under its evdev name. Each pad carries what
+// emulators match a pad by: SDL 2.26's GUID (bus, CRC-16 of the evdev name, vendor, product,
+// version, each a little-endian word), how many pads before it share its name (Dolphin's
+// SDL/<n>/<name>) or its GUID (Cemu's <n>_<guid>, Ryujinx's <n>-<guid>), and Ryujinx's spelling of
+// the GUID with the CRC zeroed. Linux only (sysfs and /dev/input); the parts that decide take
+// plain values, so the contracts drive them.
+
+#include <fcntl.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include "semu_evdev.h"
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Platform;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ./input_filters.btrc;
+
+class SemuPadGuid {  // SDL's joystick GUID and the spellings emulators print it in
+    class int crcByte(int value) {  // SDL_crc16's table entry, computed
+        int crc = 0;
+        int remaining = value & 255;
+        for (int bit = 0; bit < 8; bit++) {
+            crc = (((crc ^ remaining) & 1) != 0 ? 40961 : 0) ^ (crc >> 1);  // 0xA001
+            remaining = remaining >> 1;
+        }
+        return crc;
+    }
+
+    class int crc16(string text) {  // SDL_crc16(0, name, length)
+        int crc = 0;
+        for (int index = 0; index < text.len(); index++) { crc = SemuPadGuid.crcByte((crc ^ (int)text.charAt(index)) & 255) ^ (crc >> 8); }
+        return crc & 65535;
+    }
+
+    class string hexByte(int value) {
+        string digits = "0123456789abcdef";
+        return digits.substring((value >> 4) & 15, 1) + digits.substring(value & 15, 1);
+    }
+
+    class string word(int value) { return SemuPadGuid.hexByte(value & 255) + SemuPadGuid.hexByte((value >> 8) & 255); }  // little-endian, as the GUID's bytes
+
+    class string sdl(int bus, int vendor, int product, int version, string name) {  // SDL_CreateJoystickGUID with a vendor and product, no driver signature
+        return SemuPadGuid.word(bus) + SemuPadGuid.word(SemuPadGuid.crc16(name)) + SemuPadGuid.word(vendor) + "0000" + SemuPadGuid.word(product) + "0000" + SemuPadGuid.word(version) + "0000";
+    }
+
+    class string ryujinx(int bus, int vendor, int product, int version) {  // "0000" + .NET's Guid.ToString() of those bytes from the fifth digit on (SDL2GamepadDriver)
+        string busWord = SemuPadGuid.hexByte((bus >> 8) & 255) + SemuPadGuid.hexByte(bus & 255);
+        string vendorWord = SemuPadGuid.hexByte((vendor >> 8) & 255) + SemuPadGuid.hexByte(vendor & 255);
+        return "0000" + busWord + "-" + vendorWord + "-0000-" + SemuPadGuid.word(product) + "-0000" + SemuPadGuid.word(version) + "0000";
+    }
+}
+
+class SemuPadRoster {
+    class int hex(string text) {  // a sysfs id file: "28de"
+        int value = 0;
+        string digits = "0123456789abcdef";
+        string lower = text.trim().toLower();
+        for (int index = 0; index < lower.len(); index++) {
+            int digit = digits.indexOf(lower.substring(index, 1));
+            if (digit < 0) { return value; }
+            value = value * 16 + digit;
+        }
+        return value;
+    }
+
+    class Vector<string> slotNames(string text) {  // the slot file's names by slot, "" where a slot names none
+        Vector<string> names = [];
+        int slot = -1;
+        for raw in Strings.split(text, "\n") {
+            string line = raw.trim();
+            if (line.startsWith("[slot ") && line.endsWith("]")) {
+                slot = Strings.toInt(line.substring(6, line.len() - 7).trim());
+                while (slot >= 0 && names.size() <= slot) { names.push(""); }
+            } else if (slot >= 0 && line.startsWith("name=")) {
+                names.set(slot, line.substring(5, line.len() - 5));
+            }
+        }
+        return names;
+    }
+
+    class int steamSlot(string evdevName, string prefix) {  // the N of "Microsoft X-Box 360 pad N", -1 for any other pad
+        if (prefix.isEmpty() || !evdevName.startsWith(prefix) || evdevName.len() == prefix.len()) { return -1; }
+        string rest = evdevName.substring(prefix.len(), evdevName.len() - prefix.len());
+        return Strings.isDigitStr(rest) ? Strings.toInt(rest) : -1;
+    }
+
+    class JSONValue pad(int node, string evdevName, int bus, int vendor, int product, int version, int slot, Vector<string> names) {  // one roster entry before its place is known
+        JSONValue entry = JSONValue.makeObject();
+        string name = slot >= 0 && slot < names.size() && !names.get(slot).isEmpty() ? names.get(slot) : evdevName;
+        entry.set("node", JSONValue.makeInt(node));
+        entry.set("slot", JSONValue.makeInt(slot));
+        entry.set("evdev_name", JSONValue.makeString(evdevName));
+        entry.set("name", JSONValue.makeString(name));
+        entry.set("guid", JSONValue.makeString(SemuPadGuid.sdl(bus, vendor, product, version, evdevName)));
+        entry.set("ryujinx_guid", JSONValue.makeString(SemuPadGuid.ryujinx(bus, vendor, product, version)));
+        return entry;
+    }
+
+    class int rank(JSONValue entry) {  // Steam's slots first, then event nodes
+        int slot = SemuJson.intAt(entry, "slot", -1);
+        return slot >= 0 ? slot : 100000 + SemuJson.intAt(entry, "node", 0);
+    }
+
+    class JSONValue order(Vector<JSONValue> found) {  // sorted, then numbered: index, same_name_index, same_guid_index, same_ryujinx_index
+        JSONValue result = JSONValue.makeArray();
+        Vector<JSONValue> remaining = found;
+        while (!remaining.isEmpty()) {
+            int best = 0;
+            for (int index = 1; index < remaining.size(); index++) { if (SemuPadRoster.rank(remaining.get(index)) < SemuPadRoster.rank(remaining.get(best))) { best = index; } }
+            JSONValue entry = remaining.get(best);
+            int sameName = 0;
+            int sameGuid = 0;
+            int sameRyujinx = 0;
+            for (int earlier = 0; earlier < result.size(); earlier++) {
+                if (SemuJson.textAt(result.at(earlier), "name").equals(SemuJson.textAt(entry, "name"))) { sameName++; }
+                if (SemuJson.textAt(result.at(earlier), "guid").equals(SemuJson.textAt(entry, "guid"))) { sameGuid++; }
+                if (SemuJson.textAt(result.at(earlier), "ryujinx_guid").equals(SemuJson.textAt(entry, "ryujinx_guid"))) { sameRyujinx++; }
+            }
+            entry.set("index", JSONValue.makeInt(result.size()));
+            entry.set("same_name_index", JSONValue.makeInt(sameName));
+            entry.set("same_guid_index", JSONValue.makeInt(sameGuid));
+            entry.set("same_ryujinx_index", JSONValue.makeInt(sameRyujinx));  // Ryujinx counts the GUID without its CRC
+            result.push(entry);
+            remaining.remove(best);
+        }
+        return result;
+    }
+
+    class bool gamepad(string device) {  // a south button and a start button, as the supervisor classifies pads
+        int flags = (int)O_RDONLY | (int)O_NONBLOCK | (int)O_CLOEXEC;
+        int handle = open(device, flags);
+        if (handle < 0) { return false; }
+        unsigned long keyBits[16];
+        memset(keyBits, 0, sizeof(keyBits));
+        unsigned long keyRequest = (unsigned long)EVIOCGBIT(EV_KEY, sizeof(keyBits));
+        bool read = ioctl(handle, keyRequest, keyBits) >= 0;
+        close(handle);
+        int south = BTN_SOUTH;
+        int start = BTN_START;
+        return read && ((keyBits[south / 64] >> (south % 64)) & 1UL) != 0UL && ((keyBits[start / 64] >> (start % 64)) & 1UL) != 0UL;
+    }
+
+    class JSONValue scan(JSONValue players) {  // the pads present now; null without /sys/class/input (macOS), so the launch keeps its defaults
+        string classes = "/sys/class/input";
+        if (!FileSystem.isDir(classes)) { return null; }
+        string slotFile = Environment.get(SemuJson.textAt(players, "steam_slots_variable"), "");
+        Vector<string> names = [];
+        if (!slotFile.isEmpty() && FileSystem.isFile(slotFile)) { names = SemuPadRoster.slotNames(FileSystem.readText(slotFile)); }
+        string ignore = Environment.get("SDL_GAMECONTROLLER_IGNORE_DEVICES", "");
+        string except = Environment.get("SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT", "");
+        Vector<JSONValue> found = [];
+        for node in FileSystem.listDir(classes) {
+            if (!node.startsWith("event") || !Strings.isDigitStr(node.substring(5, node.len() - 5))) { continue; }
+            string device = PathTools.join(PathTools.join(classes, node), "device");
+            string evdevName = FileSystem.isFile(PathTools.join(device, "name")) ? FileSystem.readText(PathTools.join(device, "name")).trim() : "";
+            int vendor = SemuPadRoster.hex(FileSystem.isFile(PathTools.join(device, "id/vendor")) ? FileSystem.readText(PathTools.join(device, "id/vendor")) : "");
+            int product = SemuPadRoster.hex(FileSystem.isFile(PathTools.join(device, "id/product")) ? FileSystem.readText(PathTools.join(device, "id/product")) : "");
+            if (evdevName.equals("Semu Virtual Keyboard") || SemuSdlIgnore.ignored(vendor, product, ignore, except) || !SemuPadRoster.gamepad("/dev/input/" + node)) { continue; }
+            int bus = SemuPadRoster.hex(FileSystem.readText(PathTools.join(device, "id/bustype")));
+            int version = SemuPadRoster.hex(FileSystem.readText(PathTools.join(device, "id/version")));
+            found.push(SemuPadRoster.pad(Strings.toInt(node.substring(5, node.len() - 5)), evdevName, bus, vendor, product, version, SemuPadRoster.steamSlot(evdevName, SemuJson.textAt(players, "steam_pad_prefix")), names));
+        }
+        return SemuPadRoster.order(found);
+    }
+}

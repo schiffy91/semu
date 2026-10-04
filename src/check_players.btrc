@@ -1,0 +1,49 @@
+// Players and controller layouts must be playable as declared: every layout a system offers has a
+// row in each bound emulator that switches layouts, a live switch has a profile file and a key for
+// every player, and its presses are slow enough for the emulator to see each one (at least 30 ms
+// held and 30 ms apart: Dolphin polls every 5 ms and needs a release between presses).
+
+import Library.JSON;
+import Library.Vector;
+import ./lib/json.btrc;
+import ./lib/paths.btrc;
+import ./model.btrc;
+import ./resolve.btrc;
+import ./emit/players.btrc;
+
+class SemuPlayersChecker {
+    class void check(SemuModel model, SemuPlan plan, SemuSystem system, SemuDiagnostics diagnostics) {
+        JSONValue declared = SemuJson.get(system.definition, "players.max");
+        if (declared != null && !declared.isNull() && (!declared.isInt() || declared.asInt() < 1)) { diagnostics.add(system.file, "players.max", "must be a whole number of at least 1"); }
+        JSONValue layouts = SemuPlayers.layouts(system);
+        if (layouts.size() == 1) { diagnostics.add(system.file, "controllers.layouts", "declare two or more layouts, or none"); }
+        if (layouts.size() > 0 && SemuPlayers.layoutIndex(system, SemuJson.textAt(system.definition, "controllers.default")) < 0) { diagnostics.add(system.file, "controllers.default", "names no declared layout"); }
+        for binding in system.bindingsFor(plan.platform) {
+            SemuEmulator emulator = model.emulator(binding.emulator);
+            if (emulator == null || !SemuJson.get(emulator.profile, "controller_layouts").isArray()) { continue; }
+            for (int index = 0; index < layouts.size(); index++) {
+                string layout = SemuJson.textAt(layouts.at(index), "id");
+                JSONValue row = SemuPlayers.layoutRow(emulator, layout);
+                string apply = row == null ? "" : SemuJson.textAt(row, "apply");
+                if (!apply.equals("live") && !apply.equals("relaunch")) { diagnostics.add(emulator.profileFile, "controller_layouts", f"{system.id} layout {layout} has no row applied live or by relaunch"); }
+            }
+            SemuPlayersChecker.checkSwitch(emulator, SemuPlayers.count(system, emulator), diagnostics);
+        }
+    }
+
+    class void checkSwitch(SemuEmulator emulator, int players, SemuDiagnostics diagnostics) {  // the live switch's facts
+        JSONValue controllers = SemuJson.get(emulator.definition, "controllers");
+        if (controllers == null || !controllers.isObject()) { return; }
+        string file = PathTools.join(emulator.directory, "emulator.json");
+        if (!SemuJson.textAt(controllers, "switch").equals("profile_cycle")) { diagnostics.add(file, "controllers.switch", "the only switch is profile_cycle"); }
+        for key in ["directory", "store", "retired_directory"] {
+            if (!SemuJson.textAt(controllers, key).startsWith("${state_root}/")) { diagnostics.add(file, "controllers." + key, "must lie under ${state_root}/"); }
+        }
+        if (SemuJson.textAt(controllers, "active").isEmpty() || SemuJson.textAt(controllers, "active").contains("/")) { diagnostics.add(file, "controllers.active", "must be one file name"); }
+        for key in ["press_ms", "gap_ms"] {
+            if (SemuJson.intAt(controllers, key, 0) < 30) { diagnostics.add(file, "controllers." + key, "must be at least 30: the emulator would miss presses"); }
+        }
+        JSONValue hotkeys = SemuJson.get(emulator.profile, "layout_hotkeys");
+        if (!hotkeys.isArray() || hotkeys.size() < players) { diagnostics.add(emulator.profileFile, "layout_hotkeys", f"needs a key for each of the {players} players"); }
+    }
+}

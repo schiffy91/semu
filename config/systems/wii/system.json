@@ -32,10 +32,31 @@
       ]
     }
   ],
-  "controller_mode": {
-    "emulator": "dolphin",
-    "setting": "input.systems.wii.controller_mode",
-    "label": "WII CONTROLLER"
+  "players": {
+    "max": 4,
+    "doc": "Four Wii Remotes."
+  },
+  "controllers": {
+    "default": "nunchuk",
+    "layouts": [
+      {
+        "id": "wiimote",
+        "label": "WII REMOTE"
+      },
+      {
+        "id": "nunchuk",
+        "label": "NUNCHUK"
+      },
+      {
+        "id": "classic",
+        "label": "CLASSIC"
+      },
+      {
+        "id": "gamecube",
+        "label": "GAMECUBE"
+      }
+    ],
+    "doc": "What each player holds, chosen per player from the radial (Controller Layout cycles player 1, the held Wii layer picks one) or the Semu menu (CONTROLLER, and left or right on a PLAYERS row), saved as input.systems.wii.players.<n>.layout. Each bound emulator says how a layout applies (Dolphin profile.json controller_layouts): live, or by restarting the game after a confirming press."
   },
   "display": {
     "scaling": {

@@ -38,6 +38,10 @@
       ]
     }
   ],
+  "players": {
+    "max": 2,
+    "doc": "Two controller ports (a multitap is not modelled)."
+  },
   "display": {
     "scaling": {
       "mode": "integer_preferred",

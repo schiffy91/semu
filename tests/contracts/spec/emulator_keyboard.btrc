@@ -133,12 +133,14 @@ class EmulatorKeyboardDolphin {  // every control resolves on its device; a keyb
         Vector<string> finals = EmulatorKeyboardTools.finals(fixture, "dolphin", "keymap_hotkeys");
         contract.expect(finals.contains("Return") && finals.contains("B") && finals.contains("BackSpace") && finals.contains("Up"), target + ": dolphin spells the Steam chords' keys as XInput2 does (Return, B, BackSpace, Up)");
         string config = "dolphin-user/Config/";
-        for relative in ["WiimoteNew.ini", "GCPadNew.ini", "Profiles/Wiimote/Semu Wiimote.ini", "Profiles/Wiimote/Semu Nunchuk.ini", "Profiles/Wiimote/Semu Classic.ini", "Profiles/GCPad/Semu GameCube.ini"] {
+        fixture.plan.tokens.put("system", "wii");  // a Wii launch: player 1's stored layouts
+        for relative in ["WiimoteNew.ini", "GCPadNew.ini", "Semu Layouts/P1 Wiimote.ini", "Semu Layouts/P1 Nunchuk.ini", "Semu Layouts/P1 Classic.ini"] {
             contract.expect(!fixture.profile("dolphin", config + relative).isEmpty(), target + " dolphin writes " + relative);
             EmulatorKeyboardDolphin.file(contract, fixture, target, config + relative, true, finals);
         }
         EmulatorKeyboardDolphin.file(contract, fixture, target, config + "Hotkeys.ini", false, finals);
         contract.contains(fixture.profile("dolphin", config + "Hotkeys.ini"), "General/Toggle Fullscreen = @(Ctrl+Return)", target + " dolphin's fullscreen hotkey names the main Enter key Return");
+        fixture.plan.tokens.remove("system");
     }
 }
 

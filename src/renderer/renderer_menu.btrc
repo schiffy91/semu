@@ -10,6 +10,7 @@ import ./renderer_abi.btrc;
 import ./renderer_config.btrc;
 import ./renderer_variants.btrc;
 import ./action_abi.btrc;
+import ./renderer_players.btrc;
 int SEMU_RENDER_MENU_WIDTH = 384;
 int SEMU_RENDER_MENU_HEIGHT = 640;  // the texture: header, up to twelve rows, slot line; RendererMenuRaster.height draws what a menu needs
 int SEMU_RENDER_MENU_ROWS = 12;
@@ -54,6 +55,10 @@ struct RendererPostUiState {
     int shader_shown;
     int placement_shown;
     int output_shown;  // the running output: a new one takes effect when the game restarts
+    int page;  // 1 while the players page replaces the menu's rows
+    int layout_shown;  // player 1's layout, the CONTROLLER row's value; -1 without layouts
+    int layout_count;
+    char layouts[8 * 24];  // SEMU_MENU_LAYOUTS: each layout's label
     char toast[48];
     long long toast_until_ms;  // 0 with no toast
     int toast_pending;  // a LOADING toast waits for its shader chain to build
@@ -197,6 +202,7 @@ class RendererMenuModel {
         RendererMenuModel.split(getenv("SEMU_MENU_ACTIONS"), state->actions, 32, SEMU_RENDER_MENU_ROWS);
         char* toasts = getenv("SEMU_MENU_TOASTS");
         snprintf(state->toasts, sizeof(state->toasts), "%s", toasts == null ? "" : toasts);
+        state->layout_count = RendererMenuModel.split(getenv("SEMU_MENU_LAYOUTS"), state->layouts, 24, 8);
     }
 
     class void loadCatalog(struct RendererPostUiState* state) {  // this launch's variants file, or none: then selects change nothing
@@ -229,6 +235,9 @@ class RendererMenuModel {
         state->toast[0] = 0;
         state->toast_until_ms = 0LL;
         RendererMenuModel.loadItems(state);
+        state->page = 0;
+        char* layout = getenv("SEMU_MENU_LAYOUT");
+        state->layout_shown = layout == null || layout[0] == 0 ? -1 : atoi(layout);
         RendererMenuModel.loadCatalog(state);
     }
 
@@ -284,6 +293,65 @@ class RendererMenuModel {
         else { RendererMenuModel.notice(state, record->action, "confirm", "", now); }
     }
 
+    class int rowOf(struct RendererPostUiState* state, char* action) {  // the menu row running ACTION, else 0
+        for (int item = 0; item < state->item_count; item++) { if (strcmp(state->actions + item * 32, action) == 0) { return item; } }
+        return 0;
+    }
+
+    class void mainPage(struct RendererPostUiState* state) {  // the menu's own rows again
+        state->page = 0;
+        RendererMenuModel.loadItems(state);
+    }
+
+    class void playersPage(struct RendererPostUiState* state) {  // the rows the supervisor wrote; the menu's stay when there are none
+        char rows[12 * 24];
+        int count = RendererPlayersPage.load(rows, 24, SEMU_RENDER_MENU_ROWS);
+        if (count < 1) { return; }
+        memcpy(state->labels, rows, sizeof(rows));
+        memset(state->actions, 0, sizeof(state->actions));
+        state->item_count = count;
+        state->page = 1;
+        if (state->selected >= count) { state->selected = 0; }
+    }
+
+    class void page(struct RendererPostUiState* state, struct SemuActionRecord* record, long long now) {  // 86: open, rows rewritten, restarting, nothing changed, back, or one player only
+        bool fresh = RendererToast.fresh(record, now);
+        if (record->slot < 0) {
+            if (fresh) { RendererMenuModel.notice(state, record->action, "unavailable", "", now); }
+        } else if (record->slot == 0) {
+            RendererMenuModel.mainPage(state);
+            state->selected = RendererMenuModel.rowOf(state, "ui.players");
+        } else if (record->reserved == 1) {
+            if (fresh) { RendererMenuModel.notice(state, record->action, "done", "", now); }
+        } else if (record->reserved == 2) {
+            if (fresh) { RendererMenuModel.notice(state, record->action, "unchanged", "", now); }
+        } else if (record->reserved == 3) {
+            if (state->page != 0) { RendererMenuModel.playersPage(state); }
+        } else {
+            state->visible = 1;
+            state->selected = 0;
+            RendererMenuModel.playersPage(state);
+        }
+    }
+
+    class void layout(struct RendererPostUiState* state, struct SemuActionRecord* record, long long now) {  // 83: a player's layout switched, asking for the second press, or restarting
+        bool fresh = RendererToast.fresh(record, now);
+        int player0 = RendererPlayersPage.player(record->reserved);
+        int kind = RendererPlayersPage.kind(record->reserved);
+        if (record->slot < 0) {
+            if (fresh) { RendererMenuModel.notice(state, record->action, "unavailable", "", now); }
+            return;
+        }
+        char* label = record->slot < state->layout_count ? state->layouts + record->slot * 24 : "";
+        char seat[8];
+        RendererPlayersPage.seat(seat, (int)sizeof(seat), player0);
+        if (kind != 1 && player0 == 0) { state->layout_shown = record->slot; }
+        if (!fresh) { return; }
+        if (kind == 0) { RendererToast.show(state, "controller.layout.next", seat, label, now); }
+        if (kind == 1) { RendererToast.show(state, "controller.layout.next:confirm", seat, label, now); }
+        if (kind == 2) { RendererToast.show(state, "controller.layout.next:done", seat, label, now); }
+    }
+
     class void apply(struct RendererPostUiState* state,
                      struct SemuActionRecord* record, long long now) {  // the supervisor executes; the renderer only reflects
         if (state == null || record == null) { return; }
@@ -292,8 +360,10 @@ class RendererMenuModel {
         if (action == SemuActions.menuToggle()) {
             state->visible = state->visible == 0 ? 1 : 0;
             if (state->visible != 0) { state->selected = 0; }
+            if (state->page != 0) { RendererMenuModel.mainPage(state); }  // the menu opens on its own rows next time
         } else if (action == SemuActions.menuBack()) {
             state->visible = 0;
+            if (state->page != 0) { RendererMenuModel.mainPage(state); }
         } else if (action == SemuActions.menuUp() && state->visible != 0) {
             state->selected = (state->selected + count - 1) % count;
         } else if (action == SemuActions.menuDown() && state->visible != 0) {
@@ -318,6 +388,12 @@ class RendererMenuModel {
             RendererMenuModel.select(state, record, now);
         } else if (action == SemuActions.resetNotice()) {
             RendererMenuModel.reset(state, record, now);
+        } else if (action == SemuActions.layoutSelect()) {
+            RendererMenuModel.layout(state, record, now);
+        } else if (action == SemuActions.playerAssign()) {
+            if (state->page != 0) { RendererMenuModel.playersPage(state); }  // the rows name the new pad
+        } else if (action == SemuActions.menuPage()) {
+            RendererMenuModel.page(state, record, now);
         }
     }
 }

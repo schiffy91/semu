@@ -11,7 +11,7 @@ let
   # keeps it in the closure (the same libxcb Mesa already ships). macOS keeps the bare sonames,
   # which do not load there, so the adapter stays idle.
   xcbDefines = lib.optionalString stdenv.hostPlatform.isLinux
-    "-DSEMU_XCB_LIBRARY='\"${libxcb}/lib/libxcb.so.1\"' -DSEMU_XCB_INPUT_LIBRARY='\"${libxcb}/lib/libxcb-xinput.so.0\"'";
+    "-DSEMU_XCB_LIBRARY='\"${libxcb}/lib/libxcb.so.1\"' -DSEMU_XCB_INPUT_LIBRARY='\"${libxcb}/lib/libxcb-xinput.so.0\"' -DSEMU_XCB_TEST_LIBRARY='\"${libxcb}/lib/libxcb-xtest.so.0\"'";
 in
 stdenv.mkDerivation {
   pname = "semu-program";

@@ -26,6 +26,7 @@ pipeline as the Lucide derivatives.
 | `semu-bezel.png` | `picture-in-picture-2` |
 | `semu-classic-controller.png` | Original Semu Classic Controller line drawing |
 | `semu-confirm.png` | `circle-check-big` |
+| `semu-controller.png` | `gamepad-2` |
 | `semu-down.png` | `circle-arrow-down` |
 | `semu-fast-forward.png` | `fast-forward` |
 | `semu-fit.png` | `scaling` |
@@ -36,6 +37,7 @@ pipeline as the Lucide derivatives.
 | `semu-next.png` | `circle-chevron-right` |
 | `semu-open.png` | `folder-open` |
 | `semu-pause.png` | `circle-pause` |
+| `semu-players.png` | `users` |
 | `semu-previous.png` | `circle-chevron-left` |
 | `semu-quit.png` | `power` |
 | `semu-reset.png` | `rotate-ccw` |

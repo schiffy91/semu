@@ -9,6 +9,7 @@ import ../model.btrc;
 import ../resolve.btrc;
 import ./key_collisions.btrc;
 import ../mods/kind.btrc;
+import ./players.btrc;
 
 class SemuChords {
     class Vector<string> known() { return ["Ctrl", "Alt", "Shift", "Meta"]; }
@@ -264,6 +265,7 @@ class SemuProfileContext {
             }
         }
         string chord = self.chord(row);
+        if (chord.isEmpty()) { chord = SemuJson.textAt(row, "native_chord"); }  // a row of the emulator's own keys, e.g. Dolphin's profile cycle
         if (!chord.isEmpty()) { bindings.put("chord", SemuChords.compile(encoding, chord)); }
         return bindings.render(format);
     }
@@ -321,7 +323,38 @@ class SemuProfileContext {
         return result;
     }
 
+    public JSONValue rowSet(string name) {  // the rows a for_each walks: players, or each player with each live layout
+        SemuSystem system = self.model.system(self.plan.tokens.get("system"));
+        if (name.equals("players")) { return SemuPlayers.rows(self.plan, system, self.emulator); }
+        if (name.equals("player_layouts")) { return SemuPlayers.layoutRows(self.plan, system, self.emulator); }
+        self.diagnostics.add(self.emulator.profileFile, "for_each", "unknown rows " + name);
+        return JSONValue.makeArray();
+    }
+
+    public Vector<SemuBindings> each(JSONValue spec, SemuBindings bindings) {  // {"for_each": rows, "when": a row field that must be set}: the bindings once per row
+        Vector<SemuBindings> result = [];
+        JSONValue rows = self.rowSet(SemuJson.textAt(spec, "for_each"));
+        Vector<string> when = Strings.split(SemuJson.textAt(spec, "when"), ",");  // "others,connected": every named field set
+        for (int index = 0; index < rows.size(); index++) {
+            JSONValue row = rows.at(index);
+            bool shown = true;
+            for field in when { if (!field.trim().isEmpty() && SemuJson.textAt(row, field.trim()).isEmpty()) { shown = false; } }
+            if (!shown) { continue; }
+            SemuBindings rowBindings = bindings.copy();
+            for key in row.keys() { rowBindings.put(key, SemuJson.text(row.get(key))); }
+            result.push(rowBindings);
+        }
+        return result;
+    }
+
     public void renderLine(Vector<string> output, JSONValue value, SemuBindings bindings, SemuBindings groups) {
+        if (value.isObject() && value.has("for_each")) {  // the nested lines once per row, with its fields bound
+            JSONValue lines = value.get("lines");
+            for rowBindings in self.each(value, bindings) {
+                for (int index = 0; lines != null && lines.isArray() && index < lines.size(); index++) { self.renderLine(output, lines.at(index), rowBindings, groups); }
+            }
+            return;
+        }
         if (value.isObject() && value.has("keyboard_key")) {  // a game button's keyboard alternate: dropped where a Semu chord ends on its key
             JSONValue guard = SemuJson.get(self.emulator.profile, "compiler.keyboard_guard.platforms");
             bool guarded = SemuJson.strings(guard).contains(self.plan.platform);
@@ -334,7 +367,7 @@ class SemuProfileContext {
         }
         string line = SemuJson.text(value);
         if (line.startsWith("@block:")) {
-            JSONValue block = SemuJson.get(self.emulator.profile, "blocks." + line.substring(7, line.len() - 7));
+            JSONValue block = SemuJson.get(self.emulator.profile, "blocks." + bindings.render(line.substring(7, line.len() - 7)));  // a row may pick its block, e.g. wiimote_${dolphin_aim}_body
             if (block.isArray()) {
                 for (int index = 0; index < block.size(); index++) { self.renderLine(output, block.at(index), bindings, groups); }
             }
@@ -356,7 +389,14 @@ class SemuProfileContext {
         }
         if (value.isArray()) {
             JSONValue result = JSONValue.makeArray();
-            for (int index = 0; index < value.size(); index++) { result.push(self.renderJson(value.at(index), bindings)); }
+            for (int index = 0; index < value.size(); index++) {
+                JSONValue item = value.at(index);
+                if (item.isObject() && item.has("for_each")) {  // one element per row
+                    for rowBindings in self.each(item, bindings) { result.push(self.renderJson(item.get("item"), rowBindings)); }
+                } else {
+                    result.push(self.renderJson(item, bindings));
+                }
+            }
             return result;
         }
         if (value.isString()) {
@@ -418,30 +458,41 @@ class SemuProfiles {
         if (files == null || !files.isArray()) { return result; }
         for (int index = 0; index < files.size(); index++) {
             JSONValue file = files.at(index);
-            string relative = SemuProfiles.relativePath(context, SemuJson.textAt(file, "path"), bindings);
-            if (relative.isEmpty() || relative.contains("${") || relative.startsWith("/") || relative.contains("..")) {
-                diagnostics.add(emulator.profileFile, f"files.{index}.path", "did not resolve to a contained relative path");
+            if (!file.has("for_each")) {
+                SemuProfiles.renderFile(result, context, file, index, bindings, groups);
                 continue;
             }
-            string content = "";
-            if (file.has("json")) {
-                content = context.renderJson(file.get("json"), bindings).stringifyPretty(2) + "\n";
-            } else {
-                Vector<string> lines = [];
-                JSONValue declared = file.get("lines");
-                if (declared != null && declared.isArray()) {
-                    for (int line = 0; line < declared.size(); line++) { context.renderLine(lines, declared.at(line), bindings, groups); }
-                }
-                content = lines.join("\n") + "\n";
-            }
-            content = plan.tokens.resolve(content);
-            if (content.contains("${")) {
-                diagnostics.add(emulator.profileFile, f"files.{index}", "rendered content has an unresolved token");
-                continue;
-            }
-            result.push(SemuProfileFile(relative, content));
+            for rowBindings in context.each(file, bindings) { SemuProfiles.renderFile(result, context, file, index, rowBindings, groups); }  // one file per row, e.g. a profile per player and layout
         }
         return result;
+    }
+
+    class void renderFile(Vector<SemuProfileFile> result, SemuProfileContext context, JSONValue file, int index, SemuBindings bindings, SemuBindings groups) {
+        SemuEmulator emulator = context.emulator;
+        SemuDiagnostics diagnostics = context.diagnostics;
+        SemuPlan plan = context.plan;
+        string relative = SemuProfiles.relativePath(context, SemuJson.textAt(file, "path"), bindings);
+        if (relative.isEmpty() || relative.contains("${") || relative.startsWith("/") || relative.contains("..")) {
+            diagnostics.add(emulator.profileFile, f"files.{index}.path", "did not resolve to a contained relative path");
+            return;
+        }
+        string content = "";
+        if (file.has("json")) {
+            content = context.renderJson(file.get("json"), bindings).stringifyPretty(2) + "\n";
+        } else {
+            Vector<string> lines = [];
+            JSONValue declared = file.get("lines");
+            if (declared != null && declared.isArray()) {
+                for (int line = 0; line < declared.size(); line++) { context.renderLine(lines, declared.at(line), bindings, groups); }
+            }
+            content = lines.join("\n") + "\n";
+        }
+        content = plan.tokens.resolve(content);
+        if (content.contains("${")) {
+            diagnostics.add(emulator.profileFile, f"files.{index}", "rendered content has an unresolved token");
+            return;
+        }
+        result.push(SemuProfileFile(relative, content));
     }
 
     class bool write(string root, Vector<SemuProfileFile> files, SemuDiagnostics diagnostics) {

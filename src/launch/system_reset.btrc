@@ -1,7 +1,9 @@
 // Reset to Default from the radial or the menu: a first press asks for a second within the confirm
 // window; the second removes this system's own choices from semu.json (its bezel, shader, placement,
-// each game's output, its input choices), journals the defaults as absolute selects the renderer
-// applies live, and restarts the game only when the running output was not the default.
+// each game's output, its players' pads and layouts), journals the defaults as absolute selects the
+// renderer applies live, switches the players back to the default layout where the emulator can do
+// that live, and restarts the game only when the output or a layout needs it (pads return at the
+// next launch).
 
 import Library.Vector;
 import ../lib/settings.btrc;
@@ -11,11 +13,13 @@ import ./journal.btrc;
 import ./plan.btrc;
 import ./relaunch.btrc;
 import ./visual_cycle.btrc;
+import ./controller_layouts.btrc;
 
 class SemuSystemReset {
     class bool restarts(SemuLaunchPlan launch) {  // the game draws a non-default output, which only a restart changes
         SemuVariantChoice output = launch.variants.output;
-        return output.available() && output.defaultIndex >= 0 && output.index != output.defaultIndex;
+        bool outputs = output.available() && output.defaultIndex >= 0 && output.index != output.defaultIndex;
+        return outputs || SemuControllerLayouts.resetRestarts(launch.players);  // or a player's layout returns only by restarting (GameCube on Wii)
     }
 
     class void execute(SemuLaunchPlan launch, long long now) {
@@ -35,6 +39,7 @@ class SemuSystemReset {
             SemuVariantChoice choice = launch.variants.choice(kind);
             if (choice.available() && choice.defaultIndex >= 0) { SemuVisualCycle.apply(launch, choice, choice.defaultIndex); }
         }
+        SemuControllerLayouts.reset(launch);  // every player's layout, live where it can be
         SemuActionJournal.appendWith(launch, SemuActions.resetNotice(), 1, 0);
         if (restart) { SemuRelaunch.request(); }
     }

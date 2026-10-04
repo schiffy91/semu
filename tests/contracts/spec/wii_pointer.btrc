@@ -162,16 +162,18 @@ class WiiPointerSpecWiring {
 
 class WiiPointerSpecDolphin {
     class void run(Contract contract, Fixture fixture, string target) {  // Dolphin's own IR defaults, no Auto-Hide, no X arrow
-        Vector<string> files = ["dolphin-user/Config/WiimoteNew.ini", "dolphin-user/Config/Profiles/Wiimote/Semu Wiimote.ini",
-            "dolphin-user/Config/Profiles/Wiimote/Semu Nunchuk.ini", "dolphin-user/Config/Profiles/Wiimote/Semu Classic.ini"];
+        fixture.plan.tokens.put("system", "wii");  // a Wii launch: player 1's stored layout profiles
+        Vector<string> files = ["dolphin-user/Config/WiimoteNew.ini", "dolphin-user/Config/Semu Layouts/P1 Wiimote.ini",
+            "dolphin-user/Config/Semu Layouts/P1 Nunchuk.ini", "dolphin-user/Config/Semu Layouts/P1 Classic.ini"];
         for file in files {
             string text = fixture.profile("dolphin", file);
             contract.contains(text, "IR/Vertical Offset = 10.\nIR/Total Yaw = 25.\nIR/Total Pitch = 20.\nIR/Auto-Hide = False\nIR/Up = `Cursor Y-`", target + " " + file + ": Dolphin's edge-reaching IR, never hidden while still");
             contract.lacks(text, "IR/Auto-Hide = True", target + " " + file + ": no Auto-Hide");
         }
         string main = fixture.profile("dolphin", "dolphin-user/Config/Dolphin.ini");
-        string userInterface = WiiPointerSpecText.between(main, "[Interface]\n", "\n\n");
+        string userInterface = WiiPointerSpecText.between(main + "\n", "[Interface]\n", "\n\n");  // the last section ends the file
         contract.contains(userInterface, "CursorVisibility = 0", target + " Dolphin.ini [Interface]: the X arrow never shows over the game");
+        fixture.plan.tokens.remove("system");
     }
 }
 

@@ -1,11 +1,13 @@
 // A virtual gamepad for headless input tests, over /dev/uinput (Linux).
-// usage: virtual_pad [--steam-virtual-pad] SECONDS_BEFORE_FIRST token...
+// usage: virtual_pad [--steam-virtual-pad | --steam-virtual-pad-slot N] SECONDS_BEFORE_FIRST token...
 //        tokens press:NAME hold:NAME release:NAME sleep:SECONDS
 // By default it is the truthfully named "Semu Test Gamepad". With --steam-virtual-pad it is a
 // replica of the pad Steam gives games in Game Mode, the only one a game sees there: the same
 // name, bus and ids (so the same SDL GUID, SDL mapping and emulator device identities) and the
 // same evdev buttons, sticks, triggers and hat. A Deck test hides Steam's own pad from the game
 // while it runs, so the replica is the first pad, as Steam's is in Game Mode.
+// --steam-virtual-pad-slot N names it as Steam names the pad of slot N, "Microsoft X-Box 360 pad N", so
+// two replicas are two players (the slot file Steam names in SteamVirtualGamepadInfo gives SDL their names).
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -77,10 +79,12 @@ class SteamPadControls {  // Steam's virtual pad as Linux sees it: xpad's button
 class VirtualPad {
     public int device;
     public bool steam;
+    public int slot;
 
-    public VirtualPad(bool steam) {
+    public VirtualPad(bool steam, int slot) {
         self.device = -1;
         self.steam = steam;
+        self.slot = slot;
     }
 
     public void axis(int code, int minimum, int maximum, int flat) {
@@ -122,7 +126,7 @@ class VirtualPad {
             setup.id.vendor = 0x28de;
             setup.id.product = 0x11ff;
             setup.id.version = 0x0001;
-            snprintf(setup.name, (size_t)nameCapacity, "%s", "Microsoft X-Box 360 pad 0");
+            snprintf(setup.name, (size_t)nameCapacity, "Microsoft X-Box 360 pad %d", self.slot);
         } else {
             for code in VirtualPadButtons.all() { ioctl(self.device, setKey, code); }
             setup.id.bustype = BUS_VIRTUAL;
@@ -173,9 +177,15 @@ class VirtualPad {
 int main(int argc, char** argv) {
     int first = 1;
     bool steam = argc > 1 && strcmp(argv[1], "--steam-virtual-pad") == 0;
+    int slot = 0;
     if (steam) { first = 2; }
-    if (argc <= first) { Console.error("usage: virtual_pad [--steam-virtual-pad] SECONDS_BEFORE_FIRST press:NAME|hold:NAME|release:NAME|sleep:SECONDS ..."); return 64; }
-    VirtualPad pad = VirtualPad(steam);
+    if (argc > 2 && strcmp(argv[1], "--steam-virtual-pad-slot") == 0) {
+        steam = true;
+        slot = atoi(argv[2]);
+        first = 3;
+    }
+    if (argc <= first) { Console.error("usage: virtual_pad [--steam-virtual-pad | --steam-virtual-pad-slot N] SECONDS_BEFORE_FIRST press:NAME|hold:NAME|release:NAME|sleep:SECONDS ..."); return 64; }
+    VirtualPad pad = VirtualPad(steam, slot);
     if (!pad.create()) { Console.error("virtual_pad: cannot create a device on /dev/uinput"); return 1; }
     usleep((unsigned int)(atof(argv[first]) * 1000000.0));
     for (int index = first + 1; index < argc; index++) {

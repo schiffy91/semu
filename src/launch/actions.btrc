@@ -17,6 +17,9 @@ import ./process.btrc;
 import ./plan.btrc;
 import ./visual_cycle.btrc;
 import ./system_reset.btrc;
+import ./paced_keys.btrc;
+import ./controller_layouts.btrc;
+import ./players_page.btrc;
 
 class SemuActionRouter {  // where an action goes: the renderer, the emulator, or the process group
     class string retroarchCommand(string action) {  // saves and loads name Semu's slot; RetroArch's counter stays
@@ -35,7 +38,8 @@ class SemuActionRouter {  // where an action goes: the renderer, the emulator, o
     }
 
     class bool semuOwned(string action) {
-        return action.startsWith("ui.menu") || action.equals("app.quit") || action.startsWith("visual.") || action.equals("system.reset");
+        return action.startsWith("ui.menu") || action.equals("app.quit") || action.startsWith("visual.") || action.equals("system.reset")
+            || action.startsWith("controller.") || action.contains(".controller.") || action.equals("ui.players");  // layouts and players: Semu switches them
     }
 
     class string route(string action, bool retroarch, bool fromKeyboard) {  // "semu" | "udp:<COMMAND>" | "inject" | "none"
@@ -59,46 +63,9 @@ class SemuActionRouter {  // where an action goes: the renderer, the emulator, o
 }
 
 class SemuVirtualKeyboard {  // types an action's chord into whatever emulator has focus
-    class bool open() {
-        if (SemuSupervisorRuntime.uinput_descriptor > 0) { return true; }
-        int flags = (int)O_WRONLY | (int)O_NONBLOCK;
-        int handle = open("/dev/uinput", flags);
-        if (handle < 0) { return false; }
-        unsigned long setEvent = (unsigned long)UI_SET_EVBIT;
-        unsigned long setKey = (unsigned long)UI_SET_KEYBIT;
-        int keyType = EV_KEY;
-        int synType = EV_SYN;
-        ioctl(handle, setEvent, keyType);
-        ioctl(handle, setEvent, synType);
-        for (int code = 1; code < 256; code++) { ioctl(handle, setKey, code); }
-        struct uinput_setup setup;
-        memset(&setup, 0, sizeof(setup));
-        setup.id.bustype = BUS_VIRTUAL;
-        setup.id.vendor = 0x5345;
-        setup.id.product = 0x4d55;
-        int nameCapacity = UINPUT_MAX_NAME_SIZE;
-        snprintf(setup.name, (size_t)nameCapacity, "%s", "Semu Virtual Keyboard");
-        unsigned long deviceSetup = (unsigned long)UI_DEV_SETUP;
-        unsigned long deviceCreate = (unsigned long)UI_DEV_CREATE;
-        if (ioctl(handle, deviceSetup, &setup) < 0 || ioctl(handle, deviceCreate) < 0) {
-            close(handle);
-            return false;
-        }
-        SemuSupervisorRuntime.uinput_descriptor = handle;
-        usleep(200000);  // let the emulator's input layer see the new device
-        return true;
-    }
+    class bool open() { return SemuUinputKeyboard.open(); }  // one virtual keyboard, shared with the paced typer
 
-    class void emit(int type, int code, int value) {
-        struct input_event event;
-        memset(&event, 0, sizeof(event));
-        event.type = (unsigned short)type;
-        event.code = (unsigned short)code;
-        event.value = value;
-        int handle = SemuSupervisorRuntime.uinput_descriptor;
-        ssize_t wrote = write(handle, &event, sizeof(event));
-        (void)wrote;
-    }
+    class void emit(int type, int code, int value) { SemuUinputKeyboard.emit(type, code, value); }
 
     class bool type(Vector<int> codes) {
         if (codes.isEmpty() || !SemuVirtualKeyboard.open()) { return false; }
@@ -182,15 +149,23 @@ class SemuActionExecutor {  // execution of one action id (SemuActions is the re
     class void closeMenu(SemuLaunchPlan launch) {
         if (SemuSupervisorRuntime.menu_visible == 0) { return; }
         SemuSupervisorRuntime.menu_visible = 0;
+        launch.players.pageOpen = false;  // the menu opens on its first page next time
         SemuActionJournal.append(launch, SemuActions.menuBack(), 0);
         if (!launch.pauseAction.isEmpty()) { SemuActionExecutor.toEmulator(launch, launch.pauseAction, false); }
     }
 
     class void confirm(SemuLaunchPlan launch) {  // runs the selected menu item
-        if (SemuSupervisorRuntime.menu_visible == 0 || SemuSupervisorRuntime.menu_selected >= launch.menuActions.size()) { return; }
-        string item = launch.menuActions.get(SemuSupervisorRuntime.menu_selected);
-        if (item.startsWith("visual.")) {
+        if (SemuSupervisorRuntime.menu_visible == 0) { return; }
+        if (!launch.players.pageOpen && SemuSupervisorRuntime.menu_selected >= launch.menuActions.size()) { return; }
+        string item = launch.players.pageOpen ? "" : launch.menuActions.get(SemuSupervisorRuntime.menu_selected);
+        if (launch.players.pageOpen) {
+            SemuPlayersPage.confirm(launch, SemuClock.milliseconds());  // a player row, RESTART GAME or BACK
+        } else if (item.startsWith("visual.")) {
             SemuVisualCycle.execute(launch, item);  // a value row steps on; the menu stays open
+        } else if (item.equals("controller.layout.next")) {
+            SemuControllerLayouts.next(launch, SemuClock.milliseconds());  // player 1's next layout; the menu stays open
+        } else if (item.equals("ui.players")) {
+            SemuPlayersPage.open(launch);
         } else if (item.equals("system.reset")) {
             SemuSystemReset.execute(launch, SemuClock.milliseconds());  // asks for a second press; the menu stays open
         } else if (item.equals("app.quit")) {
@@ -199,6 +174,30 @@ class SemuActionExecutor {  // execution of one action id (SemuActions is the re
             SemuActionExecutor.closeMenu(launch);  // resume first so the emulator can act
             if (!item.equals("ui.menu.back")) { SemuActionExecutor.toEmulator(launch, item, false); }
         }
+    }
+
+    class void menuStep(SemuLaunchPlan launch, int delta) {  // left and right: a player's layout on the players page, the CONTROLLER row, or a visual value row
+        if (SemuSupervisorRuntime.menu_visible == 0) { return; }
+        long long now = SemuClock.milliseconds();
+        if (launch.players.pageOpen) {
+            SemuPlayersPage.step(launch, delta, now);
+            return;
+        }
+        int selected = SemuSupervisorRuntime.menu_selected;
+        if (selected < launch.menuActions.size() && launch.menuActions.get(selected).equals("controller.layout.next")) {
+            SemuControllerLayouts.step(launch, 0, delta, now);
+            return;
+        }
+        SemuVisualCycle.menuStep(launch, delta);
+    }
+
+    class void players(SemuLaunchPlan launch) {  // the radial's Players: the menu on its players page, or the toast that the game takes one player
+        if (!launch.players.playersAvailable()) {
+            SemuPlayersPage.open(launch);
+            return;
+        }
+        if (SemuSupervisorRuntime.menu_visible == 0) { SemuActionExecutor.openMenu(launch); }
+        if (SemuSupervisorRuntime.menu_visible != 0 && !launch.players.pageOpen) { SemuPlayersPage.open(launch); }
     }
 
     class void fromDevice(SemuLaunchPlan launch, string action, struct SemuInputDevice* device) {  // a device's press: its source routes, its identity deduplicates
@@ -222,21 +221,30 @@ class SemuActionExecutor {  // execution of one action id (SemuActions is the re
             SemuSupervisorRuntime.quit = 1;
         } else if (action.equals("ui.menu")) {
             if (SemuSupervisorRuntime.menu_visible != 0) { SemuActionExecutor.closeMenu(launch); } else { SemuActionExecutor.openMenu(launch); }
+        } else if ((action.equals("ui.menu.back") || action.equals("ui.escape")) && launch.players.pageOpen) {
+            SemuPlayersPage.back(launch);  // the page returns to the menu
         } else if (action.equals("ui.menu.back") || action.equals("ui.escape")) {
             SemuActionExecutor.closeMenu(launch);
         } else if (action.equals("ui.menu.up") || action.equals("ui.menu.down")) {
             if (SemuSupervisorRuntime.menu_visible == 0) { return; }
             int count = launch.menuActions.size() > 0 ? launch.menuActions.size() : 1;
+            if (launch.players.pageOpen) { count = SemuPlayersPage.rowCount(launch.players); }
             SemuSupervisorRuntime.menu_selected = (SemuSupervisorRuntime.menu_selected + (action.equals("ui.menu.up") ? count - 1 : 1)) % count;
             SemuActionJournal.append(launch, action.equals("ui.menu.up") ? SemuActions.menuUp() : SemuActions.menuDown(), 0);
         } else if (action.equals("ui.menu.confirm")) {
             SemuActionExecutor.confirm(launch);
         } else if (action.equals("ui.menu.left") || action.equals("ui.menu.right")) {
-            SemuVisualCycle.menuStep(launch, action.equals("ui.menu.right") ? 1 : -1);  // only the value rows step
+            SemuActionExecutor.menuStep(launch, action.equals("ui.menu.right") ? 1 : -1);  // only the value rows step
         } else if (action.startsWith("visual.")) {
             SemuVisualCycle.execute(launch, action);
         } else if (action.equals("system.reset")) {
             SemuSystemReset.execute(launch, SemuClock.milliseconds());
+        } else if (action.equals("controller.layout.next")) {
+            SemuControllerLayouts.next(launch, SemuClock.milliseconds());
+        } else if (action.contains(".controller.")) {
+            SemuControllerLayouts.pick(launch, action, SemuClock.milliseconds());  // a held layer's slot: that layout for player 1
+        } else if (action.equals("ui.players")) {
+            SemuActionExecutor.players(launch);
         } else {
             SemuActionExecutor.toEmulator(launch, action, fromKeyboard);
         }

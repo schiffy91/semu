@@ -8,12 +8,6 @@
   "graphics_apis": [
     "opengl"
   ],
-  "controller_modes": [
-    "wiimote",
-    "nunchuk",
-    "classic",
-    "gamecube"
-  ],
   "outputs": {
     "linux_main_program": "bin/dolphin-emu",
     "macos_main_program": "Applications/Dolphin.app/Contents/MacOS/Dolphin"

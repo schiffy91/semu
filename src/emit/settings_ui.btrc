@@ -108,22 +108,16 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         return result;
     }
 
-    class Vector<string> controllerModes(SemuModel model, SemuSystem system) {  // the named emulator's package.json lists the modes
-        SemuEmulator emulator = model.emulator(SemuJson.textAt(system.definition, "controller_mode.emulator"));
-        Vector<string> none = [];
-        if (emulator == null) { return none; }
-        return SemuJson.strings(SemuJson.readFile(PathTools.join(emulator.directory, "package.json")).get("controller_modes"));
-    }
-
-    class JSONValue controllerModeFields(SemuModel model, SemuPlan plan) {  // one choice per system declaring controller_mode
+    class JSONValue controllerFields(SemuModel model, SemuPlan plan) {  // one choice per system declaring controller layouts: player 1's, as the radial and the menu save it
         JSONValue fields = JSONValue.makeArray();
         for systemId in plan.systems {
             SemuSystem system = model.system(systemId);
-            string setting = SemuJson.textAt(system.definition, "controller_mode.setting");
-            Vector<string> modes = SemuSettingsUi.controllerModes(model, system);
-            if (setting.isEmpty() || modes.size() < 2) { continue; }
-            string label = SemuJson.textAt(system.definition, "controller_mode.label");
-            fields.push(SemuSettingsUi.choice(plan.settings, setting, label.isEmpty() ? SemuSettingsUi.upper(system.name) : label, modes, SemuJson.textAt(model.defaults, setting)));
+            JSONValue layouts = SemuJson.get(system.definition, "controllers.layouts");
+            Vector<string> ids = [];
+            for (int index = 0; layouts != null && layouts.isArray() && index < layouts.size(); index++) { ids.push(SemuJson.textAt(layouts.at(index), "id")); }
+            if (ids.size() < 2) { continue; }
+            string setting = "input.systems." + systemId + ".players.1.layout";
+            fields.push(SemuSettingsUi.choice(plan.settings, setting, SemuSettingsUi.upper(system.name) + " P1 CONTROLLER", ids, SemuJson.textAt(system.definition, "controllers.default")));
         }
         return fields;
     }
@@ -158,7 +152,7 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
             menu.set("sections", systems);
             sections.push(menu);
         }
-        JSONValue input = SemuSettingsUi.controllerModeFields(model, plan);
+        JSONValue input = SemuSettingsUi.controllerFields(model, plan);
         if (input.size() > 0) { sections.push(SemuSettingsUi.page("input", "INPUT", input)); }
         JSONValue syncFields = JSONValue.makeArray();
         syncFields.push(SemuSettingsUi.boolean(settings, "sync.enabled", "SYNC SAVES WITH SYNCTHING", false));

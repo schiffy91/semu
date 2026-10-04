@@ -52,10 +52,15 @@ class SemuActions {
     // Past 80 the slot is still an absolute index into the variants file's lists, and -1 means this
     // system has nothing to choose (the action's unavailable toast). reserved carries a prompt: 1 on
     // an output select or a reset notice asks for the confirming press (2: and that press reboots the
-    // game). 83 layout select, 84 player assign and 86 menu page are reserved for the players page.
+    // game). 83 carries the player in reserved plus 16 times its kind (0 switched, 1 asks for the
+    // second press, 2 restarting); 84 the player in reserved; 86 slot 1 the players page (reserved 1
+    // restarting, 2 nothing changed, 3 rows rewritten), 0 back to the menu.
     class int placementSelect() { return SemuActions.shaderSelect() + 1; }  // 81: the system's placements, bezel or screen
     class int outputSelect() { return SemuActions.shaderSelect() + 2; }  // 82: the system's outputs, 4:3 or 16:9
+    class int layoutSelect() { return SemuActions.shaderSelect() + 3; }  // 83: a player's controller layout
+    class int playerAssign() { return SemuActions.shaderSelect() + 4; }  // 84: the pad a player holds on the players page
     class int resetNotice() { return SemuActions.shaderSelect() + 5; }  // 85: slot 0 armed, 1 done
+    class int menuPage() { return SemuActions.shaderSelect() + 6; }  // 86: the players page
 
     class void resetExtensions() {
         memset(SemuActionExtensionIds, 0,
@@ -107,6 +112,9 @@ class SemuActions {
         if (actionId.equals("visual.placement.select")) { return SemuActions.placementSelect(); }
         if (actionId.equals("visual.output.select")) { return SemuActions.outputSelect(); }
         if (actionId.equals("system.reset.notice")) { return SemuActions.resetNotice(); }
+        if (actionId.equals("controller.layout.select")) { return SemuActions.layoutSelect(); }
+        if (actionId.equals("player.assign")) { return SemuActions.playerAssign(); }
+        if (actionId.equals("ui.players.page")) { return SemuActions.menuPage(); }
         if (actionId.equals("app.quit")) { return SemuActions.appQuit(); }
         if (actionId.equals("ui.screenshot")) { return SemuActions.screenshot(); }
         if (actionId.equals("ui.escape")) { return SemuActions.escape(); }
@@ -130,6 +138,9 @@ class SemuActions {
         if (action == SemuActions.placementSelect()) { return "visual.placement.select"; }
         if (action == SemuActions.outputSelect()) { return "visual.output.select"; }
         if (action == SemuActions.resetNotice()) { return "system.reset.notice"; }
+        if (action == SemuActions.layoutSelect()) { return "controller.layout.select"; }
+        if (action == SemuActions.playerAssign()) { return "player.assign"; }
+        if (action == SemuActions.menuPage()) { return "ui.players.page"; }
         if (action == SemuActions.appQuit()) { return "app.quit"; }
         if (action == SemuActions.screenshot()) { return "ui.screenshot"; }
         if (action == SemuActions.escape()) { return "ui.escape"; }
@@ -142,6 +153,8 @@ class SemuActions {
         if (action == SemuActions.placementSelect()) { return "visual.placement.next"; }
         if (action == SemuActions.outputSelect()) { return "visual.output.next"; }
         if (action == SemuActions.resetNotice()) { return "system.reset"; }
+        if (action == SemuActions.layoutSelect()) { return "controller.layout.next"; }
+        if (action == SemuActions.playerAssign() || action == SemuActions.menuPage()) { return "ui.players"; }
         return SemuActions.id(action);
     }
 
@@ -172,7 +185,10 @@ class SemuActions {
             || action == SemuActions.shaderSelect()
             || action == SemuActions.placementSelect()
             || action == SemuActions.outputSelect()
-            || action == SemuActions.resetNotice();
+            || action == SemuActions.resetNotice()
+            || action == SemuActions.layoutSelect()
+            || action == SemuActions.playerAssign()
+            || action == SemuActions.menuPage();
     }
 }
 

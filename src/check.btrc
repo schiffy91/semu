@@ -7,6 +7,7 @@ import ./resolve.btrc;
 import ./mods/declarations.btrc;
 import ./mods/titles.btrc;
 import ./check_outputs.btrc;
+import ./check_players.btrc;
 
 // What one binding opens, from emulator.json "content": a standalone emulator lists its own
 // extensions; a core-loading emulator lists each core's, plus the archives it unpacks for a core
@@ -111,6 +112,7 @@ class SemuChecker {
         }
         SemuChecker.checkExtensions(model, plan, system, diagnostics);
         SemuOutputChecker.check(model, plan, system, diagnostics);
+        SemuPlayersChecker.check(model, plan, system, diagnostics);
     }
 
     class void checkExtensions(SemuModel model, SemuPlan plan, SemuSystem system, SemuDiagnostics diagnostics) {  // ES-DE offers only what a bound emulator opens
