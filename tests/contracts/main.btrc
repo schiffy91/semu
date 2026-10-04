@@ -46,6 +46,8 @@ import ./spec/input_delivery.btrc;
 import ./spec/retroarch_keyboard.btrc;
 import ./spec/emulator_hotkeys.btrc;
 import ./spec/save_slots.btrc;
+import ./spec/render_variants.btrc;
+import ./spec/visual_cycle.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -953,6 +955,8 @@ int main() {
     RetroArchKeyboardSpecContract.run(contract);
     EmulatorHotkeySpecContract.run(contract);
     SaveSlotSpecContract.run(contract);
+    RenderVariantSpecContract.run(contract);
+    VisualCycleSpecContract.run(contract);
     RenderEnvSpecContract.run(contract);
     DualLayoutSpecContract.run(contract);
     EditorSpecContract.run(contract);

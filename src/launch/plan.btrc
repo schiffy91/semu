@@ -9,6 +9,7 @@ import ../model.btrc;
 import ../resolve.btrc;
 import ../emit/profiles.btrc;
 import ../emit/rendering.btrc;
+import ../emit/render_variants.btrc;
 import ./playlist.btrc;
 
 class SemuLaunchPlan {
@@ -41,6 +42,7 @@ class SemuLaunchPlan {
     public string semuHome;
     public bool bezelsOn;
     public bool shadersOn;
+    public SemuRenderVariantSet variants;  // the bezel and shader choices the menu and radial cycle
 
     public SemuLaunchPlan() {
         self.argv = [];
@@ -72,6 +74,7 @@ class SemuLaunchPlan {
         self.semuHome = "";
         self.bezelsOn = true;
         self.shadersOn = true;
+        self.variants = SemuRenderVariantSet();
     }
 
     public bool ok() { return self.error.isEmpty() && !self.argv.isEmpty(); }
@@ -319,13 +322,8 @@ class SemuLauncher {
         launch.shadersOn = SemuJson.boolAt(plan.settings, "visual.crt_shaders", true);
         if (plan.input == null) { return; }
         JSONValue definition = plan.input.definition;
-        JSONValue items = SemuJson.get(definition, "menu.items");
-        if (items != null && items.isArray()) {
-            for (int index = 0; index < items.size(); index++) {
-                launch.menuLabels.push(SemuJson.textAt(items.at(index), "label"));
-                launch.menuActions.push(SemuJson.textAt(items.at(index), "action"));
-            }
-        }
+        launch.menuLabels = plan.input.menuItems("label");  // the renderer draws this list, the supervisor mirrors it
+        launch.menuActions = plan.input.menuItems("action");
         bool pauses = SemuJson.textAt(emulator.definition, "menu.pause").equals("emulator");  // pausing one that stops presenting would hide the menu
         launch.pauseAction = pauses ? SemuJson.textAt(definition, "menu.pause_action") : "";
         launch.chordModifier = SemuJson.textAt(definition, "gamepad_chords.modifier");
@@ -344,7 +342,7 @@ class SemuLauncher {
                 if (!chord.isEmpty()) { launch.actionChords.push(action + "=" + chord); }
             }
         }
-        if (!launch.menuLabels.isEmpty()) { launch.environment.push("SEMU_MENU_ITEMS=" + launch.menuLabels.join("|")); }
+        for entry in plan.input.menuEnvironment() { launch.environment.push(entry); }  // SEMU_MENU_ITEMS, _ACTIONS and _TOASTS
     }
 
     class SemuLaunchPlan plan(SemuModel model, SemuPlan plan, string emulatorId, string systemId, string core, string rom, SemuDiagnostics diagnostics) {
@@ -453,6 +451,7 @@ class SemuLauncher {
         bool vulkan = SemuJson.boolAt(platform, "render_vulkan", false);  // Vulkan emulator composed at present by VK_LAYER_SEMU_compositor
         if (SemuJson.boolAt(platform, "render_hook", false) || preload || vulkan) {  // the renderer composes from SEMU_RENDER_*: a render_hook emulator links the loader, which loads SEMU_RENDERER_LIBRARY; the preload and Vulkan shims link the renderer
             for entry in SemuRenderEnvironment.compile(plan, system, emulatorId, stateRoot, diagnostics) { launch.environment.push(entry); }
+            launch.variants = SemuRenderVariants.write(plan, system, emulatorId, stateRoot);  // every combination beside the journal, for live switching
             string shim = PathTools.join(plan.assetRoot, "lib/libsemupreload.so");
             if (preload && FileSystem.isFile(shim)) { launch.environment.push("LD_PRELOAD=" + shim); }
             if (preload && plan.platform.equals("macos") && SemuJson.boolAt(platform, "window_shim", false)) { launch.environment.push("SEMU_WINDOW_COMPOSE=1"); }  // macOS: the window shim composes at the GL flush

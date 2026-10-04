@@ -7,16 +7,15 @@
 #include "semu_evdev.h"
 
 import Library.Console;
-import Library.JSON;
 import Library.Strings;
 import Library.Vector;
-import ../lib/paths.btrc;
-import ../lib/settings.btrc;
 import ../renderer/action_abi.btrc;
 import ./input_state.btrc;
 import ./input_filters.btrc;
+import ./journal.btrc;
 import ./process.btrc;
 import ./plan.btrc;
+import ./visual_cycle.btrc;
 
 class SemuActionRouter {  // where an action goes: the renderer, the emulator, or the process group
     class string retroarchCommand(string action) {  // saves and loads name Semu's slot; RetroArch's counter stays
@@ -55,39 +54,6 @@ class SemuActionRouter {  // where an action goes: the renderer, the emulator, o
     class int journalCode(string action) {  // each action journals as itself; none when the ABI lacks it
         if (action.startsWith("state.") || action.equals("ui.screenshot")) { return SemuActions.code(action); }
         return SemuActions.none();
-    }
-}
-
-class SemuActionJournal {  // the renderer reads these records; same ABI as action_abi
-    class bool append(SemuLaunchPlan launch, int action, int slot) {
-        if (launch.stateDir.isEmpty() || action == SemuActions.none()) { return false; }
-        string path = PathTools.join(launch.stateDir, RendererActionJournal.fileName());
-        FILE* file = fopen(path, "ab");
-        if (file == null) { return false; }
-        struct SemuActionRecord record;
-        memset(&record, 0, sizeof(record));
-        record.abi = (unsigned int)RendererActionJournal.abi();
-        record.size = (unsigned int)sizeof(struct SemuActionRecord);
-        SemuSupervisorRuntime.sequence = SemuSupervisorRuntime.sequence + 1ULL;
-        record.sequence = SemuSupervisorRuntime.sequence;
-        record.monotonic_ms = SemuClock.milliseconds();
-        record.action = action;
-        record.radial = RendererActionJournal.direct();
-        record.slot = slot;
-        size_t sourceCapacity = sizeof(record.source);
-        snprintf(record.source, sourceCapacity, "%s", "semu");
-        size_t recordSize = sizeof(record);
-        bool written = fwrite(&record, recordSize, 1, file) == (size_t)1;
-        fclose(file);
-        return written;
-    }
-
-    class void reset(SemuLaunchPlan launch) {  // a fresh session starts an empty journal
-        if (launch.stateDir.isEmpty()) { return; }
-        string path = PathTools.join(launch.stateDir, RendererActionJournal.fileName());
-        FILE* file = fopen(path, "wb");
-        if (file != null) { fclose(file); }
-        SemuSupervisorRuntime.sequence = 0ULL;
     }
 }
 
@@ -219,26 +185,11 @@ class SemuActionExecutor {  // execution of one action id (SemuActions is the re
         if (!launch.pauseAction.isEmpty()) { SemuActionExecutor.toEmulator(launch, launch.pauseAction, false); }
     }
 
-    class void toggleVisual(SemuLaunchPlan launch, string action) {  // exactly the two global switches; any other visual id is ignored
-        bool bezels = action.equals("visual.bezels.toggle");
-        if (!bezels && !action.equals("visual.shaders.toggle")) {
-            if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: no visual action named " + action); }
-            return;
-        }
-        SemuActionJournal.append(launch, bezels ? SemuActions.bezelsToggle() : SemuActions.shadersToggle(), 0);
-        if (bezels) { launch.bezelsOn = !launch.bezelsOn; } else { launch.shadersOn = !launch.shadersOn; }
-        if (!launch.semuHome.isEmpty()) {  // the choice survives the session
-            bool enabled = launch.shadersOn;
-            if (bezels) { enabled = launch.bezelsOn; }
-            SemuSettingsStore.put(launch.semuHome, bezels ? "visual.bezels" : "visual.crt_shaders", JSONValue.makeBool(enabled));
-        }
-    }
-
     class void confirm(SemuLaunchPlan launch) {  // runs the selected menu item
         if (SemuSupervisorRuntime.menu_visible == 0 || SemuSupervisorRuntime.menu_selected >= launch.menuActions.size()) { return; }
         string item = launch.menuActions.get(SemuSupervisorRuntime.menu_selected);
         if (item.startsWith("visual.")) {
-            SemuActionExecutor.toggleVisual(launch, item);  // stays open so the change is visible
+            SemuVisualCycle.execute(launch, item);  // a BEZEL or SHADER row steps on; the menu stays open
         } else if (item.equals("app.quit")) {
             SemuSupervisorRuntime.quit = 1;
         } else {
@@ -269,8 +220,10 @@ class SemuActionExecutor {  // execution of one action id (SemuActions is the re
             SemuActionJournal.append(launch, action.equals("ui.menu.up") ? SemuActions.menuUp() : SemuActions.menuDown(), 0);
         } else if (action.equals("ui.menu.confirm")) {
             SemuActionExecutor.confirm(launch);
+        } else if (action.equals("ui.menu.left") || action.equals("ui.menu.right")) {
+            SemuVisualCycle.menuStep(launch, action.equals("ui.menu.right") ? 1 : -1);  // only the BEZEL and SHADER rows step
         } else if (action.startsWith("visual.")) {
-            SemuActionExecutor.toggleVisual(launch, action);
+            SemuVisualCycle.execute(launch, action);
         } else {
             SemuActionExecutor.toEmulator(launch, action, fromKeyboard);
         }

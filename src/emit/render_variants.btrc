@@ -1,0 +1,149 @@
+// Every bezel x shader combination a system offers, precomputed at launch into
+// $state/semu-render-variants.env: a header naming the choices and their labels, then one
+// [bezel,shader] section per combination holding only the keys that combination changes.
+// The supervisor journals an absolute index into these lists; the renderer applies that section.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+import ./rendering.btrc;
+import ./settings_ui.btrc;
+import ../renderer/action_abi.btrc;
+import ../renderer/variant_keys.btrc;
+
+#include <stdlib.h>
+
+class SemuVariantChoice {  // one kind's ordered ids (the variants, then none), their labels and the live index
+    public string kind;  // "bezel" or "shader", as in visual.systems.<id>.<kind>_variant
+    public Vector<string> ids;
+    public Vector<string> labels;
+    public int index;
+    public int lastReal;  // the last choice that was not none, for the On/Off switches
+
+    public SemuVariantChoice(string kind) {
+        self.kind = kind;
+        self.ids = [];
+        self.labels = [];
+        self.index = 0;
+        self.lastReal = 0;
+    }
+
+    public bool available() { return !self.ids.isEmpty(); }
+
+    public string current() { return self.ids.isEmpty() ? "" : self.ids.get(self.index); }
+
+    public bool off() { return self.current().equals("none"); }
+}
+
+class SemuRenderVariantSet {  // the launch's two choices; both empty when no variants file was written
+    public SemuVariantChoice bezel;
+    public SemuVariantChoice shader;
+    public bool written;
+
+    public SemuRenderVariantSet() {
+        self.bezel = SemuVariantChoice("bezel");
+        self.shader = SemuVariantChoice("shader");
+        self.written = false;
+    }
+}
+
+class SemuRenderVariants {
+    class JSONValue manifest(SemuSystem system, string kind) { return kind.equals("bezel") ? system.bezels : system.shaders; }
+
+    class Vector<string> choices(SemuSystem system, string kind) {  // the settings page's order: variant ids, then none; empty without variants
+        JSONValue manifest = SemuRenderVariants.manifest(system, kind);
+        Vector<string> ids = SemuSettingsUi.variantIds(manifest);
+        if (ids.isEmpty() || !SemuJson.boolAt(manifest, "enabled", false)) {
+            Vector<string> none = [];
+            return none;
+        }
+        ids.push("none");
+        return ids;
+    }
+
+    class string current(SemuPlan plan, SemuSystem system, string kind) {
+        return kind.equals("bezel") ? SemuRenderEnvironment.bezelVariantId(plan, system) : SemuRenderEnvironment.shaderVariantId(plan, system);
+    }
+
+    class bool drawable(char character) {  // the renderer's 5x7 font: A-Z, 0-9, space and : / + - , . ( )
+        if ((character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9')) { return true; }
+        return character == ' ' || character == ':' || character == '/' || character == '+' || character == '-'
+            || character == ',' || character == '.' || character == '(' || character == ')';
+    }
+
+    class string label(JSONValue manifest, string id) {  // the manifest label upper-cased and filtered, at most labelCapacity; none is OFF
+        if (id.equals("none")) { return "OFF"; }
+        string source = SemuJson.textAt(SemuRenderEnvironment.findVariant(manifest, id), "label");
+        if (source.isEmpty()) { source = id; }
+        int capacity = RendererVariantKeys.labelCapacity();
+        char* buffer = (char*)malloc((size_t)(capacity + 1));
+        int written = 0;
+        for (int index = 0; index < source.len() && written < capacity; index++) {
+            char character = source.charAt(index);
+            if (character >= 'a' && character <= 'z') { character = character - 32; }
+            if (!SemuRenderVariants.drawable(character)) { character = ' '; }
+            if (character == ' ' && (written == 0 || buffer[written - 1] == ' ')) { continue; }  // no leading or doubled spaces
+            buffer[written] = character;
+            written++;
+        }
+        while (written > 0 && buffer[written - 1] == ' ') { written--; }
+        buffer[written] = 0;
+        return __btrc_str_track(buffer);
+    }
+
+    class SemuVariantChoice choice(SemuPlan plan, SemuSystem system, string kind) {  // the ids, labels and the index this launch starts on
+        SemuVariantChoice result = SemuVariantChoice(kind);
+        JSONValue manifest = SemuRenderVariants.manifest(system, kind);
+        result.ids = SemuRenderVariants.choices(system, kind);
+        for id in result.ids { result.labels.push(SemuRenderVariants.label(manifest, id)); }
+        int found = result.ids.indexOf(SemuRenderVariants.current(plan, system, kind));
+        result.index = found >= 0 ? found : 0;
+        int fallback = result.ids.indexOf(SemuJson.textAt(manifest, "default_variant"));
+        result.lastReal = result.off() ? (fallback >= 0 ? fallback : 0) : result.index;
+        return result;
+    }
+
+    class Vector<string> column(SemuVariantChoice choice, string launched) {  // a kind without choices keeps the launch's own value in its one column
+        if (choice.available()) { return choice.ids; }
+        Vector<string> single = [launched];
+        return single;
+    }
+
+    class string text(SemuPlan plan, SemuSystem system, string emulatorId, string stateRoot, SemuRenderVariantSet set) {
+        Vector<string> lines = [f"schema={RendererVariantKeys.schema()}", RendererVariantKeys.systemKey() + "=" + system.id];
+        lines.push(RendererVariantKeys.bezelsKey() + "=" + set.bezel.ids.join("|"));
+        lines.push(RendererVariantKeys.bezelLabelsKey() + "=" + set.bezel.labels.join("|"));
+        lines.push(RendererVariantKeys.shadersKey() + "=" + set.shader.ids.join("|"));
+        lines.push(RendererVariantKeys.shaderLabelsKey() + "=" + set.shader.labels.join("|"));
+        lines.push(RendererVariantKeys.currentKey() + f"={set.bezel.index},{set.shader.index}");
+        Vector<string> bezels = SemuRenderVariants.column(set.bezel, SemuRenderEnvironment.bezelVariantId(plan, system));
+        Vector<string> shaders = SemuRenderVariants.column(set.shader, SemuRenderEnvironment.shaderVariantId(plan, system));
+        SemuRenderPackages packages = SemuRenderPackages();
+        SemuDiagnostics quiet = SemuDiagnostics();  // the launch's own combination already reported; the checker covers the rest
+        for (int bezel = 0; bezel < bezels.size(); bezel++) {
+            for (int shader = 0; shader < shaders.size(); shader++) {
+                lines.push(f"[{bezel},{shader}]");
+                for entry in SemuRenderEnvironment.compileFor(plan, system, emulatorId, stateRoot, bezels.get(bezel), shaders.get(shader), packages, quiet) {
+                    if (RendererVariantKeys.scopedLine(entry)) { lines.push(entry); }
+                }
+            }
+        }
+        return lines.join("\n") + "\n";
+    }
+
+    class string path(string stateRoot) { return PathTools.join(stateRoot, RendererActionJournal.variantsFileName()); }
+
+    class SemuRenderVariantSet write(SemuPlan plan, SemuSystem system, string emulatorId, string stateRoot) {  // empty choices when the file could not be written: nothing to cycle
+        SemuRenderVariantSet set = SemuRenderVariantSet();
+        set.bezel = SemuRenderVariants.choice(plan, system, "bezel");
+        set.shader = SemuRenderVariants.choice(plan, system, "shader");
+        if (!SemuPaths.writeOwned(stateRoot, SemuRenderVariants.path(stateRoot), SemuRenderVariants.text(plan, system, emulatorId, stateRoot, set))) { return SemuRenderVariantSet(); }
+        set.written = true;
+        return set;
+    }
+}

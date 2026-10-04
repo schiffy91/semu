@@ -293,7 +293,7 @@ class GameBoySpecMatrix {
         contract.expect(seen.size() == 18 && distinct == 18, f"the gb matrix has 18 distinct cells: {distinct} of {seen.size()}");
         SemuPlan switchedOff = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false,\"systems\":{\"gb\":{\"shader_variant\":\"pocket\",\"bezel_variant\":\"studio\"}}}}", diagnostics);
         Vector<string> offEnvironment = SemuRenderEnvironment.compile(switchedOff, system, "retroarch", "/state/retroarch", diagnostics);
-        contract.expect(offEnvironment.contains("SEMU_RENDER_SHADERS=0") && offEnvironment.contains("SEMU_RENDER_BEZELS=0"), "the global switches override the gb variant choices");
+        contract.expect(offEnvironment.contains("SEMU_RENDER_SHADERS=1") && offEnvironment.contains("SEMU_RENDER_BEZELS=1"), "gb's own variant choices beat the global switches, which are only the default");
         contract.expect(diagnostics.ok(), "the gb matrix compiles without diagnostics: " + diagnostics.render());
     }
 }

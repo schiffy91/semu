@@ -16,6 +16,7 @@ import Library.Vector;
 import ./input_state.btrc;
 import ./input_filters.btrc;
 import ./actions.btrc;
+import ./journal.btrc;
 import ./process.btrc;
 import ./plan.btrc;
 import ./gamepad.btrc;
@@ -180,8 +181,12 @@ class SemuInputEvents {  // evdev events to Semu actions and the quit chord
             int space = KEY_SPACE;
             int backspace = KEY_BACKSPACE;
             int escape = KEY_ESC;
+            int leftward = KEY_LEFT;
+            int rightward = KEY_RIGHT;
             if (code == upward) { return "ui.menu.up"; }
             if (code == downward) { return "ui.menu.down"; }
+            if (code == leftward) { return "ui.menu.left"; }  // steps a BEZEL or SHADER row
+            if (code == rightward) { return "ui.menu.right"; }
             if (code == enter || code == space) { return "ui.menu.confirm"; }
             if (code == backspace || code == escape) { return "ui.menu.back"; }
         }
@@ -201,8 +206,12 @@ class SemuInputEvents {  // evdev events to Semu actions and the quit chord
             int downward = BTN_DPAD_DOWN;
             int south = BTN_SOUTH;
             int east = BTN_EAST;
+            int leftward = BTN_DPAD_LEFT;
+            int rightward = BTN_DPAD_RIGHT;
             if (code == upward) { return "ui.menu.up"; }
             if (code == downward) { return "ui.menu.down"; }
+            if (code == leftward) { return "ui.menu.left"; }  // steps a BEZEL or SHADER row
+            if (code == rightward) { return "ui.menu.right"; }
             if (code == south) { return "ui.menu.confirm"; }
             if (code == east) { return "ui.menu.back"; }
         }

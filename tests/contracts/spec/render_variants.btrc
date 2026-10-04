@@ -1,0 +1,255 @@
+// Render variants spec: every bezel x shader combination of every system lands in the launch's
+// variants file, each section holding exactly the keys its combination changes, and a system's own
+// choice beats the global switches, which stay the default for systems without one.
+
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+
+import Library.CLI;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/cli.btrc;
+import ../../../src/emit/rendering.btrc;
+import ../../../src/emit/render_variants.btrc;
+import ../../../src/emit/settings_ui.btrc;
+import ../../../src/renderer/action_abi.btrc;
+import ../../../src/renderer/variant_keys.btrc;
+import ./render_env.btrc;
+
+class RenderVariantFile {  // a written variants file read back: header lines and each [b,s] section's lines
+    public Vector<string> header;
+    public Vector<string> names;
+    public Vector<string> bodies;
+
+    public RenderVariantFile(string text) {
+        self.header = [];
+        self.names = [];
+        self.bodies = [];
+        Vector<string> current = [];
+        for line in Strings.split(text, "\n") {
+            if (line.startsWith("[")) {
+                if (!self.names.isEmpty()) { self.bodies.push(current.join("\n")); }
+                self.names.push(line);
+                current = [];
+            } else if (self.names.isEmpty()) {
+                if (!line.isEmpty()) { self.header.push(line); }
+            } else if (!line.isEmpty()) {
+                current.push(line);
+            }
+        }
+        if (!self.names.isEmpty()) { self.bodies.push(current.join("\n")); }
+    }
+
+    public string value(string key) {
+        for line in self.header { if (line.startsWith(key + "=")) { return line.substring(key.len() + 1, line.len() - key.len() - 1); } }
+        return "";
+    }
+
+    public string section(int bezel, int shader) {
+        int found = self.names.indexOf(f"[{bezel},{shader}]");
+        return found >= 0 ? self.bodies.get(found) : "(missing)";
+    }
+}
+
+class RenderVariantTools {
+    class string scopedText(Vector<string> entries, bool scoped) {  // the entries the filter keeps, or the rest
+        Vector<string> kept = [];
+        for entry in entries { if (RendererVariantKeys.scopedLine(entry) == scoped) { kept.push(entry); } }
+        return kept.join("\n");
+    }
+
+    class SemuPlan plan(Fixture fixture, string overlay) {
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        return SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
+    }
+
+    class Vector<string> emulators(SemuSystem system) {
+        Vector<string> result = ["retroarch"];
+        for binding in system.bindingsFor("linux") { if (!result.contains(binding.emulator)) { result.push(binding.emulator); } }
+        return result;
+    }
+
+    class bool cliQuietly(Vector<string> words) {  // runs semu with stdout sent to /dev/null; true on exit 0
+        char storage[8192];  // every word back to back, each NUL-terminated
+        char* arguments[16];
+        int offset = 0;
+        for (int index = 0; index < words.size() && index < 16; index++) {
+            snprintf(storage + offset, (size_t)(8192 - offset), "%s", words.get(index));
+            arguments[index] = storage + offset;
+            offset += (int)strlen(storage + offset) + 1;
+        }
+        fflush(stdout);
+        int saved = dup(1);
+        int sink = open("/dev/null", O_WRONLY);
+        dup2(sink, 1);
+        int code = SemuCli(CLIArgs(words.size(), arguments)).run();
+        fflush(stdout);
+        dup2(saved, 1);
+        close(saved);
+        close(sink);
+        return code == 0;
+    }
+}
+
+class RenderVariantKeysSpec {  // the filter keeps exactly what a choice changes, tied to what the renderer reads
+    class void run(Contract contract, Fixture fixture) {
+        for name in ["SHADERS", "BEZELS", "SHADER_PRESET", "SHADER_PRESET_B", "BEZEL_ID", "ART", "ART_B", "BACKGROUND", "LAYOUT", "CANVAS", "CANVAS_FIT_B", "LAYER_0", "LAYER_COUNT_B", "SCREEN_0", "SCREEN_1_RING_B", "FRAME", "FRAME_B"] {
+            contract.expect(RendererVariantKeys.scoped("SEMU_RENDER_" + name), "variant keys: SEMU_RENDER_" + name + " changes with the choice");
+        }
+        for name in ["FRAME_INTEGER", "FRAME_DELTA_MS", "SYSTEM_ID", "EMULATOR_ID", "STATE_DIR", "SURFACE_0_NATIVE", "SURFACE_COUNT", "PLACEMENT", "ASPECT", "FPS", "DUAL_GAP", "INTEGER_SCALE", "TOUCH_SURFACE_ID", "COMPOSITOR_DIR"] {
+            contract.expect(!RendererVariantKeys.scoped("SEMU_RENDER_" + name), "variant keys: SEMU_RENDER_" + name + " is the launch's, whatever the choice");
+        }
+        contract.expect(!RendererVariantKeys.scoped("SEMU_RENDERER_LIBRARY") && RendererVariantKeys.scopedLine("SEMU_RENDER_ART=/a.png") && !RendererVariantKeys.scopedLine("SEMU_RENDER_ASPECT=4:3") && !RendererVariantKeys.scopedLine("SEMU_RENDER_ART"), "variant keys: a line is judged by its name, and needs a value");
+        Vector<string> read = [];
+        RenderEnvSpecSources.collect(PathTools.join(fixture.project, "src/renderer"), read);
+        int checked = 0;
+        for pattern in read {
+            if (!pattern.startsWith("SEMU_RENDER_") || RenderEnvSpecSources.harnessKnob(pattern)) { continue; }
+            string plain = pattern.replace("%d", "0");
+            bool suffixed = plain.contains("%s");
+            bool expected = suffixed || plain.equals("SEMU_RENDER_SHADERS") || plain.equals("SEMU_RENDER_BEZELS");
+            for suffix in ["", "_B"] {
+                if (!suffixed && suffix.equals("_B")) { continue; }
+                string name = plain.replace("%s", suffix);
+                contract.expect(RendererVariantKeys.scoped(name) == expected, "variant keys: the renderer reads " + name + (expected ? " per variant, so a choice must carry it" : " once, so no choice may carry it"));
+                checked++;
+            }
+        }
+        contract.expect(checked > 30, f"variant keys: every name the renderer reads is judged ({checked})");
+    }
+}
+
+class RenderVariantCompleteness {  // every system, every combination: only scoped keys differ, the launch's own section is compile's
+    class void run(Contract contract, Fixture fixture) {
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        int sections = 0;
+        for systemId in fixture.model.systemIds() {
+            SemuSystem system = fixture.model.system(systemId);
+            for overlay in ["{}", "{\"visual\":{\"bezels\":false,\"crt_shaders\":false}}"] {
+                SemuPlan plan = RenderVariantTools.plan(fixture, overlay);
+                for emulatorId in RenderVariantTools.emulators(system) {
+                    string stateDir = PathTools.join(fixture.scratch, "variants/" + systemId + "-" + emulatorId + (overlay.equals("{}") ? "" : "-off"));
+                    SemuRenderVariantSet set = SemuRenderVariants.write(plan, system, emulatorId, stateDir);
+                    RenderVariantFile file = RenderVariantFile(FileSystem.readText(SemuRenderVariants.path(stateDir)));
+                    Vector<string> launched = SemuRenderEnvironment.compile(plan, system, emulatorId, stateDir, diagnostics);
+                    string cell = systemId + "/" + emulatorId + (overlay.equals("{}") ? "" : " with both switches off");
+                    contract.expect(set.written && file.value("schema").equals("1") && file.value("system").equals(systemId), cell + ": the variants file names its schema and system");
+                    contract.expect(file.value("current").equals(f"{set.bezel.index},{set.shader.index}") && file.section(set.bezel.index, set.shader.index).equals(RenderVariantTools.scopedText(launched, true)), cell + ": the launch's own section is exactly compile's scoped keys");
+                    Vector<string> bezels = SemuRenderVariants.column(set.bezel, SemuRenderEnvironment.bezelVariantId(plan, system));
+                    Vector<string> shaders = SemuRenderVariants.column(set.shader, SemuRenderEnvironment.shaderVariantId(plan, system));
+                    contract.expect(file.names.size() == bezels.size() * shaders.size(), cell + f": one section per combination ({file.names.size()})");
+                    Vector<string> wrong = [];
+                    SemuRenderPackages packages = SemuRenderPackages();
+                    for (int bezel = 0; bezel < bezels.size(); bezel++) {
+                        for (int shader = 0; shader < shaders.size(); shader++) {
+                            Vector<string> full = SemuRenderEnvironment.compileFor(plan, system, emulatorId, stateDir, bezels.get(bezel), shaders.get(shader), packages, diagnostics);
+                            string body = file.section(bezel, shader);
+                            bool same = RenderVariantTools.scopedText(full, false).equals(RenderVariantTools.scopedText(launched, false));
+                            if (!same || !body.equals(RenderVariantTools.scopedText(full, true)) || body.contains("SEMU_RENDER_FRAME_INTEGER") || body.contains("SEMU_RENDER_FRAME_DELTA_MS")) { wrong.push(bezels.get(bezel) + "," + shaders.get(shader)); }
+                            sections++;
+                        }
+                    }
+                    contract.expect(wrong.isEmpty(), cell + ": every combination differs from the launch only in scoped keys, and its section holds them all: " + wrong.join(" "));
+                }
+            }
+            for kind in ["bezel", "shader"] {
+                SemuVariantChoice choice = SemuRenderVariants.choice(fixture.plan, system, kind);
+                bool labelsFit = choice.labels.size() == choice.ids.size();
+                for label in choice.labels {
+                    for (int index = 0; index < label.len(); index++) { if (!SemuRenderVariants.drawable(label.charAt(index))) { labelsFit = false; } }
+                    if (label.isEmpty() || label.len() > RendererVariantKeys.labelCapacity()) { labelsFit = false; }
+                }
+                contract.expect(labelsFit && choice.ids.size() <= RendererVariantKeys.choiceCapacity() && (choice.ids.isEmpty() || (choice.ids.get(choice.ids.size() - 1).equals("none") && choice.labels.get(choice.labels.size() - 1).equals("OFF"))), systemId + " " + kind + ": labels the renderer can draw, at most ten choices, none last as OFF");
+            }
+        }
+        contract.expect(sections > 300 && diagnostics.ok(), f"every combination of every system compiles cleanly ({sections} sections): " + diagnostics.render());
+    }
+}
+
+class RenderVariantFileSpec {  // the DS file through the CLI, the computed layouts and Wii's widescreen partner
+    class void run(Contract contract, Fixture fixture) {
+        string directory = PathTools.join(fixture.scratch, "variants/cli-nds");
+        FileSystem.mkdirp(directory);
+        Vector<string> words = ["semu", "render-env", "--system", "nds", "--project", PathTools.join(fixture.project, "config"), "--asset-root", fixture.plan.assetRoot, "--semu-home", fixture.plan.semuHome, "--variants-file", directory];
+        contract.expect(RenderVariantTools.cliQuietly(words), "semu render-env --variants-file runs for nds");
+        RenderVariantFile file = RenderVariantFile(FileSystem.readText(PathTools.join(directory, RendererActionJournal.variantsFileName())));
+        contract.expect(file.names.size() == 21, f"nds: 7 bezels x 3 shaders make 21 sections ({file.names.size()})");
+        contract.expect(file.value("bezels").equals("shell|main_right|main_left|side_by_side|stacked|vertical|none") && file.value("shaders").equals("default|grid|none") && file.value("current").equals("0,0"), "nds: the choices in the settings page's order, then none; the launch starts on the defaults");
+        contract.expect(file.value("bezel_labels").equals("DUIMON SHELL|LARGE MAIN, SECOND RIGHT|LARGE MAIN, SECOND LEFT|SIDE BY SIDE|STACKED|DS VERTICAL SHELL|OFF") && file.value("shader_labels").equals("DS LCD|LCD GRID V2|OFF"), "nds: toast labels, upper case, none as OFF: " + file.value("bezel_labels"));
+        contract.contains(file.section(1, 0), "SEMU_RENDER_LAYOUT=main_right\n", "nds [1,0] is the large-main-right layout");
+        contract.contains(file.section(1, 0), "SEMU_RENDER_SHADER_PRESET=" + fixture.plan.assetRoot + "/", "sections carry absolute asset paths");
+        bool computedArt = false;
+        for (int shader = 0; shader < 3; shader++) { if (file.section(1, shader).contains("SEMU_RENDER_ART")) { computedArt = true; } }
+        contract.expect(!computedArt && file.section(0, 0).contains("SEMU_RENDER_ART="), "a computed layout's sections name no art, the shell's do");
+        contract.expect(file.section(6, 2).contains("SEMU_RENDER_SHADERS=0") && file.section(6, 2).contains("SEMU_RENDER_BEZELS=0") && !file.section(6, 2).contains("SEMU_RENDER_SCREEN_"), "nds [none,none] turns both off and draws no screens' look");
+        SemuSystem wii = fixture.model.system("wii");
+        string wiiState = PathTools.join(fixture.scratch, "variants/wii-dolphin-file");
+        SemuRenderVariants.write(fixture.plan, wii, "dolphin", wiiState);
+        RenderVariantFile wide = RenderVariantFile(FileSystem.readText(SemuRenderVariants.path(wiiState)));
+        contract.expect(wide.value("bezels").equals("tv|tv_wide|speakers|none"), "wii offers tv, tv_wide, speakers and none");
+        contract.contains(wide.section(0, 0), "SEMU_RENDER_BEZEL_ID_B=tv-soqueroeu-wii-16x9\n", "wii's default tv carries its widescreen partner for 16:9 games");
+        contract.expect(!wide.section(1, 0).contains("_B=") && !wide.section(2, 0).contains("_B=") && !wide.section(2, 1).contains("_B="), "a chosen tv_wide or speakers bezel stays itself on 16:9 games");
+    }
+}
+
+class RenderVariantChoiceSpec {  // a system's own choice beats the global switch in both directions, on the settings page too
+    class string fieldValue(JSONValue document, string key) {
+        JSONValue sections = document.get("sections");
+        for (int index = 0; index < sections.size(); index++) {
+            JSONValue pages = SemuJson.textAt(sections.at(index), "kind").equals("menu") ? sections.at(index).get("sections") : JSONValue.makeNull();
+            for (int page = 0; pages != null && pages.isArray() && page < pages.size(); page++) {
+                JSONValue fields = pages.at(page).get("fields");
+                for (int field = 0; field < fields.size(); field++) { if (SemuJson.textAt(fields.at(field), "key").equals(key)) { return SemuJson.textAt(fields.at(field), "value"); } }
+            }
+        }
+        return "";
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        SemuSystem gb = fixture.model.system("gb");
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        Vector<string> chosen = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false,\"systems\":{\"gb\":{\"bezel_variant\":\"studio\",\"shader_variant\":\"pocket\"}}}}"), gb, "retroarch", "/state/retroarch", diagnostics);
+        contract.expect(chosen.contains("SEMU_RENDER_BEZELS=1") && chosen.contains("SEMU_RENDER_BEZEL_ID=gb-studio") && chosen.contains("SEMU_RENDER_SHADERS=1"), "with both global switches off, gb's own studio bezel and pocket shader still draw");
+        Vector<string> turnedOff = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"systems\":{\"gb\":{\"bezel_variant\":\"none\",\"shader_variant\":\"none\"}}}}"), gb, "retroarch", "/state/retroarch", diagnostics);
+        contract.expect(turnedOff.contains("SEMU_RENDER_BEZELS=0") && turnedOff.contains("SEMU_RENDER_SHADERS=0"), "with both global switches on, gb's own none turns its bezel and shader off");
+        Vector<string> defaulted = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false}}"), gb, "retroarch", "/state/retroarch", diagnostics);
+        contract.expect(defaulted.contains("SEMU_RENDER_BEZELS=0") && defaulted.contains("SEMU_RENDER_SHADERS=0"), "a system without its own choice follows the global switches");
+        contract.expect(diagnostics.ok(), "the per-system ladder compiles cleanly: " + diagnostics.render());
+        JSONValue off = SemuSettingsUi.document(fixture.model, RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false}}"));
+        JSONValue own = SemuSettingsUi.document(fixture.model, RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false,\"systems\":{\"gb\":{\"bezel_variant\":\"studio\"}}}}"));
+        JSONValue plain = SemuSettingsUi.document(fixture.model, fixture.plan);
+        contract.expect(RenderVariantChoiceSpec.fieldValue(off, "visual.systems.gb.bezel_variant").equals("none") && RenderVariantChoiceSpec.fieldValue(own, "visual.systems.gb.bezel_variant").equals("studio") && RenderVariantChoiceSpec.fieldValue(plain, "visual.systems.gb.bezel_variant").equals("dmg"), "the gb page shows what the launch draws: none under a global off, its own studio, else the default");
+        string labels = plain.get("sections").at(0).get("fields").stringify();
+        contract.contains(labels, "\"BEZELS (UNLESS A SYSTEM CHOOSES)\"", "the global bezel switch says it is only the default");
+        contract.contains(labels, "\"CRT SHADERS (UNLESS A SYSTEM CHOOSES)\"", "the global shader switch says it is only the default");
+        SemuVariantChoice stale = SemuRenderVariants.choice(RenderVariantTools.plan(fixture, "{\"visual\":{\"systems\":{\"gb\":{\"bezel_variant\":\"retired\"}}}}"), gb, "bezel");
+        contract.expect(stale.current().equals("dmg") && stale.lastReal == 0, "a stale per-system id starts on the default");
+        SemuVariantChoice none = SemuRenderVariants.choice(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false}}"), gb, "bezel");
+        contract.expect(none.off() && none.index == 2 && none.lastReal == 0, "under a global off the launch starts on none, the On switch returning to the default");
+    }
+}
+
+class RenderVariantSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        for systemId in fixture.model.systemIds() {
+            SemuSystem system = fixture.model.system(systemId);
+            RenderEnvSpecAssets.walk(fixture.plan.assetRoot, system.shaders);
+            RenderEnvSpecAssets.walk(fixture.plan.assetRoot, system.bezels);
+        }
+        RenderEnvSpecAssets.packages(fixture.plan.assetRoot, fixture.plan.configRoot);
+        RenderVariantKeysSpec.run(contract, fixture);
+        RenderVariantCompleteness.run(contract, fixture);
+        RenderVariantFileSpec.run(contract, fixture);
+        RenderVariantChoiceSpec.run(contract, fixture);
+    }
+}

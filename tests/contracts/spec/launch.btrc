@@ -269,7 +269,7 @@ class LaunchSpecSystemFiles {  // RetroArch's system folder is a copy in the sta
 
 class LaunchSpecLayout {  // the supervisor is split and styled
     class void run(Contract contract, Fixture fixture) {
-        for name in ["supervisor", "actions", "input_state", "input_filters", "x11_keys", "process", "plan", "playlist", "gamepad"] {
+        for name in ["supervisor", "actions", "journal", "visual_cycle", "input_state", "input_filters", "x11_keys", "process", "plan", "playlist", "gamepad"] {
             string text = LaunchSpecTools.source(fixture, "src/launch/" + name + ".btrc");
             contract.expect(!text.isEmpty() && LaunchSpecTools.lines(text) <= 500, "src/launch/" + name + ".btrc stays under 500 lines");
             contract.lacks(text, "SemuActions2", "no numbered class names in " + name);

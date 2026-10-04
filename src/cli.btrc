@@ -16,6 +16,7 @@ import ./emit/profiles.btrc;
 import ./emit/settings_ui.btrc;
 import ./launch/plan.btrc;
 import ./emit/rendering.btrc;
+import ./emit/render_variants.btrc;
 import ./launch/process.btrc;
 import ./launch/supervisor.btrc;
 import ./sync/syncthing.btrc;
@@ -41,7 +42,7 @@ class SemuCli {
         help.item("build configs --target T [--output DIR]", "Emit ES-DE documents and emulator profiles.");
         help.item("prepare --target T [--es-de-home DIR]", "Install ES-DE documents and settings into the ES-DE home.");
         help.item("launch EMULATOR --system S --rom PATH [--core C] [--print-plan]", "Launch a ROM; the configured quit chord ends it.");
-        help.item("render-env --system S [--emulator E]", "Print the SEMU_RENDER_* environment the launcher would give the emulator (bezel package, shaders, screens).");
+        help.item("render-env --system S [--emulator E] [--variants-file DIR]", "Print the SEMU_RENDER_* environment the launcher would give the emulator (bezel package, shaders, screens); with --variants-file, DIR is the state dir and gets every bezel x shader combination.");
         help.item("doctor --target T", "Show resolved paths and what is missing.");
         help.item("path NAME --target T", "Print one resolved path (roms, bios, esde_home, state_root, ...).");
         help.item("settings get PATH | put PATH VALUE [--apply] | ui | reset", "Read, write, describe (ES-DE menu document) or reset $SEMU_HOME/semu.json.");
@@ -115,7 +116,13 @@ class SemuCli {
             return 1;
         }
         string emulatorId = self.option("emulator", "retroarch");
-        for entry in SemuRenderEnvironment.compile(plan, system, emulatorId, PathTools.join(plan.stateRoot(), emulatorId), diagnostics) { Console.log(entry); }
+        string variants = self.option("variants-file", "");  // DIR: also every combination, DIR standing in as the state dir
+        string stateRoot = variants.isEmpty() ? PathTools.join(plan.stateRoot(), emulatorId) : FileSystem.absolutePath(variants);
+        for entry in SemuRenderEnvironment.compile(plan, system, emulatorId, stateRoot, diagnostics) { Console.log(entry); }
+        if (!variants.isEmpty() && !SemuRenderVariants.write(plan, system, emulatorId, stateRoot).written) {
+            Console.error("semu: could not write " + SemuRenderVariants.path(stateRoot));
+            return 1;
+        }
         return diagnostics.ok() ? 0 : self.fail(diagnostics);
     }
 

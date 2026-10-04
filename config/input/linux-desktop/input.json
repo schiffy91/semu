@@ -11,7 +11,8 @@
     },
     "ui.screenshot": {
       "label": "Take Screenshot",
-      "chord": "Ctrl+X"
+      "chord": "Ctrl+X",
+      "toast": "SCREENSHOT"
     },
     "ui.fullscreen": {
       "label": "Toggle Fullscreen",
@@ -43,19 +44,23 @@
     },
     "state.prev": {
       "label": "Previous State Slot",
-      "chord": "Ctrl+J"
+      "chord": "Ctrl+J",
+      "toast": "{slot}"
     },
     "state.next": {
       "label": "Next State Slot",
-      "chord": "Ctrl+K"
+      "chord": "Ctrl+K",
+      "toast": "{slot}"
     },
     "state.load": {
       "label": "Load State",
-      "chord": "Ctrl+A"
+      "chord": "Ctrl+A",
+      "toast": "LOAD STATE: {slot}"
     },
     "state.save": {
       "label": "Save State",
-      "chord": "Ctrl+S"
+      "chord": "Ctrl+S",
+      "toast": "SAVE STATE: {slot}"
     },
     "speed.rewind": {
       "label": "Rewind",
@@ -96,6 +101,16 @@
     "visual.shaders.toggle": {
       "label": "Shader On/Off",
       "chord": "Ctrl+H"
+    },
+    "visual.bezel.next": {
+      "label": "Next Bezel",
+      "chord": "Ctrl+Shift+B",
+      "toast": "BEZEL: {label}"
+    },
+    "visual.shader.next": {
+      "label": "Next Shader",
+      "chord": "Ctrl+Shift+V",
+      "toast": "SHADER: {label}"
     }
   },
   "quit_chord": {
@@ -146,12 +161,12 @@
         "action": "ui.screenshot"
       },
       {
-        "label": "BEZEL ON/OFF",
-        "action": "visual.bezels.toggle"
+        "label": "BEZEL",
+        "action": "visual.bezel.next"
       },
       {
-        "label": "SHADER ON/OFF",
-        "action": "visual.shaders.toggle"
+        "label": "SHADER",
+        "action": "visual.shader.next"
       },
       {
         "label": "QUIT GAME",
@@ -159,7 +174,7 @@
       }
     ],
     "pause_action": "ui.pause",
-    "doc": "The native Semu menu the renderer draws over any emulator with a compositor. The supervisor mirrors this list: the same journal drives the drawn selection and the executed action. pause_action reaches only emulators whose emulator.json menu.pause is emulator (seen to keep presenting while paused); the others keep running under the menu, and an emulator without a compositor gets no menu."
+    "doc": "The native Semu menu the renderer draws over any emulator with a compositor. The supervisor mirrors this list: the same journal drives the drawn selection and the executed action. BEZEL and SHADER step this system's own choice through its variants, then off (confirm or right forward, left back), live and saved as visual.systems.<id>.bezel_variant or shader_variant, never the global switches, which stay the default for systems without their own choice. An action's toast is what the renderer shows for a moment after it runs (SEMU_MENU_TOASTS): {slot} is the slot as the emulator numbers it (SLOT 3), empty with one fixed slot; {label} is the chosen variant's label, OFF for none; any bezel or shader change shows the Next Bezel or Next Shader toast. pause_action reaches only emulators whose emulator.json menu.pause is emulator (seen to keep presenting while paused); the others keep running under the menu, and an emulator without a compositor gets no menu."
   },
   "gamepad_chords": {
     "modifier": "select",

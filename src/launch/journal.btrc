@@ -1,0 +1,44 @@
+// The action journal the renderer reads: fixed 56-byte records in the emulator's state directory,
+// emptied when a session starts, appended by every Semu action the renderer reflects.
+
+#include <stdio.h>
+#include <string.h>
+
+import ../lib/paths.btrc;
+import ../renderer/action_abi.btrc;
+import ./input_state.btrc;
+import ./process.btrc;
+import ./plan.btrc;
+
+class SemuActionJournal {  // the renderer reads these records; same ABI as action_abi
+    class bool append(SemuLaunchPlan launch, int action, int slot) {
+        if (launch.stateDir.isEmpty() || action == SemuActions.none()) { return false; }
+        string path = PathTools.join(launch.stateDir, RendererActionJournal.fileName());
+        FILE* file = fopen(path, "ab");
+        if (file == null) { return false; }
+        struct SemuActionRecord record;
+        memset(&record, 0, sizeof(record));
+        record.abi = (unsigned int)RendererActionJournal.abi();
+        record.size = (unsigned int)sizeof(struct SemuActionRecord);
+        SemuSupervisorRuntime.sequence = SemuSupervisorRuntime.sequence + 1ULL;
+        record.sequence = SemuSupervisorRuntime.sequence;
+        record.monotonic_ms = SemuClock.milliseconds();
+        record.action = action;
+        record.radial = RendererActionJournal.direct();
+        record.slot = slot;
+        size_t sourceCapacity = sizeof(record.source);
+        snprintf(record.source, sourceCapacity, "%s", "semu");
+        size_t recordSize = sizeof(record);
+        bool written = fwrite(&record, recordSize, 1, file) == (size_t)1;
+        fclose(file);
+        return written;
+    }
+
+    class void reset(SemuLaunchPlan launch) {  // a fresh session starts an empty journal
+        if (launch.stateDir.isEmpty()) { return; }
+        string path = PathTools.join(launch.stateDir, RendererActionJournal.fileName());
+        FILE* file = fopen(path, "wb");
+        if (file != null) { fclose(file); }
+        SemuSupervisorRuntime.sequence = 0ULL;
+    }
+}

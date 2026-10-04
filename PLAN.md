@@ -334,14 +334,18 @@ Semu executing the actions itself.
   250 ms runs once, and Semu's own uinput typing is ignored when it comes
   back through X.
 - The native menu (`menu.items`): RESUME, SAVE STATE, LOAD STATE,
-  SCREENSHOT, BEZEL ON/OFF, SHADER ON/OFF, QUIT GAME. Opening it pauses the
+  SCREENSHOT, BEZEL, SHADER, QUIT GAME. Opening it pauses the
   emulator through its own pause action, and closing it resumes, only where
   the emulator was seen to keep presenting while paused (`emulator.json`
   `menu.pause`); elsewhere the menu draws over the running game, and an
   emulator with no compositor gets no menu, never an invisible one. The
   renderer draws it from `SEMU_MENU_ITEMS` and the supervisor mirrors the
   same list, so the drawn selection and the executed action never diverge.
-  Visual toggles flip the live renderer and persist to `semu.json`.
+  BEZEL and SHADER (and the radial's Next Bezel, Next Shader) step this
+  system's own variants, then off, live, and save the choice to `semu.json`
+  as `visual.systems.<id>.bezel_variant` or `shader_variant`; the launch
+  precomputes every combination into `semu-render-variants.env` and the
+  journal carries the chosen index (codes 79 and 80).
 - **Done when:** on the desktop, a controller opens the menu with Select+Y,
   navigates it with the D-pad, saves a state from it (state file observed),
   toggles the bezel live, and Start+Select still quits, all captured
@@ -665,6 +669,25 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   as well as the menu while it is open (a known limitation; blocking game input is a later task).
   Standalone melonDS has no compositor on any platform, so Select+Y and Ctrl+M open no menu there
   rather than an invisible one that paused the game.
+- Per-system bezel and shader choices (2026-10-04). A system's own `bezel_variant` or
+  `shader_variant` (including `none`) beats the global `visual.bezels` / `visual.crt_shaders`,
+  which are only the default for systems without their own value; the settings page shows what
+  the launch draws and labels the globals "(UNLESS A SYSTEM CHOOSES)". Next Bezel (Ctrl+Shift+B),
+  Next Shader (Ctrl+Shift+V), the menu's BEZEL and SHADER rows (confirm or right forward, left
+  back) and the old On/Off chords write only `visual.systems.<id>.*_variant`, never the globals;
+  On/Off goes to none and back to the last real choice, and keeps the old global toggle only on a
+  system with nothing to choose. A stale id starts on the manifest default.
+- The launch writes `$state/semu-render-variants.env` (schema 1): the system, each kind's ids
+  (variants in settings-page order, then none), toast-safe labels (A-Z 0-9 space : / + - , . ( ),
+  at most 31 characters, none is OFF), the starting indices, and one `[bezel,shader]` section per
+  combination holding only the variant-scoped SEMU_RENDER_* keys (`RendererVariantKeys`). The
+  journal records `visual.bezel.select` 79 and `visual.shader.select` 80 with the absolute index in
+  `slot`, so a replay after a context reset is idempotent. nds writes 21 sections in about 0.2 s.
+- Wii's 16:9 partner (`widescreen_variant` tv_wide) is attached only to the manifest's default
+  bezel: a chosen tv_wide or speakers bezel stays itself on widescreen games (2026-10-04).
+- Toast texts are data: `actions.<id>.toast` in input.json (`{slot}` the emulator's slot label,
+  `{label}` the chosen variant's), passed to the renderer as `SEMU_MENU_TOASTS` beside
+  `SEMU_MENU_ITEMS` and `SEMU_MENU_ACTIONS`; the composed text is cut to the toast's 31 characters.
 
 ### G1. Build and tests run on one host only — done on the Mac
 
@@ -1317,6 +1340,12 @@ Update this block whenever a milestone criterion changes state.
   RetroArch's index 3 and no slot line for Azahar's single quick slot. Not observable offline:
   Steam's radial chords reaching Azahar and the others in Game Mode, and melonDS typing Shift+F1
   (uinput typing never reaches a bare Xvfb).
+  2026-10-04, per-system variant choices (offline, contracts only; rulings above): every
+  combination of every system compiles into the variants file with only scoped keys differing,
+  the launch's own section equals compile's, nds through `semu render-env --variants-file` gives
+  21 sections, and Next Bezel, the menu rows, left/right and the On/Off chords journal 79/80 with
+  the right index and save only the per-system key (also through one real pollDevices tick fed raw
+  XI keys). The renderer applying a select live is the next commit.
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a

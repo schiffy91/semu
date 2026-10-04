@@ -1,0 +1,48 @@
+// The SEMU_RENDER_* keys that change with the bezel or shader choice, and the grammar of the
+// variants file that holds them for every combination. Shared by the launcher, which writes the
+// file, and the renderer, which reads one section live; plain C strings, no GL.
+
+#include <stdio.h>
+#include <string.h>
+
+class RendererVariantKeys {
+    class int schema() { return 1; }  // the file's first line: schema=1
+    class string systemKey() { return "system"; }  // the system the file was written for; a stale one is ignored
+    class string bezelsKey() { return "bezels"; }  // variant ids, then none, joined by '|'
+    class string bezelLabelsKey() { return "bezel_labels"; }  // toast-safe upper-case labels in the same order
+    class string shadersKey() { return "shaders"; }
+    class string shaderLabelsKey() { return "shader_labels"; }
+    class string currentKey() { return "current"; }  // bezel,shader indices the launch started on
+    class int labelCapacity() { return 31; }  // one toast line; the composed toast is cut to the toast's width
+    class int choiceCapacity() { return 10; }  // the most choices of one kind the renderer keeps labels for
+
+    class bool prefixed(char* rest, char* prefix) { return strncmp(rest, prefix, strlen(prefix)) == 0; }
+
+    class bool scoped(string name) {  // a key one combination sets and another may not
+        if (name == null) { return false; }
+        char copy[96];
+        snprintf(copy, sizeof(copy), "%s", name);
+        return RendererVariantKeys.scopedName(copy);
+    }
+
+    class bool scopedName(char* name) {  // the same judgement on a raw buffer the caller owns
+        if (name == null || strncmp(name, "SEMU_", 5) != 0 || strncmp(name + 5, "RENDER_", 7) != 0) { return false; }
+        char* rest = name + 12;
+        if (strcmp(rest, "SHADERS") == 0 || strcmp(rest, "BEZELS") == 0) { return true; }
+        if (strcmp(rest, "FRAME") == 0 || strcmp(rest, "FRAME_B") == 0) { return true; }  // never FRAME_INTEGER or FRAME_DELTA_MS
+        return RendererVariantKeys.prefixed(rest, "SHADER_PRESET") || RendererVariantKeys.prefixed(rest, "BEZEL_ID")
+            || RendererVariantKeys.prefixed(rest, "ART") || RendererVariantKeys.prefixed(rest, "BACKGROUND")
+            || RendererVariantKeys.prefixed(rest, "LAYOUT") || RendererVariantKeys.prefixed(rest, "CANVAS")
+            || RendererVariantKeys.prefixed(rest, "LAYER_") || RendererVariantKeys.prefixed(rest, "SCREEN_");
+    }
+
+    class bool scopedLine(string line) {  // NAME=value: only the name decides
+        char name[96];
+        snprintf(name, sizeof(name), "%s", line);
+        int length = 0;
+        while (name[length] != 0 && name[length] != '=') { length++; }
+        if (name[length] != '=') { return false; }  // no value, or a name too long to be ours
+        name[length] = 0;
+        return RendererVariantKeys.scopedName(name);
+    }
+}

@@ -1,0 +1,75 @@
+// Bezel and shader choices from the radial, the menu and the On/Off chords. The supervisor journals
+// the absolute index into the launch's variants file, which the renderer applies live, and saves the
+// choice for this system only: a system's own value beats the global switch, which stays the default.
+
+#include <stdlib.h>
+
+import Library.Console;
+import Library.JSON;
+import Library.Vector;
+import ../lib/settings.btrc;
+import ../emit/render_variants.btrc;
+import ../renderer/action_abi.btrc;
+import ./input_state.btrc;
+import ./journal.btrc;
+import ./plan.btrc;
+
+class SemuVisualCycle {
+    class bool cycles(string action) { return action.equals("visual.bezel.next") || action.equals("visual.shader.next"); }
+
+    class SemuVariantChoice choice(SemuLaunchPlan launch, string action) {  // a bezel action steps the bezels, any other the shaders
+        return action.contains("bezel") ? launch.variants.bezel : launch.variants.shader;
+    }
+
+    class void select(SemuLaunchPlan launch, SemuVariantChoice choice, int index) {  // journal the absolute index, save it for this system
+        choice.index = index;
+        if (!choice.off()) { choice.lastReal = index; }
+        bool bezel = choice.kind.equals("bezel");
+        SemuActionJournal.append(launch, bezel ? SemuActions.bezelSelect() : SemuActions.shaderSelect(), index);
+        if (bezel) { launch.bezelsOn = !choice.off(); } else { launch.shadersOn = !choice.off(); }
+        if (launch.semuHome.isEmpty() || launch.system.isEmpty()) { return; }
+        SemuSettingsStore.put(launch.semuHome, "visual.systems." + launch.system + "." + choice.kind + "_variant", JSONValue.makeString(choice.current()));  // never the global switch
+    }
+
+    class void step(SemuLaunchPlan launch, SemuVariantChoice choice, int delta) {  // wraps through the variants and none
+        int count = choice.ids.size();
+        if (count == 0) {
+            if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: no " + choice.kind + " to choose for " + launch.system + " here"); }
+            return;
+        }
+        SemuVisualCycle.select(launch, choice, ((choice.index + delta) % count + count) % count);
+    }
+
+    class void toggle(SemuLaunchPlan launch, string action) {  // On/Off: none, or back to the last real choice
+        SemuVariantChoice choice = SemuVisualCycle.choice(launch, action);
+        if (choice.available()) {
+            SemuVisualCycle.select(launch, choice, choice.off() ? choice.lastReal : choice.ids.size() - 1);  // none is always last
+            return;
+        }
+        bool bezels = action.equals("visual.bezels.toggle");  // nothing to choose here: the global switch, as before
+        SemuActionJournal.append(launch, bezels ? SemuActions.bezelsToggle() : SemuActions.shadersToggle(), 0);
+        if (bezels) { launch.bezelsOn = !launch.bezelsOn; } else { launch.shadersOn = !launch.shadersOn; }
+        bool enabled = launch.shadersOn;
+        if (bezels) { enabled = launch.bezelsOn; }
+        if (launch.semuHome.isEmpty()) { return; }
+        SemuSettingsStore.put(launch.semuHome, bezels ? "visual.bezels" : "visual.crt_shaders", JSONValue.makeBool(enabled));
+    }
+
+    class void execute(SemuLaunchPlan launch, string action) {  // every visual.* id; an unknown one does nothing
+        if (SemuVisualCycle.cycles(action)) {
+            SemuVisualCycle.step(launch, SemuVisualCycle.choice(launch, action), 1);
+        } else if (action.equals("visual.bezels.toggle") || action.equals("visual.shaders.toggle")) {
+            SemuVisualCycle.toggle(launch, action);
+        } else if (getenv("SEMU_RENDER_DEBUG") != null) {
+            Console.error("semu: no visual action named " + action);
+        }
+    }
+
+    class bool menuStep(SemuLaunchPlan launch, int delta) {  // left and right on the selected BEZEL or SHADER row
+        if (SemuSupervisorRuntime.menu_visible == 0 || SemuSupervisorRuntime.menu_selected >= launch.menuActions.size()) { return false; }
+        string item = launch.menuActions.get(SemuSupervisorRuntime.menu_selected);
+        if (!SemuVisualCycle.cycles(item)) { return false; }
+        SemuVisualCycle.step(launch, SemuVisualCycle.choice(launch, item), delta);
+        return true;
+    }
+}

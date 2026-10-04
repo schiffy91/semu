@@ -47,6 +47,8 @@ class SemuActions {
     class int extensionCapacity() { return SEMU_ACTION_EXTENSION_CAPACITY; }
     class int stateNext() { return SemuActions.extensionBase() + SemuActions.extensionCapacity(); }  // past the extension range: every older code stays
     class int statePrev() { return SemuActions.stateNext() + 1; }
+    class int bezelSelect() { return SemuActions.statePrev() + 1; }  // slot carries the absolute index into the variants file's bezels
+    class int shaderSelect() { return SemuActions.bezelSelect() + 1; }
 
     class void resetExtensions() {
         memset(SemuActionExtensionIds, 0,
@@ -93,6 +95,8 @@ class SemuActions {
         if (actionId.equals("state.load")) { return SemuActions.stateLoad(); }
         if (actionId.equals("state.next")) { return SemuActions.stateNext(); }
         if (actionId.equals("state.prev")) { return SemuActions.statePrev(); }
+        if (actionId.equals("visual.bezel.select")) { return SemuActions.bezelSelect(); }
+        if (actionId.equals("visual.shader.select")) { return SemuActions.shaderSelect(); }
         if (actionId.equals("app.quit")) { return SemuActions.appQuit(); }
         if (actionId.equals("ui.screenshot")) { return SemuActions.screenshot(); }
         if (actionId.equals("ui.escape")) { return SemuActions.escape(); }
@@ -111,10 +115,18 @@ class SemuActions {
         if (action == SemuActions.stateLoad()) { return "state.load"; }
         if (action == SemuActions.stateNext()) { return "state.next"; }
         if (action == SemuActions.statePrev()) { return "state.prev"; }
+        if (action == SemuActions.bezelSelect()) { return "visual.bezel.select"; }
+        if (action == SemuActions.shaderSelect()) { return "visual.shader.select"; }
         if (action == SemuActions.appQuit()) { return "app.quit"; }
         if (action == SemuActions.screenshot()) { return "ui.screenshot"; }
         if (action == SemuActions.escape()) { return "ui.escape"; }
         return SemuActions.extensionIdentity(action);
+    }
+
+    class string toastAction(int action) {  // whose input.json toast a record shows: a select is the cycle's outcome
+        if (action == SemuActions.bezelSelect()) { return "visual.bezel.next"; }
+        if (action == SemuActions.shaderSelect()) { return "visual.shader.next"; }
+        return SemuActions.id(action);
     }
 
     class bool controllerMode(int action) {
@@ -139,7 +151,9 @@ class SemuActions {
             || action == SemuActions.statePrev()
             || action == SemuActions.screenshot()
             || action == SemuActions.bezelsToggle()
-            || action == SemuActions.shadersToggle();
+            || action == SemuActions.shadersToggle()
+            || action == SemuActions.bezelSelect()
+            || action == SemuActions.shaderSelect();
     }
 }
 
@@ -147,6 +161,7 @@ class RendererActionJournal {
     class int abi() { return 1; }
     class string fileName() { return "semu-render-actions.bin"; }
     class string evidenceFileName() { return "semu-input-evidence.log"; }
+    class string variantsFileName() { return "semu-render-variants.env"; }  // every bezel x shader combination, written at launch
     class int direct() { return 0; }
     class int quickRadial() { return 1; }
     class int menuRadial() { return 2; }
@@ -168,5 +183,57 @@ class SemuSlotLabel {  // records carry Semu's index; emulators show first_slot 
         if (slotCount < 2 || index < 0 || index >= slotCount || capacity < 12) { return false; }
         snprintf(buffer, (size_t)capacity, "SLOT %d", firstSlot + index);
         return true;
+    }
+}
+
+class SemuToastText {  // SEMU_MENU_TOASTS "action=template|...", the input.json toasts; {slot} and {label} filled in
+    class bool find(char* toasts, char* actionId, char* buffer, int capacity) {  // ACTION_ID's template; false when it declares none
+        if (buffer == null || capacity < 1) { return false; }
+        buffer[0] = 0;
+        if (toasts == null || actionId == null || actionId[0] == 0) { return false; }
+        size_t length = strlen(actionId);
+        char* entry = toasts;
+        while (*entry != 0) {
+            char* end = strchr(entry, (int)'|');
+            if (end == null) { end = entry + strlen(entry); }
+            if ((size_t)(end - entry) > length && strncmp(entry, actionId, length) == 0 && entry[length] == '=') {
+                int copied = (int)(end - entry - (long)length - 1L);
+                if (copied > capacity - 1) { copied = capacity - 1; }
+                memcpy(buffer, entry + length + 1, (size_t)copied);
+                buffer[copied] = 0;
+                return copied > 0;
+            }
+            entry = *end == '|' ? end + 1 : end;
+        }
+        return false;
+    }
+
+    class int append(char* buffer, int written, int capacity, char* text) {  // copies TEXT while room is left; the new length
+        for (int index = 0; text != null && text[index] != 0 && written < capacity - 1; index++) {
+            buffer[written] = text[index];
+            written++;
+        }
+        return written;
+    }
+
+    class void compose(char* buffer, int capacity, char* pattern, char* slot, char* label) {  // cut to CAPACITY-1; an empty slot drops its trailing ": "
+        if (buffer == null || capacity < 1) { return; }
+        int written = 0;
+        int index = 0;
+        while (pattern != null && pattern[index] != 0 && written < capacity - 1) {
+            if (strncmp(pattern + index, "{slot}", 6) == 0) {
+                written = SemuToastText.append(buffer, written, capacity, slot);
+                index += 6;
+            } else if (strncmp(pattern + index, "{label}", 7) == 0) {
+                written = SemuToastText.append(buffer, written, capacity, label);
+                index += 7;
+            } else {
+                buffer[written] = pattern[index];
+                written++;
+                index++;
+            }
+        }
+        while (written > 0 && (buffer[written - 1] == ' ' || buffer[written - 1] == ':')) { written--; }
+        buffer[written] = 0;
     }
 }

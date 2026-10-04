@@ -1,0 +1,202 @@
+// Visual cycle spec: the radial, the menu rows and the On/Off chords step a system's own bezel and
+// shader choice, journal the absolute index (codes 79 and 80) and save it for that system only;
+// the launch hands the renderer the menu's actions and the input.json toast templates.
+
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/render_variants.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/launch/actions.btrc;
+import ../../../src/launch/supervisor.btrc;
+import ../../../src/launch/visual_cycle.btrc;
+import ../../../src/renderer/action_abi.btrc;
+import ./input_delivery.btrc;
+import ./launch.btrc;
+import ./render_variants.btrc;
+
+class VisualCycleBed {  // a scratch nds launch: its own journal and semu.json, the real nds choices
+    class SemuLaunchPlan launch(Fixture fixture, string name, string settings) {
+        string root = PathTools.join(fixture.scratch, "cycle/" + name);
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan launch = InputDeliveryTools.launch(PathTools.join(root, "state"), ["visual.bezel.next=Ctrl+Shift+B", "visual.shader.next=Ctrl+Shift+V", "ui.menu=Ctrl+M"], InputDeliveryTools.none());
+        launch.system = "nds";
+        launch.semuHome = PathTools.join(root, "home");
+        FileSystem.mkdirp(launch.semuHome);
+        if (!settings.isEmpty()) { FileSystem.writeText(PathTools.join(launch.semuHome, "semu.json"), settings); }
+        SemuPlan plan = RenderVariantTools.plan(fixture, settings.isEmpty() ? "{}" : settings);
+        launch.variants.bezel = SemuRenderVariants.choice(plan, fixture.model.system("nds"), "bezel");
+        launch.variants.shader = SemuRenderVariants.choice(plan, fixture.model.system("nds"), "shader");
+        launch.menuLabels = fixture.plan.input.menuItems("label");
+        launch.menuActions = fixture.plan.input.menuItems("action");
+        launch.menuDrawn = true;
+        return launch;
+    }
+
+    class JSONValue saved(SemuLaunchPlan launch) { return SemuJson.readFile(PathTools.join(launch.semuHome, "semu.json")); }
+}
+
+class VisualCycleAbi {  // two journal codes past state.prev; every older code keeps its number
+    class void run(Contract contract) {
+        contract.expect(SemuActions.stateNext() == 77 && SemuActions.statePrev() == 78 && SemuActions.bezelSelect() == 79 && SemuActions.shaderSelect() == 80, "journal codes: state.next 77, state.prev 78, bezel select 79, shader select 80");
+        contract.expect(SemuActions.code("visual.bezel.select") == 79 && SemuActions.id(79).equals("visual.bezel.select") && SemuActions.code("visual.shader.select") == 80 && SemuActions.id(80).equals("visual.shader.select"), "the select codes round-trip through code() and id()");
+        contract.expect(SemuActions.rendererOwned(79) && SemuActions.rendererOwned(80), "the renderer keeps both select records");
+        contract.expect(SemuActions.code("visual.bezel.next") == SemuActions.none() && SemuActions.code("visual.shader.next") == SemuActions.none(), "the cycle actions journal only their outcome, a select");
+        contract.expect(SemuActions.toastAction(79).equals("visual.bezel.next") && SemuActions.toastAction(80).equals("visual.shader.next") && SemuActions.toastAction(SemuActions.stateSave()).equals("state.save"), "a select shows the cycle action's toast, every other record its own");
+        contract.expect(RendererActionJournal.variantsFileName().equals("semu-render-variants.env") && RendererActionJournal.abi() == 1, "the variants file name is shared and the record ABI stays 1");
+    }
+}
+
+class VisualCycleSteps {  // next, wrap, the global switch untouched, nothing to choose
+    class void run(Contract contract, Fixture fixture) {
+        SemuLaunchPlan launch = VisualCycleBed.launch(fixture, "next", "");
+        SemuActionExecutor.execute(launch, "visual.bezel.next", SEMU_SOURCE_X11);
+        JSONValue saved = VisualCycleBed.saved(launch);
+        contract.expect(InputDeliveryTools.records(launch.stateDir) == 1 && InputDeliveryTools.record(launch.stateDir, 0, SemuActions.bezelSelect(), 1), "Next Bezel on nds journals one 56-byte select of index 1");
+        contract.expect(SemuJson.textAt(saved, "visual.systems.nds.bezel_variant").equals("main_right") && SemuJson.get(saved, "visual.bezels").isNull(), "it saves visual.systems.nds.bezel_variant=main_right and never the global switch");
+        SemuActionExecutor.execute(launch, "visual.shader.next", SEMU_SOURCE_GAMEPAD);
+        contract.expect(InputDeliveryTools.record(launch.stateDir, 1, SemuActions.shaderSelect(), 1) && SemuJson.textAt(VisualCycleBed.saved(launch), "visual.systems.nds.shader_variant").equals("grid"), "Next Shader journals code 80 with index 1 and saves grid");
+        SemuLaunchPlan off = VisualCycleBed.launch(fixture, "wrap", "{\"visual\":{\"bezels\":false}}");
+        contract.expect(off.variants.bezel.off() && off.variants.bezel.index == 6, "under the global off nds starts on none, the last entry");
+        SemuActionExecutor.execute(off, "visual.bezel.next", SEMU_SOURCE_X11);
+        JSONValue wrapped = VisualCycleBed.saved(off);
+        contract.expect(InputDeliveryTools.record(off.stateDir, 0, SemuActions.bezelSelect(), 0) && SemuJson.textAt(wrapped, "visual.systems.nds.bezel_variant").equals("shell"), "from none, the last entry, Next Bezel wraps to the shell");
+        contract.expect(!SemuJson.boolAt(wrapped, "visual.bezels", true), "leaving none keeps the global switch off: nds's own choice wins");
+        SemuLaunchPlan bare = VisualCycleBed.launch(fixture, "bare", "");
+        bare.variants = SemuRenderVariantSet();
+        SemuActionExecutor.execute(bare, "visual.bezel.next", SEMU_SOURCE_X11);
+        contract.expect(InputDeliveryTools.records(bare.stateDir) == 0 && !FileSystem.isFile(PathTools.join(bare.semuHome, "semu.json")), "without a variants file nothing is journaled or saved");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
+class VisualCycleSwitches {  // the On/Off chords: none, then back to the last real choice, for this system only
+    class void run(Contract contract, Fixture fixture) {
+        SemuLaunchPlan launch = VisualCycleBed.launch(fixture, "toggle", "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"stacked\"}}}}");
+        SemuActionExecutor.execute(launch, "visual.bezels.toggle", SEMU_SOURCE_X11);
+        contract.expect(InputDeliveryTools.record(launch.stateDir, 0, SemuActions.bezelSelect(), 6) && SemuJson.textAt(VisualCycleBed.saved(launch), "visual.systems.nds.bezel_variant").equals("none"), "Bezel On/Off from stacked journals a select to none and saves none");
+        SemuActionExecutor.execute(launch, "visual.bezels.toggle", SEMU_SOURCE_X11);
+        JSONValue saved = VisualCycleBed.saved(launch);
+        contract.expect(InputDeliveryTools.record(launch.stateDir, 1, SemuActions.bezelSelect(), 4) && SemuJson.textAt(saved, "visual.systems.nds.bezel_variant").equals("stacked"), "a second On/Off returns to stacked");
+        contract.expect(SemuJson.get(saved, "visual.bezels").isNull() && launch.bezelsOn, "the On/Off chord never writes the global switch while the system has choices");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
+class VisualCycleMenu {  // the BEZEL and SHADER rows: confirm or right steps on, left steps back, the menu stays open
+    class void run(Contract contract, Fixture fixture) {
+        SemuLaunchPlan launch = VisualCycleBed.launch(fixture, "menu", "");
+        contract.expect(launch.menuActions.size() == 7 && launch.menuActions.get(4).equals("visual.bezel.next") && launch.menuActions.get(5).equals("visual.shader.next") && launch.menuLabels.get(4).equals("BEZEL") && launch.menuLabels.get(5).equals("SHADER"), "the menu's fifth and sixth rows are BEZEL and SHADER, seven rows in all");
+        struct SemuInputDevice pad;
+        memset(&pad, 0, sizeof(pad));
+        pad.gamepad = 1;
+        pad.source = SEMU_SOURCE_GAMEPAD;
+        SemuActionExecutor.execute(launch, "ui.menu", SEMU_SOURCE_GAMEPAD);
+        for (int row = 0; row < 4; row++) { SemuActionExecutor.execute(launch, "ui.menu.down", SEMU_SOURCE_GAMEPAD); }
+        SemuActionExecutor.execute(launch, "ui.menu.confirm", SEMU_SOURCE_GAMEPAD);
+        int records = InputDeliveryTools.records(launch.stateDir);
+        contract.expect(SemuSupervisorRuntime.menu_visible == 1 && launch.variants.bezel.index == 1 && InputDeliveryTools.record(launch.stateDir, records - 1, SemuActions.bezelSelect(), 1), "confirm on BEZEL steps to the next bezel and keeps the menu open");
+        contract.expect(SemuInputEvents.gamepadAction(launch, &pad, BTN_DPAD_LEFT).equals("ui.menu.left") && SemuInputEvents.gamepadAction(launch, &pad, BTN_DPAD_RIGHT).equals("ui.menu.right"), "with the menu open the d-pad's left and right are menu left and right");
+        SemuInputEvents.key(launch, &pad, BTN_DPAD_LEFT, 1, 5000LL);
+        SemuInputEvents.key(launch, &pad, BTN_DPAD_LEFT, 0, 5010LL);
+        contract.expect(launch.variants.bezel.index == 0 && InputDeliveryTools.record(launch.stateDir, records, SemuActions.bezelSelect(), 0), "d-pad left on BEZEL steps back to the shell");
+        SemuInputEvents.key(launch, &pad, BTN_DPAD_LEFT, 1, 5400LL);
+        contract.expect(launch.variants.bezel.index == 6 && InputDeliveryTools.record(launch.stateDir, records + 1, SemuActions.bezelSelect(), 6), "left again wraps back to none");
+        SemuActionExecutor.execute(launch, "ui.menu.down", SEMU_SOURCE_GAMEPAD);
+        struct SemuInputDevice* keyboard = &SemuSupervisorRuntime.x11_keyboard;
+        SemuInputEvents.key(launch, keyboard, KEY_RIGHT, 1, 6000LL);
+        contract.expect(launch.variants.shader.index == 1 && InputDeliveryTools.record(launch.stateDir, records + 3, SemuActions.shaderSelect(), 1), "the Right key on SHADER steps to the next shader");
+        SemuActionExecutor.execute(launch, "ui.menu.up", SEMU_SOURCE_GAMEPAD);
+        SemuActionExecutor.execute(launch, "ui.menu.up", SEMU_SOURCE_GAMEPAD);
+        int before = InputDeliveryTools.records(launch.stateDir);
+        SemuActionExecutor.execute(launch, "ui.menu.right", SEMU_SOURCE_X11);  // the Right key's source, so the dedupe lets it through
+        contract.expect(InputDeliveryTools.records(launch.stateDir) == before, "right on another row does nothing");
+        SemuActionExecutor.execute(launch, "ui.menu.back", SEMU_SOURCE_GAMEPAD);
+        contract.expect(SemuSupervisorRuntime.menu_visible == 0 && SemuInputEvents.gamepadAction(launch, &pad, BTN_DPAD_LEFT).isEmpty(), "with the menu closed the d-pad is the game's again");
+        memset(&pad, 0, sizeof(pad));
+        pad.gamepad = 1;
+        pad.down[(int)BTN_SELECT] = 1;
+        launch.chordButtons = ["dpad_left"];
+        launch.chordActions = ["state.prev"];
+        contract.expect(SemuInputEvents.gamepadAction(launch, &pad, BTN_DPAD_LEFT).equals("state.prev"), "Select plus left stays the previous slot");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
+class VisualCycleSeam {  // Ctrl, Shift, B as XI raw keys through one real pollDevices tick journal the select
+    class void run(Contract contract, Fixture fixture) {
+        SemuLaunchPlan launch = VisualCycleBed.launch(fixture, "seam", "");
+        int pair[2];
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, pair) != 0) {
+            contract.expect(false, "a socketpair for the key-source seam");
+            return;
+        }
+        SemuX11KeyListener.attachWire(&SemuSupervisorRuntime.key_source, pair[0], 131);
+        unsigned char events[192];
+        InputDeliveryTools.rawKey(events, 131, 13, KEY_LEFTCTRL + 8);
+        InputDeliveryTools.rawKey(events + 32, 131, 13, KEY_LEFTSHIFT + 8);
+        InputDeliveryTools.rawKey(events + 64, 131, 13, KEY_B + 8);
+        InputDeliveryTools.rawKey(events + 96, 131, 14, KEY_B + 8);
+        InputDeliveryTools.rawKey(events + 128, 131, 14, KEY_LEFTSHIFT + 8);
+        InputDeliveryTools.rawKey(events + 160, 131, 14, KEY_LEFTCTRL + 8);
+        bool written = write(pair[1], events, sizeof(events)) == (ssize_t)sizeof(events);
+        SemuSupervisor.pollDevices(launch);
+        contract.expect(written && InputDeliveryTools.records(launch.stateDir) == 1 && InputDeliveryTools.record(launch.stateDir, 0, SemuActions.bezelSelect(), 1), "the radial's Ctrl+Shift+B through the X key source journals one bezel select of index 1");
+        SemuX11KeyListener.disconnect(&SemuSupervisorRuntime.key_source);
+        close(pair[1]);
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
+class VisualCycleToasts {  // input.json's toast templates reach the renderer; the composer fills and cuts them
+    class void run(Contract contract, Fixture fixture) {
+        string toasts = fixture.plan.input.toasts();
+        for action in ["state.save", "state.load", "state.next", "state.prev", "ui.screenshot", "visual.bezel.next", "visual.shader.next"] {
+            string pattern = SemuJson.textAt(fixture.plan.input.definition.get("actions").get(action), "toast");
+            bool clean = !pattern.isEmpty() && !pattern.contains("|") && pattern.replace("{slot}", "").replace("{label}", "").indexOf("{") < 0;
+            contract.expect(clean && toasts.contains(action + "=" + pattern), "toasts: " + action + " declares a template with only {slot} and {label}: " + pattern);
+        }
+        contract.expect(toasts.contains("state.save=SAVE STATE: {slot}") && toasts.contains("visual.bezel.next=BEZEL: {label}") && !toasts.contains("ui.menu="), "toasts: save and bezel templates, and none for the menu");
+        char buffer[48];
+        char list[160];
+        snprintf(list, sizeof(list), "%s", "state.saves=WRONG|state.save=SAVE STATE: {slot}|visual.bezel.next=BEZEL: {label}");
+        contract.expect(SemuToastText.find(list, "state.save", buffer, 48) && strcmp(buffer, "SAVE STATE: {slot}") == 0, "toasts: find picks the exact action, not a longer one sharing its prefix");
+        contract.expect(!SemuToastText.find(list, "ui.menu", buffer, 48) && buffer[0] == 0 && !SemuToastText.find(null, "state.save", buffer, 48), "toasts: an action without a template finds none");
+        SemuToastText.compose(buffer, 32, "SAVE STATE: {slot}", "SLOT 3", "");
+        contract.expect(strcmp(buffer, "SAVE STATE: SLOT 3") == 0, "toasts: {slot} becomes the emulator's slot label");
+        SemuToastText.compose(buffer, 32, "SAVE STATE: {slot}", "", "");
+        contract.expect(strcmp(buffer, "SAVE STATE") == 0, "toasts: one fixed slot drops the slot and its separator");
+        SemuToastText.compose(buffer, 32, "BEZEL: {label}", "", "LARGE MAIN, SECOND RIGHT");
+        contract.expect(strcmp(buffer, "BEZEL: LARGE MAIN, SECOND RIGHT") == 0, "toasts: {label} becomes the variant's label");
+        SemuToastText.compose(buffer, 32, "SHADER: {label}", "", "SHARP CRT (EASYMODE + HALATION)");
+        contract.expect((int)strlen(buffer) == 31 && strncmp(buffer, "SHADER: SHARP CRT (EASYMODE + H", 31) == 0, "toasts: the composed text is cut to the toast's width, not the label alone");
+        SemuLaunchPlan launch = LaunchSpecTools.retroarchPlan(fixture);
+        contract.expect(launch.environment.contains("SEMU_MENU_ACTIONS=" + launch.menuActions.join("|")) && launch.environment.contains("SEMU_MENU_ITEMS=" + launch.menuLabels.join("|")), "the renderer gets the menu's labels and actions in the same order");
+        contract.expect(launch.environment.contains("SEMU_MENU_TOASTS=" + toasts), "the renderer gets every toast template");
+        contract.expect(launch.variants.written && launch.variants.bezel.ids.size() == 3 && launch.variants.bezel.current().equals("dmg") && launch.variants.shader.current().equals("dmg"), "a RetroArch gb launch carries its choices: dmg, studio, none");
+        contract.expect(FileSystem.isFile(PathTools.join(launch.stateDir, RendererActionJournal.variantsFileName())), "the launch writes the variants file beside the action journal");
+    }
+}
+
+class VisualCycleSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        VisualCycleAbi.run(contract);
+        VisualCycleSteps.run(contract, fixture);
+        VisualCycleSwitches.run(contract, fixture);
+        VisualCycleMenu.run(contract, fixture);
+        VisualCycleSeam.run(contract, fixture);
+        VisualCycleToasts.run(contract, fixture);
+    }
+}
