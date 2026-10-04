@@ -653,21 +653,28 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
     }
 }
 
-class RenderResolutionContract {  // the 3D cores render at the largest whole multiple the display holds
-    class string mupen(Fixture fixture, string overlay) {
+class RenderResolutionContract {  // the upscaling 3D cores render at the largest whole multiple the display holds; the N64 stays at its native 320x240
+    class string options(Fixture fixture, string overlay, string core, string systemId) {
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuPlan plan = SemuResolver.plan(fixture.model, fixture.plan.target.id, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
-        return SemuLauncher.coreOptions(plan, fixture.model.emulator("retroarch").platform("linux"), "mupen64plus_next", fixture.model.system("n64"));
+        return SemuLauncher.coreOptions(plan, fixture.model.emulator("retroarch").platform("linux"), core, fixture.model.system(systemId));
     }
 
     class void run(Contract contract) {
         Fixture desktop = Fixture("linux-desktop");
         Fixture deck = Fixture("steam-deck");
-        contract.contains(RenderResolutionContract.mupen(desktop, "{}"), "mupen64plus-43screensize = \"2880x2160\"", "a 4K desktop renders the N64 at 9x");
-        contract.contains(RenderResolutionContract.mupen(deck, "{}"), "mupen64plus-43screensize = \"960x720\"", "the Deck renders the N64 at 3x");
-        contract.contains(RenderResolutionContract.mupen(desktop, "{\"visual\":{\"render_resolution\":\"1x\"}}"), "mupen64plus-43screensize = \"320x240\"", "1x keeps the native size");
-        contract.lacks(RenderResolutionContract.mupen(desktop, "{\"visual\":{\"render_resolution\":\"native\"}}"), "43screensize", "native leaves the core its own default");
-        contract.lacks(RenderResolutionContract.mupen(desktop, "{}"), "169screensize", "the widescreen size stays unset for 4:3 play");
+        contract.contains(RenderResolutionContract.options(desktop, "{}", "ppsspp", "psp"), "ppsspp_internal_resolution = \"3360x1904\"", "a 4K desktop renders the PSP at 7x");
+        contract.contains(RenderResolutionContract.options(deck, "{}", "ppsspp", "psp"), "ppsspp_internal_resolution = \"960x544\"", "the Deck renders the PSP at 2x");
+        contract.contains(RenderResolutionContract.options(desktop, "{\"visual\":{\"render_resolution\":\"1x\"}}", "ppsspp", "psp"), "ppsspp_internal_resolution = \"480x272\"", "1x keeps the native size");
+        contract.lacks(RenderResolutionContract.options(desktop, "{\"visual\":{\"render_resolution\":\"native\"}}", "ppsspp", "psp"), "internal_resolution", "native leaves the core its own default");
+        for overlay in ["{}", "{\"visual\":{\"render_resolution\":\"native\"}}"] {  // GLideN64 at native factor 1 hands 320x240, the frame Semu's whole steps and CRT shaders read
+            for fixture in [desktop, deck] {
+                string mupen = RenderResolutionContract.options(fixture, overlay, "mupen64plus_next", "n64");
+                contract.expect(mupen.contains("mupen64plus-43screensize = \"320x240\"") && mupen.contains("mupen64plus-EnableNativeResFactor = \"1\"") && mupen.contains("mupen64plus-rdp-plugin = \"gliden64\""),
+                    fixture.plan.target.id + " " + overlay + ": the N64 renders GLideN64 at its native 320x240, whatever render_resolution says: " + mupen);
+                contract.lacks(mupen, "169screensize", "the widescreen size stays unset for 4:3 play");
+            }
+        }
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuPlan fitted = SemuResolver.plan(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"systems\":{\"gb\":{\"placement\":\"fit\"}}}}", diagnostics);
         contract.expect(SemuRenderEnvironment.compile(deck.plan, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=game") && SemuRenderEnvironment.compile(deck.plan, deck.model.system("nes"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=fit"), "handhelds default to an integer picture, TVs fit");

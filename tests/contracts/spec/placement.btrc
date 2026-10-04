@@ -3,7 +3,7 @@
 // left nothing to mirror); the handhelds draw the wood desk, never Duimon's carbon plate stretched over it;
 // game placement centres a shell that fits the screen (the PSP at 1280x800, whose screen sits above the
 // device's middle) and leaves one that does not alone, so gb, gbc and gba keep their picture centred; and the
-// whole step follows the height the emulator reports, so angrylion's cropped frame lands at multiples of 237.
+// whole step follows the height the emulator reports: the N64 (GLideN64 at native factor 1) at multiples of 240.
 
 import Library.JSON;
 import Library.Strings;
@@ -146,18 +146,23 @@ class PlacementSpecGeometry {
         }
     }
 
-    class void television(Contract contract, Fixture fixture) {  // angrylion with Hide overscan hands 625x237 for a 474-line VI span (vi.c:456-462): the step is of 237
+    class void television(Contract contract, Fixture fixture) {  // GLideN64 at native factor 1 hands 320x240 (mupen64plus-libretro-nx f275caf4 libretro.c:1438-1446): the step is of 240, centred
         struct RendererCanvasRect canvas;
         struct RendererCanvasRect picture;
+        int widths[2] = {1280, 1920};
+        int heights[2] = {800, 1080};
+        int lines[2] = {720, 960};
+        for (int size = 0; size < 2; size++) {
+            PlacementSpecGeometry.place(fixture, "n64", 320, 240, 1, widths[size], heights[size], &canvas, &picture);
+            contract.expect(PlacementSpecGeometry.near(picture.height, (float)lines[size]) && PlacementSpecGeometry.near(picture.width, (float)lines[size] * 4.0f / 3.0f) && PlacementSpecGeometry.centred(&picture, widths[size], heights[size]),
+                f"N64 320x240 at {widths[size]}x{heights[size]}, game placement: the largest whole step of 240, {lines[size]} lines, 4:3, centred on the screen: " + PlacementSpecGeometry.text(&picture));
+            PlacementSpecGeometry.place(fixture, "n64", 320, 240, 2, widths[size], heights[size], &canvas, &picture);
+            int steps = PlacementSpecGeometry.rounded(picture.height) / 240;
+            contract.expect(steps >= 1 && PlacementSpecGeometry.near(picture.height, (float)(steps * 240)) && PlacementSpecGeometry.near(canvas.x * 2.0f + canvas.width, (float)widths[size]) && PlacementSpecGeometry.near(canvas.y * 2.0f + canvas.height, (float)heights[size]),
+                f"N64 320x240 at {widths[size]}x{heights[size]}, bezel placement: a whole multiple of 240 in the TV, the TV centred on the screen: " + PlacementSpecGeometry.text(&picture) + ", canvas " + PlacementSpecGeometry.text(&canvas));
+        }
         PlacementSpecGeometry.place(fixture, "n64", 625, 237, 1, 1280, 800, &canvas, &picture);
-        contract.expect(PlacementSpecGeometry.near(picture.height, 711.0f) && PlacementSpecGeometry.centred(&picture, 1280, 800), "N64 cropped to 625x237, game placement at 1280x800: 3x the reported height, 711 lines: " + PlacementSpecGeometry.text(&picture));
-        PlacementSpecGeometry.place(fixture, "n64", 625, 237, 1, 1920, 1080, &canvas, &picture);
-        contract.expect(PlacementSpecGeometry.near(picture.height, 948.0f), "N64 cropped, game placement at 1920x1080: 4x 237 = 948 lines: " + PlacementSpecGeometry.text(&picture));
-        PlacementSpecGeometry.place(fixture, "n64", 625, 237, 2, 1280, 800, &canvas, &picture);
-        int steps = PlacementSpecGeometry.rounded(picture.height) / 237;
-        contract.expect(steps >= 1 && PlacementSpecGeometry.near(picture.height, (float)(steps * 237)), "N64 cropped, bezel placement at 1280x800: a whole multiple of 237: " + PlacementSpecGeometry.text(&picture));
-        PlacementSpecGeometry.place(fixture, "n64", 640, 240, 1, 1280, 800, &canvas, &picture);
-        contract.expect(PlacementSpecGeometry.near(picture.height, 720.0f), "N64 with its overscan, 640x240, game placement at 1280x800: 3x 240 = 720 lines, so the step is the reported height's: " + PlacementSpecGeometry.text(&picture));
+        contract.expect(PlacementSpecGeometry.near(picture.height, 711.0f) && PlacementSpecGeometry.centred(&picture, 1280, 800), "a core that crops to 625x237, game placement at 1280x800: 3x the reported height, 711 lines, so the step is the reported height's: " + PlacementSpecGeometry.text(&picture));
     }
 }
 

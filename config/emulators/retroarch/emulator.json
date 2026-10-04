@@ -300,21 +300,16 @@
               "key": "mupen64plus-43screensize",
               "aspect": "standard",
               "source": {
-                "kind": "render_resolution",
-                "basis": "combined",
-                "display_aspect": "standard",
-                "anchor": "width"
+                "kind": "literal",
+                "value": "320x240"
               }
             },
             {
               "key": "mupen64plus-169screensize",
               "aspect": "widescreen",
               "source": {
-                "kind": "render_resolution",
-                "basis": "combined",
-                "display_aspect": "widescreen",
-                "anchor": "width",
-                "minimum_scale": 2
+                "kind": "literal",
+                "value": "640x360"
               }
             },
             {
@@ -325,24 +320,24 @@
               }
             },
             {
+              "key": "mupen64plus-EnableNativeResFactor",
+              "source": {
+                "kind": "literal",
+                "value": "1"
+              }
+            },
+            {
               "key": "mupen64plus-rdp-plugin",
               "source": {
                 "kind": "literal",
-                "value": "angrylion"
+                "value": "gliden64"
               }
             },
             {
               "key": "mupen64plus-rsp-plugin",
               "source": {
                 "kind": "literal",
-                "value": "cxd4"
-              }
-            },
-            {
-              "key": "mupen64plus-angrylion-overscan",
-              "source": {
-                "kind": "literal",
-                "value": "enabled"
+                "value": "hle"
               }
             }
           ],
@@ -710,21 +705,16 @@
               "key": "mupen64plus-43screensize",
               "aspect": "standard",
               "source": {
-                "kind": "render_resolution",
-                "basis": "combined",
-                "display_aspect": "standard",
-                "anchor": "width"
+                "kind": "literal",
+                "value": "320x240"
               }
             },
             {
               "key": "mupen64plus-169screensize",
               "aspect": "widescreen",
               "source": {
-                "kind": "render_resolution",
-                "basis": "combined",
-                "display_aspect": "widescreen",
-                "anchor": "width",
-                "minimum_scale": 2
+                "kind": "literal",
+                "value": "640x360"
               }
             },
             {
@@ -735,24 +725,24 @@
               }
             },
             {
+              "key": "mupen64plus-EnableNativeResFactor",
+              "source": {
+                "kind": "literal",
+                "value": "1"
+              }
+            },
+            {
               "key": "mupen64plus-rdp-plugin",
               "source": {
                 "kind": "literal",
-                "value": "angrylion"
+                "value": "gliden64"
               }
             },
             {
               "key": "mupen64plus-rsp-plugin",
               "source": {
                 "kind": "literal",
-                "value": "cxd4"
-              }
-            },
-            {
-              "key": "mupen64plus-angrylion-overscan",
-              "source": {
-                "kind": "literal",
-                "value": "enabled"
+                "value": "hle"
               }
             }
           ],
