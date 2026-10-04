@@ -113,6 +113,10 @@
               "id": "layeredfs",
               "library": "mods",
               "target": "${state_root}/data/azahar-emu/load/mods",
+              "migrate_from": [
+                "${emulation_root}/Azahar/data/load/mods",
+                "${emulation_root}/Lime3DS/data/load/mods"
+              ],
               "install": "link",
               "levels": [
                 {
@@ -162,6 +166,10 @@
               "id": "textures",
               "library": "textures",
               "target": "${state_root}/data/azahar-emu/load/textures",
+              "migrate_from": [
+                "${emulation_root}/Azahar/data/load/textures",
+                "${emulation_root}/Lime3DS/data/load/textures"
+              ],
               "install": "link",
               "levels": [
                 {
@@ -307,6 +315,10 @@
               "id": "layeredfs",
               "library": "mods",
               "target": "${state_root}/data/azahar-emu/load/mods",
+              "migrate_from": [
+                "${emulation_root}/Azahar/data/load/mods",
+                "${emulation_root}/Lime3DS/data/load/mods"
+              ],
               "install": "link",
               "levels": [
                 {
@@ -356,6 +368,10 @@
               "id": "textures",
               "library": "textures",
               "target": "${state_root}/data/azahar-emu/load/textures",
+              "migrate_from": [
+                "${emulation_root}/Azahar/data/load/textures",
+                "${emulation_root}/Lime3DS/data/load/textures"
+              ],
               "install": "link",
               "levels": [
                 {

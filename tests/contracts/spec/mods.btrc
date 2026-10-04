@@ -23,6 +23,7 @@ import ./mods_paths.btrc;
 import ./mods_install.btrc;
 import ./mods_launch.btrc;
 import ./mods_cli.btrc;
+import ./mods_migrate.btrc;
 
 #include <stdio.h>
 
@@ -53,8 +54,9 @@ class ModsSpecDeclarations {
     class void kinds(Contract contract) {
         string field = "platforms.linux.state.mods.kinds.";
         contract.expect(ModsSpecDeclarations.one("{}").isEmpty(), "the valid fixture kind checks clean: " + ModsSpecDeclarations.one("{}"));
-        Vector<string> overrides = ["{'target':'/tmp/x'}", "{'target':'${state_root}/../x'}", "{'install':'copy'}", "{'library':'Mods/x'}", "{'levels':[]}", "{'levels':[{},{},{},{}]}", "{'levels':[{'link_case':'title'}]}", "{'levels':[{'files':['a/b']}]}", "{'reads':[]}", "{'checks':[{'file':'code.ips','starts_with':'PATCH','size':5}]}", "{'checks':[{'file':'code.bps','format':'zip'}]}", "{'setting':'nothing'}", "{'doc':''}", "{'copy_from':'x'}", "{'title_settings':{'path':'${state_root}/custom.ini','lines':[]}}", "{'target':'${state_root}/data/azahar-emu/nand/x'}", "{'target':'${state_root}/config/azahar-emu'}"];
-        Vector<string> wanted = ["0.target: must be a path under", "0.target: must be a path under", "0.install: must be link", "0.library: must be one folder name", "0.levels: needs one to three", "0.levels: needs one to three", "0.levels.0.link_case: must be upper or lower", "0.levels.0.files: plain file names", "0.reads: names what the emulator reads", "0.checks.0: needs a relative file and exactly one of", "0.checks.0: needs a relative file and exactly one of", "0.setting: names no group", "0.doc: missing", "0.copy_from: is not a field Semu reads here", "0.title_settings: needs a path under", "0.target: ${state_root}/data/azahar-emu/nand/x overlaps a seed or profile file: ${state_root}/data/azahar-emu/nand", "0.target: ${state_root}/config/azahar-emu overlaps a seed or profile file: ${state_root}/config/azahar-emu/qt-config.ini"];
+        contract.expect(ModsSpecDeclarations.one("{'migrate_from':['${emulation_root}/Old/load']}").isEmpty(), "a migrate_from under the emulation root checks clean");
+        Vector<string> overrides = ["{'target':'/tmp/x'}", "{'target':'${state_root}/../x'}", "{'install':'copy'}", "{'library':'Mods/x'}", "{'levels':[]}", "{'levels':[{},{},{},{}]}", "{'levels':[{'link_case':'title'}]}", "{'levels':[{'files':['a/b']}]}", "{'reads':[]}", "{'checks':[{'file':'code.ips','starts_with':'PATCH','size':5}]}", "{'checks':[{'file':'code.bps','format':'zip'}]}", "{'setting':'nothing'}", "{'doc':''}", "{'copy_from':'x'}", "{'title_settings':{'path':'${state_root}/custom.ini','lines':[]}}", "{'target':'${state_root}/data/azahar-emu/nand/x'}", "{'target':'${state_root}/config/azahar-emu'}", "{'migrate_from':['/abs/mods']}", "{'migrate_from':['${emulation_root}/../mods']}", "{'migrate_from':'${emulation_root}/x'}"];
+        Vector<string> wanted = ["0.target: must be a path under", "0.target: must be a path under", "0.install: must be link", "0.library: must be one folder name", "0.levels: needs one to three", "0.levels: needs one to three", "0.levels.0.link_case: must be upper or lower", "0.levels.0.files: plain file names", "0.reads: names what the emulator reads", "0.checks.0: needs a relative file and exactly one of", "0.checks.0: needs a relative file and exactly one of", "0.setting: names no group", "0.doc: missing", "0.copy_from: is not a field Semu reads here", "0.title_settings: needs a path under", "0.target: ${state_root}/data/azahar-emu/nand/x overlaps a seed or profile file: ${state_root}/data/azahar-emu/nand", "0.target: ${state_root}/config/azahar-emu overlaps a seed or profile file: ${state_root}/config/azahar-emu/qt-config.ini", "0.migrate_from: the old trees to move entries out of", "0.migrate_from: the old trees to move entries out of", "0.migrate_from: the old trees to move entries out of"];
         for (int index = 0; index < overrides.size(); index++) { contract.contains(ModsSpecDeclarations.one(overrides.get(index)), field + wanted.get(index), "the checker refuses the kind " + overrides.get(index)); }
         contract.contains(ModsSpecDeclarations.two("{}", "{'library':'other','target':'${state_root}/data/other'}"), field + "1.id: is declared twice", "two kinds with one id are refused");
         contract.contains(ModsSpecDeclarations.two("{}", "{'id':'other','target':'${state_root}/data/other'}"), field + "1.library: two kinds share one library folder", "two kinds with one library folder are refused");
@@ -143,7 +145,7 @@ class ModsSpecProfile {  // the install runs before the render in one launch, so
 class ModsSpecSource {  // shared mods code: classes only, and no emulator, system or title in it
     class Vector<string> files() {
         Vector<string> result = ["src/emit/composed_scale.btrc", "src/emit/esde_choice.btrc", "src/launch/seeds.btrc"];
-        for name in ["kind", "library", "manifest", "report", "install", "title_settings", "updates", "declarations", "titles", "listing", "layout"] { result.push("src/mods/" + name + ".btrc"); }
+        for name in ["kind", "library", "manifest", "report", "install", "title_settings", "updates", "declarations", "titles", "listing", "layout", "move", "migrate"] { result.push("src/mods/" + name + ".btrc"); }
         return result;
     }
 
@@ -175,6 +177,7 @@ class ModsSpecContract {
         ModsSpecLaunch.run(contract);
         ModsSpecProfile.run(contract);
         ModsSpecReport.run(contract);
+        ModsSpecMigrate.run(contract);
         ModsSpecSource.run(contract, Fixture("linux-desktop").project);
     }
 }

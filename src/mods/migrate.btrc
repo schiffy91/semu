@@ -1,0 +1,308 @@
+// `semu mods migrate`: moves the owner's mods out of the old per-emulator trees each kind declares in
+// migrate_from into the library, at the kind's own levels, so <old tree>/<entry> becomes
+// <mods>/<emulator>/<library>/<entry>. On one filesystem it is a rename the kernel refuses over an existing
+// destination; across filesystems it is refused unless the owner allows a copy, which keeps the source. A
+// symlinked root or entry is reported and never followed (only the last component is checked, so a library
+// reached through a linked folder works), an empty folder, a folder that is not a mod and an entry already in
+// the library stay where they are. One run at a time (a lock in the global state root); every move is recorded
+// in a TSV there so --reverse can rename it back; a second run moves nothing. Nothing is ever deleted.
+
+import Library.Console;
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+import ./kind.btrc;
+import ./layout.btrc;
+import ./move.btrc;
+
+#include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <stdio.h>
+#include <time.h>
+#include <unistd.h>
+
+class SemuModMove {
+    public string source;
+    public string destination;  // "" when the entry stays and has no place in the library
+    public string outcome;  // move, copy, moved, copied, restored, duplicate:, empty:, not a mod:, symlink:, refused:, failed:, left:
+
+    public SemuModMove(string source, string destination, string outcome) {
+        self.source = source;
+        self.destination = destination;
+        self.outcome = outcome;
+    }
+
+    public bool pending() { return self.outcome.equals("move") || self.outcome.equals("copy"); }
+
+    public bool failed() { return self.outcome.startsWith("failed") || self.outcome.startsWith("refused"); }
+
+    public string word() {  // the outcome up to its colon, for the summary
+        int colon = self.outcome.indexOf(":");
+        return colon < 0 ? self.outcome : self.outcome.substring(0, colon);
+    }
+
+    public string line() { return self.outcome + "  " + self.source + (self.destination.isEmpty() ? "" : "  ->  " + self.destination); }
+}
+
+class SemuModMigration {
+    public SemuModel model;
+    public SemuPlan plan;
+    public bool allowCopy;
+
+    public SemuModMigration(SemuModel model, SemuPlan plan, bool allowCopy) {
+        self.model = model;
+        self.plan = plan;
+        self.allowCopy = allowCopy;
+    }
+
+    class string decide(bool sameDevice, bool allowCopy) {
+        if (sameDevice) { return "move"; }
+        return allowCopy ? "copy" : "refused: other filesystem (--allow-copy copies and keeps the source)";
+    }
+
+    public string place(string name) { return PathTools.join(self.plan.stateRoot(), "semu-mods-migrate." + name); }  // tsv, lock, log
+
+    public string refusal() {  // "" when there is a mounted library to move into
+        string root = self.plan.path("mods");
+        if (root.isEmpty()) { return "paths.mods is empty, so mods are off; nothing to migrate"; }
+        if (!FileSystem.isDir(PathTools.dirname(root))) { return PathTools.dirname(root) + " is not there (is the card or drive mounted?); nothing moved"; }
+        if (FileSystem.isSymlink(root)) { return root + " is a link; Semu never moves mods through it"; }
+        return "";
+    }
+
+    public SemuModMove judge(string source, string destination, string problem, Vector<string> taken) {
+        if (problem.equals("empty")) { return SemuModMove(source, "", "empty: left in place"); }
+        if (!problem.isEmpty()) { return SemuModMove(source, "", "not a mod: " + problem); }
+        if (taken.contains(destination) || SemuModMover.present(destination)) { return SemuModMove(source, destination, "duplicate: already in the library"); }
+        taken.push(destination);
+        return SemuModMove(source, destination, SemuModMigration.decide(SemuModMover.sameDevice(source, destination), self.allowCopy));
+    }
+
+    public void walk(SemuModKind kind, string directory, int level, string relative, string library, Vector<string> taken, Vector<SemuModMove> result) {
+        SemuModLevel rule = kind.levels.get(level);
+        Vector<string> names = FileSystem.listDir(directory);
+        names.sort();
+        for name in names {
+            if (name.startsWith(".")) { continue; }
+            string path = PathTools.join(directory, name);
+            string entry = relative.isEmpty() ? name : relative + "/" + name;
+            if (FileSystem.isSymlink(path)) {
+                result.push(SemuModMove(path, "", "symlink: never followed"));
+                continue;
+            }
+            bool folder = FileSystem.isDir(path);
+            if (!folder && !(rule.files.contains(name) && FileSystem.isFile(path))) { continue; }  // a README beside the entries stays
+            string problem = folder && !rule.matches(name) ? "name is not " + rule.rule() : "";
+            if (problem.isEmpty() && folder && level < kind.deepest()) {
+                self.walk(kind, path, level + 1, entry, library, taken, result);
+                continue;
+            }
+            if (problem.isEmpty() && folder) { problem = kind.problem(path); }
+            result.push(self.judge(path, PathTools.join(library, entry), problem, taken));
+        }
+    }
+
+    public Vector<SemuModMove> planned() {  // pure: what a run would do, in declaration order, the first source of a duplicate winning
+        Vector<SemuModMove> result = [];
+        Vector<string> taken = [];
+        for kind in SemuModLayout.kinds(self.model, self.plan) {
+            string library = kind.libraryPath(self.plan);
+            for root in kind.migrateFrom {
+                if (library.isEmpty() || kind.levels.isEmpty()) { continue; }
+                if (FileSystem.isSymlink(root)) { result.push(SemuModMove(root, "", "symlink: never followed")); }
+                else if (FileSystem.isDir(root)) { self.walk(kind, root, 0, "", library, taken, result); }
+            }
+        }
+        return result;
+    }
+
+    class string summary(string heading, Vector<SemuModMove> moves) {  // e.g. "done: 6 moved, 2 duplicate, 1 empty"
+        Vector<string> words = [];
+        Vector<int> counts = [];
+        for move in moves {
+            int found = words.indexOf(move.word());
+            if (found < 0) {
+                words.push(move.word());
+                counts.push(1);
+            } else {
+                counts.set(found, counts.get(found) + 1);
+            }
+        }
+        Vector<string> parts = [];
+        for (int index = 0; index < words.size(); index++) { parts.push(f"{counts.get(index)} {words.get(index)}"); }
+        return heading + ": " + (parts.isEmpty() ? "nothing to move" : parts.join(", "));
+    }
+
+    public void record(string outcome, string source, string destination) {
+        string path = self.place("tsv");
+        string existing = FileSystem.isFile(path) ? FileSystem.readText(path) : "";
+        string line = f"{(long)time(null)}\t{outcome}\t{source}\t{destination}\n";
+        if (!SemuPaths.writeOwned(self.plan.stateRoot(), path, existing + line)) { Console.error("semu: could not record in " + path + ": " + line.trim()); }
+    }
+
+    public void carry(SemuModMove move) {  // the planned move, checked again at the moment it happens
+        bool copying = move.outcome.equals("copy");
+        if (SemuModMover.present(move.destination)) {
+            move.outcome = "duplicate: already in the library";
+            return;
+        }
+        if (!SemuPaths.prepareDirectory(PathTools.dirname(move.destination))) {
+            move.outcome = "failed: could not create " + PathTools.dirname(move.destination);
+            return;
+        }
+        string failure = "";
+        if (copying) {
+            failure = SemuModMover.copyEntry(move.source, move.destination);
+        } else {
+            int refused = SemuModMover.renameExclusive(move.source, move.destination);
+            if (refused == EEXIST || refused == ENOTEMPTY) {
+                move.outcome = "duplicate: already in the library";
+                return;
+            }
+            if (refused == EXDEV) {
+                move.outcome = SemuModMigration.decide(false, false);
+                return;
+            }
+            failure = refused == 0 ? "" : SemuModMover.reason(refused);
+        }
+        move.outcome = failure.isEmpty() ? (copying ? "copied" : "moved") : "failed: " + failure;
+        if (failure.isEmpty()) { self.record(move.outcome, move.source, move.destination); }
+    }
+
+    public bool lock() {  // one run at a time; a lock whose process is gone is taken over
+        string path = self.place("lock");
+        if (!SemuPaths.prepareDirectory(self.plan.stateRoot())) { return false; }
+        for (int attempt = 0; attempt < 2; attempt++) {
+            int flags = (int)O_WRONLY | (int)O_CREAT | (int)O_EXCL;
+            int descriptor = open(path, flags, 0600);
+            if (descriptor >= 0) {
+                close(descriptor);
+                return FileSystem.writeText(path, Strings.fromInt((int)getpid()) + "\n");
+            }
+            int holder = Strings.toInt(FileSystem.readText(path).trim());
+            errno = 0;
+            if (holder > 1 && (kill((pid_t)holder, 0) == 0 || errno == EPERM)) {
+                Console.error(f"semu: another migration is running (pid {holder}, lock {path})");
+                return false;
+            }
+            SemuPaths.removeOwnedFile(self.plan.stateRoot(), path);
+        }
+        Console.error("semu: could not take " + path);
+        return false;
+    }
+
+    public void unlock() {
+        string path = self.place("lock");
+        if (FileSystem.isFile(path) && Strings.toInt(FileSystem.readText(path).trim()) == (int)getpid()) { SemuPaths.removeOwnedFile(self.plan.stateRoot(), path); }
+    }
+
+    public int run() {
+        string refusal = self.refusal();
+        if (!refusal.isEmpty()) {
+            Console.error("semu: " + refusal);
+            return 1;
+        }
+        if (!self.lock()) { return 1; }
+        string library = self.plan.path("mods");
+        Console.log(f"migrating mods into {library} (pid {(int)getpid()}, started {(long)time(null)})");
+        Vector<SemuModMove> moves = self.planned();
+        bool failed = false;
+        for move in moves {
+            if (move.pending()) { self.carry(move); }
+            failed = failed || move.failed();
+            Console.log(move.line());
+        }
+        self.unlock();
+        Console.log(SemuModMigration.summary("done", moves));
+        return failed ? 1 : 0;
+    }
+
+    public SemuModMove restore(string line) {  // one TSV record renamed back, when its entry is still in the library and its old place is free
+        Vector<string> fields = Strings.split(line, "\t");
+        if (fields.size() != 4) { return SemuModMove(line, "", "left: not a record"); }
+        string source = fields.get(2);
+        string destination = fields.get(3);
+        SemuModMove move = SemuModMove(destination, source, "restored");
+        if (!fields.get(1).equals("moved")) { move.outcome = "left: " + fields.get(1) + ", the old place keeps its own"; }
+        else if (FileSystem.isSymlink(destination) || !SemuModMover.present(destination)) { move.outcome = "left: no longer in the library"; }
+        else if (SemuModMover.present(source)) { move.outcome = "left: something is back at the old place"; }
+        else if (!SemuPaths.prepareDirectory(PathTools.dirname(source))) { move.outcome = "failed: could not create " + PathTools.dirname(source); }
+        else {
+            int refused = SemuModMover.renameExclusive(destination, source);
+            if (refused != 0) { move.outcome = "failed: " + SemuModMover.reason(refused); }
+            else { self.record("restored", destination, source); }
+        }
+        return move;
+    }
+
+    public int reverse() {
+        string path = self.place("tsv");
+        if (!self.lock()) { return 1; }
+        Vector<string> lines = [];
+        if (FileSystem.isFile(path)) { lines = Strings.split(FileSystem.readText(path), "\n"); }
+        Vector<SemuModMove> moves = [];
+        bool failed = false;
+        for line in lines {
+            if (line.trim().isEmpty() || line.contains("\trestored\t")) { continue; }
+            SemuModMove move = self.restore(line);
+            failed = failed || move.failed();
+            Console.log(move.line());
+            moves.push(move);
+        }
+        self.unlock();
+        Console.log(SemuModMigration.summary("reversed", moves));
+        return failed ? 1 : 0;
+    }
+
+    public int detach() {  // the child's pid, or -1: the run goes on in its own session, its output appended to the log
+        if (!SemuPaths.prepareDirectory(self.plan.stateRoot())) { return -1; }
+        fflush(stdout);
+        fflush(stderr);
+        int child = (int)fork();
+        if (child != 0) { return child; }
+        setsid();
+        int quiet = open("/dev/null", (int)O_RDONLY);
+        if (quiet >= 0) {
+            dup2(quiet, 0);
+            close(quiet);
+        }
+        int flags = (int)O_WRONLY | (int)O_CREAT | (int)O_APPEND;
+        int output = open(self.place("log"), flags, 0600);
+        if (output >= 0) {
+            dup2(output, 1);
+            dup2(output, 2);
+            close(output);
+        }
+        int code = self.run();
+        fflush(stdout);
+        fflush(stderr);
+        _exit(code);
+        return 0;
+    }
+
+    class int command(SemuModel model, SemuPlan plan, bool dryRun, bool allowCopy, bool detached, bool reverse) {  // mods migrate [--dry-run] [--allow-copy] [--detach] [--reverse]
+        SemuModMigration migration = SemuModMigration(model, plan, allowCopy);
+        if (reverse) { return migration.reverse(); }
+        if (!dryRun && detached) {
+            int child = migration.detach();
+            if (child < 0) {
+                Console.error("semu: could not start the migration in the background");
+                return 1;
+            }
+            string log = migration.place("log");
+            Console.log(f"migrating in the background (pid {child}, log {log})");
+            return 0;
+        }
+        if (!dryRun) { return migration.run(); }
+        string refusal = migration.refusal();
+        if (!refusal.isEmpty()) { Console.error("semu: " + refusal); }
+        Vector<SemuModMove> moves = migration.planned();
+        for move in moves { Console.log(move.line()); }
+        Console.log(SemuModMigration.summary("plan", moves));
+        return refusal.isEmpty() ? 0 : 1;
+    }
+}

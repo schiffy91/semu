@@ -120,6 +120,7 @@ class SemuModKind {
     public Vector<string> titleLines;
     public string entryFormat;  // entry_lines.format: one settings line per installed entry, ${entry} its linked name and ${target} the resolved target
     public string entryEscape;  // entry_lines.escape: xml, or "" to write the name as it is
+    public Vector<string> migrateFrom;  // resolved: the old trees `semu mods migrate` renames entries out of, in order, the first a duplicate loses to
     public JSONValue definition;
 
     public SemuModKind(string emulatorId, JSONValue definition, SemuTokens tokens) {
@@ -142,6 +143,8 @@ class SemuModKind {
         for (int index = 0; lines.isArray() && index < lines.size(); index++) { self.titleLines.push(SemuJson.text(lines.at(index))); }
         self.entryFormat = SemuJson.textAt(definition, "entry_lines.format");
         self.entryEscape = SemuJson.textAt(definition, "entry_lines.escape");
+        self.migrateFrom = [];
+        for place in SemuJson.strings(SemuJson.get(definition, "migrate_from")) { self.migrateFrom.push(tokens.resolve(place)); }
     }
 
     class JSONValue declaration(SemuPlan plan, SemuEmulator emulator) { return SemuJson.get(emulator.platform(plan.platform), "state.mods"); }

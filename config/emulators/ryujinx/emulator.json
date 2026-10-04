@@ -78,6 +78,9 @@
               "id": "contents",
               "library": "contents",
               "target": "${state_root}/config/Ryujinx/mods/contents",
+              "migrate_from": [
+                "${emulation_root}/Ryujinx/config/mods/contents"
+              ],
               "install": "link",
               "levels": [
                 {
@@ -190,6 +193,9 @@
               "id": "contents",
               "library": "contents",
               "target": "${state_root}/config/Ryujinx/mods/contents",
+              "migrate_from": [
+                "${emulation_root}/Ryujinx/config/mods/contents"
+              ],
               "install": "link",
               "levels": [
                 {

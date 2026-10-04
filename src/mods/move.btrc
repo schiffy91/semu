@@ -1,0 +1,80 @@
+// The file primitives under `semu mods migrate`: a rename the kernel refuses when the destination exists, the
+// device test that tells a rename from a copy, and the copy (only when the owner allows it) that lands beside
+// the destination, is counted against its source and is renamed into place whole. Nothing here deletes: a
+// copy keeps its source, and a copy that came out short is left for the owner to look at.
+
+import Library.FileSystem;
+import Library.Process;
+import Library.Strings;
+import Library.Vector;
+import ../lib/paths.btrc;
+
+#include <errno.h>
+#include <sys/stat.h>
+#include "semu_rename.h"
+
+class SemuModMover {
+    class int renameExclusive(string source, string destination) {  // 0, or the errno that refused it
+        errno = 0;
+        return semu_rename_exclusive(source, destination) == 0 ? 0 : (errno == 0 ? EIO : errno);
+    }
+
+    class string reason(int failure) {
+        if (failure == EXDEV) { return "other filesystem"; }
+        if (failure == EEXIST || failure == ENOTEMPTY) { return "the destination appeared"; }
+        if (failure == ENOSYS || failure == EINVAL || failure == ENOTSUP) { return "this filesystem cannot rename without replacing"; }
+        return f"error {failure}";
+    }
+
+    class long device(string path, bool follow) {  // -1 when there is nothing there
+        struct stat information;
+        int found = follow ? stat(path, &information) : lstat(path, &information);
+        return found == 0 ? (long)information.st_dev : -1;
+    }
+
+    class string nearestExisting(string path) {  // the closest ancestor (or PATH itself) that exists, followed through links like ~/Drive
+        string current = SemuPaths.normalize(path);
+        while (current.len() > 1 && !FileSystem.exists(current)) { current = PathTools.dirname(current); }
+        return current;
+    }
+
+    class bool sameDevice(string source, string destination) {
+        long from = SemuModMover.device(source, false);
+        return from >= 0 && from == SemuModMover.device(SemuModMover.nearestExisting(destination), true);
+    }
+
+    class bool present(string path) { return FileSystem.exists(path) || FileSystem.isSymlink(path); }  // lstat: a dangling link counts
+
+    class void tally(string path, Vector<long> totals) {  // [files, bytes, links], links never followed
+        struct stat information;
+        if (lstat(path, &information) != 0) { return; }
+        if (S_ISLNK(information.st_mode)) {
+            totals.set(2, totals.get(2) + 1);
+        } else if (S_ISREG(information.st_mode)) {
+            totals.set(0, totals.get(0) + 1);
+            totals.set(1, totals.get(1) + (long)information.st_size);
+        } else if (S_ISDIR(information.st_mode)) {
+            for name in FileSystem.listDir(path) { SemuModMover.tally(PathTools.join(path, name), totals); }
+        }
+    }
+
+    class string totals(string path) {
+        Vector<long> totals = [0, 0, 0];
+        SemuModMover.tally(path, totals);
+        return f"{totals.get(0)} files, {totals.get(1)} bytes, {totals.get(2)} links";
+    }
+
+    class string copyEntry(string source, string destination) {  // "" once DESTINATION holds a counted copy; the source stays
+        string partial = destination + ".semu-partial";
+        if (SemuModMover.present(partial)) { return partial + " is left from an earlier copy; look at it, remove it and run again"; }
+        if (SemuModMover.present(destination)) { return "the destination appeared"; }
+        if (!SemuPaths.prepareDirectory(PathTools.dirname(destination))) { return "could not create " + PathTools.dirname(destination); }
+        ExecResult copy = ChildProcess.run("cp", ["-Rp", source, partial]);
+        if (!copy.ok()) { return "cp failed, " + partial + " is left: " + copy.stderr().trim(); }
+        string wanted = SemuModMover.totals(source);
+        string found = SemuModMover.totals(partial);
+        if (!found.equals(wanted)) { return f"the copy holds {found}, the source {wanted}; {partial} is left"; }
+        int failure = SemuModMover.renameExclusive(partial, destination);
+        return failure == 0 ? "" : SemuModMover.reason(failure) + ", " + partial + " is left";
+    }
+}

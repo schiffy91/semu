@@ -1,0 +1,240 @@
+// Mods spec, the migration (decision M5): `semu mods migrate` renames the owner's mods out of the old emulator
+// trees into the library (the same inode, so no data moved), leaves empty folders, non-mods, duplicates and
+// everything else where they are, refuses another filesystem unless a copy is allowed (which keeps its source),
+// never follows a symlinked root or entry but works below a linked ancestor (the Mac's ~/Drive), runs once at a
+// time, records each move so a second run moves nothing and --reverse renames them back, and deletes nothing.
+// Every tree is scratch (decision M6): the bed's emulation root and library are inside the fixture's scratch.
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/mods/kind.btrc;
+import ../../../src/mods/layout.btrc;
+import ../../../src/mods/move.btrc;
+import ../../../src/mods/migrate.btrc;
+import ./standalone.btrc;
+import ./render_variants.btrc;
+import ./mods_paths.btrc;
+
+#include <fcntl.h>
+#include <stdio.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+class ModsSpecMigrateBed {  // the owner's old trees in a scratch emulation root, the library beside them
+    public StandaloneSpecBed bed;
+    public string root;  // the emulation root as the plan spells it
+    public string mods;
+    public SemuModMigration migration;
+
+    public ModsSpecMigrateBed(string spelling) {  // SPELLING: the emulation root relative to scratch, maybe through a link
+        self.bed = StandaloneSpecBed();
+        self.root = PathTools.join(self.bed.fixture.scratch, spelling);
+        self.mods = PathTools.join(self.root, "mods");
+        for name in ["emulation_root", "paths.emulation_root"] { self.bed.fixture.plan.tokens.put(name, self.root); }
+        for name in ["mods", "paths.mods"] { self.bed.fixture.plan.tokens.put(name, self.mods); }
+        self.migration = SemuModMigration(self.bed.fixture.model, self.bed.fixture.plan, false);
+    }
+
+    public string old(string relative) { return PathTools.join(self.root, relative); }
+
+    public string library(string relative) { return PathTools.join(self.mods, relative); }
+
+    public void owner() {  // the Deck's six entries, an empty pack, a non-title folder, Lime3DS's duplicate, a README and the nand
+        ModsSpecTree.write(self.old("Azahar/data/load/mods/0004000000033600/code.ips"), "PATCH-oot");
+        ModsSpecTree.write(self.old("Azahar/data/load/mods/0004000000033600/exheader.bin"), ModsSpecTree.sized(2048));
+        ModsSpecTree.writeBytes(self.old("Azahar/data/load/mods/0004000000125500/code.bps"), [66, 80, 83, 49, 72, 128, 128, 128, 0, 0]);
+        ModsSpecTree.write(self.old("Azahar/data/load/mods/0004000000125500/romfs/layout/a.gar"), "gar");
+        for title in ["0004000000033600", "00040000000EC300", "0004000000125500"] { ModsSpecTree.write(self.old("Azahar/data/load/textures/" + title + "/tex.png"), "png-" + title); }
+        FileSystem.mkdirp(self.old("Azahar/data/load/textures/00040000000AEB00"));
+        ModsSpecTree.write(self.old("Azahar/data/load/textures/notatitle/tex.png"), "stray");
+        ModsSpecTree.write(self.old("Lime3DS/data/load/textures/0004000000033600/tex.png"), "png-lime");
+        ModsSpecTree.write(self.old("Lime3DS/data/load/mods/README.txt"), "readme");
+        ModsSpecTree.write(self.old("Azahar/data/nand/keep.bin"), "nand");
+        ModsSpecTree.write(self.old("Ryujinx/config/mods/contents/0100f2c0115b6000/!!!TOTK Optimizer/exefs/main.npdm"), "npdm");
+    }
+
+    class Vector<string> moved() {  // old tree -> library, for the six entries
+        return ["Azahar/data/load/mods/0004000000033600>azahar/mods/0004000000033600", "Azahar/data/load/mods/0004000000125500>azahar/mods/0004000000125500", "Azahar/data/load/textures/0004000000033600>azahar/textures/0004000000033600", "Azahar/data/load/textures/00040000000EC300>azahar/textures/00040000000EC300", "Azahar/data/load/textures/0004000000125500>azahar/textures/0004000000125500", "Ryujinx/config/mods/contents/0100f2c0115b6000/!!!TOTK Optimizer>ryujinx/contents/0100f2c0115b6000/!!!TOTK Optimizer"];
+    }
+
+    class string side(string pair, int which) { return Strings.split(pair, ">").get(which); }
+
+    class long inode(string path) {
+        struct stat information;
+        return lstat(path, &information) == 0 ? (long)information.st_ino : -1;
+    }
+
+    public string inodes(int which) {  // the six entries' inodes in the old trees (0) or the library (1), comma-separated
+        Vector<string> result = [];
+        for pair in ModsSpecMigrateBed.moved() {
+            long found = ModsSpecMigrateBed.inode(which == 0 ? self.old(ModsSpecMigrateBed.side(pair, 0)) : self.library(ModsSpecMigrateBed.side(pair, 1)));
+            result.push(found < 0 ? "absent" : f"{found}");
+        }
+        return result.join(",");
+    }
+
+    class int silence() {  // the migration prints a line per decision; the contract run stays readable
+        fflush(stdout);
+        fflush(stderr);
+        int saved = dup(1);
+        int sink = open("/dev/null", O_WRONLY);
+        dup2(sink, 1);
+        close(sink);
+        return saved;
+    }
+
+    class void speak(int saved) {
+        fflush(stdout);
+        dup2(saved, 1);
+        close(saved);
+    }
+
+    public int run() {
+        int saved = ModsSpecMigrateBed.silence();
+        int code = self.migration.run();
+        ModsSpecMigrateBed.speak(saved);
+        return code;
+    }
+
+    public int reverse() {
+        int saved = ModsSpecMigrateBed.silence();
+        int code = self.migration.reverse();
+        ModsSpecMigrateBed.speak(saved);
+        return code;
+    }
+
+    public string snapshot() { return ModsSpecTree.snapshot(self.bed.fixture.scratch); }
+
+    public int records() {
+        string path = self.migration.place("tsv");
+        return FileSystem.isFile(path) ? ModsSpecTree.count(Strings.split(FileSystem.readText(path), "\n"), "\tmoved\t") : 0;
+    }
+
+    public int count(string outcome) {
+        int found = 0;
+        for move in self.migration.planned() { if (move.outcome.startsWith(outcome)) { found++; } }
+        return found;
+    }
+}
+
+class ModsSpecMigrate {
+    class void owner(Contract contract) {
+        ModsSpecMigrateBed bed = ModsSpecMigrateBed("Emulation");
+        bed.owner();
+        string before = bed.snapshot();
+        string totals = SemuModMover.totals(bed.root);
+        string inodes = bed.inodes(0);
+        contract.expect(bed.count("move") == 6 && bed.count("duplicate: already in the library") == 1 && bed.count("empty: left in place") == 1 && bed.count("not a mod: name is not 16 characters") == 1, "the plan holds the six moves, the Lime3DS duplicate, the empty pack and the non-title folder");
+        contract.expect(bed.snapshot().equals(before), "planning changes nothing");
+        contract.expect(bed.run() == 0, "the migration succeeds");
+        bool landed = true;
+        for pair in ModsSpecMigrateBed.moved() { landed = landed && FileSystem.isDir(bed.library(ModsSpecMigrateBed.side(pair, 1))) && !SemuModMover.present(bed.old(ModsSpecMigrateBed.side(pair, 0))); }
+        contract.expect(landed, "each entry sits in the library and is gone from its old tree");
+        contract.expect(bed.inodes(1).equals(inodes) && !inodes.contains("absent"), "each entry keeps its inode: a rename, no data copied");
+        contract.expect(FileSystem.readText(bed.library("azahar/mods/0004000000033600/code.ips")).equals("PATCH-oot") && FileSystem.readText(bed.library("ryujinx/contents/0100f2c0115b6000/!!!TOTK Optimizer/exefs/main.npdm")).equals("npdm"), "the files inside the entries are unchanged");
+        contract.expect(FileSystem.isDir(bed.old("Azahar/data/load/textures/00040000000AEB00")) && FileSystem.readText(bed.old("Azahar/data/load/textures/notatitle/tex.png")).equals("stray"), "the empty pack and the non-title folder stay");
+        contract.expect(FileSystem.readText(bed.old("Lime3DS/data/load/textures/0004000000033600/tex.png")).equals("png-lime") && FileSystem.readText(bed.library("azahar/textures/0004000000033600/tex.png")).equals("png-0004000000033600"), "the Lime3DS duplicate stays, and the first source (Azahar) is the one in the library");
+        contract.expect(FileSystem.readText(bed.old("Lime3DS/data/load/mods/README.txt")).equals("readme") && FileSystem.readText(bed.old("Azahar/data/nand/keep.bin")).equals("nand"), "a README and the nand are untouched");
+        contract.expect(FileSystem.isDir(bed.old("Ryujinx/config/mods/contents/0100f2c0115b6000")) && FileSystem.listDir(bed.old("Ryujinx/config/mods/contents/0100f2c0115b6000")).isEmpty(), "the old Switch title folder stays, empty");
+        contract.expect(SemuModMover.totals(bed.root).equals(totals), "every file is still there: " + SemuModMover.totals(bed.root) + " against " + totals);
+        contract.expect(bed.records() == 6 && !FileSystem.exists(bed.migration.place("lock")), f"six moves are recorded and the lock is released: {bed.records()}");
+        string after = bed.snapshot();
+        contract.expect(bed.run() == 0 && bed.records() == 6 && bed.snapshot().equals(after), "a second run moves nothing and records nothing");
+        contract.expect(bed.reverse() == 0 && bed.inodes(0).equals(inodes), "reverse renames all six back to their old places");
+        string reversed = bed.snapshot();
+        contract.expect(bed.reverse() == 0 && bed.snapshot().equals(reversed), "a second reverse changes nothing");
+        bed.run();
+        FileSystem.mkdirp(bed.old("Azahar/data/load/mods/0004000000033600"));
+        bed.reverse();
+        contract.expect(FileSystem.isFile(bed.library("azahar/mods/0004000000033600/code.ips")) && FileSystem.listDir(bed.old("Azahar/data/load/mods/0004000000033600")).isEmpty() && FileSystem.isDir(bed.old("Azahar/data/load/mods/0004000000125500")), "reverse leaves an entry whose old place was taken again, and restores the rest");
+    }
+
+    class void refusals(Contract contract) {
+        contract.expect(SemuModMigration.decide(false, false).startsWith("refused: other filesystem") && SemuModMigration.decide(false, true).equals("copy") && SemuModMigration.decide(true, false).equals("move") && SemuModMigration.decide(true, true).equals("move"), "another filesystem is refused unless a copy is allowed; one filesystem is always a rename");
+        ModsSpecMigrateBed bed = ModsSpecMigrateBed("Emulation");
+        bed.owner();
+        string before = bed.snapshot();
+        FileSystem.mkdirp(bed.bed.fixture.plan.stateRoot());
+        FileSystem.writeText(bed.migration.place("lock"), Strings.fromInt((int)getpid()) + "\n");
+        before = bed.snapshot();
+        contract.expect(bed.run() == 1 && bed.snapshot().equals(before), "a lock held by a live process refuses the run, moving nothing");
+        FileSystem.writeText(bed.migration.place("lock"), "999999\n");
+        contract.expect(bed.run() == 0 && bed.records() == 6 && !FileSystem.exists(bed.migration.place("lock")), "a lock left by a dead process is taken over and released");
+        ModsSpecMigrateBed linked = ModsSpecMigrateBed("Drive/Emulation");  // the Mac: the library reached through a linked folder
+        FileSystem.mkdirp(PathTools.join(linked.bed.fixture.scratch, "real"));
+        FileSystem.symlink(PathTools.join(linked.bed.fixture.scratch, "real"), PathTools.join(linked.bed.fixture.scratch, "Drive"));
+        linked.owner();
+        string elsewhere = PathTools.join(linked.bed.fixture.scratch, "elsewhere");
+        ModsSpecTree.write(PathTools.join(elsewhere, "0004000000099900/code.ips"), "PATCH-elsewhere");
+        rename(linked.old("Lime3DS/data/load/mods"), linked.old("Lime3DS/data/load/mods-aside"));
+        FileSystem.symlink(elsewhere, linked.old("Lime3DS/data/load/mods"));
+        FileSystem.symlink(PathTools.join(elsewhere, "0004000000099900"), linked.old("Azahar/data/load/textures/0004000000099900"));
+        ModsSpecTree.write(linked.library("ryujinx/contents/0100f2c0115b6000/!!!TOTK Optimizer/mine.txt"), "mine");
+        contract.expect(linked.count("symlink: never followed") == 2 && linked.count("move") == 5 && linked.count("duplicate") == 2, "below a linked ancestor the moves still plan; a linked root and a linked entry are reported");
+        contract.expect(linked.run() == 0 && FileSystem.isDir(linked.library("azahar/mods/0004000000033600")) && FileSystem.isSymlink(linked.old("Lime3DS/data/load/mods")) && FileSystem.readText(PathTools.join(elsewhere, "0004000000099900/code.ips")).equals("PATCH-elsewhere") && !FileSystem.exists(linked.library("azahar/mods/0004000000099900")), "the run moves through the linked ancestor and leaves the links and what they point at alone");
+        contract.expect(FileSystem.readText(linked.library("ryujinx/contents/0100f2c0115b6000/!!!TOTK Optimizer/mine.txt")).equals("mine") && FileSystem.isFile(linked.old("Ryujinx/config/mods/contents/0100f2c0115b6000/!!!TOTK Optimizer/exefs/main.npdm")), "an entry already in the library is a duplicate: neither side changes");
+        ModsSpecMigrateBed off = ModsSpecMigrateBed("Emulation");
+        off.owner();
+        for name in ["mods", "paths.mods"] { off.bed.fixture.plan.tokens.put(name, ""); }
+        contract.expect(off.run() == 1 && !off.migration.refusal().isEmpty(), "with paths.mods empty nothing is migrated");
+        ModsSpecMigrateBed unmounted = ModsSpecMigrateBed("SD/Emulation");
+        contract.expect(unmounted.run() == 1 && !FileSystem.exists(PathTools.join(unmounted.bed.fixture.scratch, "SD")), "an unmounted card refuses, creating no library on the root disk");
+    }
+
+    class void copies(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        string source = PathTools.join(fixture.scratch, "copy/source");
+        ModsSpecTree.write(PathTools.join(source, "romfs/a.bin"), "aaaa");
+        ModsSpecTree.write(PathTools.join(source, "code.ips"), "PATCH");
+        string destination = PathTools.join(fixture.scratch, "copy/library/title");
+        contract.expect(SemuModMover.copyEntry(source, destination).isEmpty(), "copyEntry copies a whole entry: " + SemuModMover.copyEntry(source, destination));
+        contract.expect(SemuModMover.totals(destination).equals(SemuModMover.totals(source)) && SemuModMover.totals(source).equals("2 files, 9 bytes, 0 links") && !SemuModMover.present(destination + ".semu-partial"), "the copy is counted against its source and no .semu-partial is left");
+        contract.expect(FileSystem.readText(PathTools.join(source, "code.ips")).equals("PATCH"), "the source stays: a copy never removes it");
+        string second = PathTools.join(fixture.scratch, "copy/library/second");
+        FileSystem.mkdirp(second + ".semu-partial");
+        contract.expect(!SemuModMover.copyEntry(source, second).isEmpty() && !SemuModMover.present(second), "a partial copy left from before is never overwritten or removed");
+        contract.expect(SemuModMover.renameExclusive(PathTools.join(source, "code.ips"), PathTools.join(source, "romfs/a.bin")) != 0 && FileSystem.readText(PathTools.join(source, "romfs/a.bin")).equals("aaaa"), "the exclusive rename refuses an existing destination");
+        FileSystem.mkdirp(PathTools.join(fixture.scratch, "copy/empty"));
+        contract.expect(SemuModMover.renameExclusive(PathTools.join(source, "romfs"), PathTools.join(fixture.scratch, "copy/empty")) != 0 && FileSystem.isFile(PathTools.join(source, "romfs/a.bin")), "it refuses even an empty folder, which plain rename would replace");
+    }
+
+    class void background(Contract contract) {
+        ModsSpecMigrateBed bed = ModsSpecMigrateBed("Emulation");
+        bed.owner();
+        int child = bed.migration.detach();
+        int status = 0;
+        bool reaped = child > 0 && waitpid((pid_t)child, &status, 0) == (pid_t)child;
+        contract.expect(reaped && WIFEXITED(status) && WEXITSTATUS(status) == 0, "--detach runs the migration in a child that exits cleanly");
+        contract.contains(FileSystem.readText(bed.migration.place("log")), "done: 6 moved, 1 empty, 1 not a mod, 1 duplicate", "the background run writes its decisions and summary to the log");
+        contract.expect(bed.records() == 6, "the background run records its moves");
+    }
+
+    class void commandLine(Contract contract) {
+        ModsSpecMigrateBed bed = ModsSpecMigrateBed("Emulation");
+        bed.owner();
+        string before = bed.snapshot();
+        Fixture fixture = bed.bed.fixture;
+        string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(fixture.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(fixture.scratch, "content") + "\",\"emulation_root\":\"" + bed.root + "\",\"mods\":\"" + bed.mods + "\"}}";
+        Vector<string> words = ["semu", "mods", "migrate", "--dry-run", "--target", "linux-desktop", "--project", fixture.project, "--asset-root", fixture.plan.assetRoot, "--semu-home", fixture.plan.semuHome, "--settings-json", overlay];
+        contract.expect(RenderVariantTools.cliQuietly(words) && bed.snapshot().equals(before), "semu mods migrate --dry-run runs through the command line and changes nothing");
+        words.set(3, "--allow-copy");
+        contract.expect(RenderVariantTools.cliQuietly(words) && bed.records() == 6, "semu mods migrate moves through the command line");
+        for kind in SemuModLayout.kinds(fixture.model, fixture.plan) {
+            for root in kind.migrateFrom { contract.expect(SemuPaths.inside(fixture.scratch, root), "the bed's old tree is scratch, never the owner's: " + root); }
+        }
+    }
+
+    class void run(Contract contract) {
+        ModsSpecMigrate.owner(contract);
+        ModsSpecMigrate.refusals(contract);
+        ModsSpecMigrate.copies(contract);
+        ModsSpecMigrate.background(contract);
+        ModsSpecMigrate.commandLine(contract);
+    }
+}

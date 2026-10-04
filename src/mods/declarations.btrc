@@ -89,7 +89,7 @@ class SemuModDeclarations {
     }
 
     class void checkKind(JSONValue kind, JSONValue settings, string file, string field, SemuDiagnostics diagnostics) {
-        SemuModDeclarations.known(kind, ["id", "library", "target", "install", "levels", "reads", "checks", "setting", "title_settings", "entry_lines", "about", "doc"], file, field, diagnostics);
+        SemuModDeclarations.known(kind, ["id", "library", "target", "install", "levels", "reads", "checks", "setting", "title_settings", "entry_lines", "migrate_from", "about", "doc"], file, field, diagnostics);
         if (!SemuModDeclarations.validName(SemuJson.textAt(kind, "id"))) { diagnostics.add(file, field + ".id", "must be lowercase letters, digits, - or _"); }
         if (!SemuModDeclarations.validName(SemuJson.textAt(kind, "library"))) { diagnostics.add(file, field + ".library", "must be one folder name under <mods>/<emulator>/, lowercase"); }
         if (!SemuModDeclarations.stateTarget(SemuJson.textAt(kind, "target"))) { diagnostics.add(file, field + ".target", "must be a path under ${state_root}/ without .."); }
@@ -113,6 +113,12 @@ class SemuModDeclarations {
             bool valid = lines.isObject() && SemuJson.textAt(lines, "format").contains("${entry}") && (escape.isEmpty() || escape.equals("xml"));
             if (!valid) { diagnostics.add(file, field + ".entry_lines", "needs a format naming ${entry}, and escape xml or none"); }
             if (lines.isObject()) { SemuModDeclarations.known(lines, ["format", "escape"], file, field + ".entry_lines", diagnostics); }
+        }
+        if (kind.has("migrate_from")) {
+            JSONValue places = kind.get("migrate_from");
+            bool valid = places.isArray() && SemuJson.strings(places).size() == places.size();
+            for place in SemuJson.strings(places) { valid = valid && place.startsWith("${emulation_root}/") && place.len() > 18 && !place.contains(".."); }
+            if (!valid) { diagnostics.add(file, field + ".migrate_from", "the old trees to move entries out of, each under ${emulation_root}/ without .."); }
         }
         for name in ["about", "doc"] { if (SemuJson.textAt(kind, name).isEmpty()) { diagnostics.add(file, field + "." + name, "missing: say what it is and why linking is safe"); } }
     }
