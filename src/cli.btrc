@@ -42,7 +42,7 @@ class SemuCli {
         help.item("build configs --target T [--output DIR]", "Emit ES-DE documents and emulator profiles.");
         help.item("prepare --target T [--es-de-home DIR]", "Install ES-DE documents and settings into the ES-DE home.");
         help.item("launch EMULATOR --system S --rom PATH [--core C] [--print-plan]", "Launch a ROM; the configured quit chord ends it.");
-        help.item("render-env --system S [--emulator E] [--variants-file DIR]", "Print the SEMU_RENDER_* environment the launcher would give the emulator (bezel package, shaders, screens); with --variants-file, DIR is the state dir and gets every bezel x shader combination.");
+        help.item("render-env --system S [--emulator E] [--variants-file DIR]", "Print the SEMU_RENDER_* and SEMU_MENU_* environment the launcher would give the emulator (bezel package, shaders, screens, menu, toasts); with --variants-file, DIR is the state dir and gets every bezel x shader combination and its token.");
         help.item("doctor --target T", "Show resolved paths and what is missing.");
         help.item("path NAME --target T", "Print one resolved path (roms, bios, esde_home, state_root, ...).");
         help.item("settings get PATH | put PATH VALUE [--apply] | ui | reset", "Read, write, describe (ES-DE menu document) or reset $SEMU_HOME/semu.json.");
@@ -119,9 +119,16 @@ class SemuCli {
         string variants = self.option("variants-file", "");  // DIR: also every combination, DIR standing in as the state dir
         string stateRoot = variants.isEmpty() ? PathTools.join(plan.stateRoot(), emulatorId) : FileSystem.absolutePath(variants);
         for entry in SemuRenderEnvironment.compile(plan, system, emulatorId, stateRoot, diagnostics) { Console.log(entry); }
-        if (!variants.isEmpty() && !SemuRenderVariants.write(plan, system, emulatorId, stateRoot).written) {
-            Console.error("semu: could not write " + SemuRenderVariants.path(stateRoot));
-            return 1;
+        if (plan.input != null) {
+            for entry in plan.input.menuEnvironment() { Console.log(entry); }  // the menu's rows and the toasts, as the launch gives them
+        }
+        if (!variants.isEmpty()) {
+            SemuRenderVariantSet set = SemuRenderVariants.write(plan, system, emulatorId, stateRoot);
+            if (!set.written) {
+                Console.error("semu: could not write " + SemuRenderVariants.path(stateRoot));
+                return 1;
+            }
+            for entry in SemuRenderVariants.environment(set) { Console.log(entry); }
         }
         return diagnostics.ok() ? 0 : self.fail(diagnostics);
     }

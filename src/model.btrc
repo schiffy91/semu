@@ -156,13 +156,15 @@ class SemuInput {
         return result;
     }
 
-    public string toasts() {  // "action=template|...": every declared toast, in action id order
+    public string toasts() {  // "action=template|...": every declared toast, in action id order; a loading_toast as action:loading
         Vector<string> entries = [];
         JSONValue actions = self.definition.get("actions");
         if (actions == null || !actions.isObject()) { return ""; }
         for action in actions.keys().sorted() {
             string toast = SemuJson.textAt(actions.get(action), "toast");
             if (!toast.isEmpty()) { entries.push(action + "=" + toast); }
+            string loading = SemuJson.textAt(actions.get(action), "loading_toast");  // shown while a shader chain compiles
+            if (!loading.isEmpty()) { entries.push(action + ":loading=" + loading); }
         }
         return entries.join("|");
     }

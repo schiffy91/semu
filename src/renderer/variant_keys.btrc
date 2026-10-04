@@ -13,6 +13,8 @@ class RendererVariantKeys {
     class string shadersKey() { return "shaders"; }
     class string shaderLabelsKey() { return "shader_labels"; }
     class string currentKey() { return "current"; }  // bezel,shader indices the launch started on
+    class string tokenKey() { return "token"; }  // equals the launch's SEMU_MENU_VARIANTS_TOKEN: another session's file is ignored
+    class string tokenVariable() { return "SEMU_MENU_VARIANTS_TOKEN"; }
     class int labelCapacity() { return 31; }  // one toast line; the composed toast is cut to the toast's width
     class int choiceCapacity() { return 10; }  // the most choices of one kind the renderer keeps labels for
 

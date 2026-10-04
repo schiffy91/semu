@@ -1,0 +1,197 @@
+// The launch's variants file as the renderer reads it: the header's choices and labels (the catalog)
+// and one [bezel,shader] section as an overlay of variant-scoped keys. Plain C strings and files, no
+// GL, so the contracts read the same file the launcher wrote.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+import ./variant_keys.btrc;
+import ./action_abi.btrc;
+
+int SEMU_RENDER_OVERLAY_CAPACITY = 256;  // a section holds at most 36 keys today
+int SEMU_RENDER_LABEL_WIDTH = 32;  // one label and its terminator
+
+struct RendererVariantOverlay {  // one section: names and values point into text, which the overlay owns
+    int count;
+    int bezel;
+    int shader;
+    char* names[256];
+    char* values[256];
+    char* text;
+};
+
+struct RendererVariantCatalog {  // the header: what each kind offers, in the supervisor's index order
+    int loaded;  // 1 when the file is this launch's: schema, system and token all match
+    int bezel_count;
+    int shader_count;
+    int bezel_none;  // the index of none, -1 without one
+    int shader_none;
+    int current_bezel;  // the section the launch started on
+    int current_shader;
+    char bezel_labels[10 * 32];
+    char shader_labels[10 * 32];
+};
+
+class RendererStatePaths {  // $SEMU_RENDER_STATE_DIR: the journal, the variants file and the evidence live there
+    class char* root() {
+        char* root = getenv("SEMU_RENDER_STATE_DIR");
+        return root == null || root[0] == 0 ? null : root;
+    }
+
+    class bool path(char* output, size_t capacity, string fileName) {
+        char* root = RendererStatePaths.root();
+        if (output == null || capacity == (size_t)0 || root == null
+            || fileName == null || fileName[0] == 0) { return false; }
+        int written = snprintf(output, capacity, "%s/%s", root, fileName);
+        return written >= 0 && (size_t)written < capacity;
+    }
+}
+
+class RendererVariantFile {
+    class char* read(char* path) {  // the whole file, malloc'd and terminated, or null
+        if (path == null || path[0] == 0) { return null; }
+        FILE* file = fopen(path, "rb");
+        if (file == null) { return null; }
+        char* text = null;
+        if (fseek(file, 0L, SEEK_END) == 0) {
+            long length = ftell(file);
+            if (length >= 0L && length < 4194304L && fseek(file, 0L, SEEK_SET) == 0) {
+                text = (char*)malloc((size_t)length + (size_t)1);
+                if (text != null) { text[(int)fread(text, 1, (size_t)length, file)] = 0; }
+            }
+        }
+        fclose(file);
+        return text;
+    }
+
+    class char* field(char* text, char* key) {  // KEY's header value (up to the line's end), or null
+        size_t length = strlen(key);
+        char* line = text;
+        while (line != null && *line != 0 && *line != '[') {
+            if (strncmp(line, key, length) == 0 && line[length] == '=') { return line + length + 1; }
+            line = strchr(line, (int)'\n');
+            if (line != null) { line++; }
+        }
+        return null;
+    }
+
+    class bool matches(char* text, char* key, char* expected) {  // the header's KEY is exactly EXPECTED
+        char* value = RendererVariantFile.field(text, key);
+        if (value == null || expected == null || expected[0] == 0) { return false; }
+        size_t length = strlen(expected);
+        return strncmp(value, expected, length) == 0 && (value[length] == '\n' || value[length] == 0);
+    }
+
+    class int labels(char* value, char* output, int* noneIndex, bool ids) {  // a '|' list into 32-byte slots; the count
+        int count = 0;
+        int column = 0;
+        for (int index = 0; value != null && value[index] != 0 && value[index] != '\n' && count < RendererVariantKeys.choiceCapacity(); index++) {
+            if (value[index] == '|') {
+                output[count * SEMU_RENDER_LABEL_WIDTH + column] = 0;
+                if (ids && strcmp(output + count * SEMU_RENDER_LABEL_WIDTH, "none") == 0) { *noneIndex = count; }
+                count++;
+                column = 0;
+            } else if (column < SEMU_RENDER_LABEL_WIDTH - 1) {
+                output[count * SEMU_RENDER_LABEL_WIDTH + column] = value[index];
+                column++;
+            }
+        }
+        if (column > 0 && count < RendererVariantKeys.choiceCapacity()) {
+            output[count * SEMU_RENDER_LABEL_WIDTH + column] = 0;
+            if (ids && strcmp(output + count * SEMU_RENDER_LABEL_WIDTH, "none") == 0) { *noneIndex = count; }
+            count++;
+        }
+        return count;
+    }
+
+    class bool catalog(char* path, char* systemId, char* token, struct RendererVariantCatalog* catalog) {  // false for another system's, another launch's or another schema's file
+        if (catalog == null) { return false; }
+        memset(catalog, 0, sizeof(struct RendererVariantCatalog));
+        catalog->bezel_none = -1;
+        catalog->shader_none = -1;
+        char* text = RendererVariantFile.read(path);
+        if (text == null) { return false; }
+        char schema[16];
+        snprintf(schema, sizeof(schema), "%d", RendererVariantKeys.schema());
+        bool ours = RendererVariantFile.matches(text, "schema", schema)
+            && RendererVariantFile.matches(text, RendererVariantKeys.systemKey(), systemId)
+            && RendererVariantFile.matches(text, RendererVariantKeys.tokenKey(), token);
+        if (ours) {
+            char ids[320];
+            int bezels = RendererVariantFile.labels(RendererVariantFile.field(text, RendererVariantKeys.bezelsKey()), ids, &catalog->bezel_none, true);
+            int shaders = RendererVariantFile.labels(RendererVariantFile.field(text, RendererVariantKeys.shadersKey()), ids, &catalog->shader_none, true);
+            int unused = -1;
+            catalog->bezel_count = RendererVariantFile.labels(RendererVariantFile.field(text, RendererVariantKeys.bezelLabelsKey()), catalog->bezel_labels, &unused, false);
+            catalog->shader_count = RendererVariantFile.labels(RendererVariantFile.field(text, RendererVariantKeys.shaderLabelsKey()), catalog->shader_labels, &unused, false);
+            char* current = RendererVariantFile.field(text, RendererVariantKeys.currentKey());
+            if (current == null || sscanf(current, "%d,%d", &catalog->current_bezel, &catalog->current_shader) != 2) { ours = false; }
+            ours = ours && bezels == catalog->bezel_count && shaders == catalog->shader_count;  // every id has its label
+        }
+        free(text);
+        catalog->loaded = ours ? 1 : 0;
+        return ours;
+    }
+
+    class char* label(struct RendererVariantCatalog* catalog, bool bezel, int index) {  // the toast-safe label, "" when unknown
+        if (catalog == null || catalog->loaded == 0 || index < 0) { return ""; }
+        if (bezel) { return index < catalog->bezel_count ? catalog->bezel_labels + index * SEMU_RENDER_LABEL_WIDTH : ""; }
+        return index < catalog->shader_count ? catalog->shader_labels + index * SEMU_RENDER_LABEL_WIDTH : "";
+    }
+
+    class bool section(char* path, int bezel, int shader, struct RendererVariantOverlay* overlay) {  // the [bezel,shader] block, split in place
+        if (overlay == null) { return false; }
+        memset(overlay, 0, sizeof(struct RendererVariantOverlay));
+        char* text = RendererVariantFile.read(path);
+        if (text == null) { return false; }
+        char heading[32];
+        snprintf(heading, sizeof(heading), "[%d,%d]\n", bezel, shader);
+        char* start = strstr(text, heading);
+        if (start == null || (start != text && *(start - 1) != '\n')) {
+            free(text);
+            return false;
+        }
+        start = start + strlen(heading);
+        char* end = strstr(start, "\n[");
+        size_t length = end == null ? strlen(start) : (size_t)(end - start) + (size_t)1;
+        overlay->text = (char*)malloc(length + (size_t)1);
+        if (overlay->text == null) {
+            free(text);
+            return false;
+        }
+        memcpy(overlay->text, start, length);
+        overlay->text[length] = 0;
+        free(text);
+        overlay->bezel = bezel;
+        overlay->shader = shader;
+        char* line = overlay->text;
+        while (*line != 0 && overlay->count < SEMU_RENDER_OVERLAY_CAPACITY) {
+            char* next = strchr(line, (int)'\n');
+            if (next != null) { *next = 0; }
+            char* equals = strchr(line, (int)'=');
+            if (equals != null && equals != line) {
+                *equals = 0;
+                overlay->names[overlay->count] = line;
+                overlay->values[overlay->count] = equals + 1;
+                overlay->count++;
+            }
+            if (next == null) { break; }
+            line = next + 1;
+        }
+        return true;
+    }
+
+    class char* value(struct RendererVariantOverlay* overlay, char* name) {  // NAME's value in the section, or null when it sets none
+        if (overlay == null || name == null) { return null; }
+        for (int index = 0; index < overlay->count; index++) {
+            if (strcmp(overlay->names[index], name) == 0) { return overlay->values[index]; }
+        }
+        return null;
+    }
+
+    class void discard(struct RendererVariantOverlay* overlay) {
+        if (overlay == null) { return; }
+        if (overlay->text != null) { free(overlay->text); }
+        memset(overlay, 0, sizeof(struct RendererVariantOverlay));
+    }
+}

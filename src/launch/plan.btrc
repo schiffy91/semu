@@ -452,6 +452,7 @@ class SemuLauncher {
         if (SemuJson.boolAt(platform, "render_hook", false) || preload || vulkan) {  // the renderer composes from SEMU_RENDER_*: a render_hook emulator links the loader, which loads SEMU_RENDERER_LIBRARY; the preload and Vulkan shims link the renderer
             for entry in SemuRenderEnvironment.compile(plan, system, emulatorId, stateRoot, diagnostics) { launch.environment.push(entry); }
             launch.variants = SemuRenderVariants.write(plan, system, emulatorId, stateRoot);  // every combination beside the journal, for live switching
+            for entry in SemuRenderVariants.environment(launch.variants) { launch.environment.push(entry); }  // the renderer trusts only this launch's file
             string shim = PathTools.join(plan.assetRoot, "lib/libsemupreload.so");
             if (preload && FileSystem.isFile(shim)) { launch.environment.push("LD_PRELOAD=" + shim); }
             if (preload && plan.platform.equals("macos") && SemuJson.boolAt(platform, "window_shim", false)) { launch.environment.push("SEMU_WINDOW_COMPOSE=1"); }  // macOS: the window shim composes at the GL flush

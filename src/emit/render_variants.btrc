@@ -17,6 +17,8 @@ import ../renderer/action_abi.btrc;
 import ../renderer/variant_keys.btrc;
 
 #include <stdlib.h>
+#include <time.h>
+#include <unistd.h>
 
 class SemuVariantChoice {  // one kind's ordered ids (the variants, then none), their labels and the live index
     public string kind;  // "bezel" or "shader", as in visual.systems.<id>.<kind>_variant
@@ -44,11 +46,13 @@ class SemuRenderVariantSet {  // the launch's two choices; both empty when no va
     public SemuVariantChoice bezel;
     public SemuVariantChoice shader;
     public bool written;
+    public string token;  // the header's token, handed to the renderer as SEMU_MENU_VARIANTS_TOKEN
 
     public SemuRenderVariantSet() {
         self.bezel = SemuVariantChoice("bezel");
         self.shader = SemuVariantChoice("shader");
         self.written = false;
+        self.token = "";
     }
 }
 
@@ -121,6 +125,7 @@ class SemuRenderVariants {
         lines.push(RendererVariantKeys.shadersKey() + "=" + set.shader.ids.join("|"));
         lines.push(RendererVariantKeys.shaderLabelsKey() + "=" + set.shader.labels.join("|"));
         lines.push(RendererVariantKeys.currentKey() + f"={set.bezel.index},{set.shader.index}");
+        lines.push(RendererVariantKeys.tokenKey() + "=" + set.token);
         Vector<string> bezels = SemuRenderVariants.column(set.bezel, SemuRenderEnvironment.bezelVariantId(plan, system));
         Vector<string> shaders = SemuRenderVariants.column(set.shader, SemuRenderEnvironment.shaderVariantId(plan, system));
         SemuRenderPackages packages = SemuRenderPackages();
@@ -138,10 +143,25 @@ class SemuRenderVariants {
 
     class string path(string stateRoot) { return PathTools.join(stateRoot, RendererActionJournal.variantsFileName()); }
 
+    class string token() {  // this launch's: wall-clock nanoseconds and the pid, so a later session's renderer ignores the file
+        struct timespec now;
+        clock_gettime(CLOCK_REALTIME, &now);
+        char* buffer = (char*)malloc((size_t)48);
+        snprintf(buffer, (size_t)48, "%lld%09ld-%d", (long long)now.tv_sec, (long)now.tv_nsec, (int)getpid());
+        return __btrc_str_track(buffer);
+    }
+
+    class Vector<string> environment(SemuRenderVariantSet set) {  // what the renderer needs to trust the file; nothing when none was written
+        Vector<string> result = [];
+        if (set.written) { result.push(RendererVariantKeys.tokenVariable() + "=" + set.token); }
+        return result;
+    }
+
     class SemuRenderVariantSet write(SemuPlan plan, SemuSystem system, string emulatorId, string stateRoot) {  // empty choices when the file could not be written: nothing to cycle
         SemuRenderVariantSet set = SemuRenderVariantSet();
         set.bezel = SemuRenderVariants.choice(plan, system, "bezel");
         set.shader = SemuRenderVariants.choice(plan, system, "shader");
+        set.token = SemuRenderVariants.token();
         if (!SemuPaths.writeOwned(stateRoot, SemuRenderVariants.path(stateRoot), SemuRenderVariants.text(plan, system, emulatorId, stateRoot, set))) { return SemuRenderVariantSet(); }
         set.written = true;
         return set;

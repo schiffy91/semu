@@ -1,0 +1,344 @@
+// The post-UI phase's state without GL: the supervisor's journal applied to the Semu menu, the toasts
+// and the live bezel and shader requests, and when the phase needs GL at all. The renderer only
+// reflects what the supervisor executed; replaying the journal after a context reset never re-toasts.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+import ./renderer_abi.btrc;
+import ./renderer_config.btrc;
+import ./renderer_variants.btrc;
+import ./action_abi.btrc;
+int SEMU_RENDER_MENU_WIDTH = 384;
+int SEMU_RENDER_MENU_HEIGHT = 468;  // header, up to eight rows, slot line
+int SEMU_RENDER_MAX_CAPTURE_FRAME = 900;
+int SEMU_RENDER_MAX_CAPTURE_ATTEMPTS = 8;
+int SEMU_RENDER_ACTION_POLL_INTERVAL = 2;
+int SEMU_RENDER_CAPTURE_NONE = 0;
+int SEMU_RENDER_CAPTURE_READBACK_FAILED = 1;
+int SEMU_RENDER_CAPTURE_BLANK = 2;
+int SEMU_RENDER_CAPTURE_WRITTEN = 3;
+int SEMU_RENDER_CAPTURE_WRITE_FAILED = 4;
+
+struct RendererPostUiState {
+    int initialized;
+    int visible;
+    int selected;
+    int slot;
+    int slot_count;  // SEMU_MENU_SLOTS: under two, no slot to choose
+    int first_slot;  // SEMU_MENU_FIRST_SLOT: how the emulator numbers Semu's first slot
+    int screenshot_requested;
+    int capture_count;
+    int capture_target;
+    int capture_attempts;
+    int capture_exhausted;
+    int capture_outcome;
+    unsigned long long capture_frame_id;
+    unsigned long long next_action_frame;
+    long journal_offset;
+    int item_count;
+    char labels[8 * 24];  // eight 24-byte labels
+    char actions[8 * 32];  // SEMU_MENU_ACTIONS: each row's action, so the BEZEL and SHADER rows show their value
+    int bezels_toggles;  // requests the renderer applies to its config after consuming the journal
+    int shaders_toggles;
+    int bezel_request;  // a select's index for the game phase to apply; -1 while none waits
+    int shader_request;
+    int apply_countdown;  // game frames before the requests apply, so the toast is on screen first
+    int bezel_shown;  // the choice the menu row names: the latest select's, else the launch's
+    int shader_shown;
+    char toast[48];
+    long long toast_until_ms;  // 0 with no toast
+    int toast_pending;  // a LOADING toast waits for its shader chain to build
+    char toasts[1024];  // SEMU_MENU_TOASTS, the input.json templates
+    struct RendererVariantCatalog catalog;
+    unsigned long long last_sequence;
+    unsigned char* menu_pixels;
+};
+
+class RendererToast {
+    class int characters() { return 31; }  // scale-2 glyphs across the 384-pixel texture
+    class long long durationMs() { return 1500LL; }
+
+    class bool fresh(struct SemuActionRecord* record, long long now) {  // older records are a replay: they set state, never a toast
+        long long age = now - record->monotonic_ms;
+        return age > -2000LL && age < 2000LL;
+    }
+
+    class void show(struct RendererPostUiState* state, char* actionId, char* slot, char* label, long long now) {  // the action's template filled in; none declared, no toast
+        char pattern[128];
+        if (!SemuToastText.find(state->toasts, actionId, pattern, (int)sizeof(pattern))) { return; }
+        SemuToastText.compose(state->toast, RendererToast.characters() + 1, pattern, slot, label);
+        state->toast_until_ms = state->toast[0] != 0 ? now + RendererToast.durationMs() : 0LL;
+        state->toast_pending = 0;
+    }
+
+    class bool active(struct RendererPostUiState* state, long long now) {
+        return state != null && state->toast[0] != 0 && now < state->toast_until_ms;
+    }
+
+    class void shader(struct RendererPostUiState* state, int index, long long now) {  // LOADING while a new chain will compile, else the plain toast
+        char* label = RendererVariantFile.label(&state->catalog, false, index);
+        bool compiles = index != state->shader_shown && index != state->catalog.shader_none;
+        char pattern[128];
+        if (compiles && SemuToastText.find(state->toasts, "visual.shader.next:loading", pattern, (int)sizeof(pattern))) {
+            RendererToast.show(state, "visual.shader.next:loading", "", label, now);
+            state->toast_pending = 1;
+            return;
+        }
+        RendererToast.show(state, "visual.shader.next", "", label, now);
+    }
+
+    class void finish(struct RendererPostUiState* state, long long started, long long now) {  // a switch that began at STARTED is drawn: its toast gets its full time back
+        if (state == null) { return; }
+        if (state->toast_pending != 0) {  // the chain is built: LOADING becomes the plain toast
+            RendererToast.show(state, "visual.shader.next", "", RendererVariantFile.label(&state->catalog, false, state->shader_shown), now);
+            return;
+        }
+        if (state->toast[0] != 0 && state->toast_until_ms > started) { state->toast_until_ms = now + RendererToast.durationMs(); }  // a decode stall never eats the toast
+    }
+}
+
+class RendererEvidencePolicy {
+    class int configuredFrame() {
+        char* configured = getenv("SEMU_RENDER_CAPTURE_FRAME");
+        if (configured == null || configured[0] == 0) { return 0; }
+        char* end = null;
+        long target = strtol(configured, &end, 10);
+        return end != null && *end == 0 && target >= 1L
+                && target <= (long)SEMU_RENDER_MAX_CAPTURE_FRAME
+            ? (int)target : 0;
+    }
+
+    class void request(struct RendererPostUiState* state) {
+        if (state == null) { return; }
+        state->screenshot_requested = 1;
+        state->capture_attempts = 0;
+        state->capture_exhausted = 0;
+        state->capture_outcome = SEMU_RENDER_CAPTURE_NONE;
+    }
+
+    class bool due(struct RendererPostUiState* state,
+                   struct SemuRenderFrameGl* frame) {
+        return state != null && frame != null
+            && RendererEvidenceContract.due(state->capture_target,
+                state->capture_count, state->screenshot_requested,
+                state->capture_exhausted, frame->frame_id);
+    }
+
+    class bool needsGlAt(struct RendererPostUiState* state,
+                         struct SemuRenderFrameGl* frame, long long now) {  // the menu, a toast or a capture
+        return state != null && frame != null
+            && (RendererToast.active(state, now) || RendererEvidenceContract.needsGl(state->visible,
+                state->capture_target, state->capture_count,
+                state->screenshot_requested, state->capture_exhausted,
+                frame->frame_id));
+    }
+
+    class bool needsGl(struct RendererPostUiState* state,
+                       struct SemuRenderFrameGl* frame) {
+        return RendererEvidencePolicy.needsGlAt(state, frame, RendererClock.milliseconds());
+    }
+
+    class char* outcomeName(int outcome) {
+        if (outcome == SEMU_RENDER_CAPTURE_READBACK_FAILED) {
+            return "readback_failed";
+        }
+        if (outcome == SEMU_RENDER_CAPTURE_BLANK) { return "blank"; }
+        if (outcome == SEMU_RENDER_CAPTURE_WRITTEN) { return "written"; }
+        if (outcome == SEMU_RENDER_CAPTURE_WRITE_FAILED) {
+            return "write_failed";
+        }
+        return "none";
+    }
+}
+
+class RendererMenuModel {
+    class int itemCount(struct RendererPostUiState* state) { return state == null || state->item_count < 1 ? 1 : state->item_count; }
+
+    class int split(char* value, char* output, int width, int capacity) {  // '|'-joined fields into WIDTH-byte slots; the count
+        int count = 0;
+        int column = 0;
+        for (int index = 0; value != null && value[index] != 0 && count < capacity; index++) {
+            char character = value[index];
+            if (character == '|') {
+                output[count * width + column] = 0;
+                count++;
+                column = 0;
+            } else if (column < width - 1) {
+                output[count * width + column] = character;
+                column++;
+            }
+        }
+        if (column > 0 && count < capacity) {
+            output[count * width + column] = 0;
+            count++;
+        }
+        return count;
+    }
+
+    class void loadItems(struct RendererPostUiState* state) {  // SEMU_MENU_ITEMS and SEMU_MENU_ACTIONS: the supervisor mirrors the order
+        char* value = getenv("SEMU_MENU_ITEMS");
+        state->item_count = RendererMenuModel.split(value == null ? "RESUME|QUIT GAME" : value, state->labels, 24, 8);
+        memset(state->actions, 0, sizeof(state->actions));
+        RendererMenuModel.split(getenv("SEMU_MENU_ACTIONS"), state->actions, 32, 8);
+        char* toasts = getenv("SEMU_MENU_TOASTS");
+        snprintf(state->toasts, sizeof(state->toasts), "%s", toasts == null ? "" : toasts);
+    }
+
+    class void loadCatalog(struct RendererPostUiState* state) {  // this launch's variants file, or none: then selects change nothing
+        char path[8192];
+        bool found = RendererStatePaths.path(path, sizeof(path), RendererActionJournal.variantsFileName())
+            && RendererVariantFile.catalog(path, getenv("SEMU_RENDER_SYSTEM_ID"), getenv(RendererVariantKeys.tokenVariable()), &state->catalog);
+        state->bezel_shown = found ? state->catalog.current_bezel : -1;
+        state->shader_shown = found ? state->catalog.current_shader : -1;
+    }
+
+    class void initialize(struct RendererPostUiState* state) {
+        if (state == null || state->initialized != 0) { return; }
+        state->initialized = 1;
+        state->visible = 0;
+        state->selected = 0;
+        state->slot = 0;
+        state->slot_count = SemuSlotLabel.configured("SEMU_MENU_SLOTS", 10, 99);
+        state->first_slot = SemuSlotLabel.configured("SEMU_MENU_FIRST_SLOT", 0, 99);
+        state->capture_target = RendererEvidencePolicy.configuredFrame();
+        state->next_action_frame = 0ULL;
+        state->journal_offset = 0;
+        state->bezels_toggles = 0;
+        state->shaders_toggles = 0;
+        state->bezel_request = -1;
+        state->shader_request = -1;
+        state->apply_countdown = 0;
+        state->toast[0] = 0;
+        state->toast_until_ms = 0LL;
+        RendererMenuModel.loadItems(state);
+        RendererMenuModel.loadCatalog(state);
+    }
+
+    class void observeSavestate(struct RendererPostUiState* state,
+                                int requestedSlot) {
+        int slot = requestedSlot >= 0 && requestedSlot < state->slot_count
+            ? requestedSlot : state->slot;  // Semu's index; the emulator shows first_slot + index
+        state->slot = slot;
+    }
+
+    class void select(struct RendererPostUiState* state, struct SemuActionRecord* record, long long now) {  // an absolute choice: replaying it twice asks for the same section
+        bool bezel = record->action == SemuActions.bezelSelect();
+        int count = bezel ? state->catalog.bezel_count : state->catalog.shader_count;
+        if (state->catalog.loaded == 0 || record->slot < 0 || record->slot >= count) { return; }
+        if (bezel) {
+            state->bezel_request = record->slot;
+            state->bezels_toggles = 0;  // a choice overrides the On/Off toggles before it
+        } else {
+            state->shader_request = record->slot;
+            state->shaders_toggles = 0;
+        }
+        state->apply_countdown = 2;
+        if (RendererToast.fresh(record, now)) {
+            if (bezel) { RendererToast.show(state, "visual.bezel.next", "", RendererVariantFile.label(&state->catalog, true, record->slot), now); }
+            else { RendererToast.shader(state, record->slot, now); }
+        }
+        if (bezel) { state->bezel_shown = record->slot; } else { state->shader_shown = record->slot; }
+    }
+
+    class void apply(struct RendererPostUiState* state,
+                     struct SemuActionRecord* record, long long now) {  // the supervisor executes; the renderer only reflects
+        if (state == null || record == null) { return; }
+        int action = record->action;
+        int count = RendererMenuModel.itemCount(state);
+        if (action == SemuActions.menuToggle()) {
+            state->visible = state->visible == 0 ? 1 : 0;
+            if (state->visible != 0) { state->selected = 0; }
+        } else if (action == SemuActions.menuBack()) {
+            state->visible = 0;
+        } else if (action == SemuActions.menuUp() && state->visible != 0) {
+            state->selected = (state->selected + count - 1) % count;
+        } else if (action == SemuActions.menuDown() && state->visible != 0) {
+            state->selected = (state->selected + 1) % count;
+        } else if (action == SemuActions.stateSave()
+                || action == SemuActions.stateLoad()
+                || action == SemuActions.stateNext()
+                || action == SemuActions.statePrev()) {  // each record carries the slot now selected
+            RendererMenuModel.observeSavestate(state, record->slot);
+            char slotText[16];
+            SemuSlotLabel.text(slotText, (int)sizeof(slotText), state->first_slot, state->slot_count, state->slot);  // empty with one fixed slot
+            if (RendererToast.fresh(record, now)) { RendererToast.show(state, SemuActions.id(action), slotText, "", now); }
+        } else if (action == SemuActions.screenshot()) {
+            RendererEvidencePolicy.request(state);
+            if (RendererToast.fresh(record, now)) { RendererToast.show(state, SemuActions.id(action), "", "", now); }
+        } else if (action == SemuActions.bezelsToggle()) {
+            state->bezels_toggles++;
+        } else if (action == SemuActions.shadersToggle()) {
+            state->shaders_toggles++;
+        } else if (action == SemuActions.bezelSelect() || action == SemuActions.shaderSelect()) {
+            RendererMenuModel.select(state, record, now);
+        }
+    }
+}
+
+class RendererVariantRequests {  // when the game phase applies a select, and which section
+    class bool due(struct RendererPostUiState* state, int liveBezel, int liveShader, int* bezel, int* shader) {  // true once per change, after the countdown
+        if (state == null || state->initialized == 0 || state->catalog.loaded == 0
+            || (state->bezel_request < 0 && state->shader_request < 0)) { return false; }
+        if (state->apply_countdown > 0) {
+            state->apply_countdown--;
+            if (state->apply_countdown > 0) { return false; }
+        }
+        int fromBezel = liveBezel >= 0 ? liveBezel : state->catalog.current_bezel;  // never switched: the launch's own section
+        int fromShader = liveShader >= 0 ? liveShader : state->catalog.current_shader;
+        *bezel = state->bezel_request >= 0 ? state->bezel_request : fromBezel;
+        *shader = state->shader_request >= 0 ? state->shader_request : fromShader;
+        state->bezel_request = -1;
+        state->shader_request = -1;
+        return *bezel != fromBezel || *shader != fromShader;
+    }
+}
+
+class RendererActionConsumer {
+    class int consume(struct RendererPostUiState* state) {
+        if (state == null) { return 0; }
+        char path[8192];
+        if (!RendererStatePaths.path(path, sizeof(path),
+                RendererActionJournal.fileName())) { return 0; }
+        FILE* file = fopen(path, "rb");
+        if (file == null) { return 0; }
+
+        if (fseek(file, 0L, SEEK_END) != 0) { fclose(file); return 0; }
+        long length = ftell(file);
+        if (length < 0L) { fclose(file); return 0; }
+        if (state->journal_offset > length) {
+            state->journal_offset = 0L;
+            state->last_sequence = 0ULL;
+        }
+        if (fseek(file, state->journal_offset, SEEK_SET) != 0) {
+            fclose(file);
+            return 0;
+        }
+
+        int consumed = 0;
+        long long now = RendererClock.milliseconds();
+        struct SemuActionRecord record;
+        long recordOffset = ftell(file);
+        size_t count = fread(&record, sizeof(struct SemuActionRecord), 1, file);
+        while (count == (size_t)1) {
+            state->journal_offset = ftell(file);
+            bool valid = record.abi == (unsigned int)RendererActionJournal.abi()
+                && record.size == (unsigned int)sizeof(struct SemuActionRecord)
+                && record.sequence > state->last_sequence
+                && SemuActions.rendererOwned(record.action);
+            if (valid) {
+                state->last_sequence = record.sequence;
+                RendererMenuModel.apply(state, &record, now);
+                consumed++;
+            }
+            recordOffset = ftell(file);
+            count = fread(&record, sizeof(struct SemuActionRecord), 1, file);
+        }
+        if (!feof(file) && recordOffset >= 0L) {
+            state->journal_offset = recordOffset;
+        }
+        fclose(file);
+        return consumed;
+    }
+}

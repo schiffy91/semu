@@ -1,5 +1,5 @@
-// Matched post-UI action consumption, Semu menu composition, and final-frame
-// evidence. This phase reads only the supervisor journal; it never polls input.
+// Matched post-UI phase: the Semu menu or a toast drawn from the journal's state (renderer_menu), the
+// evidence receipts and the final-frame capture. It reads only the supervisor journal; it never polls input.
 
 #include <errno.h>
 #include <stdio.h>
@@ -10,105 +10,12 @@
 import ./renderer_abi.btrc;
 import ./renderer_gl_api.btrc;
 import ./renderer_compositor.btrc;
+import ./renderer_variants.btrc;
+import ./renderer_menu.btrc;
+import ./renderer_menu_raster.btrc;
 import ./action_abi.btrc;
-int SEMU_RENDER_MENU_WIDTH = 384;
-int SEMU_RENDER_MENU_HEIGHT = 468;  // header, up to eight rows, slot line
-int SEMU_RENDER_MAX_CAPTURE_FRAME = 900;
-int SEMU_RENDER_MAX_CAPTURE_ATTEMPTS = 8;
-int SEMU_RENDER_ACTION_POLL_INTERVAL = 2;
-int SEMU_RENDER_CAPTURE_NONE = 0;
-int SEMU_RENDER_CAPTURE_READBACK_FAILED = 1;
-int SEMU_RENDER_CAPTURE_BLANK = 2;
-int SEMU_RENDER_CAPTURE_WRITTEN = 3;
-int SEMU_RENDER_CAPTURE_WRITE_FAILED = 4;
-
-struct RendererPostUiState {
-    int initialized;
-    int visible;
-    int selected;
-    int slot;
-    int slot_count;  // SEMU_MENU_SLOTS: under two, no slot to choose
-    int first_slot;  // SEMU_MENU_FIRST_SLOT: how the emulator numbers Semu's first slot
-    int screenshot_requested;
-    int capture_count;
-    int capture_target;
-    int capture_attempts;
-    int capture_exhausted;
-    int capture_outcome;
-    unsigned long long capture_frame_id;
-    unsigned long long next_action_frame;
-    long journal_offset;
-    int item_count;
-    char labels[8 * 24];  // eight 24-byte labels
-    int bezels_toggles;  // requests the renderer applies to its config after consuming the journal
-    int shaders_toggles;
-    unsigned long long last_sequence;
-    unsigned char* menu_pixels;
-};
-
-class RendererEvidencePolicy {
-    class int configuredFrame() {
-        char* configured = getenv("SEMU_RENDER_CAPTURE_FRAME");
-        if (configured == null || configured[0] == 0) { return 0; }
-        char* end = null;
-        long target = strtol(configured, &end, 10);
-        return end != null && *end == 0 && target >= 1L
-                && target <= (long)SEMU_RENDER_MAX_CAPTURE_FRAME
-            ? (int)target : 0;
-    }
-
-    class void request(struct RendererPostUiState* state) {
-        if (state == null) { return; }
-        state->screenshot_requested = 1;
-        state->capture_attempts = 0;
-        state->capture_exhausted = 0;
-        state->capture_outcome = SEMU_RENDER_CAPTURE_NONE;
-    }
-
-    class bool due(struct RendererPostUiState* state,
-                   struct SemuRenderFrameGl* frame) {
-        return state != null && frame != null
-            && RendererEvidenceContract.due(state->capture_target,
-                state->capture_count, state->screenshot_requested,
-                state->capture_exhausted, frame->frame_id);
-    }
-
-    class bool needsGl(struct RendererPostUiState* state,
-                       struct SemuRenderFrameGl* frame) {
-        return state != null && frame != null
-            && RendererEvidenceContract.needsGl(state->visible,
-                state->capture_target, state->capture_count,
-                state->screenshot_requested, state->capture_exhausted,
-                frame->frame_id);
-    }
-
-    class char* outcomeName(int outcome) {
-        if (outcome == SEMU_RENDER_CAPTURE_READBACK_FAILED) {
-            return "readback_failed";
-        }
-        if (outcome == SEMU_RENDER_CAPTURE_BLANK) { return "blank"; }
-        if (outcome == SEMU_RENDER_CAPTURE_WRITTEN) { return "written"; }
-        if (outcome == SEMU_RENDER_CAPTURE_WRITE_FAILED) {
-            return "write_failed";
-        }
-        return "none";
-    }
-}
 
 class RendererStateFiles {
-    class char* root() {
-        char* root = getenv("SEMU_RENDER_STATE_DIR");
-        return root == null || root[0] == 0 ? null : root;
-    }
-
-    class bool path(char* output, size_t capacity, string fileName) {
-        char* root = RendererStateFiles.root();
-        if (output == null || capacity == (size_t)0 || root == null
-            || fileName == null || fileName[0] == 0) { return false; }
-        int written = snprintf(output, capacity, "%s/%s", root, fileName);
-        return written >= 0 && (size_t)written < capacity;
-    }
-
     class void writeValue(FILE* file, char* value) {
         if (value == null || value[0] == 0) {
             fputs("none", file);
@@ -143,8 +50,19 @@ class RendererStateFiles {
                              struct RendererGlResources* resources,
                              struct RendererCompositionGeometry* geometry,
                              struct RendererPostUiState* evidence) {
+        RendererStateFiles.appendReceiptWith(phase, frame, contextGeneration, matched, status, actions, hash, nonblank, config, resources, geometry, evidence, null);
+    }
+
+    class void appendReceiptWith(char* phase, struct SemuRenderFrameGl* frame,
+                             unsigned long long contextGeneration,
+                             int matched, int status,
+                             int actions, unsigned long long hash,
+                             int nonblank, struct RendererConfig* config,
+                             struct RendererGlResources* resources,
+                             struct RendererCompositionGeometry* geometry,
+                             struct RendererPostUiState* evidence, char* extra) {  // EXTRA: more key=value fields, a switch's timings
         char path[8192];
-        if (!RendererStateFiles.path(path, sizeof(path),
+        if (!RendererStatePaths.path(path, sizeof(path),
                 "semu-render-evidence.log")) { return; }
         FILE* file = fopen(path, "a");
         if (file == null) { return; }
@@ -221,260 +139,9 @@ class RendererStateFiles {
                     lane->output_width, lane->output_height);
             }
         }
+        if (extra != null) { fputs(extra, file); }
         fputc('\n', file);
         fclose(file);
-    }
-
-}
-
-class RendererMenuModel {
-    class int itemCount(struct RendererPostUiState* state) { return state == null || state->item_count < 1 ? 1 : state->item_count; }
-
-    class void loadItems(struct RendererPostUiState* state) {  // SEMU_MENU_ITEMS: labels joined by '|', the supervisor mirrors the order
-        state->item_count = 0;
-        char* value = getenv("SEMU_MENU_ITEMS");
-        if (value == null) { value = "RESUME|QUIT GAME"; }
-        int column = 0;
-        for (int index = 0; value[index] != 0 && state->item_count < 8; index++) {
-            char character = value[index];
-            if (character == '|') {
-                state->labels[state->item_count * 24 + column] = 0;
-                state->item_count++;
-                column = 0;
-            } else if (column < 23) {
-                state->labels[state->item_count * 24 + column] = character;
-                column++;
-            }
-        }
-        if (column > 0 && state->item_count < 8) {
-            state->labels[state->item_count * 24 + column] = 0;
-            state->item_count++;
-        }
-    }
-
-    class void initialize(struct RendererPostUiState* state) {
-        if (state == null || state->initialized != 0) { return; }
-        state->initialized = 1;
-        state->visible = 0;
-        state->selected = 0;
-        state->slot = 0;
-        state->slot_count = SemuSlotLabel.configured("SEMU_MENU_SLOTS", 10, 99);
-        state->first_slot = SemuSlotLabel.configured("SEMU_MENU_FIRST_SLOT", 0, 99);
-        state->capture_target = RendererEvidencePolicy.configuredFrame();
-        state->next_action_frame = 0ULL;
-        state->journal_offset = 0;
-        state->bezels_toggles = 0;
-        state->shaders_toggles = 0;
-        RendererMenuModel.loadItems(state);
-    }
-
-    class void observeSavestate(struct RendererPostUiState* state,
-                                int requestedSlot) {
-        int slot = requestedSlot >= 0 && requestedSlot < state->slot_count
-            ? requestedSlot : state->slot;  // Semu's index; the emulator shows first_slot + index
-        state->slot = slot;
-    }
-
-    class void apply(struct RendererPostUiState* state,
-                     struct SemuActionRecord* record) {  // the supervisor executes; the renderer only reflects
-        if (state == null || record == null) { return; }
-        int action = record->action;
-        int count = RendererMenuModel.itemCount(state);
-        if (action == SemuActions.menuToggle()) {
-            state->visible = state->visible == 0 ? 1 : 0;
-            if (state->visible != 0) { state->selected = 0; }
-        } else if (action == SemuActions.menuBack()) {
-            state->visible = 0;
-        } else if (action == SemuActions.menuUp() && state->visible != 0) {
-            state->selected = (state->selected + count - 1) % count;
-        } else if (action == SemuActions.menuDown() && state->visible != 0) {
-            state->selected = (state->selected + 1) % count;
-        } else if (action == SemuActions.stateSave()
-                || action == SemuActions.stateLoad()
-                || action == SemuActions.stateNext()
-                || action == SemuActions.statePrev()) {  // each record carries the slot now selected
-            RendererMenuModel.observeSavestate(state, record->slot);
-        } else if (action == SemuActions.screenshot()) {
-            RendererEvidencePolicy.request(state);
-        } else if (action == SemuActions.bezelsToggle()) {
-            state->bezels_toggles++;
-        } else if (action == SemuActions.shadersToggle()) {
-            state->shaders_toggles++;
-        }
-    }
-}
-
-class RendererActionConsumer {
-    class int consume(struct RendererPostUiState* state) {
-        if (state == null) { return 0; }
-        char path[8192];
-        if (!RendererStateFiles.path(path, sizeof(path),
-                RendererActionJournal.fileName())) { return 0; }
-        FILE* file = fopen(path, "rb");
-        if (file == null) { return 0; }
-
-        if (fseek(file, 0L, SEEK_END) != 0) { fclose(file); return 0; }
-        long length = ftell(file);
-        if (length < 0L) { fclose(file); return 0; }
-        if (state->journal_offset > length) {
-            state->journal_offset = 0L;
-            state->last_sequence = 0ULL;
-        }
-        if (fseek(file, state->journal_offset, SEEK_SET) != 0) {
-            fclose(file);
-            return 0;
-        }
-
-        int consumed = 0;
-        struct SemuActionRecord record;
-        long recordOffset = ftell(file);
-        size_t count = fread(&record, sizeof(struct SemuActionRecord), 1, file);
-        while (count == (size_t)1) {
-            state->journal_offset = ftell(file);
-            bool valid = record.abi == (unsigned int)RendererActionJournal.abi()
-                && record.size == (unsigned int)sizeof(struct SemuActionRecord)
-                && record.sequence > state->last_sequence
-                && SemuActions.rendererOwned(record.action);
-            if (valid) {
-                state->last_sequence = record.sequence;
-                RendererMenuModel.apply(state, &record);
-                consumed++;
-            }
-            recordOffset = ftell(file);
-            count = fread(&record, sizeof(struct SemuActionRecord), 1, file);
-        }
-        if (!feof(file) && recordOffset >= 0L) {
-            state->journal_offset = recordOffset;
-        }
-        fclose(file);
-        return consumed;
-    }
-}
-
-class RendererMenuRaster {
-    class const char* glyph(char value) {
-        if (value == 'A') { return "01110100011000111111100011000110001"; }
-        if (value == 'B') { return "11110100011000111110100011000111110"; }
-        if (value == 'C') { return "01111100001000010000100001000001111"; }
-        if (value == 'D') { return "11110100011000110001100011000111110"; }
-        if (value == 'E') { return "11111100001000011110100001000011111"; }
-        if (value == 'F') { return "11111100001000011110100001000010000"; }
-        if (value == 'G') { return "01111100001000010111100011000101111"; }
-        if (value == 'H') { return "10001100011000111111100011000110001"; }
-        if (value == 'I') { return "11111001000010000100001000010011111"; }
-        if (value == 'J') { return "00111000100001000010000101001001100"; }
-        if (value == 'K') { return "10001100101010011000101001001010001"; }
-        if (value == 'L') { return "10000100001000010000100001000011111"; }
-        if (value == 'M') { return "10001110111010110101100011000110001"; }
-        if (value == 'N') { return "10001110011010110011100011000110001"; }
-        if (value == 'O') { return "01110100011000110001100011000101110"; }
-        if (value == 'P') { return "11110100011000111110100001000010000"; }
-        if (value == 'Q') { return "01110100011000110001101011001001101"; }
-        if (value == 'R') { return "11110100011000111110101001001010001"; }
-        if (value == 'S') { return "01111100001000001110000010000111110"; }
-        if (value == 'T') { return "11111001000010000100001000010000100"; }
-        if (value == 'U') { return "10001100011000110001100011000101110"; }
-        if (value == 'V') { return "10001100011000110001100010101000100"; }
-        if (value == 'W') { return "10001100011000110101101011101110001"; }
-        if (value == 'X') { return "10001010100010000100001000101010001"; }
-        if (value == 'Y') { return "10001010100010000100001000010000100"; }
-        if (value == 'Z') { return "11111000010001000100010001000011111"; }
-        if (value == '0') { return "01110100011001110101110011000101110"; }
-        if (value == '1') { return "00100011000010000100001000010001110"; }
-        if (value == '2') { return "01110100010000100110010001000011111"; }
-        if (value == '3') { return "11110000010000101110000010000111110"; }
-        if (value == '4') { return "00010001100101010010111110001000010"; }
-        if (value == '5') { return "11111100001111000001000011000101110"; }
-        if (value == '6') { return "00110010001000011110100011000101110"; }
-        if (value == '7') { return "11111000010001000100010000100001000"; }
-        if (value == '8') { return "01110100011000101110100011000101110"; }
-        if (value == '9') { return "01110100011000101111000010001001100"; }
-        if (value == '/') { return "00001000100001000100010000100010000"; }
-        if (value == '-') { return "00000000000000011111000000000000000"; }
-        if (value == ':') { return "00000001000000000000000000010000000"; }
-        if (value == '+') { return "00000001000010011111001000010000000"; }
-        return "00000000000000000000000000000000000";
-    }
-
-    class void pixel(unsigned char* pixels, int x, int y,
-                     unsigned char red, unsigned char green,
-                     unsigned char blue, unsigned char alpha) {
-        if (pixels == null || x < 0 || y < 0 || x >= SEMU_RENDER_MENU_WIDTH
-            || y >= SEMU_RENDER_MENU_HEIGHT) { return; }
-        int offset = (y * SEMU_RENDER_MENU_WIDTH + x) * 4;
-        pixels[offset] = red;
-        pixels[offset + 1] = green;
-        pixels[offset + 2] = blue;
-        pixels[offset + 3] = alpha;
-    }
-
-    class void rectangle(unsigned char* pixels, int x, int y,
-                         int width, int height, unsigned char red,
-                         unsigned char green, unsigned char blue,
-                         unsigned char alpha) {
-        for (int row = y; row < y + height; row++) {
-            for (int column = x; column < x + width; column++) {
-                RendererMenuRaster.pixel(pixels, column, row,
-                    red, green, blue, alpha);
-            }
-        }
-    }
-
-    class void text(unsigned char* pixels, const char* value, int x, int y,
-                    int scale, unsigned char red, unsigned char green,
-                    unsigned char blue) {
-        if (value == null) { return; }
-        for (int character = 0; value[character] != 0; character++) {
-            const char* glyph = RendererMenuRaster.glyph(value[character]);
-            for (int row = 0; row < 7; row++) {
-                for (int column = 0; column < 5; column++) {
-                    if (glyph[row * 5 + column] == '1') {
-                        RendererMenuRaster.rectangle(pixels,
-                            x + character * 6 * scale + column * scale,
-                            y + row * scale, scale, scale,
-                            red, green, blue, 255);
-                    }
-                }
-            }
-        }
-    }
-
-    class bool render(struct RendererPostUiState* state) {
-        if (state == null) { return false; }
-        size_t bytes = (size_t)SEMU_RENDER_MENU_WIDTH
-            * (size_t)SEMU_RENDER_MENU_HEIGHT * (size_t)4;
-        if (state->menu_pixels == null) {
-            state->menu_pixels = (unsigned char*)malloc(bytes);
-        }
-        if (state->menu_pixels == null) { return false; }
-        memset(state->menu_pixels, 0, bytes);
-        RendererMenuRaster.rectangle(state->menu_pixels, 0, 0,
-            SEMU_RENDER_MENU_WIDTH, SEMU_RENDER_MENU_HEIGHT,
-            14, 18, 22, 242);
-        RendererMenuRaster.rectangle(state->menu_pixels, 0, 0,
-            SEMU_RENDER_MENU_WIDTH, 58, 18, 112, 120, 255);
-        RendererMenuRaster.text(state->menu_pixels, "SEMU", 24, 16, 4,
-            245, 249, 250);
-
-        int count = RendererMenuModel.itemCount(state);
-        for (int item = 0; item < count; item++) {
-            int y = 72 + item * 43;
-            if (item == state->selected) {
-                RendererMenuRaster.rectangle(state->menu_pixels, 16, y,
-                    SEMU_RENDER_MENU_WIDTH - 32, 35, 32, 134, 142, 255);
-            } else {
-                RendererMenuRaster.rectangle(state->menu_pixels, 16, y,
-                    SEMU_RENDER_MENU_WIDTH - 32, 35, 29, 35, 40, 232);
-            }
-            RendererMenuRaster.text(state->menu_pixels, state->labels + item * 24,
-                30, y + 8, 2, 238, 242, 244);
-        }
-        char slotText[16];
-        if (SemuSlotLabel.text(slotText, (int)sizeof(slotText), state->first_slot, state->slot_count, state->slot)) {  // no line without a slot to choose
-            RendererMenuRaster.text(state->menu_pixels, slotText, 268, 72 + count * 43 + 10, 2,
-                164, 180, 184);
-        }
-        return true;
     }
 }
 
@@ -498,9 +165,11 @@ class RendererPostUiCompositor {
     class bool draw(struct RendererGlApi* gl,
                     struct RendererGlResources* resources,
                     struct SemuRenderFrameGl* frame,
-                    struct RendererPostUiState* state) {
-        if (state->visible == 0) { return true; }
-        if (!RendererMenuRaster.render(state)) { return false; }
+                    struct RendererPostUiState* state) {  // the open menu, else a toast in the same texture and pass, at the top
+        long long now = RendererClock.milliseconds();
+        bool toastOnly = state->visible == 0 && RendererToast.active(state, now);
+        if (state->visible == 0 && !toastOnly) { return true; }
+        if (toastOnly ? !RendererMenuRaster.renderToast(state) : !RendererMenuRaster.render(state, now)) { return false; }
 
         gl->active_texture((unsigned int)(RGL_TEXTURE0 + 3));
         gl->bind_sampler(3, 0);
@@ -530,7 +199,7 @@ class RendererPostUiCompositor {
         int height = 0;
         RendererPostUiCompositor.menuSize(frame->framebuffer_width, frame->framebuffer_height, &width, &height);
         int x = (frame->framebuffer_width - width) / 2;
-        int y = (frame->framebuffer_height - height) / 2;
+        int y = toastOnly ? frame->framebuffer_height - height : (frame->framebuffer_height - height) / 2;  // GL rows start at the bottom: the texture's top row at the screen's
         if (resources->uniform_menu_rect >= 0) {
             gl->uniform_4f(resources->uniform_menu_rect,
                 (float)x, (float)y, (float)width, (float)height);
@@ -666,7 +335,7 @@ class RendererFinalEvidence {
         }
         char path[8192];
         char temporary[8192];
-        bool safePath = RendererStateFiles.path(path, sizeof(path),
+        bool safePath = RendererStatePaths.path(path, sizeof(path),
             "semu-render-final.ppm");
         int temporaryLength = safePath ? snprintf(temporary, sizeof(temporary),
             "%s.tmp.%ld", path, (long)getpid()) : -1;

@@ -345,7 +345,11 @@ Semu executing the actions itself.
   system's own variants, then off, live, and save the choice to `semu.json`
   as `visual.systems.<id>.bezel_variant` or `shader_variant`; the launch
   precomputes every combination into `semu-render-variants.env` and the
-  journal carries the chosen index (codes 79 and 80).
+  journal carries the chosen index (codes 79 and 80). The renderer applies
+  that section's keys two game frames later and reloads only the bezel
+  images; a toast at the top of the screen names the new choice (and the
+  slot after a save, load or slot change), and the menu's BEZEL and SHADER
+  rows show the current value.
 - **Done when:** on the desktop, a controller opens the menu with Select+Y,
   navigates it with the D-pad, saves a state from it (state file observed),
   toggles the bezel live, and Start+Select still quits, all captured
@@ -688,6 +692,26 @@ Rulings taken as defaults because the owner was not available (reversible; say i
 - Toast texts are data: `actions.<id>.toast` in input.json (`{slot}` the emulator's slot label,
   `{label}` the chosen variant's), passed to the renderer as `SEMU_MENU_TOASTS` beside
   `SEMU_MENU_ITEMS` and `SEMU_MENU_ACTIONS`; the composed text is cut to the toast's 31 characters.
+- The renderer's live switch (2026-10-04). It trusts only its own launch's variants file: the
+  header's `token` must equal `SEMU_MENU_VARIANTS_TOKEN` (wall-clock nanoseconds and the launcher's
+  pid), and schema and system must match, so a preview, the bezel editor or a stale file from
+  another session never replays a session's selects. While a section is applied, a variant-scoped
+  key comes from the section or nowhere, never from the launch environment. A select applies two
+  game frames after the post-UI phase reads it, so the toast is on screen before any decode or
+  compile stall; only the variant images reload (`renderer_variant_images.btrc`), a shader-only
+  change decodes nothing, and a context reset keeps the live choice. Only records younger than
+  2 s toast (a journal replay never does); a toast lasts 1.5 s, counted again from the end of a
+  switch that began while it showed (the VM's software GL stalled up to 1.7 s), drawn from the menu texture with
+  the menu pass at the top of the screen, and replaces the menu's SEMU header while it is open; two
+  selects at once show the later one's toast. The GL-free halves (config parsing and lookup, the
+  variants file, the journal's menu and toast state, the menu and toast raster) live in files the
+  contracts import.
+- Shader chains use librashader's disk cache (until now disabled): it lives in librashader's
+  per-user cache directory (`~/Library/Caches/librashader` on macOS, `$XDG_CACHE_HOME/librashader`
+  on Linux). On the M1 Max render host, Wii default to royale builds its chain in 573 ms the first
+  time and 268 ms once cached. A switch to a shader that must compile shows input.json's
+  `loading_toast` ("LOADING <label>") until the chain is built, then the plain toast; no worker
+  precompiles chains (that would need a second, shared GL context).
 
 ### G1. Build and tests run on one host only — done on the Mac
 
@@ -1346,6 +1370,25 @@ Update this block whenever a milestone criterion changes state.
   21 sections, and Next Bezel, the menu rows, left/right and the On/Off chords journal 79/80 with
   the right index and save only the per-system key (also through one real pollDevices tick fed raw
   XI keys). The renderer applying a select live is the next commit.
+  2026-10-04, the renderer applies the choice live (offline, Deck untouched; rulings above). On the
+  Mac render host (`tests/visual/render.sh OUT 1280x800 'system:bezel:shader>bezel:shader'`, which
+  journals the selects through `render-host --switch`), nds shell>main_right, nds main_right>none:none,
+  n3ds shell>stacked:grid, gba shell>arctic:agb001, gb dmg:dmg>dmg:none and Wii 16:9
+  tv:default>speakers:default and >tv:royale each showed the toast band two frames after the
+  selects and then the new bezel, layout or shader; every switched frame is pixel-identical to a
+  fresh launch on that choice outside the toast band (Wii speakers on a 16:9 picture: the 4:3 TV,
+  no tv_wide). phase=switch receipts give reload_ms 464 for the gba arctic shell, about 70 for the
+  DS/3DS computed layouts (their wood background) and none for a shader-only change. A context
+  reset after the switch (`RENDER_HOST_RESET`) redraws the switched picture exactly, and the menu
+  rows read BEZEL ARCTIC and SHADER AGB-001 LCD. In the podman VM (`tests/integration/live-switch.sh`,
+  xdotool typing the radial's chords as XTest, llvmpipe), RetroArch gba (240p Test Suite, whole
+  shell), RetroArch nds (melonDS core, DLDI benchmark) and standalone Azahar n3ds (Pushmo) each
+  journalled 79 then 80, switched (indigo to arctic and AGB-001; shell to large main right and LCD
+  grid, LOADING shown while its chains compiled), saved `visual.systems.<id>.*_variant` and
+  listed the new values in the menu. The arctic shell took 970 ms to decode under llvmpipe and the
+  DS layout's two chains 1.7 s; with the toast counted again after the stall, BEZEL: ARCTIC still
+  showed over the new shell 2 s after the chord. Not observable offline: Steam's radial in Game
+  Mode, and the Deck's own decode and compile times.
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a

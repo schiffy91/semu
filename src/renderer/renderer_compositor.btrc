@@ -14,6 +14,7 @@ import ./renderer_gl_api.btrc;
 import ./librashader_gl.btrc;
 import ./renderer_file_hash.btrc;
 import ./renderer_layout.btrc;
+import ./renderer_config.btrc;
 int RGL_VERTEX_SHADER = 0x8B31;
 int RGL_FRAGMENT_SHADER = 0x8B30;
 int RGL_LINK_STATUS = 0x8B82;
@@ -32,18 +33,6 @@ int SEMU_SHAPE_SQUIRCLE = 2;
 int SEMU_FIT_ASPECT = 0;
 int SEMU_FIT_FILL = 1;
 int SEMU_FIT_INTEGER = 2;
-
-struct RendererPath {
-    char value[4096];
-};
-
-struct RendererNormalizedHole {
-    int set;
-    float x;
-    float y;
-    float width;
-    float height;
-};
 
 struct RendererCompositorSource {
     char* vertex;  // the two GLSL files under $SEMU_RENDER_COMPOSITOR_DIR, as last read
@@ -126,94 +115,6 @@ class RendererCompositorFiles {
         source->fragment = null;
     }
 }
-
-struct RendererScreenConfig {
-    int look_set;
-    struct RendererNormalizedHole tube;
-    struct RendererNormalizedHole image;  // calibrated picture rectangle inside the opening
-    int ring_set;  // the upstream preset's drawn bezel between the black edge and the opening
-    struct RendererNormalizedHole ring_inner;
-    struct RendererNormalizedHole ring_outer;
-    float ring_inner_radius;
-    float ring_outer_radius;
-    float ring_r;
-    float ring_g;
-    float ring_b;
-    float ring_opacity;  // 0: the band only marks the painted bezel, nothing is filled
-    float ring_bevel;  // the lit chamfer on the lip's outer edge, 0..1
-    float bulge_x;  // edge middles bowed outward, fractions of the opening's half width and half height
-    float bulge_y;
-    float ring_reflect;  // the picture mirrored onto the drawn bezel: strength, blur growth, fade with distance
-    float ring_reflect_blur;
-    float ring_reflect_fade;
-    int shape;
-    float radius;
-    float exponent;
-    int fit;
-    float inset;
-    float surround_r;
-    float surround_g;
-    float surround_b;
-    float curvature;
-    float vignette;
-    float bloom;
-    float reflect;
-    struct RendererPath glass;
-    struct RendererPath shader;
-    char shader_sha256[65];
-    int shader_available;
-};
-
-struct RendererLayerConfig {  // one layer of the package stack: SEMU_RENDER_LAYER_<n>, see parseLayer
-    int set;
-    struct RendererPath file;
-    struct RendererNormalizedHole rect;
-    int cover;   // follows the viewport: cover-fit like the background plate
-    int above;   // drawn after the screens
-    int blend;   // 0 normal, 1 add, 2 multiply
-    float opacity;
-    float tint[4];  // r, g, b, brightness: grayscale times brightness times colour; brightness 0 is untinted
-    float lift;     // blends the texel toward white first, so a multiply plate lightens
-};
-
-struct RendererVariantConfig {
-    int declared;
-    struct RendererPath bezel_id;  // SEMU_RENDER_BEZEL_ID: the package name, for the debug line
-    struct RendererPath shader_preset;
-    struct RendererPath art;
-    struct RendererPath background;
-    int canvas_width;   // SEMU_RENDER_CANVAS: the pixel grid the layers and screens are addressed in
-    int canvas_cover;   // SEMU_RENDER_CANVAS_FIT=cover: a scene fills the screen instead of letterboxing
-    int canvas_height;
-    int layer_count;
-    struct RendererLayerConfig layers[8];
-    int layout;
-    int frame_set;
-    float frame_width;
-    float frame_r;
-    float frame_g;
-    float frame_b;
-    struct RendererScreenConfig screens[2];
-    char shader_sha256[65];
-    char art_sha256[65];
-    int shader_available;
-};
-
-struct RendererConfig {
-    int loaded;
-    int shaders_enabled;
-    int bezels_enabled;
-    int integer_scaling;  // one screen without a fixed bezel; two screens always integer
-    int placement;  // SEMU_RENDER_PLACEMENT: 0 fit, 1 game (integer, shell cropped), 2 bezel (integer, shell whole)
-    int active_variant;
-    float display_aspect;
-    float frames_per_second;
-    unsigned int frame_delta_ms;
-    float dual_screen_gap;  // SEMU_RENDER_DUAL_GAP: space between two screens, fraction of width
-    struct RendererPath system_id;
-    struct RendererPath emulator_id;
-    struct RendererVariantConfig variants[4];  // A and B are emitted; C and D stay undeclared
-};
 
 unsigned int RendererAssetReported = 0u;  // one bit per missing-asset reason, logged once per process
 unsigned int RendererLayerReported = 0u;  // one bit per variant layer slot that would not load
@@ -300,323 +201,14 @@ struct RendererGlResources {
     int uniform_rotation;
     int uniform_pass;
     int uniform_menu_on;
+    int variant_images;  // 1 once this context holds the config's bezel, layer, background and glass images
+    int variant_images_stale;  // a live choice changed the config: reload those images, nothing else
 };
 
 SemuLibrashaderOpenGLChain RendererShaderLane0;
 SemuLibrashaderOpenGLChain RendererShaderLane1;
 
 
-
-class RendererConfiguration {
-    class void copyEnvironment(struct RendererPath* path, char* name) {
-        if (path == null) { return; }
-        path->value[0] = 0;
-        char* value = getenv(name);
-        if (value != null && value[0] != 0) {
-            strncpy(path->value, value, 4095);
-            path->value[4095] = 0;
-        }
-    }
-
-    class void parseHole(struct RendererNormalizedHole* hole, char* name) {
-        if (hole == null) { return; }
-        memset(hole, 0, sizeof(struct RendererNormalizedHole));
-        char* value = getenv(name);
-        if (value != null && sscanf(value, "%f,%f,%f,%f", &hole->x, &hole->y,
-                &hole->width, &hole->height) == 4
-            && hole->x >= 0.0f && hole->y >= 0.0f
-            && hole->width > 0.0f && hole->height > 0.0f
-            && hole->x + hole->width <= 1.0001f
-            && hole->y + hole->height <= 1.0001f) {
-            hole->set = 1;
-        }
-    }
-
-    class float clamp01(float value) {
-        return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
-    }
-
-    class void loadScreen(struct RendererScreenConfig* screen, int index, char* suffix) {
-        char name[128];
-        memset(screen, 0, sizeof(struct RendererScreenConfig));
-        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d%s", index, suffix);
-        RendererConfiguration.parseHole(&screen->tube, name);
-        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_IMAGE%s", index, suffix);
-        RendererConfiguration.parseHole(&screen->image, name);
-        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_RING%s", index, suffix);
-        char* ring = getenv(name);
-        float ringValues[15];
-        ringValues[13] = 1.0f;
-        ringValues[14] = 1.0f;  // an older CLI: the lit chamfer every lip had
-        int ringCount = ring == null ? 0 : sscanf(ring, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", &ringValues[0], &ringValues[1], &ringValues[2], &ringValues[3], &ringValues[4], &ringValues[5], &ringValues[6], &ringValues[7], &ringValues[8], &ringValues[9], &ringValues[10], &ringValues[11], &ringValues[12], &ringValues[13], &ringValues[14]);
-        if (ringCount >= 13 && ringValues[2] > 0.0f && ringValues[3] > 0.0f && ringValues[6] > 0.0f && ringValues[7] > 0.0f) {  // 13 values: a filled ring from an older CLI
-            screen->ring_set = 1;
-            screen->ring_inner.set = 1;
-            screen->ring_inner.x = ringValues[0];
-            screen->ring_inner.y = ringValues[1];
-            screen->ring_inner.width = ringValues[2];
-            screen->ring_inner.height = ringValues[3];
-            screen->ring_outer.set = 1;
-            screen->ring_outer.x = ringValues[4];
-            screen->ring_outer.y = ringValues[5];
-            screen->ring_outer.width = ringValues[6];
-            screen->ring_outer.height = ringValues[7];
-            screen->ring_inner_radius = RendererConfiguration.clamp01(ringValues[8]);
-            screen->ring_outer_radius = RendererConfiguration.clamp01(ringValues[9]);
-            screen->ring_r = RendererConfiguration.clamp01(ringValues[10]);
-            screen->ring_g = RendererConfiguration.clamp01(ringValues[11]);
-            screen->ring_b = RendererConfiguration.clamp01(ringValues[12]);
-            screen->ring_opacity = RendererConfiguration.clamp01(ringValues[13]);
-            screen->ring_bevel = RendererConfiguration.clamp01(ringValues[14]);
-        }
-        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_BULGE%s", index, suffix);
-        char* bulge = getenv(name);
-        if (bulge == null || sscanf(bulge, "%f,%f", &screen->bulge_x, &screen->bulge_y) != 2) {
-            screen->bulge_x = 0.0f;
-            screen->bulge_y = 0.0f;
-        }
-        screen->bulge_x = RendererConfiguration.clamp01(screen->bulge_x);
-        screen->bulge_y = RendererConfiguration.clamp01(screen->bulge_y);
-        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_REFLECT%s", index, suffix);
-        char* reflect = getenv(name);
-        int reflectCount = reflect == null ? 0 : sscanf(reflect, "%f,%f,%f", &screen->ring_reflect, &screen->ring_reflect_blur, &screen->ring_reflect_fade);
-        if (reflectCount < 3) {
-            screen->ring_reflect = 0.0f;
-            screen->ring_reflect_blur = 0.0f;
-            screen->ring_reflect_fade = 0.0f;
-        }
-        screen->ring_reflect = RendererConfiguration.clamp01(screen->ring_reflect);
-        screen->ring_reflect_blur = RendererConfiguration.clamp01(screen->ring_reflect_blur);
-        screen->ring_reflect_fade = RendererConfiguration.clamp01(screen->ring_reflect_fade);
-        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_LOOK%s", index, suffix);
-        char* look = getenv(name);
-        float values[10];
-        if (look != null && sscanf(look, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", &values[0], &values[1], &values[2], &values[3], &values[4], &values[5], &values[6], &values[7], &values[8], &values[9]) == 10) {
-            screen->look_set = 1;
-            screen->shape = (int)values[0];
-            screen->radius = RendererConfiguration.clamp01(values[1]);
-            screen->exponent = values[2] < 2.0f ? 2.0f : values[2];
-            screen->fit = (int)values[3];
-            screen->inset = RendererConfiguration.clamp01(values[4]) * 0.45f;
-            screen->curvature = values[5];
-            screen->vignette = values[6];
-            screen->bloom = values[7];
-            screen->reflect = values[9];  // values[8], the retired glow slot, is ignored
-        }
-        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_SURROUND%s", index, suffix);
-        char* surround = getenv(name);
-        if (surround == null || sscanf(surround, "%f,%f,%f", &screen->surround_r, &screen->surround_g, &screen->surround_b) != 3) {
-            screen->surround_r = 0.0f;
-            screen->surround_g = 0.0f;
-            screen->surround_b = 0.0f;
-        }
-        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_GLASS%s", index, suffix);
-        RendererConfiguration.copyEnvironment(&screen->glass, name);
-        snprintf(name, sizeof(name), "SEMU_RENDER_SCREEN_%d_SHADER%s", index, suffix);
-        RendererConfiguration.copyEnvironment(&screen->shader, name);
-        screen->shader_available = RendererFileHash.sha256(screen->shader.value, screen->shader_sha256) ? 1 : 0;
-    }
-
-    class bool parseLayer(struct RendererLayerConfig* layer, char* value) {  // file|x,y,w,h or cover|above|blend|opacity|tint|lift
-        memset(layer, 0, sizeof(struct RendererLayerConfig));
-        if (value == null || value[0] == 0) { return false; }
-        char* bar = strchr(value, '|');
-        if (bar == null || bar == value || bar - value > 4095) { return false; }
-        strncpy(layer->file.value, value, (size_t)(bar - value));
-        layer->file.value[bar - value] = 0;
-        char* rest = bar + 1;
-        if (strncmp(rest, "cover", 5) == 0) {
-            layer->cover = 1;
-            rest = rest + 5;
-        } else {
-            if (sscanf(rest, "%f,%f,%f,%f", &layer->rect.x, &layer->rect.y, &layer->rect.width, &layer->rect.height) != 4 || layer->rect.width <= 0.0f || layer->rect.height <= 0.0f) { return false; }
-            layer->rect.set = 1;
-            rest = strchr(rest, '|');
-            if (rest == null) { return false; }
-        }
-        int above = 0;
-        int blend = 0;
-        float opacity = 1.0f;
-        if (sscanf(rest, "|%d|%d|%f", &above, &blend, &opacity) < 2) { return false; }
-        layer->above = above != 0 ? 1 : 0;
-        layer->blend = blend < 0 ? 0 : (blend > 2 ? 2 : blend);
-        layer->opacity = RendererConfiguration.clamp01(opacity);
-        char* field = rest;
-        for (int skipped = 0; skipped < 3 && field != null; skipped++) { field = strchr(field + 1, (int)'|'); }  // the tint field follows opacity
-        if (field != null && field[1] != '-') { sscanf(field + 1, "%f,%f,%f,%f", &layer->tint[0], &layer->tint[1], &layer->tint[2], &layer->tint[3]); }
-        char* liftField = field == null ? null : strchr(field + 1, (int)'|');
-        if (liftField != null) { layer->lift = RendererConfiguration.clamp01((float)atof(liftField + 1)); }
-        layer->set = 1;
-        return true;
-    }
-
-    class int parseLayout(char* value) {
-        if (value == null) { return SEMU_LAYOUT_FIXED; }
-        if (strcmp(value, "main_right") == 0) { return SEMU_LAYOUT_MAIN_RIGHT; }
-        if (strcmp(value, "main_left") == 0) { return SEMU_LAYOUT_MAIN_LEFT; }
-        if (strcmp(value, "side_by_side") == 0) { return SEMU_LAYOUT_SIDE_BY_SIDE; }
-        if (strcmp(value, "stacked") == 0) { return SEMU_LAYOUT_STACKED; }
-        return SEMU_LAYOUT_FIXED;
-    }
-
-    class void loadVariant(struct RendererVariantConfig* variant, char* suffix) {
-        char name[128];
-        memset(variant, 0, sizeof(struct RendererVariantConfig));
-        snprintf(name, sizeof(name), "SEMU_RENDER_BEZEL_ID%s", suffix);
-        RendererConfiguration.copyEnvironment(&variant->bezel_id, name);
-        snprintf(name, sizeof(name), "SEMU_RENDER_SHADER_PRESET%s", suffix);
-        RendererConfiguration.copyEnvironment(&variant->shader_preset, name);
-        snprintf(name, sizeof(name), "SEMU_RENDER_ART%s", suffix);
-        RendererConfiguration.copyEnvironment(&variant->art, name);
-        snprintf(name, sizeof(name), "SEMU_RENDER_BACKGROUND%s", suffix);
-        RendererConfiguration.copyEnvironment(&variant->background, name);
-        snprintf(name, sizeof(name), "SEMU_RENDER_LAYOUT%s", suffix);
-        variant->layout = RendererConfiguration.parseLayout(getenv(name));
-        snprintf(name, sizeof(name), "SEMU_RENDER_CANVAS%s", suffix);
-        char* canvas = getenv(name);
-        if (canvas == null || sscanf(canvas, "%d,%d", &variant->canvas_width, &variant->canvas_height) != 2 || variant->canvas_width < 1 || variant->canvas_height < 1) {
-            variant->canvas_width = 0;
-            variant->canvas_height = 0;
-        }
-        snprintf(name, sizeof(name), "SEMU_RENDER_CANVAS_FIT%s", suffix);
-        char* canvasFit = getenv(name);
-        variant->canvas_cover = canvasFit != null && strcmp(canvasFit, "cover") == 0 ? 1 : 0;
-        snprintf(name, sizeof(name), "SEMU_RENDER_LAYER_COUNT%s", suffix);
-        char* countText = getenv(name);
-        int declaredLayers = countText == null ? 0 : atoi(countText);
-        if (declaredLayers > 8) { declaredLayers = 8; }
-        variant->layer_count = 0;
-        for (int index = 0; index < declaredLayers; index++) {
-            snprintf(name, sizeof(name), "SEMU_RENDER_LAYER_%d%s", index, suffix);
-            if (RendererConfiguration.parseLayer(&variant->layers[variant->layer_count], getenv(name))) { variant->layer_count++; }
-        }
-        snprintf(name, sizeof(name), "SEMU_RENDER_FRAME%s", suffix);
-        char* frame = getenv(name);
-        int parsed = frame == null ? 0 : sscanf(frame, "%f,%f,%f,%f", &variant->frame_width, &variant->frame_r, &variant->frame_g, &variant->frame_b);  // width, r, g, b: the frame rounds concentric with its opening
-        if (parsed == 4 && variant->frame_width > 0.0f) { variant->frame_set = 1; }
-        for (int index = 0; index < 2; index++) {
-            RendererConfiguration.loadScreen(&variant->screens[index], index, suffix);
-        }
-        variant->shader_available = RendererFileHash.sha256(
-            variant->shader_preset.value, variant->shader_sha256) ? 1 : 0;
-        RendererFileHash.sha256(variant->art.value, variant->art_sha256);
-        variant->declared = (variant->art.value[0] != 0
-            || variant->layer_count > 0
-            || variant->shader_preset.value[0] != 0
-            || variant->layout != SEMU_LAYOUT_FIXED
-            || variant->screens[0].tube.set != 0) ? 1 : 0;
-    }
-
-    class struct RendererVariantConfig* active(struct RendererConfig* config) {
-        return &config->variants[config->active_variant];
-    }
-
-    class char* lanePreset(struct RendererConfig* config, int lane) {  // the screen's own preset, else the variant's, else variant A's
-        struct RendererVariantConfig* active = RendererConfiguration.active(config);
-        if (lane >= 0 && lane < 2 && active->screens[lane].shader.value[0] != 0 && active->screens[lane].shader_available != 0) {
-            return active->screens[lane].shader.value;
-        }
-        if (active->shader_preset.value[0] != 0) {
-            return active->shader_preset.value;
-        }
-        return config->variants[0].shader_preset.value;
-    }
-
-    class char* shaderPreset(struct RendererConfig* config) {
-        return RendererConfiguration.lanePreset(config, 0);
-    }
-
-    class char* shaderHash(struct RendererConfig* config) {
-        struct RendererVariantConfig* active = RendererConfiguration.active(config);
-        if (active->screens[0].shader.value[0] != 0 && active->screens[0].shader_available != 0) {
-            return active->screens[0].shader_sha256;
-        }
-        if (active->shader_preset.value[0] != 0) {
-            return active->shader_sha256;
-        }
-        return config->variants[0].shader_sha256;
-    }
-
-    class bool shaderAvailable(struct RendererConfig* config) {
-        if (config == null) { return false; }
-        char* preset = RendererConfiguration.lanePreset(config, 0);
-        if (preset == null || preset[0] == 0) { return false; }
-        struct RendererVariantConfig* active = RendererConfiguration.active(config);
-        if (active->screens[0].shader.value[0] != 0 && active->screens[0].shader_available != 0) { return true; }
-        if (active->shader_preset.value[0] != 0) { return active->shader_available != 0; }
-        return config->variants[0].shader_available != 0;
-    }
-
-    class float widescreenThreshold() {  // halfway between the 4:3 and 16:9 pictures
-        float standard = 4.0f / 3.0f;
-        float widescreen = 16.0f / 9.0f;
-        return (standard + widescreen) * 0.5f;
-    }
-
-    class int select(struct RendererConfig* config,
-                     struct SemuRenderFrameGl* frame) {
-        int selected = 0;
-        if (frame->layout_variant >= (unsigned int)SEMU_RENDER_LAYOUT_DEFAULT
-            && frame->layout_variant <= (unsigned int)SEMU_RENDER_LAYOUT_VARIANT_D) {
-            int explicitVariant = (int)frame->layout_variant - 1;
-            if (config->variants[explicitVariant].declared != 0) {
-                selected = explicitVariant;
-            }
-        } else if (frame->presentation_aspect >= RendererConfiguration.widescreenThreshold()
-                && config->variants[1].declared != 0) {
-            selected = 1;
-        }
-        config->active_variant = selected;
-        return selected;
-    }
-
-    class void load(struct RendererConfig* config) {
-        if (config == null || config->loaded != 0) { return; }
-        memset(config, 0, sizeof(struct RendererConfig));
-        config->loaded = 1;
-        config->shaders_enabled = 1;
-        config->bezels_enabled = 1;
-        config->frames_per_second = 60.0f;
-        config->frame_delta_ms = 17;
-        char* value = getenv("SEMU_RENDER_SHADERS");
-        if (value != null && value[0] == '0') { config->shaders_enabled = 0; }
-        value = getenv("SEMU_RENDER_BEZELS");
-        if (value != null && value[0] == '0') { config->bezels_enabled = 0; }
-        value = getenv("SEMU_RENDER_INTEGER_SCALE");
-        if (value != null && value[0] == '1') { config->integer_scaling = 1; }
-        value = getenv("SEMU_RENDER_PLACEMENT");
-        config->placement = value == null ? 0 : (strcmp(value, "game") == 0 ? 1 : (strcmp(value, "bezel") == 0 ? 2 : 0));
-        value = getenv("SEMU_RENDER_ASPECT");
-        if (value != null) {
-            float width = 0.0f;
-            float height = 0.0f;
-            if (sscanf(value, "%f:%f", &width, &height) == 2 && height > 0.0f) {
-                config->display_aspect = width / height;
-            } else {
-                config->display_aspect = (float)atof(value);
-            }
-        }
-        value = getenv("SEMU_RENDER_FPS");
-        if (value != null && atof(value) > 0.0) {
-            config->frames_per_second = (float)atof(value);
-        }
-        value = getenv("SEMU_RENDER_FRAME_DELTA_MS");
-        if (value != null && atoi(value) > 0) {
-            config->frame_delta_ms = (unsigned int)atoi(value);
-        }
-        value = getenv("SEMU_RENDER_DUAL_GAP");
-        if (value != null) { config->dual_screen_gap = RendererConfiguration.clamp01((float)atof(value)); }
-        RendererConfiguration.copyEnvironment(&config->system_id,
-            "SEMU_RENDER_SYSTEM_ID");
-        RendererConfiguration.copyEnvironment(&config->emulator_id,
-            "SEMU_RENDER_EMULATOR_ID");
-        char* suffixes[2] = {"", "_B"};
-        for (int index = 0; index < 2; index++) {
-            RendererConfiguration.loadVariant(&config->variants[index],
-                suffixes[index]);
-        }
-    }
-}
 
 class RendererGeometry {
     class void integerPlacement(struct SemuRenderFrameGl* frame, struct RendererVariantConfig* variant, int placement, float aspect, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas) {  // the picture at a whole multiple of its native height
@@ -832,14 +424,6 @@ class RendererGeometry {
         int drawn = RendererLayout.computed(geometry, layout, areaWidth, areaHeight, bezel ? frameWidth : 0, config->dual_screen_gap);  // whole steps whatever integer_scaling says
         if (bezel && frameWidth > 0) { geometry->frame_width = (float)drawn; }  // the frame shrinks to the room the screens leave
         return true;
-    }
-}
-
-class RendererClock {
-    class long long milliseconds() {  // monotonic, for the reload check and retry backoff
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        return (long long)now.tv_sec * 1000LL + (long long)(now.tv_nsec / 1000000L);
     }
 }
 
@@ -1194,44 +778,6 @@ class RendererResources {
                 contextGeneration);
             return false;
         }
-        for (int variantIndex = 0; variantIndex < 4; variantIndex++) {
-            struct RendererVariantConfig* variant = &config->variants[variantIndex];
-            gl->active_texture((unsigned int)(RGL_TEXTURE0 + 1));
-            resources->art_loaded[variantIndex] = RendererResources.loadImage(gl,
-                variant->art.value, &resources->bezel_textures[variantIndex],
-                &resources->art_width[variantIndex],
-                &resources->art_height[variantIndex]) ? 1 : 0;
-            for (int layerIndex = 0; layerIndex < 8; layerIndex++) {
-                int slot = variantIndex * 8 + layerIndex;
-                resources->layer_loaded[slot] = 0;
-                if (layerIndex >= variant->layer_count) { continue; }
-                gl->active_texture((unsigned int)(RGL_TEXTURE0 + 1));
-                resources->layer_loaded[slot] = RendererResources.loadImage(gl,
-                    variant->layers[layerIndex].file.value, &resources->layer_textures[slot],
-                    &resources->layer_width[slot], &resources->layer_height[slot]) ? 1 : 0;
-                if (resources->layer_loaded[slot] == 0) { RendererAssetContract.layerFailed(&variant->layers[layerIndex], slot); }
-            }
-            gl->active_texture((unsigned int)(RGL_TEXTURE0 + 6));
-            resources->background_loaded[variantIndex] = RendererResources.loadImage(gl,
-                variant->background.value, &resources->background_textures[variantIndex],
-                &resources->background_width[variantIndex],
-                &resources->background_height[variantIndex]) ? 1 : 0;
-            for (int lane = 0; lane < 2; lane++) {
-                int glassWidth = 0;
-                int glassHeight = 0;
-                int slot = variantIndex * 2 + lane;
-                gl->active_texture((unsigned int)(RGL_TEXTURE0 + (lane == 0 ? 2 : 5)));
-                resources->glass_loaded[slot] = RendererResources.loadImage(gl,
-                    variant->screens[lane].glass.value, &resources->glass_textures[slot],
-                    &glassWidth, &glassHeight) ? 1 : 0;
-            }
-        }
-        gl->active_texture((unsigned int)RGL_TEXTURE0);
-        if (!RendererGlErrors.none(gl)) {
-            RendererResources.releaseCurrentContext(gl, resources,
-                contextGeneration);
-            return false;
-        }
         resources->ready = 1;
         return true;
     }
@@ -1363,8 +909,11 @@ class RendererShaderPasses {
             void* loader = null;
             memcpy(&loader, &frame->get_proc, sizeof(loader));  // C11 forbids casting a function pointer to void*
             chain = new SemuLibrashaderOpenGLChain(loader, frame->context_generation);
-            if (!chain.create(preset, 330, false, false,
-                    true, true, true)) {
+            long long compileStarted = RendererClock.milliseconds();
+            bool created = chain.create(preset, 330, false, false,
+                false, true, true);  // librashader's disk cache on: a preset compiled once builds fast at the next switch or launch
+            if (created && getenv("SEMU_RENDER_DEBUG") != null) { fprintf(stderr, "semu-renderer: shader chain for %s built in %lld ms\n", preset, RendererClock.milliseconds() - compileStarted); }
+            if (!created) {
                 fprintf(stderr, "semu-renderer: shader chain failed for %s (failure %d, library %d); the game runs unfiltered\n", preset, chain.lastFailure(), chain.lastLibraryErrorCode());
                 chain.printLibraryError();
                 snprintf(resources->lane_shader_failed[index].value, 4096, "%s", preset);

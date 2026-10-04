@@ -48,6 +48,7 @@ import ./spec/emulator_hotkeys.btrc;
 import ./spec/save_slots.btrc;
 import ./spec/render_variants.btrc;
 import ./spec/visual_cycle.btrc;
+import ./spec/live_variants.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -957,6 +958,7 @@ int main() {
     SaveSlotSpecContract.run(contract);
     RenderVariantSpecContract.run(contract);
     VisualCycleSpecContract.run(contract);
+    LiveVariantSpecContract.run(contract);
     RenderEnvSpecContract.run(contract);
     DualLayoutSpecContract.run(contract);
     EditorSpecContract.run(contract);

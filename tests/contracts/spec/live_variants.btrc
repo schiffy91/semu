@@ -1,0 +1,332 @@
+// Live variants spec: the renderer reads the launch's own variants file, applies a select's section
+// with no fallback to the launch environment, toasts from the input.json templates only for fresh
+// records, waits two game frames before switching, and draws the toast band and the menu's values.
+
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+import Library.CLI;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/cli.btrc;
+import ../../../src/emit/render_variants.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/renderer/action_abi.btrc;
+import ../../../src/renderer/renderer_layout.btrc;
+import ../../../src/renderer/renderer_config.btrc;
+import ../../../src/renderer/renderer_variants.btrc;
+import ../../../src/renderer/renderer_menu.btrc;
+import ../../../src/renderer/renderer_menu_raster.btrc;
+import ./render_env.btrc;
+import ./launch.btrc;
+
+class LiveVariantTools {
+    class void fill(struct SemuActionRecord* record, int action, int slot, long long monotonic, unsigned long long sequence) {  // a record as the supervisor appends it
+        memset(record, 0, sizeof(struct SemuActionRecord));
+        record->abi = (unsigned int)RendererActionJournal.abi();
+        record->size = (unsigned int)sizeof(struct SemuActionRecord);
+        record->sequence = sequence;
+        record->monotonic_ms = monotonic;
+        record->action = action;
+        record->slot = slot;
+    }
+
+    class void environment(Fixture fixture, string state, string token) {  // what the launch hands the renderer for nds
+        setenv("SEMU_RENDER_STATE_DIR", state, 1);
+        setenv("SEMU_RENDER_SYSTEM_ID", "nds", 1);
+        setenv(RendererVariantKeys.tokenVariable(), token, 1);
+        setenv("SEMU_MENU_ITEMS", fixture.plan.input.menuItems("label").join("|"), 1);
+        setenv("SEMU_MENU_ACTIONS", fixture.plan.input.menuItems("action").join("|"), 1);
+        setenv("SEMU_MENU_TOASTS", fixture.plan.input.toasts(), 1);
+        setenv("SEMU_MENU_SLOTS", "10", 1);
+        setenv("SEMU_MENU_FIRST_SLOT", "0", 1);
+    }
+
+    class void clear() {
+        for name in ["SEMU_RENDER_STATE_DIR", "SEMU_RENDER_SYSTEM_ID", "SEMU_MENU_VARIANTS_TOKEN", "SEMU_MENU_ITEMS", "SEMU_MENU_ACTIONS", "SEMU_MENU_TOASTS", "SEMU_MENU_SLOTS", "SEMU_MENU_FIRST_SLOT", "SEMU_RENDER_ART", "SEMU_RENDER_ART_B", "SEMU_RENDER_LAYOUT", "SEMU_RENDER_DUAL_GAP"] { unsetenv(name); }
+    }
+
+    class string cliOutput(Vector<string> words, string path) {  // runs semu with stdout in PATH; its text, "" on failure
+        char storage[8192];
+        char* arguments[16];
+        int offset = 0;
+        for (int index = 0; index < words.size() && index < 16; index++) {
+            snprintf(storage + offset, (size_t)(8192 - offset), "%s", words.get(index));
+            arguments[index] = storage + offset;
+            offset += (int)strlen(storage + offset) + 1;
+        }
+        fflush(stdout);
+        int saved = dup(1);
+        int flags = (int)O_WRONLY | (int)O_CREAT | (int)O_TRUNC;
+        int sink = open(path, flags, 420);
+        dup2(sink, 1);
+        int code = SemuCli(CLIArgs(words.size(), arguments)).run();
+        fflush(stdout);
+        dup2(saved, 1);
+        close(saved);
+        close(sink);
+        return code == 0 ? FileSystem.readText(path) : "";
+    }
+
+    class int lit(unsigned char* pixels, int left, int top, int right, int bottom) {  // opaque near-white text pixels in a box
+        int count = 0;
+        for (int row = top; row <= bottom; row++) {
+            for (int column = left; column <= right; column++) {
+                unsigned char* pixel = pixels + (row * SEMU_RENDER_MENU_WIDTH + column) * 4;
+                if (pixel[3] == (unsigned char)255 && pixel[0] > (unsigned char)230) { count++; }
+            }
+        }
+        return count;
+    }
+}
+
+class LiveVariantFileSpec {  // the catalog and a section come from the launch's own file only
+    class void run(Contract contract, Fixture fixture, string path, string token) {
+        struct RendererVariantCatalog catalog;
+        contract.expect(RendererVariantFile.catalog(path, "nds", token, &catalog) && catalog.bezel_count == 7 && catalog.shader_count == 3 && catalog.bezel_none == 6 && catalog.shader_none == 2 && catalog.current_bezel == 0 && catalog.current_shader == 0, "live: the renderer reads nds's 7 bezels and 3 shaders, none last, starting on [0,0]");
+        contract.expect(strcmp(RendererVariantFile.label(&catalog, true, 1), "LARGE MAIN, SECOND RIGHT") == 0 && strcmp(RendererVariantFile.label(&catalog, false, 2), "OFF") == 0 && strcmp(RendererVariantFile.label(&catalog, true, 9), "") == 0, "live: catalog labels by index, empty past the end");
+        contract.expect(!RendererVariantFile.catalog(path, "gba", token, &catalog) && catalog.loaded == 0, "live: another system's file in the same state dir is ignored");
+        contract.expect(!RendererVariantFile.catalog(path, "nds", "another-launch", &catalog) && !RendererVariantFile.catalog(path, "nds", null, &catalog), "live: another launch's file, or none named, is ignored: a preview never replays a session's selects");
+        string stale = PathTools.join(fixture.scratch, "live/schema-2.env");
+        FileSystem.writeText(stale, FileSystem.readText(path).replace("schema=1\n", "schema=2\n"));
+        contract.expect(!RendererVariantFile.catalog(stale, "nds", token, &catalog), "live: a file of another schema is ignored");
+        struct RendererVariantOverlay overlay;
+        contract.expect(RendererVariantFile.section(path, 1, 0, &overlay) && overlay.count > 3 && strcmp(RendererVariantFile.value(&overlay, "SEMU_RENDER_LAYOUT"), "main_right") == 0 && RendererVariantFile.value(&overlay, "SEMU_RENDER_ART") == null, "live: section [1,0] is the large-main-right layout and names no art");
+        RendererVariantFile.discard(&overlay);
+        contract.expect(!RendererVariantFile.section(path, 7, 0, &overlay) && overlay.text == null, "live: a section past the choices is refused");
+    }
+}
+
+class LiveVariantReloadSpec {  // reloadVariants takes a variant key from the section or nowhere
+    class void run(Contract contract, string path) {
+        setenv("SEMU_RENDER_ART", "/launch/shell.png", 1);  // the launch's own choice, which must never leak into another
+        setenv("SEMU_RENDER_ART_B", "/launch/wide.png", 1);
+        setenv("SEMU_RENDER_LAYOUT", "fixed", 1);
+        setenv("SEMU_RENDER_DUAL_GAP", "0.5", 1);
+        struct RendererVariantOverlay overlay;
+        struct RendererConfig config;
+        memset(&config, 0, sizeof(struct RendererConfig));
+        RendererVariantFile.section(path, 1, 0, &overlay);
+        RendererConfiguration.reloadVariants(&config, &overlay);
+        contract.expect(config.variants[0].layout == SEMU_LAYOUT_MAIN_RIGHT && config.variants[0].art.value[0] == 0 && config.variants[1].declared == 0 && config.variants[1].art.value[0] == 0 && config.bezels_enabled == 1 && config.shaders_enabled == 1, "live: [1,0] gives main_right, no art even with SEMU_RENDER_ART set, B undeclared, bezels on");
+        contract.expect(RendererLookup.overlay == null && strcmp(RendererConfiguration.lookup("SEMU_RENDER_ART"), "/launch/shell.png") == 0, "live: outside a reload a lookup is the environment again");
+        RendererLookup.overlay = &overlay;
+        char* art = RendererConfiguration.lookup("SEMU_RENDER_ART");
+        char* gap = RendererConfiguration.lookup("SEMU_RENDER_DUAL_GAP");
+        RendererLookup.overlay = null;
+        contract.expect(art == null && gap != null && strcmp(gap, "0.5") == 0, "live: during a reload a variant key comes from the section only, a launch key from the environment");
+        RendererVariantFile.discard(&overlay);
+        RendererVariantFile.section(path, 6, 2, &overlay);
+        RendererConfiguration.reloadVariants(&config, &overlay);
+        contract.expect(config.bezels_enabled == 0 && config.shaders_enabled == 0 && config.variants[0].art.value[0] == 0 && config.variants[0].layout == SEMU_LAYOUT_FIXED && config.variants[0].declared == 0, "live: [none,none] turns both off, and the launch's art does not come back");
+        RendererVariantFile.discard(&overlay);
+        unsigned long long signatures[3];
+        int sections[6] = {0, 0, 0, 1, 1, 0};
+        for (int index = 0; index < 3; index++) {
+            RendererVariantFile.section(path, sections[index * 2], sections[index * 2 + 1], &overlay);
+            RendererConfiguration.reloadVariants(&config, &overlay);
+            signatures[index] = RendererConfiguration.imageSignature(&config);
+            RendererVariantFile.discard(&overlay);
+        }
+        contract.expect(signatures[0] == signatures[1] && signatures[0] != signatures[2], "live: a shader-only change keeps the image signature, so no image reloads; a bezel change does not");
+    }
+}
+
+class LiveVariantMenuSpec {  // the journal's selects and states as the post-UI phase applies them
+    class void run(Contract contract) {
+        struct RendererPostUiState state;
+        memset(&state, 0, sizeof(struct RendererPostUiState));
+        RendererMenuModel.initialize(&state);
+        contract.expect(state.catalog.loaded == 1 && state.bezel_shown == 0 && state.shader_shown == 0 && state.bezel_request == -1 && state.shader_request == -1 && state.item_count == 7, "live: the post-UI state starts on the launch's choices with nothing requested");
+        long long now = RendererClock.milliseconds();
+        struct SemuActionRecord bezel;
+        LiveVariantTools.fill(&bezel, SemuActions.bezelSelect(), 1, now, 1ULL);
+        state.bezels_toggles = 3;
+        RendererMenuModel.apply(&state, &bezel, now);
+        contract.expect(state.bezel_request == 1 && state.bezels_toggles == 0 && state.apply_countdown == 2 && state.bezel_shown == 1, "live: a bezel select asks for index 1, zeroes the On/Off parity and waits two frames");
+        contract.expect(strcmp(state.toast, "BEZEL: LARGE MAIN, SECOND RIGHT") == 0 && RendererToast.active(&state, now) && state.toast_until_ms == now + 1500LL, "live: a fresh select toasts the input.json template with the label for 1.5 s");
+        int chosenBezel = -1;
+        int chosenShader = -1;
+        bool firstFrame = RendererVariantRequests.due(&state, -1, -1, &chosenBezel, &chosenShader);
+        bool secondFrame = RendererVariantRequests.due(&state, -1, -1, &chosenBezel, &chosenShader);
+        contract.expect(!firstFrame && secondFrame && chosenBezel == 1 && chosenShader == 0 && state.bezel_request == -1, "live: the first game frame waits, the second applies [1,0]");
+        struct SemuActionRecord later;
+        LiveVariantTools.fill(&later, SemuActions.bezelSelect(), 4, now, 2ULL);
+        for (int replay = 0; replay < 2; replay++) {  // a context reset replays the whole journal
+            memset(&state, 0, sizeof(struct RendererPostUiState));
+            RendererMenuModel.initialize(&state);
+            RendererMenuModel.apply(&state, &bezel, now);
+            RendererMenuModel.apply(&state, &later, now);
+        }
+        contract.expect(state.bezel_request == 4 && state.bezel_shown == 4, "live: replaying the same journal asks for the same section");
+        RendererVariantRequests.due(&state, 4, 0, &chosenBezel, &chosenShader);
+        contract.expect(!RendererVariantRequests.due(&state, 4, 0, &chosenBezel, &chosenShader) && state.bezel_request == -1, "live: a replay of the live choice switches nothing");
+        memset(&state, 0, sizeof(struct RendererPostUiState));
+        RendererMenuModel.initialize(&state);
+        struct SemuActionRecord old;
+        LiveVariantTools.fill(&old, SemuActions.bezelSelect(), 2, now - 5000LL, 3ULL);
+        RendererMenuModel.apply(&state, &old, now);
+        contract.expect(state.bezel_request == 2 && !RendererToast.active(&state, now) && state.toast[0] == 0, "live: a record older than two seconds sets the request without a toast");
+        struct SemuActionRecord past;
+        LiveVariantTools.fill(&past, SemuActions.bezelSelect(), 7, now, 4ULL);
+        RendererMenuModel.apply(&state, &past, now);
+        contract.expect(state.bezel_request == 2, "live: an index past the choices is ignored");
+        struct SemuActionRecord grid;
+        LiveVariantTools.fill(&grid, SemuActions.shaderSelect(), 1, now, 5ULL);
+        RendererMenuModel.apply(&state, &grid, now);
+        contract.expect(strcmp(state.toast, "LOADING LCD GRID V2") == 0 && state.toast_pending == 1 && state.shader_request == 1, "live: a shader that must compile shows its loading toast first");
+        RendererToast.finish(&state, now + 100LL, now + 3000LL);
+        contract.expect(strcmp(state.toast, "SHADER: LCD GRID V2") == 0 && state.toast_pending == 0 && state.toast_until_ms == now + 4500LL, "live: once built, the plain shader toast for its full time");
+        RendererToast.finish(&state, now + 4000LL, now + 5200LL);
+        contract.expect(state.toast_until_ms == now + 6700LL, "live: a toast showing when a switch began gets its full time after the stall");
+        RendererToast.finish(&state, now + 7000LL, now + 7400LL);
+        contract.expect(state.toast_until_ms == now + 6700LL, "live: a toast already gone when a switch began does not come back");
+        struct SemuActionRecord none;
+        LiveVariantTools.fill(&none, SemuActions.shaderSelect(), 2, now, 6ULL);
+        RendererMenuModel.apply(&state, &none, now);
+        contract.expect(strcmp(state.toast, "SHADER: OFF") == 0 && state.toast_pending == 0, "live: turning the shader off compiles nothing, so no loading toast");
+        LiveVariantMenuSpec.states(contract, &state, now);
+    }
+
+    class void states(Contract contract, struct RendererPostUiState* state, long long now) {  // the save-state and screenshot toasts
+        struct SemuActionRecord save;
+        LiveVariantTools.fill(&save, SemuActions.stateSave(), 3, now, 7ULL);
+        RendererMenuModel.apply(state, &save, now);
+        contract.expect(strcmp(state->toast, "SAVE STATE: SLOT 3") == 0 && state->slot == 3, "live: Save State toasts the slot as the emulator numbers it");
+        struct SemuActionRecord next;
+        LiveVariantTools.fill(&next, SemuActions.stateNext(), 4, now, 8ULL);
+        RendererMenuModel.apply(state, &next, now);
+        contract.expect(strcmp(state->toast, "SLOT 4") == 0, "live: Next Slot toasts the new slot");
+        struct SemuActionRecord screenshot;
+        LiveVariantTools.fill(&screenshot, SemuActions.screenshot(), 0, now, 9ULL);
+        RendererMenuModel.apply(state, &screenshot, now);
+        contract.expect(strcmp(state->toast, "SCREENSHOT") == 0 && state->screenshot_requested == 1, "live: a screenshot toasts and still captures");
+        state->slot_count = 1;
+        struct SemuActionRecord fixed;
+        LiveVariantTools.fill(&fixed, SemuActions.stateLoad(), 0, now, 10ULL);
+        RendererMenuModel.apply(state, &fixed, now);
+        contract.expect(strcmp(state->toast, "LOAD STATE") == 0, "live: one fixed slot toasts no slot");
+        struct SemuRenderFrameGl frame;
+        memset(&frame, 0, sizeof(struct SemuRenderFrameGl));
+        frame.frame_id = 5ULL;
+        state->visible = 0;
+        state->capture_target = 0;
+        state->screenshot_requested = 0;
+        contract.expect(RendererEvidencePolicy.needsGlAt(state, &frame, now) && !RendererEvidencePolicy.needsGlAt(state, &frame, state->toast_until_ms), "live: the post phase needs GL while a toast shows, and not after it");
+    }
+}
+
+class LiveVariantRasterSpec {  // the toast band and the menu rows in the 384x468 texture
+    class void run(Contract contract) {
+        struct RendererPostUiState state;
+        memset(&state, 0, sizeof(struct RendererPostUiState));
+        RendererMenuModel.initialize(&state);
+        snprintf(state.toast, sizeof(state.toast), "%s", "BEZEL: LARGE MAIN, SECOND RIGHT");
+        bool glyphs = true;
+        for (int index = 0; state.toast[index] != 0; index++) {
+            if (state.toast[index] != ' ' && strchr(RendererMenuRaster.glyph(state.toast[index]), (int)'1') == null) { glyphs = false; }
+        }
+        contract.expect(glyphs && strchr(RendererMenuRaster.glyph('('), (int)'1') != null && strchr(RendererMenuRaster.glyph('.'), (int)'1') != null, "live: every character of a label has a glyph, the comma, period and brackets too");
+        contract.expect(RendererMenuRaster.renderToast(&state), "live: the toast renders into the menu texture");
+        int outside = 0;
+        for (int row = 0; row < SEMU_RENDER_MENU_HEIGHT; row++) {
+            for (int column = 0; column < SEMU_RENDER_MENU_WIDTH; column++) {
+                if ((row < RendererMenuRaster.toastTop() || row > RendererMenuRaster.toastBottom()) && state.menu_pixels[(row * SEMU_RENDER_MENU_WIDTH + column) * 4 + 3] != (unsigned char)0) { outside++; }
+            }
+        }
+        int text = LiveVariantTools.lit(state.menu_pixels, 0, RendererMenuRaster.toastTop(), SEMU_RENDER_MENU_WIDTH - 1, RendererMenuRaster.toastBottom());
+        contract.expect(outside == 0 && text > 400 && RendererMenuRaster.textWidth(state.toast, 2) <= SEMU_RENDER_MENU_WIDTH, f"live: the toast is one band in rows 8-55 ({text} text pixels), transparent elsewhere ({outside})");
+        char row[64];
+        RendererMenuRaster.rowText(&state, 4, row, (int)sizeof(row));
+        contract.expect(strcmp(row, "BEZEL  DUIMON SHELL") == 0, "live: the BEZEL row names the current bezel");
+        state.bezel_shown = 1;
+        RendererMenuRaster.rowText(&state, 4, row, (int)sizeof(row));
+        contract.expect(strcmp(row, "BEZEL  LARGE MAIN, SECOND RI") == 0 && 30 + RendererMenuRaster.textWidth(row, 2) <= SEMU_RENDER_MENU_WIDTH - 16, "live: a long value is cut to the row");
+        RendererMenuRaster.rowText(&state, 5, row, (int)sizeof(row));
+        contract.expect(strcmp(row, "SHADER  DS LCD") == 0, "live: the SHADER row names the current shader");
+        RendererMenuRaster.rowText(&state, 0, row, (int)sizeof(row));
+        contract.expect(strcmp(row, "RESUME") == 0, "live: other rows keep their label alone");
+        long long now = RendererClock.milliseconds();
+        RendererMenuRaster.render(&state, now);
+        int quiet = LiveVariantTools.lit(state.menu_pixels, 150, 20, 250, 40);
+        state.toast_until_ms = now + 1000LL;
+        RendererMenuRaster.render(&state, now);
+        int toasted = LiveVariantTools.lit(state.menu_pixels, 150, 20, 250, 40);
+        contract.expect(quiet == 0 && toasted > 40, f"live: with the menu open a toast takes the SEMU header's place ({quiet} then {toasted})");
+        free(state.menu_pixels);
+    }
+}
+
+class LiveVariantSources {  // the GL-bound wiring the contracts cannot run: kept by source checks, proven by the render host
+    class void run(Contract contract, Fixture fixture) {
+        string compositor = LaunchSpecTools.source(fixture, "src/renderer/renderer_compositor.btrc");
+        contract.contains(compositor, "false, true, true);  // librashader's disk cache on", "live: shader chains use librashader's disk cache");
+        contract.lacks(compositor, "true, true, true)", "live: no chain is created with the cache disabled");
+        contract.lacks(compositor, "variant->art.value, &resources->bezel_textures", "live: the variant images load in renderer_variant_images, not in initialize");
+        string renderer = LaunchSpecTools.source(fixture, "src/renderer/libsemurenderer.btrc");
+        for line in ["SemuRendererLiveVariants.apply();", "if (fresh) { SemuRendererLiveVariants.reapply(); }", "SemuRendererLiveVariants.receipt(frame, contextGeneration, status);", "RendererVariantImages.due(&SemuRenderer.resources)", "SemuRenderer.live_bezel = -1;", "if (RendererConfiguration.imageSignature(&SemuRenderer.config) != images) { SemuRenderer.resources.variant_images_stale = 1; }"] {
+            contract.contains(renderer, line, "live: libsemurenderer wires " + line);
+        }
+        int reset = Strings.find(renderer, "class void reset(", 0);
+        int activate = Strings.find(renderer, "class void activate(", 0);
+        contract.expect(reset > 0 && activate > reset && !renderer.substring(reset, activate - reset).contains("live_"), "live: a context reset keeps the live choice");
+        for name in ["renderer_config", "renderer_variants", "renderer_menu", "renderer_menu_raster", "variant_keys"] {
+            string text = LaunchSpecTools.source(fixture, "src/renderer/" + name + ".btrc");
+            bool plain = !text.isEmpty() && !text.contains("renderer_compositor.btrc") && !text.contains("renderer_gl_api.btrc") && !text.contains("librashader") && !text.contains("stb_image");
+            contract.expect(plain, "live: src/renderer/" + name + ".btrc stays GL-free, so the contracts import it");
+        }
+    }
+}
+
+class LiveVariantLaunchSpec {  // the token and the templates reach the renderer through the launch and render-env
+    class void run(Contract contract, Fixture fixture) {
+        string toasts = fixture.plan.input.toasts();
+        contract.contains(toasts, "visual.shader.next:loading=LOADING {label}", "live: the loading toast is input.json data");
+        SemuLaunchPlan launch = LaunchSpecTools.retroarchPlan(fixture);
+        contract.expect(launch.variants.written && !launch.variants.token.isEmpty() && launch.environment.contains("SEMU_MENU_VARIANTS_TOKEN=" + launch.variants.token), "live: the launch hands the renderer its variants file's token");
+        contract.contains(FileSystem.readText(PathTools.join(launch.stateDir, RendererActionJournal.variantsFileName())), "\ntoken=" + launch.variants.token + "\n", "live: the variants file carries the same token");
+        string directory = PathTools.join(fixture.scratch, "live/cli-gba");
+        FileSystem.mkdirp(directory);
+        Vector<string> words = ["semu", "render-env", "--system", "gba", "--project", PathTools.join(fixture.project, "config"), "--asset-root", fixture.plan.assetRoot, "--semu-home", fixture.plan.semuHome, "--variants-file", directory];
+        string printed = LiveVariantTools.cliOutput(words, PathTools.join(fixture.scratch, "live/cli-gba.txt"));
+        string header = FileSystem.readText(PathTools.join(directory, RendererActionJournal.variantsFileName()));
+        int line = Strings.find(header, "\ntoken=", 0);
+        string token = line < 0 ? "(none)" : header.substring(line + 7, Strings.find(header, "\n", line + 1) - line - 7);
+        contract.contains(printed, "SEMU_MENU_VARIANTS_TOKEN=" + token + "\n", "live: render-env --variants-file prints the file's token");
+        contract.contains(printed, "SEMU_MENU_TOASTS=" + toasts + "\n", "live: render-env prints the toast templates the launch gives");
+        contract.contains(printed, "SEMU_MENU_ACTIONS=", "live: render-env prints the menu's actions");
+    }
+}
+
+class LiveVariantSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        for systemId in fixture.model.systemIds() {
+            SemuSystem system = fixture.model.system(systemId);
+            RenderEnvSpecAssets.walk(fixture.plan.assetRoot, system.shaders);
+            RenderEnvSpecAssets.walk(fixture.plan.assetRoot, system.bezels);
+        }
+        RenderEnvSpecAssets.packages(fixture.plan.assetRoot, fixture.plan.configRoot);
+        string state = PathTools.join(fixture.scratch, "live/nds");
+        SemuRenderVariantSet set = SemuRenderVariants.write(fixture.plan, fixture.model.system("nds"), "retroarch", state);
+        string path = SemuRenderVariants.path(state);
+        contract.expect(set.written && !set.token.isEmpty(), "live: the nds variants file is written with a token");
+        LiveVariantTools.environment(fixture, state, set.token);
+        LiveVariantFileSpec.run(contract, fixture, path, set.token);
+        LiveVariantReloadSpec.run(contract, path);
+        LiveVariantMenuSpec.run(contract);
+        LiveVariantRasterSpec.run(contract);
+        LiveVariantTools.clear();
+        LiveVariantSources.run(contract, fixture);
+        LiveVariantLaunchSpec.run(contract, fixture);
+    }
+}

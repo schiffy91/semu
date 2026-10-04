@@ -2,7 +2,8 @@
 // RENDER_HOST_CARD=white/black with RENDER_HOST_LIT=screen, a measuring card: ramp, lines, bars, clip, or the bezel
 // editor's card with RENDER_HOST_CARD=editor) stands in for the
 // emulator's picture, SEMU_RENDER_* comes from `semu render-env`, and the last of RENDER_HOST_FRAMES
-// frames (default 12, so a history pass sees a running game) is written as PPM.
+// frames (default 12, so a history pass sees a running game) is written as PPM; --switch then journals a
+// bezel and shader select and writes the toast frame and the switched one.
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/gl3.h>
 #include <dlfcn.h>
@@ -17,6 +18,7 @@ import Library.Strings;
 import ../../src/renderer/libsemurenderer.btrc;
 
 void* semuHostProcedure(const char* name) { return dlsym((void*)RTLD_DEFAULT, name); }  // the emulator's get_proc
+unsigned long long RenderHostGeneration = 1ULL;  // a new context after RENDER_HOST_RESET
 
 class RenderHostContext {  // a core-profile context with nothing on screen; CGL constants by value, which BTRC cannot see
     class bool create() {
@@ -261,7 +263,7 @@ class RenderHost {
         frame.layout_variant = 0u;
         frame.surface_count = screens;
         frame.get_proc = semuHostProcedure;
-        frame.context_generation = 1ULL;
+        frame.context_generation = RenderHostGeneration;
         int x = 0;
         for (int screen = 0; screen < screens; screen++) {
             int width = RenderHost.nativeWidth(screen);
@@ -296,8 +298,61 @@ class RenderHost {
     }
 }
 
-int main(int argc, char** argv) {  // render_host WIDTH HEIGHT OUT.ppm [--reload OUT2.ppm]
-    if (argc < 4) { Console.error("usage: render_host WIDTH HEIGHT OUT.ppm [--reload SECOND.ppm]"); return 64; }
+class RenderHostSwitch {  // --switch B,S: a bezel and a shader select in the journal, as the supervisor appends them
+    class bool append(int action, int slot, unsigned long long sequence) {
+        char path[8192];
+        if (!RendererStatePaths.path(path, sizeof(path), RendererActionJournal.fileName())) { return false; }
+        FILE* file = fopen(path, "ab");
+        if (file == null) { return false; }
+        struct SemuActionRecord record;
+        memset(&record, 0, sizeof(record));
+        record.abi = (unsigned int)RendererActionJournal.abi();
+        record.size = (unsigned int)sizeof(struct SemuActionRecord);
+        record.sequence = sequence;
+        record.monotonic_ms = RendererClock.milliseconds();
+        record.action = action;
+        record.radial = RendererActionJournal.direct();
+        record.slot = slot;
+        snprintf(record.source, sizeof(record.source), "%s", "render-host");
+        bool written = fwrite(&record, sizeof(record), 1, file) == (size_t)1;
+        fclose(file);
+        return written;
+    }
+
+    class int run(RenderHostTarget target, int frames, char* choice, char* toastPath, char* afterPath) {  // 2 frames to TOAST, 8 more to AFTER; each frame's time on stderr
+        int bezel = -1;
+        int shader = -1;
+        if (sscanf(choice, "%d,%d", &bezel, &shader) != 2) { Console.error("render-host: --switch takes BEZEL,SHADER indices (-1 keeps one)"); return 64; }
+        unsigned long long sequence = 0ULL;
+        char* menuRow = getenv("RENDER_HOST_MENU_ROW");  // the menu open on that row first, to see a row's live value
+        for (int row = -1; menuRow != null && row < atoi(menuRow); row++) {
+            sequence = sequence + 1ULL;
+            RenderHostSwitch.append(row < 0 ? SemuActions.menuToggle() : SemuActions.menuDown(), 0, sequence);
+        }
+        if (bezel >= 0) { sequence = sequence + 1ULL; if (!RenderHostSwitch.append(SemuActions.bezelSelect(), bezel, sequence)) { Console.error("render-host: no journal under SEMU_RENDER_STATE_DIR"); return 1; } }
+        if (shader >= 0) { sequence = sequence + 1ULL; if (!RenderHostSwitch.append(SemuActions.shaderSelect(), shader, sequence)) { Console.error("render-host: no journal under SEMU_RENDER_STATE_DIR"); return 1; } }
+        for (int drawn = 1; drawn <= 10; drawn++) {
+            long long started = RendererClock.milliseconds();
+            int result = RenderHost.frame(target, (unsigned long long)(frames + drawn));
+            if (result != 0) { return result; }
+            fprintf(stderr, "render-host: switch frame %d took %lld ms\n", drawn, RendererClock.milliseconds() - started);
+            if (drawn == 2 && !target.writePortablePixmap(toastPath)) { return 1; }
+        }
+        if (!target.writePortablePixmap(afterPath)) { return 1; }
+        char* resetPath = getenv("RENDER_HOST_RESET");  // the context lost and remade: the live choice must survive it
+        if (resetPath == null || resetPath[0] == 0) { return 0; }
+        semu_render_context_invalidate_gl(RenderHostGeneration);
+        RenderHostGeneration = RenderHostGeneration + 1ULL;
+        for (int drawn = 11; drawn <= 14; drawn++) {
+            int result = RenderHost.frame(target, (unsigned long long)(frames + drawn));
+            if (result != 0) { return result; }
+        }
+        return target.writePortablePixmap(resetPath) ? 0 : 1;
+    }
+}
+
+int main(int argc, char** argv) {  // render_host WIDTH HEIGHT OUT.ppm [--reload OUT2.ppm | --switch B,S TOAST.ppm AFTER.ppm]
+    if (argc < 4) { Console.error("usage: render_host WIDTH HEIGHT OUT.ppm [--reload SECOND.ppm | --switch BEZEL,SHADER TOAST.ppm AFTER.ppm]"); return 64; }
     int width = atoi(argv[1]);
     int height = atoi(argv[2]);
     if (width < 16 || height < 16 || !RenderHostContext.create()) { Console.error("render-host: no OpenGL 4.1 core context"); return 1; }
@@ -315,5 +370,6 @@ int main(int argc, char** argv) {  // render_host WIDTH HEIGHT OUT.ppm [--reload
         if (result != 0) { return result; }
         if (!target.writePortablePixmap(argv[5])) { return 1; }
     }
+    if (argc >= 8 && (int)strcmp(argv[4], "--switch") == 0) { return RenderHostSwitch.run(target, frames, argv[5], argv[6], argv[7]); }
     return 0;
 }
