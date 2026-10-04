@@ -100,6 +100,23 @@ class VisualCycleSwitches {  // the On/Off chords: none, then back to the last r
     }
 }
 
+class VisualCycleNothing {  // Wii U (M14 item 5): no bezel and no shader to choose, so every Bezel and Shader press toasts NONE HERE and changes nothing
+    class void run(Contract contract, Fixture fixture) {
+        SemuLaunchPlan wiiu = VisualCycleBed.launch(fixture, "nothing-wiiu", "");
+        wiiu.system = "wiiu";
+        wiiu.variants = SemuRenderVariants.write(fixture.plan, fixture.model.system("wiiu"), "cemu", wiiu.stateDir);  // as the launch plan writes it
+        contract.expect(wiiu.variants.written && !wiiu.variants.bezel.available() && !wiiu.variants.shader.available(), "wiiu's launch writes its variants file, with no bezel and no shader to choose");
+        bool bezelsBefore = wiiu.bezelsOn;
+        bool shadersBefore = wiiu.shadersOn;
+        for action in ["visual.bezel.next", "visual.bezels.toggle", "visual.shader.next", "visual.shaders.toggle"] { SemuActionExecutor.execute(wiiu, action, SEMU_SOURCE_X11); }
+        bool unavailable = InputDeliveryTools.records(wiiu.stateDir) == 4 && InputDeliveryTools.record(wiiu.stateDir, 0, SemuActions.bezelSelect(), -1) && InputDeliveryTools.record(wiiu.stateDir, 1, SemuActions.bezelSelect(), -1)
+            && InputDeliveryTools.record(wiiu.stateDir, 2, SemuActions.shaderSelect(), -1) && InputDeliveryTools.record(wiiu.stateDir, 3, SemuActions.shaderSelect(), -1);
+        contract.expect(unavailable, "on wiiu Next Bezel, Bezel On/Off, Next Shader and Shader On/Off each journal one select with slot -1, the renderer's BEZEL: NONE HERE and SHADER: NONE HERE");
+        contract.expect(wiiu.bezelsOn == bezelsBefore && wiiu.shadersOn == shadersBefore && !FileSystem.isFile(PathTools.join(wiiu.semuHome, "semu.json")), "and flip nothing live and save nothing: the global switches the other systems default to stay as they were");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
 class VisualCycleMenu {  // the BEZEL and SHADER rows: confirm or right steps on, left steps back, the menu stays open
     class void run(Contract contract, Fixture fixture) {
         SemuLaunchPlan launch = VisualCycleBed.launch(fixture, "menu", "");
@@ -201,6 +218,7 @@ class VisualCycleSpecContract {
         VisualCycleAbi.run(contract);
         VisualCycleSteps.run(contract, fixture);
         VisualCycleSwitches.run(contract, fixture);
+        VisualCycleNothing.run(contract, fixture);
         VisualCycleMenu.run(contract, fixture);
         VisualCycleSeam.run(contract, fixture);
         VisualCycleToasts.run(contract, fixture);

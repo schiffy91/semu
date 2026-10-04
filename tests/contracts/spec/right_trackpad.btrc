@@ -218,7 +218,7 @@ class RightTrackpadSpecCursor {  // Semu draws the pointer on touch systems and 
         contract.expect(sample.contains("if (nextDown != 0 && wasDown == 0)") && runtime.contains("semu-retroarch: touch %d,%d -> surface %d native %.1f,%.1f core %d,%d") && runtime.contains("getenv(\"SEMU_RENDER_DEBUG\")"),
             "SEMU_RENDER_DEBUG logs each press edge with its surface, native and core coordinates");
         string postUi = RightTrackpadSpecText.between(library, "int semu_render_post_ui_gl(", "\n}\n");
-        contract.expect(postUi.contains("RendererCursor.update(&SemuRenderer.cursor,") && postUi.contains("RendererFrameContract.cursor(frame)") && postUi.contains("needsGl = needsGl || cursor;") && postUi.contains("cursor ? &SemuRenderer.cursor : null"),
+        contract.expect(postUi.contains("RendererCursor.update(&SemuRenderer.cursor,") && postUi.contains("RendererFrameContract.cursor(frame)") && postUi.contains("needsGl = needsGl || cursor || warm;") && postUi.contains("cursor ? &SemuRenderer.cursor : null"),
             "the post-UI phase follows the frame's cursor and draws when it shows");
         contract.expect(postUi.contains("if (RendererCursor.changed(&SemuRenderer.cursor, cursor) && getenv(\"SEMU_RENDER_DEBUG\") != null)") && postUi.contains("\"semu-renderer: cursor %s %d,%d ms=%lld\\n\", cursor ? \"shown\" : \"hidden\"")
             && postUi.contains("SemuRenderer.cursor.x, SemuRenderer.cursor.y, RendererClock.epochMilliseconds());"), "SEMU_RENDER_DEBUG logs each show and hide of the cursor with the pointer and the wall clock");

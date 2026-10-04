@@ -3,7 +3,8 @@
 // applies live, and saves the choice for this system only: a system's own value beats the global
 // switch, which stays the default. An output is drawn from boot, so it is saved at once and waits
 // for Restart Game (SemuOutputSwitch). With nothing to choose the record carries slot -1 and
-// the renderer shows the action's unavailable toast.
+// the renderer shows the action's unavailable toast; On/Off does the same there (a Wii U press
+// never flips the global switch the other systems default to, nor the live config).
 
 #include <stdlib.h>
 
@@ -73,7 +74,11 @@ class SemuVisualCycle {
             SemuVisualCycle.select(launch, choice, choice.off() ? choice.lastReal : choice.ids.size() - 1);  // none is always last
             return;
         }
-        bool bezels = action.equals("visual.bezels.toggle");  // nothing to choose here: the global switch, as before
+        if (launch.variants.written) {  // the launch's file names every choice and this system has none (Wii U): the renderer's NONE HERE toast, nothing flipped or saved
+            SemuActionJournal.append(launch, SemuVisualCycle.code(choice.kind), -1);
+            return;
+        }
+        bool bezels = action.equals("visual.bezels.toggle");  // no variants file (no compositor reads one): the global switch, as before
         SemuActionJournal.append(launch, bezels ? SemuActions.bezelsToggle() : SemuActions.shadersToggle(), 0);
         if (bezels) { launch.bezelsOn = !launch.bezelsOn; } else { launch.shadersOn = !launch.shadersOn; }
         bool enabled = launch.shadersOn;

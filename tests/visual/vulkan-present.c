@@ -5,6 +5,10 @@
 // field with a white frame one pixel inside the picture and a black diagonal from its top left.
 // Composition, when Semu's library is in the path, runs at each present; SEMU_RENDER_CAPTURE_FRAME
 // makes the renderer save the composed frame.
+// VULKAN_PRESENT_TIMES=1 prints each present's wall time in milliseconds ("present FRAME MS").
+// VULKAN_PRESENT_JOURNAL=STATE_DIR:FRAMES:ACTION:SLOT appends one action record before each named
+// frame's present (FRAMES: 60, or 60/100), as the supervisor writes it (src/renderer/action_abi.btrc SemuActionRecord, ABI 1, 56 bytes,
+// CLOCK_MONOTONIC), e.g. 79:-1 for a Next Bezel where the system has nothing to choose.
 // build: cc -O2 vulkan-present.c -I<vulkan-headers>/include -ldl -o vulkan-present   (macOS: -lobjc -framework QuartzCore -framework CoreGraphics)
 // usage: vulkan-present LIBRARY WIDTH HEIGHT FRAMES   (LIBRARY: libvulkan.so.1, or Semu's stand-in)
 #include <dlfcn.h>
@@ -12,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #ifdef __APPLE__
 #define VK_USE_PLATFORM_METAL_EXT
 #include <CoreGraphics/CGGeometry.h>
@@ -35,6 +40,33 @@ static uint32_t testCard(uint32_t x, uint32_t y, uint32_t width, uint32_t height
     if (x == 1 || y == 1 || x == width - 2 || y == height - 2) return 0xFFFFFFFFu;
     if (x * height / width == y) return 0xFF000000u;
     return bars[x * 7 / width];
+}
+
+static double milliseconds(void) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (double)now.tv_sec * 1000.0 + (double)now.tv_nsec / 1000000.0;
+}
+
+struct JournalRecord { uint32_t abi, size; uint64_t sequence; int64_t monotonicMs; int32_t action, radial, slot, reserved; char source[16]; };
+
+static void journal(uint32_t frame) {  // VULKAN_PRESENT_JOURNAL=STATE_DIR:FRAMES:ACTION:SLOT, FRAMES one or more frames joined by '/' (60/100)
+    static uint64_t sequence = 0;
+    const char *spec = getenv("VULKAN_PRESENT_JOURNAL");
+    char directory[4096], frames[256];
+    int action = 0, slot = 0;
+    if (!spec || sscanf(spec, "%4095[^:]:%255[^:]:%d:%d", directory, frames, &action, &slot) != 4) return;
+    int due = 0;
+    for (char *at = strtok(frames, "/"); at; at = strtok(NULL, "/")) { if ((uint32_t)strtoul(at, NULL, 10) == frame) due = 1; }
+    if (!due) return;
+    char path[4200];
+    snprintf(path, sizeof(path), "%s/semu-render-actions.bin", directory);
+    FILE *file = fopen(path, "ab");
+    if (!file) { fprintf(stderr, "vulkan-present: cannot append to %s\n", path); return; }
+    struct JournalRecord record = { 1u, (uint32_t)sizeof(struct JournalRecord), ++sequence, (int64_t)milliseconds(), action, 0, slot, 0, "semu" };
+    fwrite(&record, sizeof(record), 1, file);
+    fclose(file);
+    printf("journal %u action %d slot %d\n", frame, action, slot);
 }
 
 int main(int argc, char **argv) {
@@ -171,7 +203,10 @@ int main(int argc, char **argv) {
         VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO, NULL, 0, NULL, NULL, 1, &command, 1, &rendered };
         CHECK(submit(queue, 1, &submitInfo, done));
         VkPresentInfoKHR presentInfo = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, NULL, 1, &rendered, 1, &swapchain, &index, NULL };
+        journal(frame);
+        double started = milliseconds();
         CHECK(present(queue, &presentInfo));
+        if (getenv("VULKAN_PRESENT_TIMES")) printf("present %u %.2f\n", frame, milliseconds() - started);
         CHECK(waitFences(device, 1, &done, VK_TRUE, UINT64_MAX));
         CHECK(resetFences(device, 1, &done));
     }

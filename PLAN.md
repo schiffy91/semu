@@ -1253,6 +1253,23 @@ Status: tackled in three parallel tracks (performance, picture, controls), then 
   host) and as the players page's RESTART GAME. It restarts once when anything differs from the
   launch, else toasts RESTART: NO CHANGES. radial-check.cases case 16 now cycles Classic, GameCube
   and Wii Remote without a restart, then applies 16:9 with one Restart Game.
+- Item 5 (controls, Wii U Bezel): cause found and fixed, measured in the podman VM; the Deck rerun is
+  open. The Deck's journal from that session (Mario Kart 8, 15:00) holds exactly four records within
+  6 s, each Next Bezel as 79/-1 (Wii U has no bezel). Nothing reloads for those records. Through
+  the real Vulkan layer in the VM, with the Wii U environment at 1280x800 (lavapipe and llvmpipe),
+  `tests/visual/vulkan-present.c` now prints each present's time and journals a record at a chosen
+  frame. The first press's frame took 0.78 s against a steady 15 ms, and a second press 18 ms: the
+  driver built the blended menu program and the toast texture at the first toast. The renderer now
+  draws the menu pass once at a context's first composed frame, transparent and one pixel, at the
+  toast's texture size (RendererPostUiCompositor.warm). The first press then takes 21 ms, and the
+  BEZEL: NONE HERE toast is pixel-identical (AE 0) and the picture clean. radeonsi on the Deck may stall
+  less than llvmpipe, so the Deck rerun measures it. Bezel On/Off and Shader On/Off on a system with
+  nothing to choose used to flip the global switch that every other system defaults to, flip the live
+  config, and show no toast. They now journal 79/-1 and 80/-1 (NONE HERE) and change nothing (the
+  legacy global switch stays only for launches with no variants file). Cemu's log also shows Mario
+  Kart 8 starting its H264 video in the same second as the first press (Cemu's ih264d rejected the
+  first slices), which may have slowed the game then too. Contracts: the Wii U presses (visual_cycle)
+  and the warm-up wiring (live_variants), each failing under its mutation.
 - Item 1 (performance, N64): built and checked in the VM with Super Mario 64; the Deck run is open
   (speed and the picture). The lag: Semu forced angrylion, a software RDP, with cxd4, an interpreted
   LLE RSP. The geometry: angrylion's Hide overscan handed over a frame whose size depended on the game.

@@ -307,7 +307,9 @@ int semu_render_post_ui_gl(struct SemuRenderFrameGl* frame) {
         fprintf(stderr, "semu-renderer: cursor %s %d,%d ms=%lld\n", cursor ? "shown" : "hidden",
             SemuRenderer.cursor.x, SemuRenderer.cursor.y, RendererClock.epochMilliseconds());
     }
-    needsGl = needsGl || cursor;
+    bool warm = SemuRenderer.post_ui.menu_warmed == 0 && SemuRenderer.gl_loaded != 0
+        && RendererResources.current(&SemuRenderer.gl, &SemuRenderer.resources, contextGeneration);  // once per context, at its first composed frame
+    needsGl = needsGl || cursor || warm;
     if ((SemuRenderer.post_ui.bezels_toggles & 1) != 0) {  // menu toggles flip the live config; odd counts flip
         SemuRenderer.config.bezels_enabled = SemuRenderer.config.bezels_enabled != 0 ? 0 : 1;
     }

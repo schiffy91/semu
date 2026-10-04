@@ -66,6 +66,7 @@ struct RendererPostUiState {
     struct RendererVariantCatalog catalog;
     unsigned long long last_sequence;
     unsigned char* menu_pixels;
+    int menu_warmed;  // the menu pass has drawn once in this context, so a press never waits for its program (RendererPostUiCompositor.warm)
 };
 
 class RendererToast {

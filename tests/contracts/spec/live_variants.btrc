@@ -289,7 +289,13 @@ class LiveVariantSources {  // the GL-bound wiring the contracts cannot run: kep
         contract.contains(RightTrackpadSpecText.between(images, "class bool due(", "\n    }\n"), "return RendererLiveSwitch.imagesDue(resources->ready, resources->variant_images, resources->variant_images_stale);", "live: images reload by the tested predicate");
         string post = LaunchSpecTools.source(fixture, "src/renderer/renderer_post_ui.btrc");
         string draw = RightTrackpadSpecText.between(post, "class bool draw(", "class bool drawCursor(");
-        contract.expect(draw.contains("int mode = RendererToast.mode(state, now);") && draw.contains("if (mode == SEMU_RENDER_POST_NOTHING) { return true; }") && draw.contains("bool toastOnly = mode == SEMU_RENDER_POST_TOAST;"), "live: the post phase draws what RendererToast.mode says, a toast alone over a closed menu");
+        contract.expect(draw.contains("int mode = RendererToast.mode(state, now);") && draw.contains("if (mode == SEMU_RENDER_POST_NOTHING) { return RendererPostUiCompositor.warm(gl, resources, frame, state); }") && draw.contains("bool toastOnly = mode == SEMU_RENDER_POST_TOAST;"), "live: the post phase draws what RendererToast.mode says, a toast alone over a closed menu");
+        string warm = RightTrackpadSpecText.between(post, "class bool warm(", "class bool draw(");
+        string postEntry = RightTrackpadSpecText.between(renderer, "int semu_render_post_ui_gl(", "\n}\n");
+        contract.expect(warm.contains("if (state->menu_warmed != 0) { return true; }") && warm.contains("state->menu_warmed = 1;") && draw.contains("state->menu_warmed = 1;")
+            && warm.contains("RendererPostUiCompositor.upload(gl, resources, state->menu_pixels, SEMU_RENDER_MENU_WIDTH, RendererPostUiCompositor.toastHeight())") && warm.contains("RendererPostUiCompositor.quad(gl, resources, frame, 0, 0, 1, 1);")
+            && postEntry.contains("bool warm = SemuRenderer.post_ui.menu_warmed == 0 && SemuRenderer.gl_loaded != 0") && postEntry.contains("needsGl = needsGl || cursor || warm;"),
+            "live: the menu pass draws once, transparent and at the toast's texture size, at a context's first composed frame, so the first toast never waits for its program (M14 item 5: 0.7 s on llvmpipe)");
         int reset = Strings.find(renderer, "class void reset(", 0);
         int activate = Strings.find(renderer, "class void activate(", 0);
         contract.expect(reset > 0 && activate > reset && !renderer.substring(reset, activate - reset).contains("SemuRenderer.live"), "live: a context reset keeps the live choice");
