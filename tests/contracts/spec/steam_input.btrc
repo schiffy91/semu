@@ -79,7 +79,8 @@ class SteamInputSpecTable {  // every rendered template: semantic radials, isola
         Vector<string> bindings = [
             "Save State, semu-save.png", "Load State, semu-load.png", "Quit Emulator, semu-quit.png", "Next Bezel, semu-bezel.png", "Next Shader, semu-shader.png",
             "Open Menu, semu-menu.png", "Take Screenshot, semu-screenshot.png", "Previous State Slot, semu-previous.png", "Next State Slot, semu-next.png", "Menu Up, semu-up.png",
-            "Menu Down, semu-down.png", "Menu Confirm, semu-confirm.png", "Menu Back, semu-back.png"
+            "Menu Down, semu-down.png", "Menu Confirm, semu-confirm.png", "Menu Back, semu-back.png", "Settings, semu-settings.png", "Close Settings, semu-close.png",
+            "Bezel On/Off, semu-bezel-toggle.png", "Shader On/Off, semu-shader-toggle.png", "Fit (Bezel/Screen), semu-fit.png", "Aspect (4:3/16:9), semu-aspect.png", "Controller Layout, semu-controller.png", "Players, semu-players.png", "Reset to Default, semu-reset.png"
         ];
         if (wii) { for binding in ["Wiimote, semu-wiimote.png", "Wiimote + Nunchuk, semu-wiimote-nunchuk.png", "Classic Controller, semu-classic-controller.png", "GameCube Controller, semu-gamecube-controller.png"] { bindings.push(binding); } }
         for binding in bindings { contract.contains(vdf, binding + ", #232323 #FFFFFF", "radial slot carries its semantic icon"); }
@@ -120,7 +121,7 @@ class SteamInputSpecTable {  // every rendered template: semantic radials, isola
         contract.contains(vdf, "\"name\" \"Wii Controller Mode\"", "the Wii controller-mode radial exists");
         contract.contains(vdf, "\"title\" \"Wii Controller Mode\"", "the Wii controller-mode preset exists");
         for key in ["F9", "F10", "F11", "F12"] { contract.contains(vdf, "key_press " + key + ", ", "Wii mode chord key is pressed"); }
-        contract.contains(vdf, "\"button_back_left\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 3 0 0, Wii Controller Mode", "the lower grip L5 holds the Wii layer");
+        contract.contains(vdf, "\"button_back_left\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 4 0 0, Wii Controller Mode", "the lower grip L5 holds the Wii layer, preset 3 after the settings page");
         contract.contains(vdf, "\"button_back_right\" { \"activators\" { \"release\"", "letting go of R5 leaves the Wii layer");
         contract.lacks(vdf, "_lower\"", "no grip uses a name Steam does not have");
         contract.expect(RendererActionJournal.systemRadial() == 3, "the journal names the system radial 3");
@@ -225,6 +226,7 @@ class SteamInputSpecIcons {  // every action shows a Semu PNG, and publishing co
         for id in root.get("actions").keys() {
             contract.expect(declared.contains(document.icon(id)), "action icon is a declared binding icon: " + id);
         }
+        for page in document.pageNames() { contract.expect(declared.contains(document.icon(page)), "radial page icon is a declared binding icon: " + page); }
         for name in declared { contract.expect(FileSystem.isFile(PathTools.join(icons, name)), "declared binding icon exists: " + name); }
         string output = PathTools.join(fixture.scratch, "steam-spec/templates");
         string installed = PathTools.join(fixture.scratch, "steam-spec/binding_icons");

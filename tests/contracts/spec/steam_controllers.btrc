@@ -51,35 +51,70 @@ class SteamControllerSpecText {  // pieces of a rendered template
 }
 
 class SteamControllerSpecRadial {  // the quick ring, the menu radial and how a slot fires
+    class string head(int button) { return "\"touch_menu_button_" + Strings.fromInt(button) + "\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \""; }
+
+    class void ring(Contract contract, SteamInputDocument document, string radial, Vector<string> slots, int first) {  // each slot types its chord, from button FIRST
+        for (int index = 0; index < slots.size(); index++) {
+            string action = slots.get(index);
+            contract.contains(radial, SteamControllerSpecRadial.head(index + first) + "key_press LEFT_CONTROL, " + document.label(action) + ", " + document.icon(action), "ring slot " + Strings.fromInt(index + first) + " sends " + action);
+        }
+    }
+
     class void run(Contract contract, SteamInputDocument document) {
         string vdf = SteamInputVdf.render(document, SteamControllerSpecText.template(document, "neptune_full"));
-        Vector<string> ring = ["state.save", "state.load", "state.prev", "state.next", "visual.bezel.next", "visual.shader.next", "visual.placement.next", "visual.output.next", "controller.layout.next", "ui.menu", "ui.screenshot", "app.quit"];
-        contract.expect(document.slots("quick_slots").join(",").equals(ring.join(",")), "the quick ring is save, load, previous and next slot, bezel, shader, fit, aspect, controller layout, menu, screenshot, quit");
+        Vector<string> ring = ["state.save", "state.load", "state.prev", "state.next", "visual.bezel.next", "visual.shader.next", "radial.settings", "ui.menu", "ui.screenshot", "app.quit"];
+        contract.expect(document.slots("quick_slots").join(",").equals(ring.join(",")), "the quick ring is save, load, previous and next slot, bezel, shader, settings, menu, screenshot, quit");
         string quick = SteamControllerSpecText.group(vdf, "20");
-        for (int index = 0; index < ring.size(); index++) {
-            string head = "\"touch_menu_button_" + Strings.fromInt(index + 1) + "\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"key_press LEFT_CONTROL, ";
-            contract.contains(quick, head + document.label(ring.get(index)) + ", " + document.icon(ring.get(index)), "ring slot " + Strings.fromInt(index + 1) + " sends " + ring.get(index));
-        }
+        SteamControllerSpecRadial.ring(contract, document, quick, ["state.save", "state.load", "state.prev", "state.next", "visual.bezel.next", "visual.shader.next"], 1);
+        SteamControllerSpecRadial.ring(contract, document, quick, ["ui.menu", "ui.screenshot", "app.quit"], 8);
+        contract.contains(quick, SteamControllerSpecRadial.head(7) + "controller_action CHANGE_PRESET 3 0 0, Settings, semu-settings.png, #232323 #FFFFFF\" } \"settings\"", "slot 7 switches to the settings preset (preset 2) and types nothing");
         contract.lacks(quick, "touch_menu_button_0", "the quick radial's centre is empty, so a click released there fires nothing");
-        contract.lacks(quick, "touch_menu_button_13", "the quick ring has exactly twelve slots");
+        contract.lacks(quick, "touch_menu_button_11", "the quick ring has exactly ten slots");
         string menu = SteamControllerSpecText.group(vdf, "21");
-        contract.contains(menu, "\"touch_menu_button_0\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"key_press LEFT_CONTROL, Open Menu, semu-menu.png", "the menu radial's centre opens and closes the menu");
-        Vector<string> steer = ["Menu Up", "Menu Down", "Menu Confirm", "Menu Back"];
-        for (int index = 0; index < steer.size(); index++) { contract.contains(menu, "\"touch_menu_button_" + Strings.fromInt(index + 1) + "\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"key_press LEFT_CONTROL, " + steer.get(index), "the menu ring steers the Semu menu"); }
-        Vector<string> settings = ["Bezel On/Off, semu-bezel-toggle.png", "Shader On/Off, semu-shader-toggle.png", "Reset to Default, semu-reset.png", "Players, semu-players.png"];
-        for (int index = 0; index < settings.size(); index++) { contract.contains(menu, "\"touch_menu_button_" + Strings.fromInt(index + 5) + "\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"key_press LEFT_CONTROL, " + settings.get(index), "the held menu ring also turns the bezel and the shader off and on and resets the system: " + settings.get(index)); }
+        contract.contains(menu, SteamControllerSpecRadial.head(0) + "key_press LEFT_CONTROL, Open Menu, semu-menu.png", "the menu radial's centre opens and closes the menu");
+        SteamControllerSpecRadial.ring(contract, document, menu, ["ui.menu.up", "ui.menu.down", "ui.menu.confirm", "ui.menu.back", "visual.bezels.toggle", "visual.shaders.toggle", "system.reset", "ui.players"], 1);
         contract.lacks(menu, "touch_menu_button_9", "the held menu ring has exactly eight slots");
-        for identifier in ["20", "21", "22"] {
+        for identifier in ["20", "21", "22", "40"] {
             string radial = SteamControllerSpecText.group(vdf, identifier);
             contract.contains(radial, "\"touchmenu_button_fire_type\" \"1\"", "a slot fires when the pad click on its icon is released (Steam's button release)");
             contract.contains(radial, "\"settings\" { \"haptic_intensity\" \"2\" }", "each radial button ticks as Steam's own radials do");
             contract.expect(SteamControllerSpecText.icons(radial).size() >= 4 && SteamControllerSpecText.distinct(SteamControllerSpecText.icons(radial)), "radial " + identifier + " shows a different icon on every button: " + SteamControllerSpecText.icons(radial).join(" "));
         }
         for needle in ["key_press LEFT_SHIFT, Next Bezel, semu-bezel.png", "key_press B, Next Bezel, semu-bezel.png", "key_press LEFT_SHIFT, Next Shader, semu-shader.png", "key_press V, Next Shader, semu-shader.png"] { contract.contains(quick, needle, "Next Bezel and Next Shader press Ctrl+Shift+B and Ctrl+Shift+V"); }
-        for needle in ["key_press F, Fit (Bezel/Screen), semu-fit.png", "key_press G, Aspect (4:3/16:9), semu-aspect.png", "key_press LEFT_SHIFT, Fit (Bezel/Screen), semu-fit.png"] { contract.contains(quick, needle, "Fit and Aspect press Ctrl+Shift+F and Ctrl+Shift+G"); }
         contract.contains(menu, "key_press R, Reset to Default, semu-reset.png", "Reset to Default presses Ctrl+Shift+R");
         JSONValue templates = document.templates();
         for (int index = 0; index < templates.size(); index++) { contract.lacks(SteamInputVdf.render(document, templates.at(index)), "key_press ESCAPE", "no template presses Esc, which exits RetroArch"); }
+    }
+}
+
+class SteamControllerSpecSettings {  // the settings radial: a page the quick ring switches to, every radial-v2 slot, Close in the centre
+    class void run(Contract contract, SteamInputDocument document) {
+        string vdf = SteamInputVdf.render(document, SteamControllerSpecText.template(document, "neptune_full"));
+        Vector<string> slots = ["visual.bezel.next", "visual.bezels.toggle", "visual.shader.next", "visual.shaders.toggle", "visual.placement.next", "visual.output.next", "controller.layout.next", "ui.players", "system.reset"];
+        contract.expect(document.slots("settings_slots").join(",").equals(slots.join(",")), "the settings ring is next bezel, bezel on/off, next shader, shader on/off, fit, aspect, controller layout, players, reset");
+        string settings = SteamControllerSpecText.group(vdf, "40");
+        contract.contains(settings, "\"name\" \"Semu Settings\"", "the settings radial carries its template name");
+        SteamControllerSpecRadial.ring(contract, document, settings, slots, 1);
+        contract.lacks(settings, "touch_menu_button_10", "the settings ring has exactly nine slots");
+        contract.contains(settings, SteamControllerSpecRadial.head(0) + "controller_action CHANGE_PRESET 1 0 0, Close Settings, semu-close.png, #232323 #FFFFFF\" } \"settings\"", "its centre returns to the gamepad preset and the quick radial");
+        for needle in ["key_press F, Fit (Bezel/Screen), semu-fit.png", "key_press G, Aspect (4:3/16:9), semu-aspect.png", "key_press C, Controller Layout, semu-controller.png", "key_press U, Players, semu-players.png", "key_press R, Reset to Default, semu-reset.png", "key_press B, Bezel On/Off, semu-bezel-toggle.png", "key_press H, Shader On/Off, semu-shader-toggle.png"] {
+            contract.contains(settings, needle, "the settings ring presses each slot's Ctrl+Shift chord: " + needle);
+        }
+        string page = SteamControllerSpecText.preset(vdf, 2);
+        string gamepad = SteamControllerSpecText.preset(vdf, 0);
+        contract.contains(page, "\"name\" \"Preset_1000002\"", "the settings page is preset 2, after the gamepad and the held hotkeys");
+        contract.contains(page, "\"40\" \"left_trackpad active\"", "on the settings page the left pad is the settings radial");
+        contract.expect(page.replace("\"40\" \"left_trackpad active\"", "Q").replace("\"32\" \"switch active\"", "S").replace("\"id\" \"2\" \"name\" \"Preset_1000002\"", "P")
+            .equals(gamepad.replace("\"20\" \"left_trackpad active\"", "Q").replace("\"7\" \"switch active\"", "S").replace("\"id\" \"0\" \"name\" \"Default\"", "P")), "everything but the left pad stays the gamepad there: buttons, sticks, triggers, the pointer");
+        string pageSwitches = SteamControllerSpecText.group(vdf, "32");
+        contract.contains(pageSwitches, "\"button_menu\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"xinput_button SELECT, , \" } } \"Long_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 2 0 0, Hotkeys", "on the settings page View still passes Select and a long press still holds the hotkeys");
+        contract.contains(pageSwitches, "\"button_back_left\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 4 0 0, Wii Controller Mode", "and a lower grip still holds the Wii layer, now preset 3");
+        contract.contains(pageSwitches, "\"button_back_left_upper\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 2 0 0, Hotkeys", "and an upper grip the hotkeys");
+        string gordon = SteamInputVdf.render(document, SteamControllerSpecText.template(document, "gordon_full"));
+        contract.contains(SteamControllerSpecText.group(gordon, "20"), SteamControllerSpecRadial.head(7) + "controller_action CHANGE_PRESET 5 0 0, Settings, semu-settings.png", "the 2015 controller's Settings slot finds its own settings preset by id (preset 4, after its grip presets)");
+        contract.contains(SteamControllerSpecText.preset(gordon, 4), "\"40\" \"left_trackpad active\"", "the 2015 settings page puts the settings radial on its left pad");
+        contract.contains(SteamControllerSpecText.group(gordon, "34"), "\"button_back_left\" { \"activators\" { \"Full_Press\" { \"bindings\" { \"binding\" \"controller_action CHANGE_PRESET 3 0 0, D-Pad", "and its grips still enter the d-pad there");
+        contract.contains(SteamControllerSpecText.group(gordon, "40"), SteamControllerSpecRadial.head(0) + "controller_action CHANGE_PRESET 1 0 0, Close Settings, semu-close.png", "the 2015 Close returns to its gamepad");
     }
 }
 
@@ -145,6 +180,14 @@ class SteamControllerSpecRules {  // definitions the rules refuse before any VDF
         contract.expect(SteamControllerSpecRules.rejected(fixture, "layouts.gordon.presets.0.sources", "dpad", JSONValue.makeString("dpad"), "drives source dpad, which controller_steamcontroller_gordon does not have"), "a 2015 preset driving a d-pad it lacks is refused");
         contract.expect(SteamControllerSpecRules.rejected(fixture, "layouts.gordon.presets.2.held_by.0", "input", JSONValue.makeString("button_back_left_upper"), "binds input button_back_left_upper"), "a 2015 hold on an upper grip it lacks is refused");
         contract.expect(SteamControllerSpecRules.rejected(fixture, "layouts.deck.presets.0.sources", "left_trackpad", JSONValue.makeString("wheel"), "unknown group wheel"), "a group kind the renderer does not draw is refused");
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "layouts.gordon.presets.4", "id", JSONValue.makeString("elsewhere"), "gordon_full has no preset settings for radial page radial.settings"), "a radial page whose preset a controller lacks is refused");
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "layouts.gordon.presets.4", "id", JSONValue.makeString("elsewhere"), "preset Settings is held by nothing and no radial page switches to it"), "a page preset nothing reaches is refused");
+        JSONValue page = JSONValue.makeObject();
+        page.set("label", JSONValue.makeString("Save Page"));
+        page.set("icon", JSONValue.makeString("semu-save.png"));
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "radial.pages", "radial.nowhere", page, "radial.pages.radial.nowhere names no preset"), "a radial page that names no preset is refused");
+        page.set("preset", JSONValue.makeString("settings"));
+        contract.expect(SteamControllerSpecRules.rejected(fixture, "radial.pages", "state.save", page, "is also an action"), "a radial page that shadows an action is refused");
     }
 }
 
@@ -163,7 +206,8 @@ class SteamControllerSpecIcons {  // every icon has a provenance row, and the ro
         contract.contains(provenance, "| `semu-shader.png` | `sparkles` |", "Next Shader's icon is Lucide sparkles");
         Vector<string> icons = [];
         for action in document.root.get("actions").keys() { if (!action.equals("ui.escape")) { icons.push(document.icon(action)); } }
-        contract.expect(SteamControllerSpecText.distinct(icons), "every action a binding may send has its own icon (the toggles no longer borrow the menu's)");
+        for page in document.pageNames() { icons.push(document.icon(page)); }
+        contract.expect(SteamControllerSpecText.distinct(icons), "every action a binding may send and every radial page has its own icon (the toggles no longer borrow the menu's)");
         string script = FileSystem.readText(PathTools.join(fixture.project, "packaging/steam/render-icons.sh"));
         contract.contains(script, "PROVENANCE.md", "the icon script reads the provenance table");
         contract.contains(script, "magick -background none -density 384 - -filter Mitchell -resize 192x192 -gravity center -extent 256x256 -strip", "the icon script is the recipe that reproduces the committed icons");
@@ -189,6 +233,7 @@ class SteamControllerSpecContract {
         Fixture fixture = Fixture("steam-deck");
         SteamInputDocument document = SteamInputDocument(SemuJson.readFile(SteamInputTemplates.source(fixture.plan)));
         SteamControllerSpecRadial.run(contract, document);
+        SteamControllerSpecSettings.run(contract, document);
         SteamControllerSpecLayouts.run(contract, document);
         SteamControllerSpecRules.run(contract, fixture);
         SteamControllerSpecIcons.run(contract, fixture, document);

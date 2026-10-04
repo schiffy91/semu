@@ -23,6 +23,12 @@ class SteamInputBindings {  // what Steam parses: command, label, icon, two colo
         return parts.join(" ");
     }
 
+    class string slot(SteamInputDocument document, Vector<SteamInputPreset> presets, string identifier) {  // a radial button: a page enters its preset, an action types its chord
+        if (document.page(identifier) == null) { return SteamInputBindings.action(document, identifier); }
+        SteamInputPreset target = SteamInputPresets.find(presets, document.pagePreset(identifier));
+        return target == null ? "" : SteamInputBindings.binding(document, target.enter(), identifier);  // the rules name a page this controller cannot reach
+    }
+
     class string activator(string name, string bindings) { return "\"" + name + "\" { \"bindings\" { " + bindings + " } }"; }
 
     class string input(string name, string activator, string bindings) {
@@ -80,6 +86,7 @@ class SteamInputGroups {  // one body per kind; presets only name the kind
         if (kind.equals("switches")) { return preset.index == 0 ? "7" : Strings.fromInt(30 + preset.index); }
         if (kind.equals("quick_radial")) { return "20"; }
         if (kind.equals("menu_radial")) { return "21"; }
+        if (kind.equals("settings_radial")) { return "40"; }  // past the layers (22 up) and the per-preset switches (30 up)
         if (kind.equals("layer_radial") && preset.layer >= 0) { return Strings.fromInt(22 + preset.layer); }
         return "";
     }
@@ -123,11 +130,11 @@ class SteamInputGroups {  // one body per kind; presets only name the kind
         SteamInputGroups.tail(lines, "");
     }
 
-    class void radial(Vector<string> lines, SteamInputDocument document, string identifier, Vector<string> slots, string center, string name) {
+    class void radial(Vector<string> lines, SteamInputDocument document, Vector<SteamInputPreset> presets, string identifier, Vector<string> slots, string center, string name) {
         SteamInputGroups.head(lines, identifier, "radial_menu", name);
-        if (!center.isEmpty()) { lines.push(SteamInputBindings.felt("touch_menu_button_0", SteamInputBindings.action(document, center), document.haptics())); }
+        if (!center.isEmpty()) { lines.push(SteamInputBindings.felt("touch_menu_button_0", SteamInputBindings.slot(document, presets, center), document.haptics())); }
         for (int index = 0; index < slots.size(); index++) {  // the ring starts at 1; button 0 is the centre
-            lines.push(SteamInputBindings.felt("touch_menu_button_" + Strings.fromInt(index + 1), SteamInputBindings.action(document, slots.get(index)), document.haptics()));
+            lines.push(SteamInputBindings.felt("touch_menu_button_" + Strings.fromInt(index + 1), SteamInputBindings.slot(document, presets, slots.get(index)), document.haptics()));
         }
         SteamInputGroups.tail(lines, "\t\t\t\"touchmenu_button_fire_type\" \"" + Strings.fromInt(document.fireType()) + "\"\n\t\t\t\"touch_menu_show_labels\" \""
             + (document.showLabels() ? "1" : "0") + "\"");

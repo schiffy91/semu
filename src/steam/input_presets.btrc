@@ -16,14 +16,16 @@ class SteamInputHold {  // held, it enters the preset; released, back to gamepad
 
 class SteamInputPreset {  // one Steam preset: the group each source drives
     public int index;
+    public string identifier;  // the declared id a radial page names
     public string title;
     public JSONValue sources;  // source -> group kind, in declared order
     public bool hotkeys;
     public int layer;  // the system layer it shows, or -1
     public Vector<SteamInputHold> holds;
 
-    public SteamInputPreset(int index, string title, JSONValue sources, bool hotkeys, int layer) {
+    public SteamInputPreset(int index, string identifier, string title, JSONValue sources, bool hotkeys, int layer) {
         self.index = index;
+        self.identifier = identifier;
         self.title = title;
         self.sources = sources;
         self.hotkeys = hotkeys;
@@ -33,6 +35,8 @@ class SteamInputPreset {  // one Steam preset: the group each source drives
 
     public string name() { return self.index == 0 ? "Default" : "Preset_" + Strings.fromInt(1000000 + self.index); }
     public string enter() { return "controller_action CHANGE_PRESET " + Strings.fromInt(self.index + 1) + " 0 0"; }
+
+    public bool switched() { return self.holds.isEmpty(); }  // the gamepad, or a page a radial slot switches to: holds start from it
 
     public bool heldBy(string input) {
         for hold in self.holds { if (hold.input.equals(input)) { return true; } }
@@ -49,12 +53,17 @@ class SteamInputPreset {  // one Steam preset: the group each source drives
 }
 
 class SteamInputPresets {  // the layout's presets, then each layer its grips reach
+    class SteamInputPreset find(Vector<SteamInputPreset> presets, string identifier) {  // null when this controller has no such preset
+        for preset in presets { if (!identifier.isEmpty() && preset.identifier.equals(identifier)) { return preset; } }
+        return null;
+    }
+
     class Vector<SteamInputPreset> ordered(SteamInputDocument document, SteamInputController controller) {
         Vector<SteamInputPreset> presets = [];
         JSONValue declared = controller.layout.get("presets");
         for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) {
             JSONValue row = declared.at(index);
-            SteamInputPreset preset = SteamInputPreset(presets.size(), SemuJson.textAt(row, "title"), row.get("sources"), SemuJson.boolAt(row, "hotkeys", false), -1);
+            SteamInputPreset preset = SteamInputPreset(presets.size(), SemuJson.textAt(row, "id"), SemuJson.textAt(row, "title"), row.get("sources"), SemuJson.boolAt(row, "hotkeys", false), -1);
             JSONValue holds = row.get("held_by");
             for (int hold = 0; holds != null && holds.isArray() && hold < holds.size(); hold++) {
                 preset.holds.push(SteamInputHold(SemuJson.textAt(holds.at(hold), "input"), SemuJson.textAt(holds.at(hold), "activator")));
@@ -67,7 +76,7 @@ class SteamInputPresets {  // the layout's presets, then each layer its grips re
             bool reachable = !activators.isEmpty();
             for activator in activators { if (controller.grip(activator).isEmpty()) { reachable = false; } }
             if (!reachable) { continue; }  // a controller without those grips gets no such layer
-            SteamInputPreset preset = SteamInputPreset(presets.size(), SemuJson.textAt(layers.at(index), "name"), controller.layout.get("layer_sources"), false, index);
+            SteamInputPreset preset = SteamInputPreset(presets.size(), SemuJson.textAt(layers.at(index), "id"), SemuJson.textAt(layers.at(index), "name"), controller.layout.get("layer_sources"), false, index);
             for activator in activators { preset.holds.push(SteamInputHold(controller.grip(activator), "")); }
             presets.push(preset);
         }

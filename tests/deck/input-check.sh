@@ -33,6 +33,7 @@
 #               the top face button, which the replica sends as BTN_WEST, as Steam's pad does)
 #   A+B         a pad chord: hold A, press B, release A (A+B+C holds A and B)
 #   key:CHORD   inject.sh types CHORD as XTest from the second Xwayland, the way Steam's radial sends a slot
+#   key:A,B     A, then B a second later: a second press inside Semu's 3 s confirm window (Reset, Aspect)
 #   move:FX,FY  inject.sh moves the pointer to FX,FY of the touch screen as drawn, by relative motion as
 #               Steam's trackpad mouse does (see inject.sh)
 #   tap:FX,FY   the same, then a 0.15 s click
@@ -195,7 +196,7 @@ evidence() {  # what the case left: the X key adapter, each action by source, th
   arrows
   if [ -n "$game" ] && [ -f "$state/semu-render-actions.bin" ]; then  # emptied when this session started
     od -A d -t d4 -w56 -v "$state/semu-render-actions.bin" > "$dir/journal.od"
-    note "journal (action/slot; 1 menu, 2 up, 3 down, 4 confirm, 5 back, 6 save, 7 load, 9 screenshot, 77 next slot, 78 previous slot, 79 bezel, 80 shader): $(awk 'NF >= 10 { printf "%s%s/%s", separator, $8, $10; separator = " " }' "$dir/journal.od")"
+    note "journal (action/slot[/reserved: a player, or a prompt]; 1 menu, 2 up, 3 down, 4 confirm, 5 back, 6 save, 7 load, 9 screenshot, 77 next slot, 78 previous slot, 79 bezel, 80 shader, 81 fit, 82 aspect, 83 layout, 84 pad, 85 reset, 86 players page): $(awk 'NF >= 11 { printf "%s%s/%s%s", separator, $8, $10, ($11 != 0 ? "/" $11 : ""); separator = " " }' "$dir/journal.od")"
   else
     note "journal: none (no session, or none at $state)"
   fi

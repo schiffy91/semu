@@ -31,15 +31,15 @@ class SteamInputVdf {  // one template's controller_mappings, walked from declar
             if (preset.hotkeys && !action.isEmpty()) { lines.push(SteamInputBindings.input(input, "Full_Press", SteamInputBindings.action(document, action))); continue; }
             if (preset.index > 0 && preset.heldBy(input)) { lines.push(SteamInputBindings.input(input, "release", SteamInputBindings.backToGamepad())); continue; }
             if (preset.hotkeys) { continue; }  // the hotkey set passes nothing through
-            string entries = preset.index == 0 ? SteamInputVdf.holdEntries(presets, input) : "";
-            bool pressed = !(preset.index == 0 && SteamInputVdf.replacesPress(presets, input));
+            string entries = preset.switched() ? SteamInputVdf.holdEntries(presets, input) : "";  // from the gamepad or a page, the holds still work
+            bool pressed = !(preset.switched() && SteamInputVdf.replacesPress(presets, input));
             string activators = (pressed ? pass : "") + (pressed && !entries.isEmpty() ? " " : "") + entries;
             lines.push("\t\t\t\"" + input + "\" { \"activators\" { " + activators + " } }");
         }
         for other in presets {  // holds on inputs that pass nothing through: grips
             for hold in other.holds {
                 if (plainInputs.contains(hold.input)) { continue; }
-                if (preset.index == 0) { lines.push(SteamInputBindings.input(hold.input, hold.activator, SteamInputBindings.enter(other))); }
+                if (preset.switched()) { lines.push(SteamInputBindings.input(hold.input, hold.activator, SteamInputBindings.enter(other))); }
                 if (preset.index > 0 && other.index == preset.index) { lines.push(SteamInputBindings.input(hold.input, "release", SteamInputBindings.backToGamepad())); }
             }
         }
@@ -62,11 +62,12 @@ class SteamInputVdf {  // one template's controller_mappings, walked from declar
         if (kind.equals("hotkey_left_stick")) { lines.push(SteamInputGroups.single(identifier, "joystick_move", SteamInputBindings.action(document, document.hotkeyAction("L3")), "")); }
         if (kind.equals("hotkey_right_stick")) { lines.push(SteamInputGroups.single(identifier, "joystick_move", SteamInputBindings.action(document, document.hotkeyAction("R3")), "")); }
         if (kind.equals("switches")) { SteamInputVdf.switches(lines, document, controller, presets, preset, identifier); }
-        if (kind.equals("quick_radial")) { SteamInputGroups.radial(lines, document, identifier, document.slots("quick_slots"), document.center("quick_center"), SemuJson.textAt(template, "quick_radial_name")); }
-        if (kind.equals("menu_radial")) { SteamInputGroups.radial(lines, document, identifier, document.slots("menu_slots"), document.center("menu_center"), SemuJson.textAt(template, "menu_radial_name")); }
+        if (kind.equals("quick_radial")) { SteamInputGroups.radial(lines, document, presets, identifier, document.slots("quick_slots"), document.center("quick_center"), SemuJson.textAt(template, "quick_radial_name")); }
+        if (kind.equals("menu_radial")) { SteamInputGroups.radial(lines, document, presets, identifier, document.slots("menu_slots"), document.center("menu_center"), SemuJson.textAt(template, "menu_radial_name")); }
+        if (kind.equals("settings_radial")) { SteamInputGroups.radial(lines, document, presets, identifier, document.slots("settings_slots"), document.center("settings_center"), SemuJson.textAt(template, "settings_radial_name")); }
         if (kind.equals("layer_radial")) {
             JSONValue layer = document.layers().at(preset.layer);
-            SteamInputGroups.radial(lines, document, identifier, SemuJson.strings(layer.get("slots")), SemuJson.textAt(layer, "center"), SemuJson.textAt(layer, "name"));
+            SteamInputGroups.radial(lines, document, presets, identifier, SemuJson.strings(layer.get("slots")), SemuJson.textAt(layer, "center"), SemuJson.textAt(layer, "name"));
         }
     }
 

@@ -12,6 +12,7 @@ import ../../../src/model.btrc;
 import ../../../src/resolve.btrc;
 import ../../../src/emit/rendering.btrc;
 import ../../../src/launch/actions.btrc;
+import ../../../src/steam/input_document.btrc;
 import ../../../src/renderer/renderer_abi.btrc;
 import ../../../src/renderer/renderer_file_hash.btrc;
 
@@ -225,7 +226,12 @@ class GameBoySpecInput {
         JSONValue emulatorActions = SemuJson.get(fixture.model.emulator("retroarch").definition, "input.actions");
         Vector<string> actions = ["ui.pause", "ui.screenshot", "ui.fullscreen", "ui.escape", "app.quit", "state.prev", "state.next", "state.load", "state.save", "speed.rewind", "speed.fast"];
         Vector<string> bindings = ["input_up_btn", "input_down_btn", "input_left_btn", "input_right_btn", "input_b_btn", "input_a_btn", "input_start_btn", "input_select_btn"];
-        Vector<string> radial = SemuJson.strings(SemuJson.get(global, "radial.quick_slots"));
+        SteamInputDocument document = SteamInputDocument(global);
+        Vector<string> radial = [];  // every ring slot and centre; a radial page switches Steam's preset and sends nothing
+        for name in document.radials() {
+            for slot in document.slots(name + "_slots") { if (document.page(slot) == null) { radial.push(slot); } }
+            if (!document.center(name + "_center").isEmpty() && document.page(document.center(name + "_center")) == null) { radial.push(document.center(name + "_center")); }
+        }
         contract.expect(GameBoySpecJson.exactStrings(emulatorActions, actions), "RetroArch declares exactly the eleven gb actions it consumes, none of Semu's own");
         contract.expect(!GameBoySpecJson.containsString(emulatorActions, "screen.swap"), "RetroArch offers no dead screen.swap");
         bool vocabulary = true;
@@ -233,7 +239,7 @@ class GameBoySpecInput {
         contract.expect(vocabulary && global.get("actions").has("screen.swap"), "every gb action and screen.swap exist in the Steam Input vocabulary");
         bool reachable = true;
         for action in radial { if (!SemuActionRouter.semuOwned(action) && !GameBoySpecJson.containsString(emulatorActions, action)) { reachable = false; } }
-        contract.expect(reachable && radial.contains("state.prev") && radial.contains("ui.menu"), "every radial action is Semu's own or one RetroArch consumes");
+        contract.expect(reachable && radial.contains("state.prev") && radial.contains("ui.menu") && radial.contains("visual.placement.next"), "every radial action, the settings radial's included, is Semu's own or one RetroArch consumes");
         bool mapped = true;
         for binding in bindings {
             string value = SemuJson.textAt(autoconfig, "contract.gameplay_mapping." + binding);

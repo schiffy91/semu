@@ -20,9 +20,23 @@ class SteamInputDocument {  // the shared Steam Input definition: actions, radia
         return actions != null && actions.isObject() && actions.has(identifier) ? actions.get(identifier) : JSONValue.makeObject();
     }
 
-    public string label(string identifier) { return SemuJson.textAt(self.action(identifier), "label"); }
-    public string icon(string identifier) { return SemuJson.textAt(self.action(identifier), "icon"); }
+    public JSONValue page(string identifier) {  // a radial slot that switches Steam's preset instead of typing a chord; null for an action
+        JSONValue pages = SemuJson.get(self.root, "radial.pages");  // ids hold dots, so the last step is a key
+        return pages != null && pages.isObject() && pages.has(identifier) ? pages.get(identifier) : null;
+    }
+
+    public JSONValue slotEntry(string identifier) { return self.page(identifier) != null ? self.page(identifier) : self.action(identifier); }
+    public string label(string identifier) { return SemuJson.textAt(self.slotEntry(identifier), "label"); }
+    public string icon(string identifier) { return SemuJson.textAt(self.slotEntry(identifier), "icon"); }
     public string chord(string identifier) { return SemuJson.textAt(self.action(identifier), "chord"); }
+    public string pagePreset(string identifier) { return self.page(identifier) == null ? "" : SemuJson.textAt(self.page(identifier), "preset"); }
+
+    public Vector<string> pageNames() {
+        JSONValue pages = SemuJson.get(self.root, "radial.pages");
+        Vector<string> names = [];
+        if (pages != null && pages.isObject()) { names = pages.keys(); }
+        return names;
+    }
 
     public string hotkeyAction(string button) {
         JSONValue bindings = self.root.get("hotkey_bindings");
@@ -54,13 +68,16 @@ class SteamInputDocument {  // the shared Steam Input definition: actions, radia
         return null;
     }
 
-    public Vector<string> boundActions() {  // all a binding can send: hotkeys, rings, centres
+    public Vector<string> radials() { return ["quick", "menu", "settings"]; }  // radial.<name>_slots and <name>_center
+
+    public Vector<string> boundActions() {  // all a binding can send as keys: hotkeys, rings, centres (pages switch presets)
         Vector<string> actions = [];
         JSONValue bindings = self.root.get("hotkey_bindings");
         for (int index = 0; bindings != null && bindings.isArray() && index < bindings.size(); index++) { actions.push(SemuJson.textAt(bindings.at(index), "action")); }
-        for radial in ["quick", "menu"] {
-            for slot in self.slots(radial + "_slots") { actions.push(slot); }
-            if (!self.center(radial + "_center").isEmpty()) { actions.push(self.center(radial + "_center")); }
+        for radial in self.radials() {
+            for slot in self.slots(radial + "_slots") { if (self.page(slot) == null) { actions.push(slot); } }
+            string center = self.center(radial + "_center");
+            if (!center.isEmpty() && self.page(center) == null) { actions.push(center); }
         }
         JSONValue layers = self.layers();
         for (int index = 0; layers.isArray() && index < layers.size(); index++) {

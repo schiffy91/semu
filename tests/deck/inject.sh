@@ -21,7 +21,8 @@
 #   inject.sh --plan FIRST GAP TOKEN...                   # "MS inject TOKEN: what" per X token; sends nothing
 #   inject.sh --choose MOUNTINFO SOCKETS GAME DISPLAY...  # the display rule alone: the injector display or "refused: why"
 #
-# key:CHORD types CHORD (xdotool key --delay 80: the key is held about 40 ms). move:FX,FY moves the
+# key:CHORD types CHORD (xdotool key --delay 80: the key is held about 40 ms); key:A,B types A, then B
+# a second later, so a second press lands inside Semu's 3 s confirm window (Reset, Aspect). move:FX,FY moves the
 # pointer to the fractions FX,FY of the touch screen as drawn now: parked at the top left, then moved
 # relatively, as Steam's trackpad mouse moves it. tap:FX,FY moves the same way, then clicks for
 # 0.15 s. The touch screen is surfaceN_content of the newest receipt in SEMU_INJECT_EVIDENCE from
@@ -41,7 +42,11 @@ fraction() {  # FX,FY: prints "FX FY" when both are numbers from 0 to 1
 
 describe() {  # TOKEN: what an X token does (nothing for a pad token); fails on a malformed X token
   case "$1" in
-    key:*) case "${1#key:}" in ''|*[!A-Za-z0-9_+]*) return 1 ;; esac; echo "xdotool key --delay 80 ${1#key:}" ;;
+    key:*) case "${1#key:}" in ''|,*|*,|*,,*|*[!A-Za-z0-9_+,]*) return 1 ;; esac  # A,B: a second press inside a confirm window
+           case "${1#key:}" in
+             *,*) echo "xdotool key --delay 80 $(printf '%s' "${1#key:}" | sed 's/,/, then /g'), a second apart" ;;
+             *) echo "xdotool key --delay 80 ${1#key:}" ;;
+           esac ;;
     move:*) fraction "${1#move:}" > /dev/null || return 1; echo "park the pointer, then mousemove_relative to ${1#move:} of the touch screen" ;;
     tap:*) fraction "${1#tap:}" > /dev/null || return 1; echo "park, mousemove_relative to ${1#tap:} of the touch screen, mousedown 1, 0.15 s, mouseup 1" ;;
     *:*) return 1 ;;  # no pad token holds a colon
@@ -178,9 +183,14 @@ for token in "$@"; do
     wait_for "$due"
     began="$(elapsed)"; when="$(awk -v due="$due" 'BEGIN { printf "%.3f", due / 1000 }') (began $began)"
     case "$token" in
-      key:*)
-        send key --delay 80 "${token#key:}"
-        sent=$?
+      key:*)  # A,B types A, then B a second later
+        sent=0; rest="${token#key:}"
+        while :; do
+          chord="${rest%%,*}"
+          send key --delay 80 "$chord" || sent=$?
+          [ "$chord" = "$rest" ] && break
+          rest="${rest#*,}"; sleep 1
+        done
         echo "inject: $when $token sent to $injector (xdotool $sent)" ;;
       move:*|tap:*)
         [ "$resolved" = yes ] || { rect="$(touch_rect)" && resolved=yes; }  # no receipt a second ago: one more look

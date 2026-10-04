@@ -13,6 +13,7 @@ import ../../../src/emit/profiles.btrc;
 import ../../../src/emit/key_collisions.btrc;
 import ../../../src/launch/actions.btrc;
 import ../../../src/steam/input_template.btrc;
+import ../../../src/steam/input_document.btrc;
 
 class EmulatorHotkeyTools {
     class Vector<string> emulators() { return ["retroarch", "dolphin", "pcsx2", "ppsspp", "flycast", "melonds", "azahar", "cemu", "ryujinx"]; }
@@ -38,19 +39,10 @@ class EmulatorHotkeyTools {
         return "";
     }
 
-    class Vector<string> steamChords(Fixture fixture) {  // every chord a Steam Input binding of the Deck sends
+    class Vector<string> steamChords(Fixture fixture) {  // every chord a Steam Input binding of the Deck sends: hotkeys, every radial and centre, the layers
         JSONValue root = SemuJson.readFile(PathTools.join(fixture.project, "config/input/steam/steam_input.json"));
-        Vector<string> actions = [];
-        JSONValue bindings = root.get("hotkey_bindings");
-        for (int index = 0; index < bindings.size(); index++) { actions.push(SemuJson.textAt(bindings.at(index), "action")); }
-        for slot in SemuJson.strings(SemuJson.get(root, "radial.quick_slots")) { actions.push(slot); }
-        for slot in SemuJson.strings(SemuJson.get(root, "radial.menu_slots")) { actions.push(slot); }
-        JSONValue layers = SemuJson.get(root, "radial.system_layers");
-        for (int index = 0; layers.isArray() && index < layers.size(); index++) {
-            for slot in SemuJson.strings(layers.at(index).get("slots")) { actions.push(slot); }
-        }
         Vector<string> chords = [];
-        for action in actions { chords.push(fixture.plan.input.chord(action)); }
+        for action in SteamInputDocument(root).boundActions() { chords.push(fixture.plan.input.chord(action)); }
         return chords;
     }
 }

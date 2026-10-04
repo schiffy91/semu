@@ -16,6 +16,7 @@ import ../support.btrc;
 import ../../../src/lib/json.btrc;
 import ../../../src/lib/paths.btrc;
 import ../../../src/renderer/action_abi.btrc;
+import ../../../src/steam/input_document.btrc;
 
 class DeckHarnessShell {  // the Deck scripts under bash, as the Deck runs them: stdout and the exit status
     class ExecResult run(string script, Vector<string> arguments) {
@@ -92,17 +93,30 @@ class DeckHarnessScripts {  // read as text: the parts of a run that only the De
         contract.contains(injector, "grep -q -x \"SEMU_INJECT_START_MS=$start_ms\"", "and only those carrying the case's clock");
         contract.contains(injector, "for pid in $(pgrep -x Xwayland); do", "the displays are found among Xwaylands, whoever their parent is");
         DeckHarnessScripts.pointer(contract, check, injector);
-        Vector<string> legends = [f"{SemuActions.menuToggle()} menu", f"{SemuActions.menuBack()} back", f"{SemuActions.screenshot()} screenshot", f"{SemuActions.stateNext()} next slot", f"{SemuActions.statePrev()} previous slot", f"{SemuActions.bezelSelect()} bezel", f"{SemuActions.shaderSelect()} shader"];
+        Vector<string> legends = [f"{SemuActions.menuToggle()} menu", f"{SemuActions.menuBack()} back", f"{SemuActions.screenshot()} screenshot", f"{SemuActions.stateNext()} next slot", f"{SemuActions.statePrev()} previous slot", f"{SemuActions.bezelSelect()} bezel", f"{SemuActions.shaderSelect()} shader",
+                                  f"{SemuActions.placementSelect()} fit", f"{SemuActions.outputSelect()} aspect", f"{SemuActions.layoutSelect()} layout", f"{SemuActions.playerAssign()} pad", f"{SemuActions.resetNotice()} reset", f"{SemuActions.menuPage()} players page"];
         for legend in legends {
             contract.contains(check, legend, "input-check.sh names journal codes as action_abi does");
             contract.contains(cases, legend, "radial-check.cases names journal codes as action_abi does");
         }
         JSONValue input = SemuJson.readFile(PathTools.join(fixture.project, "config/input/linux-desktop/input.json"));
-        for action in ["visual.bezel.next", "visual.shader.next", "state.next", "state.prev", "ui.menu", "ui.screenshot", "visual.shaders.toggle"] {
-            JSONValue entry = SemuJson.get(input, "actions").get(action);  // ids hold dots, so not one path
-            string chord = entry == null ? "" : SemuJson.textAt(entry, "chord");
-            contract.expect(!chord.isEmpty() && cases.contains("key:" + chord.toLower() + " "), f"radial-check.cases types {action} with its input.json chord {chord}");
+        SteamInputDocument steam = SteamInputDocument(SemuJson.readFile(PathTools.join(fixture.project, "config/input/steam/steam_input.json")));
+        Vector<string> slots = [];  // every ring slot and centre that types a chord (a page switches Steam's preset, which only Game Mode shows)
+        for name in steam.radials() {
+            for slot in steam.slots(name + "_slots") { if (steam.page(slot) == null && !slots.contains(slot)) { slots.push(slot); } }
+            string center = steam.center(name + "_center");
+            if (!center.isEmpty() && steam.page(center) == null && !slots.contains(center)) { slots.push(center); }
         }
+        Vector<string> untyped = ["state.save", "state.load", "app.quit"];  // no case saves or loads a state, and the harness quits every case itself
+        contract.expect(slots.contains("visual.placement.next") && slots.contains("system.reset") && slots.contains("ui.players") && slots.contains("visual.bezels.toggle"), "the radials' slots include the radial-v2 settings");
+        for action in slots {
+            if (untyped.contains(action)) { continue; }
+            JSONValue entry = SemuJson.get(input, "actions").get(action);  // ids hold dots, so not one path
+            string chord = entry == null ? "" : SemuJson.textAt(entry, "chord").toLower();
+            contract.expect(!chord.isEmpty() && (cases.contains("key:" + chord + " ") || cases.contains("key:" + chord + ",")), f"radial-check.cases types the radial slot {action} with its input.json chord {chord}");
+        }
+        contract.contains(cases, "key:ctrl+shift+r,ctrl+shift+r ", "Reset's second press is typed inside its confirm window");
+        contract.contains(cases, "key:ctrl+shift+g,ctrl+shift+g ", "and Aspect's");
     }
 }
 
@@ -115,7 +129,7 @@ class DeckHarnessPlan {  // input-check.sh --plan: the same functions a run sche
         contract.expect(planned.ok(), "input-check.sh --plan radial-check.cases succeeds: " + planned.stderr());
         int declared = 0;
         for line in Strings.split(FileSystem.readText(cases), "\n") { if (!line.isEmpty() && !line.startsWith("#")) { declared++; } }
-        contract.expect(declared >= 13 && DeckHarnessShell.count(text, "== ") == declared, f"every radial case is planned ({DeckHarnessShell.count(text, "== ")} of {declared})");
+        contract.expect(declared >= 16 && DeckHarnessShell.count(text, "== ") == declared, f"every radial case is planned ({DeckHarnessShell.count(text, "== ")} of {declared})");
         contract.lacks(text, "not run", "no radial case is malformed");
         contract.contains(text, "== gba-retroarch-mgba: gba/Legend of Zelda, The - The Minish Cap (USA).zip\n", "a case is named as its results directory");
         contract.contains(text, "pad    virtual_pad --steam-virtual-pad 30 sleep:6 sleep:6 sleep:6 sleep:6 sleep:6\n", "the pad sleeps through every X token");
@@ -128,10 +142,11 @@ class DeckHarnessPlan {  // input-check.sh --plan: the same functions a run sche
         contract.contains(text, "inject tap:0.05,0.9: park, mousemove_relative to 0.05,0.9 of the touch screen, mousedown 1, 0.15 s, mouseup 1\n", "a tap clicks where it moved");
         contract.contains(text, "inject inject.sh 50 6 key:ctrl+m dpad_down dpad_up south\n", "a mixed case hands inject.sh the pad tokens as pauses");
         contract.contains(text, "    56.0  pad    dpad_down: press:dpad_down\n", "and the pad's press keeps its slot on the shared clock");
+        contract.contains(text, "    48.0  inject key:ctrl+shift+r,ctrl+shift+r: xdotool key --delay 80 ctrl+shift+r, then ctrl+shift+r, a second apart\n    53.0  shot   after-4-key-ctrl+shift+r_ctrl+shift+r\n", "a double press is one token: the second chord a second after the first, inside a confirm window");
         string bad = PathTools.join(fixture.scratch, "malformed.cases");
-        FileSystem.writeText(bad, "gba retroarch mgba 30 key: -- x.zip\ngba retroarch mgba 30 tap:2,0.5 -- x.zip\ngba retroarch mgba 30 jump -- x.zip\ngba retroarch mgba 30 select++north -- x.zip\ngba retroarch mgba 30 key:ctrl+k;id -- x.zip\ngba retroarch mgba 30 dpad_* -- x.zip\ngba retroarch mgba 30 south tap:0.5,0.5 -- x.zip\n");
+        FileSystem.writeText(bad, "gba retroarch mgba 30 key: -- x.zip\ngba retroarch mgba 30 tap:2,0.5 -- x.zip\ngba retroarch mgba 30 jump -- x.zip\ngba retroarch mgba 30 select++north -- x.zip\ngba retroarch mgba 30 key:ctrl+k;id -- x.zip\ngba retroarch mgba 30 dpad_* -- x.zip\ngba retroarch mgba 30 south tap:0.5,0.5 -- x.zip\ngba retroarch mgba 30 key:ctrl+k, -- x.zip\n");
         ExecResult refused = DeckHarnessShell.run(script, ["--plan", bad]);
-        contract.expect(refused.code == 2 && DeckHarnessShell.count(refused.stdout(), "not run: a token above is malformed") == 6, f"six malformed cases are refused and the plan fails ({refused.code}): " + refused.stdout());
+        contract.expect(refused.code == 2 && DeckHarnessShell.count(refused.stdout(), "not run: a token above is malformed") == 7, f"seven malformed cases (a trailing comma among them) are refused and the plan fails ({refused.code}): " + refused.stdout());
         contract.contains(refused.stdout(), "inject inject.sh 30 6 south tap:0.5,0.5\n", "the well-formed case among them is still planned");
     }
 }

@@ -364,6 +364,15 @@ Semu executing the actions itself.
   images; a toast at the top of the screen names the new choice (and the
   slot after a save, load or slot change), and the menu's BEZEL and SHADER
   rows show the current value.
+- The Deck's radials (`config/input/steam/steam_input.json`, one template per Steam controller, the
+  same for all 17 systems): the left pad is the quick ring (Save, Load, Previous and Next Slot, Next
+  Bezel, Next Shader, Settings, Menu, Screenshot, Quit; centre empty). Settings is a Steam preset
+  switch to the settings radial (Next Bezel, Bezel On/Off, Next Shader, Shader On/Off, Fit, Aspect,
+  Controller Layout, Players, Reset to Default; Close Settings in the centre), which stays until
+  Close while the rest of the controller stays the gamepad. Holding View or an upper grip gives the
+  menu ring (Up, Down, Confirm, Back, Bezel On/Off, Shader On/Off, Reset, Players; Open Menu in the
+  centre); a lower grip the Wii layer. Every slot types a modified chord of the one vocabulary,
+  except the two preset switches, and every icon in one radial differs.
 - **Done when:** on the desktop, a controller opens the menu with Select+Y,
   navigates it with the D-pad, saves a state from it (state file observed),
   toggles the bezel live, and Start+Select still quits, all captured
@@ -1089,6 +1098,51 @@ Status: being designed (workflow mods-design, with critique) while the radial se
   to none leaves its pad to the next one), Dolphin.ini WiimoteSource0 = 1, WiimoteSource1 = 0, WiimoteSource2
   = 1. The first VM run found a launch that never dealt its players (the supervisor stopped on an empty
   roster vector); fixed, and a real-launch contract guards it.
+- Item 3 (radial v2), part 3 (Steam Input): built 2026-10-04, checked offline; the Deck is open (a release,
+  then `semu-deck-cli steam input` with Steam stopped). Rulings, as reversible defaults (the owner being
+  unattended):
+  - Steam's radial stays one template for all 17 systems, so the choices sit on a second radial reached from
+    the quick ring. Its Settings slot (Lucide settings) is a Steam preset switch, `controller_action
+    CHANGE_PRESET` with the label and icon in the binding: the form community radials on the Deck use for
+    their Back centres (workshop item 3372611329 binds `CHANGE_PRESET 32765 0 0, Back, RD-user-red-home.png`
+    on a radial_menu's touch_menu_button_0, read-only). It enters a settings page whose left pad is the
+    settings radial: Next Bezel, Bezel On/Off, Next Shader, Shader On/Off, Fit, Aspect, Controller Layout,
+    Players and Reset to Default, with Close Settings (Lucide circle-x, CHANGE_PRESET 1) in the centre.
+  - The page stays until Close, so Next Bezel steps on and the second press of Aspect, GameCube or Reset
+    lands inside its 3 s window. The rest of the controller is the gamepad there, and View's long press,
+    the upper grips (hotkeys) and the lower grips (Wii layer) work from it as from the gamepad. The quick
+    ring is Save, Load, the two slots, Next Bezel, Next Shader, Settings, Menu, Screenshot and Quit (10,
+    centre empty): Fit, Aspect and Controller Layout moved to Settings. The held menu ring is unchanged
+    (it keeps Bezel and Shader On/Off, Reset and Players next to the menu steering).
+  - Data: `radial.pages` (id: label, icon, preset id), `radial.settings_slots` and `settings_center`, a
+    `settings` preset with no `held_by` in each layout (the Deck's preset 2, so the Wii layer is now preset
+    3; gordon's preset 4, after its grip presets), group kind `settings_radial` (group 40) and each
+    template's `settings_radial_name`. A page finds its preset by id on each controller. The checker
+    refuses a page that is also an action, a page without a preset, a preset a controller lacks, and a
+    page preset that nothing holds and no page switches to.
+  - Off-screen the preset switch cannot be exercised (it is Steam's), so `radial-check.cases` covers every
+    slot that types a chord: case 14 (snes: Controller Layout and Aspect unavailable, the players page
+    steered with Ctrl+Down, Ctrl+Space, Ctrl+Up and Ctrl+Backspace), 15 (gba: Bezel On/Off, Fit, Reset
+    twice) and 16 (wii: Controller Layout live, Fit, Players, Aspect twice and its restart). A token
+    `key:A,B` types B a second after A; the result's journal line now shows the reserved field.
+  Contracts: steam_controllers.btrc (the ten-slot quick ring and its Settings switch to preset 2; the
+  settings radial's nine chords and Close; the page equal to the gamepad but its left pad; View, the upper
+  and the lower grips from it; gordon's switch found by id to preset 4; the four new refusals),
+  steam_input.btrc (page icons declared and distinct, the Wii layer at preset 3), gameboy.btrc and
+  emulator_hotkeys.btrc (every ring and centre, the settings radial's included, from the document's bound
+  actions), deck_harness.btrc (codes 81-86 named, every chord-typing slot of every radial in the cases with
+  its input.json chord, the double-press timeline, a dangling comma refused). 7 mutations each failed their
+  checks: pages typed as chords, a page's preset found by position, page presets losing the holds, the
+  missing-preset refusal dropped, gordon without its settings preset, the Players token removed from the
+  cases, and inject.sh without the comma.
+  Checked: `semu steam input --steam-root <scratch>` wrote the four templates, 32 icons and the Deck
+  profile; in it quick button 7 is `controller_action CHANGE_PRESET 3 0 0, Settings, semu-settings.png`,
+  group 40 "Semu Settings" holds the nine slots and Close on button 0, the presets are Gamepad, Hotkeys,
+  Settings and Wii Controller Mode, and its braces balance. `render-icons.sh --check`: all 28 Lucide icons
+  re-render at RMSE 0 (the new two read as a gear and a circled x, by eye). `input-check.sh --plan
+  tests/deck/radial-check.cases`: 16 timelines, identical under bash 5.3 and 3.2.
+  Open, on the Deck: Steam honouring the preset switch and Close in Game Mode (only the binding's form is
+  evidenced), the 10 + 10 + 9 + 4 icons and their look, and cases 14 to 16.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
@@ -2233,6 +2287,12 @@ Update this block whenever a milestone criterion changes state.
   receipts each and saved `arctic`/`agb001` and `main_right`/`grid`; the nds captures, judged by eye,
   show the toast over the shell, then the large main right layout with the LCD grid, and the menu
   naming both. `nix build .#semu-renderer` (macOS) builds the split config.
+  2026-10-04, the settings radial (offline, Deck untouched; M13 item 3 part 3): the quick ring's Settings
+  slot switches Steam to a settings page whose left-pad radial holds every radial-v2 choice (Next Bezel,
+  Bezel On/Off, Next Shader, Shader On/Off, Fit, Aspect, Controller Layout, Players, Reset) with Close in
+  the centre, on the Deck, the new Steam Controller and the 2015 one; `radial-check.cases` (16 cases)
+  types every chord those radials send. Still for the Deck: `semu-deck-cli steam input` with Steam
+  stopped, then the radials in Game Mode and cases 14 to 16.
 - M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a

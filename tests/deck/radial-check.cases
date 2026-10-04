@@ -5,11 +5,19 @@
 # trackpad (relative pointer motion and a click, at fractions of the touch screen as drawn); bare
 # names are Steam's virtual pad (the replica). The chords are input.json's (config/input/
 # linux-desktop): Next Bezel Ctrl+Shift+B, Next Shader Ctrl+Shift+V, Next Slot Ctrl+K, Previous
-# Slot Ctrl+J, Menu Ctrl+M, Screenshot Ctrl+X, Shader On/Off Ctrl+H. No case saves or loads a state
+# Slot Ctrl+J, Menu Ctrl+M, Screenshot Ctrl+X, Shader On/Off Ctrl+H, Bezel On/Off Ctrl+B, Fit
+# Ctrl+Shift+F, Aspect Ctrl+Shift+G, Controller Layout Ctrl+Shift+C, Players Ctrl+Shift+U, Reset to
+# Default Ctrl+Shift+R, and the held menu ring's Up, Down, Confirm and Back Ctrl+Up, Ctrl+Down,
+# Ctrl+Space and Ctrl+Backspace. The quick ring's Settings slot and the settings radial's Close are
+# Steam preset switches, which only Game Mode can show; every slot of the settings radial types one
+# of these chords (steam_input.json settings_slots), so the cases cover each slot's action. key:A,B
+# presses A, then B a second later, inside the 3 s confirm window of Reset and Aspect. No case saves or loads a state
 # (a standalone emulator keeps its states in the owner's state root); the choices land in
 # OUT/home/semu.json and later cases start from them, so keep the order. Journal codes (result
-# "journal", action/slot): 1 menu, 2 up, 3 down, 5 back, 9 screenshot, 77 next slot,
-# 78 previous slot, 79 bezel (slot = the index into the variants file), 80 shader.
+# "journal", action/slot[/reserved]): 1 menu, 2 up, 3 down, 4 confirm, 5 back, 9 screenshot, 77 next slot,
+# 78 previous slot, 79 bezel (slot = the index into the variants file), 80 shader, 81 fit, 82 aspect,
+# 83 layout, 84 pad, 85 reset, 86 players page (slot 1 open, 0 back, -1 one player); a third number
+# is the record's reserved field: the player (83, 84) or a prompt (1 on 82 and 85).
 #
 # 1. "listening for keys on X display"; visual.bezel.next, visual.shader.next, state.next,
 #    state.prev and ui.screenshot each once "(keyboard)", nothing deduplicated; journal 79/1 80/1
@@ -56,3 +64,26 @@ psp ppsspp - 45 key:ctrl+k key:ctrl+j key:ctrl+shift+b -- Daxter*.iso
 # 13. A system without bezels: visual.bezel.next "(keyboard)" then "no bezel to choose for wiiu
 #     here"; journal 79/-1 (the toast BEZEL: NONE HERE); nothing saved; Cemu keeps running.
 wiiu cemu - 100 key:ctrl+shift+b -- MARIO KART 8 (US).wua
+# 14. Radial v2 on a two-player system with one layout and one output, steered by the held menu
+#     ring's chords: Controller Layout journals 83/-1 (CONTROLLER: ONE LAYOUT) and Aspect 82/-1
+#     (ASPECT: ONE ONLY), nothing saved; Players opens the menu (1) on its players page (86/1; the
+#     page shot reads P1 PAD 1, P2 NO PAD, RESTART GAME, BACK); Ctrl+Down to P2 (3), Ctrl+Space finds
+#     no free pad for it (84/-1/1), Ctrl+Up back to P1 (2); Ctrl+Backspace returns to the menu on its
+#     PLAYERS row (86/0) and again closes the menu (5); each chord "(keyboard)" once.
+snes retroarch snes9x 30 key:ctrl+shift+c key:ctrl+shift+g key:ctrl+shift+u key:ctrl+down key:ctrl+space key:ctrl+up key:ctrl+backspace key:ctrl+backspace -- Super Mario World (USA).zip
+# 15. Bezel On/Off, Fit and Reset on a handheld (case 2 left the gba bezel OFF and case 1 the AGB-001
+#     shader): Ctrl+B brings the default shell back (79/0), Fit shows the whole shell at a whole step
+#     (81/0, FIT: BEZEL), Ctrl+B turns it off again (79/2); the first Reset prompts (85/0, RESET: PRESS
+#     AGAIN) and the second, a second later, journals 79/0 80/0 81/1 85/1 (RESET TO DEFAULTS): the
+#     default shell, the default shader and the screen fit come back live, and OUT/home/semu.json has
+#     no gba entry left under visual.systems or input.systems.
+gba retroarch mgba 30 key:ctrl+b key:ctrl+shift+f key:ctrl+b key:ctrl+shift+r,ctrl+shift+r -- Legend of Zelda, The - The Minish Cap (USA).zip
+# 16. The Wii's own choices: Controller Layout steps P1 from the default Nunchuk to Classic (83/2,
+#     P1: CLASSIC, the log line "P1 layout classic: 1 press(es) of Alt+F5 via X" and Dolphin's own
+#     "profile 'Semu' for device 'Wiimote1'" message); Fit steps the placement live (81 and its FIT:
+#     toast); Players opens the menu (1) on the page (86/1: P1 PAD 1 CLASSIC, P2-P4 NO PAD), and two
+#     Ctrl+Backspace return to the menu (86/0) and close it (5); Aspect prompts (82/1/1, 16:9: AGAIN TO
+#     REBOOT GAME) and its second press saves visual.games.wii.<game>.output = widescreen in
+#     OUT/home/semu.json (82/1, ASPECT 16:9: REBOOTING) and restarts the game in the same launch
+#     (restarts=1), the new argv (cmdline) holding --config SYSCONF.IPL.AR=True.
+wii dolphin - 60 key:ctrl+shift+c key:ctrl+shift+f key:ctrl+shift+u key:ctrl+backspace key:ctrl+backspace key:ctrl+shift+g,ctrl+shift+g -- New Super Mario Bros. Wii*.wbfs

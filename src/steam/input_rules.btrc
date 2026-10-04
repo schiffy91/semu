@@ -67,8 +67,16 @@ class SteamInputRules {  // what a definition must satisfy before it becomes VDF
         if (document.showLabels()) { problems.push("radial.show_labels must be false so Steam never draws key glyphs"); }
         if (document.fireType() < 0 || document.fireType() > 3) { problems.push("radial.fire_type must be Steam's 0..3"); }
         if (document.haptics() < 0 || document.haptics() > 3) { problems.push("radial.haptic_intensity must be Steam's 0..3"); }
-        SteamInputRules.radial(problems, document, document.slots("quick_slots"), document.center("quick_center"), "radial.quick_slots");
-        SteamInputRules.radial(problems, document, document.slots("menu_slots"), document.center("menu_center"), "radial.menu_slots");
+        for radial in document.radials() {
+            Vector<string> slots = document.slots(radial + "_slots");
+            if (radial.equals("settings") && slots.isEmpty() && document.center("settings_center").isEmpty()) { continue; }  // a definition may have no settings radial
+            SteamInputRules.radial(problems, document, slots, document.center(radial + "_center"), "radial." + radial + "_slots");
+        }
+        for page in document.pageNames() {
+            if (document.action(page).size() > 0) { problems.push("radial.pages." + page + " is also an action: a slot either types a chord or switches a preset"); }
+            if (!SteamInputRules.safeText(document.label(page)) || !SteamInputRules.safeText(document.icon(page)) || !document.icon(page).endsWith(".png")) { problems.push("radial.pages." + page + " needs a semantic Semu icon and label"); }
+            if (document.pagePreset(page).isEmpty()) { problems.push("radial.pages." + page + " names no preset to switch to"); }
+        }
         JSONValue layers = document.layers();
         for (int index = 0; layers.isArray() && index < layers.size(); index++) {
             SteamInputRules.radial(problems, document, SemuJson.strings(layers.at(index).get("slots")), SemuJson.textAt(layers.at(index), "center"), "radial.system_layers");
@@ -93,10 +101,17 @@ class SteamInputRules {  // what a definition must satisfy before it becomes VDF
                 if (controller.file("controller_file").isEmpty() || controller.file("configset_file").isEmpty()) { problems.push(where + " is the default, so its controller must name controller_file and configset_file"); }
             }
             if (!controller.declared() || controller.type().isEmpty()) { problems.push(where + " names controller " + controller.identifier + " without a controller_type, layout and vocabulary"); continue; }
-            for preset in SteamInputPresets.ordered(document, controller) {
+            Vector<SteamInputPreset> presets = SteamInputPresets.ordered(document, controller);
+            Vector<string> entered = [];  // preset ids some radial page switches to
+            for page in document.pageNames() {
+                if (SteamInputPresets.find(presets, document.pagePreset(page)) == null) { problems.push(where + " has no preset " + document.pagePreset(page) + " for radial page " + page); }
+                entered.push(document.pagePreset(page));
+            }
+            for preset in presets {
                 for source in preset.sourceNames() {
                     if (SteamInputGroups.identifier(SteamInputGroups.resolved(document, preset.kind(source)), preset).isEmpty()) { problems.push(where + " preset " + preset.title + " drives " + source + " with unknown group " + preset.kind(source)); }
                 }
+                if (preset.index > 0 && preset.switched() && !entered.contains(preset.identifier)) { problems.push(where + " preset " + preset.title + " is held by nothing and no radial page switches to it"); }
             }
             for problem in SteamInputVocabulary.problems(controller, SteamInputVdf.render(document, template), where) { problems.push(problem); }
         }
