@@ -1510,9 +1510,12 @@ Status: started 2026-10-05.
   - The GamePad speaker stays off as in Cemu, so a game that mirrors its mix to the pad is not heard
     twice; a pad-only sound is lost. No microphone.
   - Cemu has no macOS slice, so macOS has nothing to fix (RetroArch there is coreaudio, contracted).
-  - With no sound server at all, Cemu now exits at the game's audio init (ax_out.cpp:403-413,
-    upstream behaviour for a named device). So mods.sh, like live-switch.sh, menu-pause.sh and the
-    Deck scripts, gives cubeb a null ALSA device.
+  - With no sound server and no ALSA device, Cemu now stops at the game's audio init. It logs
+    "can't initialize tv audio" and calls exit (ax_out.cpp:403-413), which is upstream's behaviour
+    for a named device; seen in the VM. A null ALSA default keeps it running, also seen in the VM.
+    So mods.sh, like live-switch.sh, menu-pause.sh and the Deck scripts, gives cubeb a null ALSA
+    device. The Deck always runs PipeWire, and a Linux desktop almost always runs PipeWire or
+    PulseAudio.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
