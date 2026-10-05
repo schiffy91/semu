@@ -1376,6 +1376,36 @@ Status: tackled in three parallel tracks (performance, picture, controls), then 
   mutation: the Dreamcast sharp switch removed, the PS2 royale switch at 1, the old reflectAt, a stride
   of half the box. For the CRT track (item 8): crt-guest-advanced's Interlace Mode (`interm`, on from
   375 lines) bobs the same way, and the contract already expects `interm` 0 on any guest wrapper.
+- Item 8 (picture, CRT shader, dfaff71 and 515daf3): built and checked on the Mac render host; the Deck
+  look and its frame time are open. The bands: the PS1 defaults to fit, at 2.14x on the Deck (686x515
+  for 320x240). crt-royale's fixed-width scanlines beat against that fractional step, so a white field
+  shows irregular dark rows on the render host at 1280x800. At 1080p (3x) they are gone. The owner's
+  reference is Retro Crisis's "RC GDV-NTSC - PlayStation RGB 100", guest.r's crt-guest-advanced-ntsc
+  with his values. His presets live only in GitHub release zips (GPL-3.0). The values were read from
+  ShaderGlass's import of them (mausimus/ShaderGlass, retro-crisis/720p Steam Deck), and every
+  parameter exists in the pinned slang-shaders 4812a82. psx/default is now that wrapper with his 720p
+  Steam Deck values. His Deck preset turns the mask off (shadowMask -1), and his 1080p and 4K presets
+  differ from it only in the mask, so one preset serves every screen. intres 1 (the one line that
+  separates his 240p and 480i presets) draws a 480-line frame as 240 scanlines and changes nothing at
+  240. interm 0 keeps whole frames. GDV's beam widens with brightness, and the white is even, with
+  only his fine luma grain (addnoised 0.2: drop it if the owner finds it noisy). Crash Bandicoot is
+  softer and brighter, with NTSC chroma bleed and no royale dot grid. The N64 (his N64), SNES (SNES RGB
+  100) and Genesis (Mega Drive RGB 100) follow, with his hum bar and any shader overscan crop left out.
+  The NES was tried with his NES Composite 100 and left on its NTSC composite: brighter, yellower and
+  red-fringed, not more accurate. Each previous default stays one step away (psx/royale, n64/hyllian,
+  snes/svideo, genesis/rainbow). The 480-line systems keep Sharp CRT, because at 1280x800 their 480
+  lines hold 1x (bezel) or 1.67x (screen). Cost: render-host gained RENDER_HOST_GPU_TIME=1, a
+  GL_TIME_ELAPSED query around the renderer. Renderer GPU time on the M1 Max, shader off / crt-royale /
+  GDV: PS1 fit 1280x800 0.77/1.41/1.50 ms, game 3x 0.37/1.53/1.79 ms, 1920x1080 fit 0.48/1.62/1.90 ms,
+  3840x2160 game 2.11/4.55/5.03 ms. GDV costs 1.1 to 1.4x the royale it replaces. The Deck was
+  unreachable today (ssh timed out) and is read-only for this track. Its GPU has about 1/4.5 the
+  bandwidth and 1/6.5 the FP32 of the M1 Max (88 vs 400 GB/s, 1.6 vs 10.4 TFLOPS). Scaled by those
+  ratios, the GDV passes come to roughly 3 to 5 ms per frame in fit and 6 to 9 ms in 3x screen
+  placement, against 3 to 4 ms and 5 to 7.5 ms for the royale that ran there. That is inside the
+  16.7 ms frame for the software-rendered PS1, SNES and Genesis. Retro Crisis ships Steam Deck presets
+  of this same 19-pass chain. Contract (crt_gdv.btrc): the four defaults with every value emitted and
+  pinned, the previous defaults one step away, and no guest preset rolling a hum bar or cropping
+  overscan. Each check fails under its mutation (12 run).
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
