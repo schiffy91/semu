@@ -55,7 +55,8 @@ mesa="$(package mesa)"; xvfb="$(package xvfb)"; xwd="$(package xwd)"; magick="$(
 echo "bundle $bundle" | tee "$out/bundle"
 export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe LIBGL_DRIVERS_PATH="$mesa/lib/dri" __GLX_VENDOR_LIBRARY_NAME=mesa
 export __EGL_VENDOR_LIBRARY_DIRS="$mesa/share/glvnd/egl_vendor.d" LD_LIBRARY_PATH="$mesa/lib" VK_DRIVER_FILES="$(ls "$mesa"/share/vulkan/icd.d/lvp_icd*.json | head -1)"
-export SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy QT_QPA_PLATFORM=xcb PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none
+printf "pcm.!default {\n  type null\n}\nctl.!default {\n  type hw\n  card 0\n}\n" > "$out/alsa-null.conf"  # cubeb falls back to ALSA: a silent device, or Cemu, which now names an audio device, exits at AXOut_init
+export SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy QT_QPA_PLATFORM=xcb ALSA_CONFIG_PATH="$out/alsa-null.conf" PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none
 unset WAYLAND_DISPLAY
 display=:93
 "$xvfb/bin/Xvfb" "$display" -screen 0 1280x800x24 >"$out/xvfb.log" 2>&1 & xvfb_pid=$!

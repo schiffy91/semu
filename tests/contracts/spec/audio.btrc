@@ -96,6 +96,18 @@ class AudioSpecContract {
         }
     }
 
+    class void harnessContract(Contract contract, string project) {  // headless runs that can launch Cemu give cubeb a silent device
+        for name in ["tests/integration/mods.sh", "tests/integration/live-switch.sh", "tests/integration/menu-pause.sh", "tests/deck/system-matrix.sh", "tests/deck/input-check.sh"] {
+            string script = FileSystem.readText(PathTools.join(project, name));
+            bool hidden = script.contains("PULSE_SERVER=unix:/nonexistent");
+            contract.expect(!hidden || script.contains("ALSA_CONFIG_PATH=\"$out/alsa-null.conf\""), name + " hides the sound server, so it points ALSA at a null device or Cemu exits at AXOut_init");
+        }
+        string proof = FileSystem.readText(PathTools.join(project, "tests/integration/audio.sh"));
+        contract.contains(proof, "unset WAYLAND_DISPLAY PULSE_SERVER SDL_AUDIODRIVER SDL_AUDIO_DRIVER ALSA_CONFIG_PATH", "the audio proof finds its server the Deck's way, through XDG_RUNTIME_DIR");
+        contract.contains(proof, "module-null-sink sink_name=semu_null", "the audio proof plays into a null sink");
+        contract.contains(proof, "pactl\" list sink-inputs", "the audio proof lists the streams the emulator opened");
+    }
+
     class void run(Contract contract) {
         Fixture fixture = Fixture("steam-deck");
         for target in ["steam-deck", "linux-desktop", "macos"] {
@@ -104,5 +116,6 @@ class AudioSpecContract {
         }
         AudioSpecContract.environmentContract(contract, fixture);
         AudioSpecContract.sandboxContract(contract, fixture.project);
+        AudioSpecContract.harnessContract(contract, fixture.project);
     }
 }

@@ -1468,6 +1468,51 @@ The owner played the 15cc2ec release in Game Mode and reported (verbatim where q
    shows the mirror on every bezel that should have one (render host and Deck), with each gap fixed.
 
 Status: started 2026-10-05.
+- Item 6 (audio, Wii U sound): cause found in the pinned source and fixed (3ba382e), proven in the
+  podman VM; the Deck check is open. Read-only on the Deck: the compiled settings.xml had no <Audio>
+  block, and log.txt for Smash (0005000010144f00 v304, 01:33) stopped at "Cubeb: available" with no
+  device line. Cemu a6fb0a4 then reads api 0 (DirectSound, Windows only) and an empty TV device
+  (CemuConfig.cpp:271-290), and an empty device opens no TV stream at all (IAudioAPI.cpp:116-117), so
+  every Wii U title was silent. WirePlumber's stream history on the Deck holds an output stream for
+  every other emulator Semu launches (no Flatpak emulator is installed there, so those streams came
+  from Semu's builds) and never one for Cemu ("Cemu Cubeb"). settings.xml now carries
+  the whole block: api 3 (Cubeb), TVDevice default (Cubeb's default output, which on the Deck is
+  PipeWire's pulse server), TVChannels 1 (stereo) and TVVolume 100, with the GamePad speaker and the
+  mic off. In the VM, `tests/integration/audio.sh` runs a PulseAudio null sink found through
+  $XDG_RUNTIME_DIR as on the Deck. Super Smash Bros. (US) (v304) through `semu launch` opened "Cemu
+  Cubeb output" within 10 s (s16le, 2 ch, 48 kHz, uncorked, 100 %) and held it for all 210 s. The
+  same argv and environment with the block taken out reached the same screen and opened no stream
+  in 210 s, the Deck's symptom. MARIO KART 8 (US) opened the stream at 10 s, and the null sink's
+  monitor measured the boot jingle (peak 0.15 of full scale), then the title screen's music from
+  150 s to the end at 300 s (peaks 0.17 to 0.26). The capture shows "Press A to start". Audit of every emulator Semu launches on the Deck (backend and
+  device; evidence: compiled config, log, WirePlumber stream):
+  - RetroArch: pulse (audio_driver = "pulse"), default sink; stream RetroArch.
+  - Cemu: Cubeb, default device; was none, fixed above.
+  - PCSX2: Cubeb (no [SPU2/Output], upstream default), default device; emulog "Creating Cubeb audio
+    stream ... driver = , device =" and stream PCSX2.
+  - Dolphin: Cubeb (no [DSP]; AudioCommon.cpp:95-109 at 2606a), default; stream Dolphin Emulator.
+  - Ryujinx: SDL2 (audio_backend SDL2, volume 1), default; stream Ryujinx.
+  - Azahar: output_type 0 (auto, Cubeb), device Auto; log "Cubeb Audio Stream Started" and stream
+    Azahar Output.
+  - melonDS: SDL audio, Volume 256; stream melonDS.
+  - Flycast: auto, which prefers SDL2 (audiostream.cpp:22-40 at v2.7); stream .flycast-wrapped.
+  - PPSSPP: SDL, AutoAudioDevice, GameVolume 100; stream PPSSPPSDL.
+  The release launcher's bubblewrap binds /run (pulse/native and pipewire-0 under /run/user/1000) and
+  /home, and passes the environment through: no emulator sets PULSE_*, PIPEWIRE_*, SDL_AUDIODRIVER,
+  ALSA_CONFIG_PATH or XDG_RUNTIME_DIR. A relocated XDG_CONFIG_HOME only gives libpulse a fresh cookie,
+  which pipewire-pulse does not check. Contracts: `tests/contracts/spec/audio.btrc` (each emulator's
+  path to the session's server, the defaults left alone, no audio variable exported, the launcher's
+  binds, the headless harnesses) and the exact block in cemu.btrc. Each fails under its mutation:
+  block removed, a Dolphin [DSP] section, PULSE_SERVER exported, --clearenv in the launcher,
+  RetroArch on alsa. Reversible defaults:
+  - The TV plays at 100 (unity, like every other emulator here). Cemu's own default is 50, or 20
+    when the key is missing.
+  - The GamePad speaker stays off as in Cemu, so a game that mirrors its mix to the pad is not heard
+    twice; a pad-only sound is lost. No microphone.
+  - Cemu has no macOS slice, so macOS has nothing to fix (RetroArch there is coreaudio, contracted).
+  - With no sound server at all, Cemu now exits at the game's audio init (ax_out.cpp:403-413,
+    upstream behaviour for a named device). So mods.sh, like live-switch.sh, menu-pause.sh and the
+    Deck scripts, gives cubeb a null ALSA device.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
