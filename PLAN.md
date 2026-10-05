@@ -1468,6 +1468,40 @@ The owner played the 15cc2ec release in Game Mode and reported (verbatim where q
    shows the mirror on every bezel that should have one (render host and Deck), with each gap fixed.
 
 Status: started 2026-10-05.
+- Item 1 (background): done on the Mac render host (db92462); the Deck check is open. The wood desk
+  (desk-night.png: Duimon's dark_wood1 under the night plate) was the `background` of the gb, gbc,
+  gba, psp, nds and n3ds shells and the four dual layouts, and the DS and 3DS shells also drew
+  Duimon's Canvas_Background (shell) or Canvas_Vignette (vertical) layer over it. All 16 packages now
+  name no background, those four backdrop layers are hidden (the editor's eye, which `semu bezel
+  emit` keeps), and the compositor's first pass is black, so nothing is drawn behind the art. Seen on
+  the render host at 1280x800 and 1920x1080 for every handheld and dual variant, in its default
+  placement and switched live to Fit: Bezel and Fit: Screen (120 pictures): every pixel outside the
+  art is #000000 (corner and edge samples; gb:studio went from 0 to 203,200 black pixels at
+  1280x800), the shells and screens unchanged. The editor's capture matches the renderer to 0.000%
+  of pixels, MAE 0, for 16 cells at both sizes (`tests/visual/editor-sync.sh`, headless Chrome).
+  Reversible defaults:
+  - The Soqueroeu TV rooms keep their wall and table: a scene, not a background.
+  - Black also replaces Duimon's dark canvas and vignette behind the DS and 3DS shells, not only the
+    wood, from the rule that outside the art is pure black where there is no scene.
+  - The desk recipe leaves config/assets/bezels.json since nothing draws it (git history has it).
+  - A background plate and a drawn frame stay package options that no shipped package names; the
+    render_env contract proves the launch still passes them to the renderer.
+- Item 2, the rounded frames (the Fit half is the placement track's): done on the render host
+  (db92462); the Deck check is open. dual-main-left, dual-main-right, dual-side-by-side and
+  dual-stacked name no frame (the rounded #121212 ring at 3% of the height is gone), so the screens
+  stand square on black. With nothing drawn round them, the beside layouts reserve only the gap
+  between the screens (visual.dual_screen_gap: 20 px on the Deck, 30 at 1080p), no longer one at
+  each end too. Still the largest whole steps, centred as a pair or with the main centred alone.
+  Re-derived (contract rows; the render host pictures match to the pixel):
+  - NDS 1280x800: beside main 3x with the second 1x (1044 px pair, 118 px margins); side by side 2x
+    and 2x; stacked 2x and 2x (6 px top and bottom).
+  - NDS 1920x1080: beside 5x with 2x (49 px margins); side by side 3x; stacked 2x.
+  - 3DS 1280x800: beside 2x with the touch screen 1x (70 px margins); side by side 1x; stacked 1x.
+  - 3DS 1920x1080: beside 3x with the touch screen 2x (25 px margins; was 1x behind 30 px end
+    margins); side by side 2x; stacked 2x.
+  Touch and pointer maps are published from these lanes, so the touch contracts hold (8992 checks
+  pass). Reversible default: no end margin beside the screens, which changes only the 3DS touch
+  screen at 1080p.
 - Item 6 (audio, Wii U sound): cause found in the pinned source and fixed (3ba382e), proven in the
   podman VM; the Deck check is open. Read-only on the Deck: the compiled settings.xml had no <Audio>
   block, and log.txt for Smash (0005000010144f00 v304, 01:33) stopped at "Cubeb: available" with no
