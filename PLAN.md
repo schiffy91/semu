@@ -1502,6 +1502,74 @@ Status: started 2026-10-05.
   Touch and pointer maps are published from these lanes, so the touch contracts hold (8992 checks
   pass). Reversible default: no end margin beside the screens, which changes only the 3DS touch
   screen at 1080p.
+- Item 2, Fit on the DS and 3DS (the placement half): done on the Mac render host (ceb3354); the Deck check is
+  open. Audit of the release before it (render host, test card, shader off, every variant in bezel and screen
+  placement at 1280x800 and 1920x1080, each screen measured from the picture):
+  - nds shell: bezel 2.195x (562 px wide) at 1280x800 and 3.296x at 1080p; screen dropped the shell and
+    stacked the screens at 2x, a different layout from the side-by-side shell.
+  - nds vertical shell: bezel 1.48x (380x285) at 1280x800, 2x at 1080p only by chance; screen dropped the
+    shell (the owner's report) and stacked the screens at 2x.
+  - n3ds shell: bezel top 2.005x with the touch screen 0.943x at 1280x800, 3.005x with 1.415x at 1080p;
+    screen dropped the shell and stacked them at 1x (2x at 1080p).
+  - n3ds vertical shell: bezel 1.48x at 1280x800, 2x with the touch screen 1.996x (639x479) at 1080p; screen
+    dropped the shell.
+  - The four computed layouts were whole steps in both placements, so Fit changed nothing there, yet it
+    toasted FIT: SCREEN or BEZEL and saved the choice.
+  Causes, at 016377d: renderer_placement.btrc:15 took a whole step only for one screen (`surface_count == 1`),
+  so a two-screen shell stayed contained (line 12) or, for the vertical shells whose device layer follows the
+  viewport, covered (line 14); renderer_placement.btrc:89 with renderer_compositor.btrc:320 dropped the shell
+  in screen placement (the M13 F3 ruling), :358-359 then stacked the screens, and :341 fitted each screen to
+  its calibrated rectangle at whatever scale the canvas had. Duimon's 3DS face also draws the touch window at
+  0.47 of the top screen's density (908x681 canvas px for 320x240 against 2404x1443 for 400x240), so no scale
+  makes both whole inside their windows, and the 3DS vertical shell's touch rectangle is one canvas pixel short.
+  Now every two-screen fixed bezel is placed by the new GL-free renderer_dual_shell.btrc (the compositor, the
+  editor and the texture-pack scale use it). Fit never drops a shell, and every state is at whole steps, centred:
+  - Bezel (and fit, which no DS offers): the largest step of the top screen at which the whole shell stays on
+    the display, up to 1% past an edge, the shell centred. The whole shell is the package's declared
+    silhouette (`shell`, item 4's field), else its canvas.
+  - Screen: the largest step at which both screens, at the shell's own spacing, stay on the display, the
+    shell drawn round them and cropped by the edges, the pair centred. When that step is no larger than the
+    bezel's, it is exactly the bezel's picture, so the toggle never jumps.
+  - The second screen takes the largest whole step its own rectangle holds (1% grace); below 1x, the
+    nearest step. Its opening and lip grow a pixel past a picture that runs over (RendererLayout.hold), so no
+    pixel is masked.
+  - A Fit that moves nothing toasts FIT: SCREEN SAME AS BEZEL (`same_toast` in input.json). The renderer
+    compares the geometry the placement produced with the frame before it (RendererPlacementNotice).
+  - On the four computed layouts, which draw no art, Fit journals 81/-1 and toasts FIT: NO BEZEL. It saves
+    nothing (SemuRenderVariantSet.placeable).
+  Seen on the render host at 1280x800 and 1920x1080 (shader off and DS LCD; set directly and switched live
+  with `render.sh 'nds:vertical>@game'`; the computed layouts with RENDER_HOST_SELECT=81,-1), judged by eye:
+  - nds shell: 2x and 2x (shell 1165x656 centred), 3x and 3x at 1080p.
+  - nds vertical shell: 1x and 1x (shell 960x540), 2x and 2x at 1080p (shell exactly 1920x1080).
+  - n3ds shell: top 2x with the touch screen 1x, 320x240 over the 302x227 window (9 px past it each side,
+    2 px past the opening, every pixel shown). At 1080p, 3x with 1x inside a 453x340 window, the glass gap
+    mirroring the picture.
+  - n3ds vertical shell: 1x and 1x, 2x and 2x at 1080p.
+  - At both sizes the screen step equals the bezel's on all four shells, so Fit: Screen draws the same picture
+    and says so. At 4K the DS shell's screen placement is 7x against 6x for bezel.
+  - The computed layouts are unchanged (3x+1x, 2x+2x and so on, as listed above), and Fit leaves them as they
+    are.
+  The editor matches the renderer to MAE 0 for all four shells in bezel and screen placement at 1280x800,
+  1920x1080 and 4K (`tests/visual/editor-sync.sh --card test`). Touch and pointer maps are published from the
+  lanes, so they follow; `tests/deck/radial-check.cases` case 17 covers Fit on the large-main layout and on the
+  vertical shell. `tests/visual/reflection-audit.sh` loses its none-no-shell verdict: the eight DS and 3DS
+  screen-placement cells now mirror like the rest.
+  Contract `tests/contracts/spec/dual_fit.btrc` covers both shells of both systems in all three placements at
+  1280x800, 1080p, 4K and 4:3 1024x768: the shell drawn round both screens, whole steps, on screen, nothing
+  masked, bezel the largest whole-shell step, screen the bezel's picture or a centred larger pair. It also pins
+  the steps, the compositor's wiring and the lip, the SAME AS BEZEL toast, 81/-1 on the computed layouts and
+  the texture-pack scale. Each check fails under its mutation: the compositor bypassing it, screen dropping the
+  shell, a fractional or a spilling second screen, the shell's width unchecked, screen never larger, the lip not
+  grown, no SAME toast, Fit stepping on a computed layout, and the old scale estimate.
+  Reversible defaults:
+  - Fit never removes a shell. The owner rejected the M13 F3 screen placement without it.
+  - Fit on a DS or 3DS shell is the bezel placement, so every DS state is at whole steps.
+  - Below 1x the second screen takes the nearest whole step. On the Deck the 3DS touch screen is 1x over its
+    window's edge, never 0.94x. Under half of 1x (only the 3DS face on a 4:3 display) it fills its window
+    instead, the fractional fallback, so it never spills off the shell.
+  - The toast reads FIT: SCREEN for the two frames before the placement applies, then SAME AS BEZEL.
+  - On the Deck both vertical shells are 1x (they were 1.48x). 2x needs 1080 lines for the whole shell and 896
+    for both screens at the shell's spacing. The stacked layout gives 2x on the Deck.
 - Item 6 (audio, Wii U sound): cause found in the pinned source and fixed (3ba382e), proven in the
   podman VM; the Deck check is open. Read-only on the Deck: the compiled settings.xml had no <Audio>
   block, and log.txt for Smash (0005000010144f00 v304, 01:33) stopped at "Cubeb: available" with no
@@ -1638,8 +1706,8 @@ Status: started 2026-10-05.
   - nes, snes, genesis, n64, psx (all variants): mirror / drawn in all 60 / RetroArch GL tap. nes was
     0.5, snes 0.3, psx 0.2; n64 drew only on black until item 3.
   - nds, n3ds shell and vertical shell: mirror in fit and bezel, drawn in all 16 / RetroArch tap
-    (nds) and the Azahar Vulkan layer (n3ds). In game (Fit: Screen) the shell is dropped, so none
-    (8 cells, item 2's track). The vertical shells were 0.2.
+    (nds) and the Azahar Vulkan layer (n3ds). Since item 2's Fit fix (ceb3354) the shell stays in game (Fit:
+    Screen) too, and those 8 cells mirror as well (re-measured: 24 of 24 drawn). The vertical shells were 0.2.
   - nds, n3ds main_right, main_left, side_by_side, stacked: none (computed layouts, nothing to
     mirror on) / none in all 48.
   - gc, wii (tv, tv_wide, speakers): mirror / drawn in all 30 / Dolphin GL preload. A Deck capture of
