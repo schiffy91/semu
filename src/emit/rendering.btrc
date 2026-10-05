@@ -102,6 +102,8 @@ class SemuRenderLayers {  // the package's layer stack for the compositor: file,
         if (lines.size() == 0) { return; }
         if (lines.size() > 8) { diagnostics.add(packageId, "layers", f"{lines.size()} drawable layers, the compositor holds 8"); return; }
         env.set("SEMU_RENDER_CANVAS" + suffix, f"{SemuRenderEnvironment.numberOr(canvas, "w", "0")},{SemuRenderEnvironment.numberOr(canvas, "h", "0")}");
+        string shell = SemuRenderEnvironment.rect(package.get("shell"), canvas);  // the device's silhouette (its plates' alpha bounds): bezel placement keeps it on screen, never the transparent margin
+        if (!shell.isEmpty()) { env.set("SEMU_RENDER_CANVAS_SHELL" + suffix, shell); }
         for (int index = 0; index < layers.size(); index++) {  // a scene whose canvas is the room fills the screen; a device keeps its whole silhouette
             if (SemuJson.textAt(layers.at(index), "id").equals(canvasLayer) && SemuJson.textAt(layers.at(index), "follow").equals("viewport")) { env.set("SEMU_RENDER_CANVAS_FIT" + suffix, "cover"); }
         }

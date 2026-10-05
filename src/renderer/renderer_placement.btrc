@@ -1,8 +1,10 @@
 // Where a fixed bezel's canvas lands on the screen: contained, covered when the scene asks for it and its
 // openings stay on screen, then moved to the placement's whole step (game: the largest the screen holds,
-// the shell cropped and centred where it fits; bezel: the largest that keeps the shell; fit on a TV room:
-// the nearest whole step, so a scanline shader never beats into bands). Pure arithmetic over the
-// renderer's records, no GL, so the contracts place a package exactly as the compositor does.
+// the shell cropped and centred where it fits; bezel: the largest that keeps the shell, its own silhouette
+// when the package declares one, up to 1% of it off screen; fit on a TV room: the nearest whole step, so a
+// scanline shader never beats into bands). A device's picture lands on whole pixels, so every native pixel
+// is k by k. Pure arithmetic over the renderer's records, no GL, so the contracts place a package exactly as
+// the compositor does.
 
 import ./renderer_abi.btrc;
 import ./renderer_config.btrc;
@@ -42,7 +44,8 @@ class RendererPlacement {
         float native = (float)frame->surfaces[0].native_height;  // the height the emulator reports for this frame (a core that crops its overscan reports the cropped height)
         if (native < 1.0f || pictureHeight < 1.0f) { return; }
         bool carried = RendererPlacement.carried(variant);
-        int multiple = (int)(pictureHeight * (carried ? 1.01f : 1.0f) / native);  // bezel: the largest step that keeps the whole shell; a room that carries on may leave up to 1% of its plate off screen (the owner's bezel rule), never the TV
+        struct RendererNormalizedHole* shell = &variant->canvas_shell;
+        int multiple = (int)(pictureHeight * RendererPlacement.shellRoom(shell, canvas, areaWidth, areaHeight) * 1.01f / native);  // bezel: the largest step that keeps the whole shell (its silhouette, never the plate's transparent margin), up to 1% of it off screen (the owner's bezel rule of 2026-07-07), never the TV
         if (placement == 1) {  // game: the largest step the screen holds
             int down = (int)((float)areaHeight / native);
             int across = (int)((float)areaWidth / (native * shown));
@@ -69,11 +72,28 @@ class RendererPlacement {
         canvas->y = anchorY - (centerY - canvas->y) * grow;
         canvas->width = canvas->width * grow;
         canvas->height = canvas->height * grow;
+        if (placement == 2 && shell->set != 0) {  // bezel on a device: its silhouette centred on the screen, whatever margin its plate carries
+            canvas->x = (float)areaWidth * 0.5f - (shell->x + shell->width * 0.5f) * canvas->width;
+            canvas->y = (float)areaHeight * 0.5f - (1.0f - shell->y - shell->height * 0.5f) * canvas->height;
+        }
         if (placement == 1) {  // game: on an axis the whole shell fits, the shell is centred so the backdrop shows evenly (a device whose screen sits above its middle); a whole-pixel shift keeps the picture on the grid
             if (canvas->width <= (float)areaWidth) { canvas->x = canvas->x + RendererPlacement.wholePixels(((float)areaWidth - canvas->width) * 0.5f - canvas->x); }
             if (canvas->height <= (float)areaHeight) { canvas->y = canvas->y + RendererPlacement.wholePixels(((float)areaHeight - canvas->height) * 0.5f - canvas->y); }
         }
         if (placement != 1 && carried && canvas->height < (float)areaHeight) { canvas->y = canvas->y + RendererPlacement.wholePixels(0.0f - canvas->y); }  // bezel or fit on a room shorter than the screen: the table stays on the screen's bottom edge and the wall carries on above, never a band under the table
+        if (!carried) {  // a device's picture corner on a whole pixel: its rounded rectangle is then exactly the step, every native pixel k by k on any screen
+            float left = canvas->x + (image->x + image->width * 0.5f) * canvas->width - steps * native * shown * 0.5f;
+            float bottom = canvas->y + (1.0f - image->y - image->height * 0.5f) * canvas->height - steps * native * 0.5f;
+            canvas->x = canvas->x + RendererPlacement.wholePixels(left) - left;
+            canvas->y = canvas->y + RendererPlacement.wholePixels(bottom) - bottom;
+        }
+    }
+
+    class float shellRoom(struct RendererNormalizedHole* shell, struct RendererCanvasRect* canvas, int areaWidth, int areaHeight) {  // how far the contained canvas may grow before its shell meets the screen's edge; 1 when the canvas is all plate
+        if (shell->set == 0 || canvas->width <= 0.0f || canvas->height <= 0.0f) { return 1.0f; }
+        float across = (float)areaWidth / (shell->width * canvas->width);
+        float down = (float)areaHeight / (shell->height * canvas->height);
+        return across < down ? across : down;
     }
 
     class bool tubeStays(struct RendererVariantConfig* variant, struct RendererCanvasRect* canvas, float grow, int areaWidth, int areaHeight) {  // the opening on screen once the canvas grows by GROW about its centre (a room shorter than the screen standing on the bottom edge)

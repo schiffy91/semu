@@ -10,6 +10,12 @@
     "w": 1065,
     "h": 1477
   },
+  "shell": {
+    "x": 149,
+    "y": 103,
+    "w": 766,
+    "h": 1337
+  },
   "screens": [
     {
       "id": "main",
@@ -22,8 +28,8 @@
       "fit": "aspect",
       "inset": 0,
       "shape": {
-        "kind": "rounded",
-        "radius": 0.0336,
+        "kind": "none",
+        "radius": 0,
         "exponent": 4
       },
       "surround": "#3c4632",

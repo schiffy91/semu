@@ -24,6 +24,7 @@ struct RendererVariantConfig {
     int canvas_width;   // SEMU_RENDER_CANVAS: the pixel grid the layers and screens are addressed in
     int canvas_cover;   // SEMU_RENDER_CANVAS_FIT=cover: a scene fills the screen instead of letterboxing
     int canvas_height;
+    struct RendererNormalizedHole canvas_shell;  // SEMU_RENDER_CANVAS_SHELL: the device's silhouette on the canvas, unset when it is all plate
     int layer_count;
     struct RendererLayerConfig layers[8];
     int layout;
@@ -112,6 +113,8 @@ class RendererConfiguration {
         snprintf(name, sizeof(name), "SEMU_RENDER_CANVAS_FIT%s", suffix);
         char* canvasFit = RendererConfigKeys.lookup(name);
         variant->canvas_cover = canvasFit != null && strcmp(canvasFit, "cover") == 0 ? 1 : 0;
+        snprintf(name, sizeof(name), "SEMU_RENDER_CANVAS_SHELL%s", suffix);
+        RendererConfigKeys.parseHole(&variant->canvas_shell, name);
         snprintf(name, sizeof(name), "SEMU_RENDER_LAYER_COUNT%s", suffix);
         char* countText = RendererConfigKeys.lookup(name);
         int declaredLayers = countText == null ? 0 : atoi(countText);

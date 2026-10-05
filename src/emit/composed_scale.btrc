@@ -55,7 +55,14 @@ class SemuComposedScale {
         double height = picture[3] * canvas[1] * scale;
         if (width / height > shown) { width = height * shown; } else { height = width / shown; }
         if (count == 1 && placement.equals("game")) { return SemuComposedScale.whole(fmin(areaHeight / native[1], areaWidth / (native[1] * shown))); }  // game: the largest step the screen holds
+        if (count == 1 && placement.equals("bezel")) { return SemuComposedScale.whole(height * SemuComposedScale.shellRoom(environment, canvas, scale, areaWidth, areaHeight) * 1.01 / native[1]); }  // one screen in bezel: the renderer's step, its shell on screen within 1%; two screens stay contained
         return SemuComposedScale.whole(height / native[1]);
+    }
+
+    class double shellRoom(Vector<string> environment, Vector<double> canvas, double scale, double areaWidth, double areaHeight) {  // RendererPlacement.shellRoom: how far the canvas grows before its shell meets the screen's edge
+        Vector<double> shell = SemuComposedScale.numbers(SemuComposedScale.entry(environment, "SEMU_RENDER_CANVAS_SHELL"), ",");
+        if (shell.size() != 4 || shell[2] <= 0.0 || shell[3] <= 0.0) { return 1.0; }
+        return fmin(areaWidth / (shell[2] * canvas[0] * scale), areaHeight / (shell[3] * canvas[1] * scale));
     }
 
     class int computed(Vector<string> environment, int count, Vector<double> native, double shown, double areaWidth, double areaHeight) {  // whole steps of every screen, stacked unless the layout sets them side by side

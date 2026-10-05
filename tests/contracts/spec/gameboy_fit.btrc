@@ -1,0 +1,218 @@
+// Game Boy fit spec (M15 items 4 and 5): bezel placement keeps the device's own silhouette on screen (the
+// package's shell, its plates' alpha bounds measured from the pinned files), never the transparent margin around
+// it, up to 1% of it off screen (the owner's bezel rule of 2026-07-07), and centres it; the step is the largest
+// that rule allows, at 1280x800 and 1920x1080. Every Game Boy and Game Boy Color picture lands whole, each native
+// pixel k by k on whole pixels, at any screen size in game and bezel placement, and no screen shape covers or
+// darkens one of its pixels (the shader's shapeMaskB, ported, is opaque at every outermost pixel).
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/rendering.btrc;
+import ../../../src/emit/composed_scale.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+import ../../../src/renderer/renderer_config.btrc;
+import ../../../src/renderer/renderer_placement.btrc;
+import ./render_env.btrc;
+import ./placement.btrc;
+
+#include <math.h>
+
+class GameBoyFitScreen {  // one package placed on one screen, as RendererGeometry.resolve and placeInTube place it
+    public struct RendererCanvasRect canvas;
+    public struct RendererPixelRect tube;
+    public struct RendererPixelRect picture;
+    public struct RendererNormalizedHole shell;  // the variant's SEMU_RENDER_CANVAS_SHELL as the renderer parsed it
+    public struct RendererNormalizedHole opening;
+    public int shape;
+    public float radius;
+    public float exponent;
+    public float shown;
+    public int nativeHeight;
+
+    public GameBoyFitScreen(Fixture fixture, string systemId, string variantId, int placement, int areaWidth, int areaHeight) {
+        Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, variantId);
+        struct RendererVariantConfig variant;
+        PlacementSpecGeometry.load(environment, &variant);
+        JSONValue native = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0.native");
+        int nativeWidth = SemuJson.intAt(native, "w", 1);
+        int nativeHeight = SemuJson.intAt(native, "h", 1);
+        float shown = PlacementSpecGeometry.aspect(environment, nativeWidth, nativeHeight);
+        struct SemuRenderFrameGl frame;
+        memset(&frame, 0, sizeof(struct SemuRenderFrameGl));
+        frame.surface_count = 1;
+        frame.surfaces[0].native_width = nativeWidth;
+        frame.surfaces[0].native_height = nativeHeight;
+        struct RendererCanvasRect canvas;
+        RendererPlacement.canvas(&frame, &variant, placement, 0, shown, areaWidth, areaHeight, variant.canvas_width, variant.canvas_height, &canvas);
+        struct RendererScreenConfig* screen = &variant.screens[0];
+        struct RendererPixelRect tube;
+        RendererCompositionContract.aperture(&canvas, screen->tube.x, screen->tube.y, screen->tube.width, screen->tube.height, &tube);
+        struct RendererPixelRect area;
+        int inset = (int)(screen->inset * (float)(tube.width < tube.height ? tube.width : tube.height) + 0.5f);
+        area.x = tube.x + inset;
+        area.y = tube.y + inset;
+        area.width = tube.width - 2 * inset;
+        area.height = tube.height - 2 * inset;
+        if (screen->image.set != 0) { RendererCompositionContract.aperture(&canvas, screen->image.x, screen->image.y, screen->image.width, screen->image.height, &area); }
+        struct RendererPixelRect picture;
+        RendererCompositionContract.fit(&area, nativeWidth, nativeHeight, 0, shown, 0, &picture);
+        self.canvas = canvas;
+        self.tube = tube;
+        self.picture = picture;
+        self.shell = variant.canvas_shell;
+        self.opening = screen->tube;
+        self.shape = screen->shape;
+        self.radius = screen->radius;
+        self.exponent = screen->exponent;
+        self.shown = shown;
+        self.nativeHeight = nativeHeight;
+    }
+
+    public int steps() { return self.picture.height / self.nativeHeight; }
+
+    public bool whole() {  // the picture is exactly the step: every native pixel k by k
+        int steps = self.steps();
+        return steps >= 1 && self.picture.height == steps * self.nativeHeight && self.picture.width == (int)((float)(steps * self.nativeHeight) * self.shown + 0.5f);
+    }
+
+    public float shellWidth(float grow) { return self.shell.width * self.canvas.width * grow; }
+
+    public float shellHeight(float grow) { return self.shell.height * self.canvas.height * grow; }
+
+    public string text() { return f"picture {self.picture.width}x{self.picture.height} at {self.picture.x},{self.picture.y}, shell {(int)(self.shellWidth(1.0f) + 0.5f)}x{(int)(self.shellHeight(1.0f) + 0.5f)}"; }
+
+    public float mask(float column, float row) {  // compositor.frag shapeMaskB without a bulge, at a pixel centre: 1 opaque, 0 cut
+        float left = (float)self.tube.x;
+        float bottom = (float)self.tube.y;
+        float width = (float)self.tube.width;
+        float height = (float)self.tube.height;
+        if (self.shape == 0) { return column >= left && column <= left + width && row >= bottom && row <= bottom + height ? 1.0f : 0.0f; }
+        float radius = (self.radius < 0.0f ? 0.0f : (self.radius > 0.5f ? 0.5f : self.radius)) * (width < height ? width : height);
+        float across = fmaxf(fabsf(column - (left + width * 0.5f)) - (width * 0.5f - radius), 0.0f);
+        float down = fmaxf(fabsf(row - (bottom + height * 0.5f)) - (height * 0.5f - radius), 0.0f);
+        float power = self.shape > 1 ? fmaxf(self.exponent, 2.0f) : 2.0f;
+        float distance = powf(powf(across, power) + powf(down, power), 1.0f / power) - radius;
+        float ramp = fminf(fmaxf((distance + 0.75f) / 1.5f, 0.0f), 1.0f);
+        return 1.0f - ramp * ramp * (3.0f - 2.0f * ramp);
+    }
+
+    public float edgeMask() {  // the least opaque outermost picture pixel: the four corners and the four edge middles
+        float left = (float)self.picture.x + 0.5f;
+        float bottom = (float)self.picture.y + 0.5f;
+        float right = (float)(self.picture.x + self.picture.width) - 0.5f;
+        float top = (float)(self.picture.y + self.picture.height) - 0.5f;
+        float middleX = (float)(self.picture.x + self.picture.width / 2) + 0.5f;
+        float middleY = (float)(self.picture.y + self.picture.height / 2) + 0.5f;
+        float least = 1.0f;
+        float columns[8] = {left, right, left, right, middleX, middleX, left, right};
+        float rows[8] = {bottom, bottom, top, top, bottom, top, middleY, middleY};
+        for (int index = 0; index < 8; index++) { least = fminf(least, self.mask(columns[index], rows[index])); }
+        return least;
+    }
+}
+
+class GameBoyFitSpecContract {
+    class void shells(Contract contract, Fixture fixture) {  // the silhouette rides with the package, a recolour shares its base's
+        string systems[6] = {"gb", "gb", "gbc", "gbc", "psp", "psp"};
+        string variants[6] = {"dmg", "studio", "shell", "berry", "e1000", "red"};
+        for (int index = 0; index < 6; index++) {
+            Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systems[index], variants[index]);
+            string shell = PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_CANVAS_SHELL");
+            GameBoyFitScreen placed = GameBoyFitScreen(fixture, systems[index], variants[index], 2, 1280, 800);
+            struct RendererNormalizedHole silhouette = placed.shell;
+            struct RendererNormalizedHole opening = placed.opening;
+            bool around = silhouette.set != 0 && silhouette.x <= opening.x && silhouette.y <= opening.y && opening.x + opening.width <= silhouette.x + silhouette.width && opening.y + opening.height <= silhouette.y + silhouette.height;
+            contract.expect(around && silhouette.width < 1.0f && silhouette.height < 1.0f, systems[index] + ":" + variants[index] + " declares its silhouette inside the canvas and around the opening: SEMU_RENDER_CANVAS_SHELL=" + shell);
+        }
+        string base = PlacementSpecEnvironment.entry(PlacementSpecEnvironment.compile(fixture, "gbc", "shell"), "SEMU_RENDER_CANVAS_SHELL");
+        string berry = PlacementSpecEnvironment.entry(PlacementSpecEnvironment.compile(fixture, "gbc", "berry"), "SEMU_RENDER_CANVAS_SHELL");
+        contract.expect(!base.isEmpty() && base.equals(berry), "the berry recolour keeps the colour shell's silhouette: " + berry + " and " + base);
+    }
+
+    class void steps(Contract contract, Fixture fixture) {  // the numbers the owner asked for: the largest step whose whole shell fits, 1% leeway
+        string systems[5] = {"gb", "gb", "gbc", "gbc", "psp"};
+        string variants[5] = {"dmg", "studio", "shell", "berry", "e1000"};
+        int deck[5] = {1, 2, 1, 1, 1};
+        int docked[5] = {2, 3, 2, 2, 2};
+        int widths[2] = {1280, 1920};
+        int heights[2] = {800, 1080};
+        for (int index = 0; index < 5; index++) {
+            for (int size = 0; size < 2; size++) {
+                GameBoyFitScreen placed = GameBoyFitScreen(fixture, systems[index], variants[index], 2, widths[size], heights[size]);
+                int wanted = size == 0 ? deck[index] : docked[index];
+                int steps = placed.steps();
+                float grow = (float)(steps + 1) / (float)steps;  // the next step, about the same canvas
+                bool fits = placed.shellWidth(1.0f) <= (float)widths[size] * 1.01f && placed.shellHeight(1.0f) <= (float)heights[size] * 1.01f;
+                bool largest = placed.shellWidth(grow) > (float)widths[size] * 1.01f || placed.shellHeight(grow) > (float)heights[size] * 1.01f;
+                float middleX = placed.canvas.x + (placed.shell.x + placed.shell.width * 0.5f) * placed.canvas.width;
+                float middleY = placed.canvas.y + (1.0f - placed.shell.y - placed.shell.height * 0.5f) * placed.canvas.height;
+                bool centred = fabsf(middleX * 2.0f - (float)widths[size]) <= 2.0f && fabsf(middleY * 2.0f - (float)heights[size]) <= 2.0f;
+                contract.expect(steps == wanted && placed.whole() && fits && largest && centred,
+                    systems[index] + ":" + variants[index] + f" at {widths[size]}x{heights[size]}, bezel placement: {wanted}x, the largest step whose whole shell fits (1% leeway), centred on the screen: {steps}x, " + placed.text());
+            }
+        }
+    }
+
+    class void pixels(Contract contract, Fixture fixture) {  // whole native pixels on any screen, the outermost ones uncovered
+        string systems[4] = {"gb", "gb", "gbc", "gbc"};
+        string variants[4] = {"dmg", "studio", "shell", "berry"};
+        int widths[10] = {1280, 1920, 1366, 1281, 2560, 1600, 1024, 3840, 1279, 1440};
+        int heights[10] = {800, 1080, 768, 801, 1440, 900, 600, 2160, 799, 900};
+        Vector<string> broken = [];
+        Vector<string> covered = [];
+        for (int index = 0; index < 4; index++) {
+            for (int size = 0; size < 10; size++) {
+                for (int placement = 1; placement <= 2; placement++) {
+                    GameBoyFitScreen placed = GameBoyFitScreen(fixture, systems[index], variants[index], placement, widths[size], heights[size]);
+                    string label = systems[index] + ":" + variants[index] + f" {widths[size]}x{heights[size]} " + (placement == 1 ? "game" : "bezel");
+                    if (!placed.whole()) { broken.push(label + " " + placed.text()); }
+                    if (placed.edgeMask() < 0.999f) { covered.push(label + f" mask {placed.edgeMask()}"); }
+                }
+            }
+        }
+        contract.expect(broken.isEmpty(), "every Game Boy and Game Boy Color picture is a whole step, each native pixel k by k, in game and bezel placement at ten screen sizes: " + broken.join(" | "));
+        contract.expect(covered.isEmpty(), "no screen shape covers or darkens an outermost Game Boy pixel (the studio LCD is square like the real one): " + covered.join(" | "));
+    }
+
+    class void copies(Contract contract, Fixture fixture) {  // the composed scale (texture packs) and the editor preview take the renderer's step
+        string systems[3] = {"gb", "gb", "psp"};
+        string variants[3] = {"dmg", "studio", "e1000"};
+        string emulators[3] = {"retroarch", "retroarch", "ppsspp"};
+        int deck[3] = {1, 2, 1};
+        int docked[3] = {2, 3, 2};
+        for (int index = 0; index < 3; index++) {
+            for (int size = 0; size < 2; size++) {
+                string display = size == 0 ? "" : "\"display\":{\"width\":1920,\"height\":1080},";
+                string overlay = "{\"visual\":{" + display + "\"systems\":{\"" + systems[index] + "\":{\"placement\":\"bezel\",\"bezel_variant\":\"" + variants[index] + "\"}}}}";
+                SemuPlan plan = SemuResolver.plan(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, overlay, SemuDiagnostics());
+                int composed = SemuComposedScale.of(plan, fixture.model.system(systems[index]), emulators[index]);
+                int wanted = size == 0 ? deck[index] : docked[index];
+                contract.expect(composed == wanted, systems[index] + ":" + variants[index] + (size == 0 ? " at 1280x800" : " at 1920x1080") + f", bezel placement: a texture pack is composed at the renderer's {wanted}x, not {composed}x");
+            }
+        }
+        string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
+        Vector<string> missing = [];
+        for wanted in ["shell: layers.length ? Environment.hole(pkg.shell, canvas)", "const across = float(areaWidth / float(shell.width * canvas.width)), down = float(areaHeight / float(shell.height * canvas.height))",
+                       "if (placement === \"bezel\" && shell && shell.set) {", "placed.y = float(float(areaHeight * 0.5) - float(float(float(1 - shell.y) - float(shell.height * 0.5)) * placed.height))",
+                       "if (!carried) {  // a device's picture corner on a whole pixel", "placed.x = float(float(placed.x + Geometry.wholePixels(left)) - left)", "canvas, preview.game_fractional_below, carried, variant.shell)"] {
+            if (!source.contains(wanted)) { missing.push(wanted); }
+        }
+        contract.expect(missing.isEmpty(), "the editor preview places a device as the renderer does: its shell's step and centre, the picture on whole pixels: missing " + missing.join(" | "));
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        RenderEnvSpecAssets.packages(fixture.plan.assetRoot, fixture.plan.configRoot);  // every layer file exists, so the canvas and its silhouette are emitted
+        GameBoyFitSpecContract.shells(contract, fixture);
+        GameBoyFitSpecContract.steps(contract, fixture);
+        GameBoyFitSpecContract.pixels(contract, fixture);
+        GameBoyFitSpecContract.copies(contract, fixture);
+    }
+}

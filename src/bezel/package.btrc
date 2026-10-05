@@ -429,7 +429,7 @@ class BezelPackageWriter {
         string baseId = SemuJson.textAt(package, "geometry_from");
         JSONValue base = self.repository.package(baseId);
         if (base == null) { return "geometry_from names no package: " + baseId; }
-        for key in ["canvas", "canvas_layer", "layers", "frame"] { if (base.has(key)) { package.set(key, base.get(key)); } }
+        for key in ["canvas", "shell", "canvas_layer", "layers", "frame"] { if (base.has(key)) { package.set(key, base.get(key)); } }
         JSONValue screens = package.get("screens");
         JSONValue source = base.get("screens");
         for (int index = 0; index < screens.size() && index < source.size(); index++) {
