@@ -1531,10 +1531,12 @@ Status: started 2026-10-05.
     shell drawn round them and cropped by the edges, the pair centred. When that step is no larger than the
     bezel's, it is exactly the bezel's picture, so the toggle never jumps.
   - The second screen takes the largest whole step its own rectangle holds (1% grace); below 1x, the
-    nearest step. Its opening and lip grow a pixel past a picture that runs over (RendererLayout.hold), so no
-    pixel is masked.
+    nearest step. Its opening and lip are carried out with a picture that runs over, each side by its
+    overrun (RendererLayout.carry since e379c10; the 1-px RendererLayout.hold here left the Deck's 3DS touch
+    screen a 1-px mirror, see the review fixes below).
   - A Fit that moves nothing toasts FIT: SCREEN SAME AS BEZEL (`same_toast` in input.json). The renderer
-    compares the geometry the placement produced with the frame before it (RendererPlacementNotice).
+    compares the geometry the placement produced with the same frame placed as Fit: Bezel
+    (RendererPlacementNotice; it compared with the frame before until e379c10, see the review fixes below).
   - On the four computed layouts, which draw no art, Fit journals 81/-1 and toasts FIT: NO BEZEL. It saves
     nothing (SemuRenderVariantSet.placeable).
   Seen on the render host at 1280x800 and 1920x1080 (shader off and DS LCD; set directly and switched live
@@ -1707,7 +1709,9 @@ Status: started 2026-10-05.
     0.5, snes 0.3, psx 0.2; n64 drew only on black until item 3.
   - nds, n3ds shell and vertical shell: mirror in fit and bezel, drawn in all 16 / RetroArch tap
     (nds) and the Azahar Vulkan layer (n3ds). Since item 2's Fit fix (ceb3354) the shell stays in game (Fit:
-    Screen) too, and those 8 cells mirror as well (re-measured: 24 of 24 drawn). The vertical shells were 0.2.
+    Screen) too, and those 8 cells mirror as well (re-measured: 24 of 24 drawn, but counted over both screens
+    together: the Deck's 3DS touch screen mirrored 1 px until e379c10, see the review fixes below). The vertical
+    shells were 0.2.
   - nds, n3ds main_right, main_left, side_by_side, stacked: none (computed layouts, nothing to
     mirror on) / none in all 48.
   - gc, wii (tv, tv_wide, speakers): mirror / drawn in all 30 / Dolphin GL preload. A Deck capture of
@@ -1717,7 +1721,8 @@ Status: started 2026-10-05.
   - psp (e1000, red): mirror / drawn in all 12 / PPSSPP GL preload. The Deck capture shows the
     picture tinting the lip.
   - switch, wiiu: none (no bezel) / none / Ryujinx and Cemu Vulkan layers.
-  Verdict: no package that declares a mirror failed to draw it where its shell is shown (178 of 178).
+  Verdict: no package that declares a mirror failed to draw it where its shell is shown (178 of 178; the
+  re-run per screen at e379c10, below, gives 186 of 186 with the Wii's 16:9 TV drawn).
   The inconsistency was the strengths, which came from each preset's HSM_REFLECT_GLOBAL_AMOUNT: 0.2 to
   0.5. On the same card the brightest mirror step ranged from 29 (GB) and 40 (PS1) to 110 (NES). Every
   mirror is now one strength, 0.4, marked edited so `semu bezel emit` keeps it, and the range is 54 to
@@ -1783,6 +1788,79 @@ Status: started 2026-10-05.
     480-line TV at 1x (Dreamcast, GameCube, Wii) shows about 140 px of it.
   - Rooms take the whole-pixel snap in every placement, so a picture may sit up to half a pixel off
     the exact middle (the N64's 711 lines at 1280x800).
+
+- Review fixes, renderer (2026-10-05, the M15 review's findings on items 2, 3, 4 and 8): done on the Mac render
+  host and in headless-Chrome editor-sync; the Deck checks below are open.
+  - The 3DS touch screen's lip (item 8; the review's high finding). Since ceb3354 the default 3DS shell drew its touch
+    screen at 1x (320x240) over a 302x227 picture window on the Deck, and RendererLayout.hold grew the lip's edges only
+    a pixel past it, so the touch screen's mirror was 1 px while the top screen's was about 14 (render host, 1280x800:
+    reach 1 px on every side, profile 17 then 0). Now the opening and both lip edges are carried out with a whole-step
+    picture that runs past the package's picture rectangle, each side by its overrun, then held a pixel past it
+    (RendererLayout.carry through RendererMirror.ring and RendererDualShell.opening, and the editor's Geometry.carry), so
+    the band keeps its declared width round the picture drawn. Measured on the render host through each side's middle
+    (the screen's own mirror, its REFLECT zeroed alone): n3ds:shell at 1280x800 touch screen 6-7 px (52 46 29 18 10 5),
+    its declared lip 22 canvas px = 7.3 px; the top screen 13-15 px of a 46-47 canvas px = 15.5 px lip (Duimon draws the
+    touch window at 0.47 of the top's density, so its lip is half as wide). The lip covers the plate's window frame
+    round the 1x picture; by eye it mirrors the picture sharp at the edge and fading outward like the top screen. Same in
+    fit, bezel and game. At 1920x1080 nothing changes (touch 1x inside its 453x340 window, the glass gap mirrored, reach
+    55-71 px). Every other cell (every system, variant and placement at both sizes, 234 cells against 0f535bb's build) is
+    unchanged to the pixel except n3ds:vertical at 1080p, whose touch rectangle is a canvas pixel short: its bottom lip
+    moves out by that pixel (reach 9 to 10 px, like the top screen's 10; 7397 px differ by at most 15 of 255).
+  - The audit measures the drawn lanes. tests/contracts/spec/reflection_audit.btrc takes each band from the lip edges
+    RendererMirror.ring sends round the picture the compositor draws (RendererDualShell's lanes for a two-screen shell)
+    and needs at least half the package's own lip width on every side with screen beyond it; the compositor must use
+    RendererMirror.ring. Under the old 1-px hold it fails: "n3ds:shell ... screen1 band 1px of a 7px lip".
+    tests/visual/reflection-audit.sh measures each screen of a two-screen cell on its own (only that screen's REFLECT
+    zeroed) and reports its reach (its mirror's pixels over its picture's perimeter, lanes from the renderer's debug
+    lines, which now print lane1): THIN when one screen's reach is under a quarter of its sibling's. A variant for
+    widescreen output (wii tv_wide) is fed a 16:9 card, so the renderer draws tv-soqueroeu-wii-16x9, and its _REFLECT_B
+    is zeroed in the mirror-off pass. A system with no bezel gets its row unrendered. The table states the revision it
+    was measured at. Re-run at e379c10 (tests/visual/reflection-audit.tsv, 238 rows): 186 of 186 declared mirrors
+    drawn on every screen, none thin. Reach (px): n3ds shell 12.5 top and 5.7 touch at 1280x800 (the old hold gives 12.5 and 1.0:
+    THIN, exit 1), 18.5 and 62.7 at 1080p (the touch screen's glass gap); nds shell 14.0 and 14.3, 21.0 and 21.6;
+    the vertical shells 4.7 to 4.9, 9.3 to 9.8. The Wii's 16:9 TV now mirrors in all six cells (88440 to 230922 px;
+    its rows had been copies of the 4:3 TV's). The TV rooms' rows moved with 38ed18a's centring (psx tv fit 1280x800
+    19428 to 18918, ps2 tv fit 1080p 129223 to 129886, n64 tv fit 1080p 53922 to 52570; ps2 speakers fit 1080p
+    39462 to 157074, the 2x it has drawn since 38ed18a).
+  - SAME AS BEZEL (item 2's toast). It compared a Fit choice with the frame before, so a PS2 at 1080p, whose Fit and Fit:
+    Screen are both 2x while Fit: Bezel is 1x, toasted FIT: SCREEN SAME AS BEZEL and FIT: FIT SAME AS BEZEL. Now
+    semu_render_game_gl resolves the same frame as Fit: Bezel (RendererGeometry.resolve with placement 2) and compares
+    with that. Fit itself says FIT: SAME AS BEZEL (`same_fit_toast`). Render host: ps2:tv and ps2:speakers at 1920x1080,
+    Fit to Fit: Screen, toast FIT: SCREEN; ps2:tv at 1280x800, Fit: Screen to Fit, FIT: SAME AS BEZEL with the 1x TV;
+    nds:vertical at 1280x800, Bezel to Screen, FIT: SCREEN SAME AS BEZEL as before. Contract dual_fit.btrc pins all
+    three and that the frame path calls the notice after the crop and the drawn geometry.
+  - Editor parity. tests/contracts/spec/editor_dual.btrc pins the editor's port of RendererDualShell (canvasOn and lanes
+    through dualShell, the whole-shell and screen steps, the second screen's step, the carried opening and lip, and
+    carry itself on both sides). tests/visual/editor-sync.sh now exits non-zero on any framing more than 1 px apart or any
+    pixel over 10 %, and finds the widescreen variant by its "output" (wii:tv_wide no longer reports 9 px). The render
+    host's editor card (RENDER_HOST_CARD=editor) is drawn into the picture a declared crop keeps, black round it as
+    GLideN64 hands it over, so with --card test the N64 matches the editor too. editor-sync --card test, bezel and game,
+    1280x800 and 1920x1080, for nds:shell, nds:vertical, n3ds:shell, n3ds:vertical, gba (both), n64 (both): 0.000 %,
+    MAE 0, framing equal, 0 failures. With the editor's canvasOn bypassed it exits 1 (FRAMING DIFFERS by 462 px).
+    bezel_emit.btrc proves a recolour inherits its base's `shell` (gbc-berry, psp-red, gba-arctic).
+  - GBA silhouette (item 4's review). gba-shell and gba-arctic declare `shell` 4216x2411+92+43: the alpha bounds of the
+    device, decal, glass and top plates. The led plate is a black matte (alpha over black at most 1 % luma), invisible on
+    the black round the art, so it is not part of the silhouette. Render host, Fit: Bezel: the device was 68 px from the
+    top and 80 from the bottom at 1280x800, 43 and 59 at 1080p; now 74 and 74, 52 and 51. Steps unchanged (2x 480x320,
+    3x 720x480: 4x needs 2277 px of width); fit and game unchanged to the pixel. gameboy_fit.btrc covers both.
+  Each new check fails under its mutation (run, restored with cp, checked with cmp): the lip held instead of carried
+  (reflection_audit), the opening held (dual_fit), the notice not called (dual_fit and placement), same() always true
+  (dual_fit), Fit's label back to same (dual_fit), the editor's canvasOn bypassed (editor_dual), shell dropped from
+  inherit (bezel_emit), gba-shell without its shell (gameboy_fit). The visual tools too: the old hold makes
+  reflection-audit.sh flag n3ds:shell THIN and exit 1, the old render-host card makes editor-sync --card test n64
+  differ by 2.668 % and exit 1.
+  Reversible defaults:
+  - A whole-step screen past its picture window carries its opening and lip out with it, covering the plate's window
+    frame, rather than stepping down to a fractional picture that fits inside (15cc2ec's 0.94x).
+  - Fit's own toast reads FIT: SAME AS BEZEL; Fit: Screen keeps FIT: SCREEN SAME AS BEZEL. The plain FIT: FIT toast is
+    unchanged.
+  - The GBA's silhouette leaves out its black led matte.
+  Deck checks (open):
+  - 3DS, the Duimon shell (default), any game, Fit: Bezel and Fit: Screen: the touch screen's dark lip shows the touch
+    picture mirrored about 7 px out, sharp at the picture's edge and fading, on all four sides, like the top screen's.
+  - PS2, any game, docked at 1920x1080: switching between Fit and Fit: Screen toasts FIT: FIT or FIT: SCREEN, never SAME
+    AS BEZEL. On the Deck's screen, from Fit: Screen back to Fit: FIT: SAME AS BEZEL with the 1x TV.
+  - GBA, any game, shell and arctic, Fit: Bezel: the device centred, about 74 px of black above and below at 2x.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
