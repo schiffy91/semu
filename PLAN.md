@@ -1437,6 +1437,38 @@ Status: tackled in three parallel tracks (performance, picture, controls), then 
   anchor), fields_reflections.btrc (every GDV-NTSC variant merges its fields) and controller_layouts.btrc
   (the action after a live switch journals 87/0). Each fails under its mutation (10 run).
 
+### M15. Owner feedback from the Deck, round 3 (2026-10-05)
+
+The owner played the 15cc2ec release in Game Mode and reported (verbatim where quoted):
+
+1. **Background** "i don't like the wood background, can we just make it black?" Done when every
+   package that drew the wood desk (desk-night.png: the handheld shells and the dual-screen layouts)
+   draws pure black around its art instead, the editor preview included. The Soqueroeu TV rooms are a
+   scene, not a background, and keep their wall and table (reversible default; the owner can ask).
+2. **Dual screens** "i don't like the weird rounded corner screens bezels for nds and 3ds ... 'Large
+   main, second right', 'large main, second left', 'bezel side-by-side'. i have noticed there is weird
+   behavior on some of the dual screen settings and 'Fit (Bezel/Screen)'. For example, on DS vertical
+   shell, if i hit fit screen, the bezel disappears." Done when the drawn rounded frames are gone (plain
+   square screens on black), and every DS and 3DS variant behaves consistently under Fit: a shell is
+   never dropped by Fit, every state is at whole steps, checked by eye at 1280x800 and 1920x1080.
+3. **N64** "doesn't have reflections on the borders". Done when the N64 TV mirrors the picture on its
+   borders like the other TVs, on the Deck.
+4. **Bezel fit scale** "are we confident fit bezel works? ... can't make the fit bezel on gameboy twice
+   the current size on the steam deck, there seems to be a ton of vertical padding ... can you check for
+   gbc too?" Done when the GB and GBC bezel-fit scale on the Deck is shown to be the largest whole step
+   at which the shell fits (numbers), or fixed.
+5. **GB pixel accuracy** "are we sure we're not drawing off by 1-2 pixels? ... the text start
+   immediately at the bezel without any spacing". Done when a native test pattern shows every GB and GBC
+   pixel drawn whole (k by k), none covered by the shell, the picture centred in the glass.
+6. **Wii U sound** "sound doesn't work wiiu smash bros". Done when Wii U games play sound on the Deck.
+7. **PS2** "screen isn't centered - it's very low on the table compared to ps1". Done when the PS2
+   picture sits on its TV and table the way the PS1's does, on the Deck.
+8. **Reflections** "the reflections on the edge of the screen don't seem to be working? or very
+   inconsistently, please run an audit". Done when an audit of every system, bezel variant and placement
+   shows the mirror on every bezel that should have one (render host and Deck), with each gap fixed.
+
+Status: started 2026-10-05.
+
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
 The review ran on the Mac (mbp21, aarch64-darwin, macOS 27). FRACTAL-NORTH did not resolve
