@@ -54,7 +54,7 @@ class SceneFillSpecChecks {
         int pass = Strings.find(source, "if(uPass>3.5){", 0);
         int end = pass < 0 ? -1 : Strings.find(source, "\n", pass);
         string layerPass = pass < 0 || end < 0 ? "" : source.substring(pass, end - pass);
-        contract.expect(layerPass.contains("uLayer.w>0.5") && layerPass.contains("roomPlate(") && source.contains("vec4 roomPlate(") && source.contains("vec4 roomPlate(sampler2D t,vec2 p,vec4 r){vec2 q=artUv(p,r);") && source.contains("return textureGrad(t,clamp(q,0.0,1.0),vec2(1.0/r.z,0.0),vec2(0.0,-1.0/r.w));}"),
+        contract.expect(layerPass.contains("uLayer.w>0.5") && layerPass.contains("roomPlate(") && source.contains("vec4 roomPlate(") && source.contains("vec4 roomPlate(sampler2D t,vec2 p,vec4 r){vec2 q=artUv(p,r);") && source.contains("if(q.y<=1.0)return textureGrad(t,vec2(x,max(q.y,0.0)),dx,dy);"),
             "the compositor's layer pass draws a room past its rectangle, its edge rows and columns carried outward: " + layerPass.substring(0, layerPass.len() < 120 ? layerPass.len() : 120));
     }
 

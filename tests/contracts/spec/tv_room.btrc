@@ -4,9 +4,11 @@
 // 1x (448 lines) for the PS2 and 2x (480) for the PS1 at 1280x800, so the PS2's TV is drawn at 87% of the covered
 // room and the PS1's at 93%. Both rooms stood their table on the screen's bottom edge, which put the smaller PS2
 // TV's picture 23 px below the screen's middle and the PS1's 15 px above it. A TV room now centres its picture down
-// the screen in fit and bezel (game always did), the wall and table carried on past the canvas and the table's front
-// below it drawn as its last rows averaged into a level band; every picture lands on whole pixels. The editor's
-// copy of the arithmetic matches the renderer's.
+// the screen in fit and bezel (game always did), the wall and table carried on past the canvas; every picture lands on
+// whole pixels. The editor's copy of the arithmetic matches the renderer's. Below the table's front the 38ed18a band
+// (the last 32 rows averaged) showed coarse vertical streaks, each column one value all the way down; the wood there now
+// carries on as the plate's own last rows mirrored with the depth, falling into the dark but never to black, and the
+// sides carry on from past the art's bevelled table ends.
 
 import Library.FileSystem;
 import Library.JSON;
@@ -98,10 +100,17 @@ class TvRoomSpecChecks {
         contract.expect(failures.isEmpty() && pictures >= 100, f"every TV room centres its picture on the screen on whole pixels in fit, game and bezel at 1280x800 and 1920x1080, fit and bezel at whole steps ({pictures} pictures): " + failures.join("; "));
     }
 
-    class void band(Contract contract, Fixture fixture) {  // under a centred TV the table's front carries on down level, never one row's grain pulled into streaks
+    class void band(Contract contract, Fixture fixture) {  // under a centred TV the wood below the table's front carries on as a surface: rows that change with depth, never one row's grain pulled into streaks
         string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "render/compositor.frag"));
-        contract.expect(source.contains("vec4 roomPlate(sampler2D t,vec2 p,vec4 r){vec2 q=artUv(p,r);if(q.y>1.0)return textureGrad(t,clamp(q,0.0,1.0),vec2(32.0/float(textureSize(t,0).x),0.0),vec2(0.0,0.0));"),
-            "below a room's plate the compositor draws the table's last 32 rows averaged (a 32-texel mip footprint at the clamped edge), in the renderer and the editor alike");
+        int start = Strings.find(source, "vec4 roomPlate(", 0);
+        int end = start < 0 ? -1 : Strings.find(source, "return c;}", start);
+        string room = start < 0 || end < 0 ? "" : source.substring(start, end - start);
+        contract.expect(room.contains("float depth=(q.y-1.0)*size.y;float span=0.0055*size.y;float fold=mod(depth,2.0*span);") && room.contains("textureGrad(t,vec2(x,1.0-min(fold,2.0*span-fold)/size.y),dx,dy)") && !room.contains("vec2(0.0,0.0))"),
+            "below a room's plate each row mirrors one of the plate's last rows at the plate's own scale, back and forth with the depth, never a fixed row or a footprint stretched down (the renderer and the editor draw this file)");
+        contract.expect(room.contains("if(uLayer.y<0.5)c.rgb*=0.4+0.6*exp(-depth/(0.1*size.y));"),
+            "the carried wood falls into the dark with the depth, never below 40% of the plate's own light (never a black bar), and a multiply layer (the night plate) carries on as drawn");
+        contract.expect(room.contains("float x=clamp(q.x,4.0/size.x,1.0-4.0/size.x);") && room.contains("if(q.y<=1.0)return textureGrad(t,vec2(x,max(q.y,0.0)),dx,dy);"),
+            "to either side the room carries on from four texels in, past the dark bevel the art draws at each end of the table, so the table meets its carried part without a step");
     }
 
     class void editor(Contract contract, Fixture fixture) {  // the editor preview places a room exactly as the renderer does
