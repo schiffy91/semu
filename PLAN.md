@@ -1309,6 +1309,38 @@ Status: tackled in three parallel tracks (performance, picture, controls), then 
   variant in fit, game and bezel at both sizes is covered by its desk, its canvas or a standing room
   (194 pictures, 28 rooms). Each fails under its mutation: no anchor, no field, no parse, no roomPlate,
   no supplement (the emit fixed point) and no decal layer.
+- Items 6 and 7 (picture, c2bd63a): built and checked on the Mac render host, the Dreamcast also with
+  Flycast 2.7 in the VM; the Deck look is open. Flicker: both Dreamcast presets split every 480-line
+  frame into two fields and drew one per frame. crt-easymode-halation does it from 400 lines
+  (INTERLACING_TOGGLE, default 1, crt-easymode-halation.slang:143-155) and crt-royale from 289 to 576
+  lines (interlace_detect_toggle, default 1, src/bind-shader-params.h:233 and scanline-functions.h
+  is_interlaced), both at slang-shaders 4812a82. The Deck's evidence log shows the owner cycling sharp,
+  royale and none on Flycast. The picture moved a field line every frame. Two consecutive render-host
+  frames of a still Dreamcast screenshot differed in 34% of their pixels with either preset (GameCube
+  35%, Wii 33%, PS2 35%). Every emulator hands Semu whole progressive frames, so all 15 CRT wrappers of
+  those families now set the switch to 0: every system's sharp variant, the royale screens and the
+  Genesis royale-fast. Consecutive frames are now identical (0 pixels) on the Dreamcast (both
+  variants), GameCube, Wii and PS2. In the VM, Flycast 2.7 (Semu's emu.cfg, libsemupreload, Xvfb,
+  llvmpipe) ran ChuChu Rocket!'s title screen in the Dreamcast TV with the sharp preset, and 8 captures
+  were taken 0.37 s apart. With b86dada's presets, consecutive captures differed over the whole picture
+  (17% to 44% of the window). With these presets, only the animated logo and the blinking PRESS START
+  differ (1.6% to 5.3%). Reflections: the mirror read the shaded
+  picture at the mip whose texel spans one source pixel. Mips step in powers of two, which match no
+  integer scale except 2x and 4x, so at the Genesis's 3x it blended a 2-pixel and a 4-pixel mip: a
+  coarse grid with the scanlines half averaged. Each mirrored point now averages a box at least one
+  source pixel (and one screen pixel) wide, with five taps a fifth of the box apart. That covers whole
+  periods of the shader's scanlines and mask wherever the point lands. The filtering is linear,
+  including the raw frame, which magnifies point-sampled, and the box widens outward as before. Aero
+  the Acro-Bat (its screenshot as the card, new `RENDER_HOST_CARD=/path.png`) was checked in fit,
+  bezel and game with both Genesis presets, judged by eye at 6-8x. The mirrored score digits and green
+  pipe are now sharp at the edge and smooth outward, with no blocks and no mask stripes; before, they
+  were blocky columns. The editor compiles the same file, validated as GLSL ES 3.0 with glslang.
+  Contracts (fields_reflections.btrc) check that every CRT variant of an interlacing family (15
+  variants, including the 480-line Dreamcast, GameCube, Wii and PS2) emits its switch at 0, and that
+  reflectAt keeps the one-source-pixel box, the fifths and the linear lod. Each fails under its
+  mutation: the Dreamcast sharp switch removed, the PS2 royale switch at 1, the old reflectAt, a stride
+  of half the box. For the CRT track (item 8): crt-guest-advanced's Interlace Mode (`interm`, on from
+  375 lines) bobs the same way, and the contract already expects `interm` 0 on any guest wrapper.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
