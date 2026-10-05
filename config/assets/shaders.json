@@ -247,11 +247,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "interlace_detect_toggle": 0
+      },
       "output": {
-        "sha256": "4a50d60e5738f1b103b9ea36d78c3cd7be2876119936071cc4030ae30f27cb92"
+        "sha256": "ff90d9e4fd9b2b17bde9f67f2f0efcc48a2d9e5d41a1a095421a7876864d32bf"
       },
       "doc": {
-        "why": "Size-adaptive Genesis composite decoding and a consumer aperture-grille CRT reproduce the console's color blending, scan structure, and rainbow artifacts without assuming a 320-pixel core surface."
+        "why": "Size-adaptive Genesis composite decoding and a consumer aperture-grille CRT reproduce the console's color blending, scan structure, and rainbow artifacts without assuming a 320-pixel core surface.",
+        "params": "crt-royale treats a source of 289 to 576 lines as interlaced (interlace_detect_toggle, default 1) and draws one field per frame, and every emulator hands over whole progressive frames: the picture bobbed a field line every frame. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/n64/screen.slangp": {
@@ -285,8 +289,14 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "interlace_detect_toggle": 0
+      },
       "output": {
-        "sha256": "35c3501464d7a81e5d92e3649e6216a4fc0a7e612ae5d91c3baa410cd30daccd"
+        "sha256": "9f4a72be78f5c86e7e6984676fe61e022098bd4eba44a2fd88e72e5bdf7352e7"
+      },
+      "doc": {
+        "params": "crt-royale treats a source of 289 to 576 lines as interlaced (interlace_detect_toggle, default 1) and draws one field per frame, and every emulator hands over whole progressive frames: the picture bobbed a field line every frame. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/nds/screen.slangp": {
@@ -351,8 +361,14 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "interlace_detect_toggle": 0
+      },
       "output": {
-        "sha256": "35c3501464d7a81e5d92e3649e6216a4fc0a7e612ae5d91c3baa410cd30daccd"
+        "sha256": "9f4a72be78f5c86e7e6984676fe61e022098bd4eba44a2fd88e72e5bdf7352e7"
+      },
+      "doc": {
+        "params": "crt-royale treats a source of 289 to 576 lines as interlaced (interlace_detect_toggle, default 1) and draws one field per frame, and every emulator hands over whole progressive frames: the picture bobbed a field line every frame. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/gc/screen.slangp": {
@@ -365,11 +381,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "interlace_detect_toggle": 0
+      },
       "output": {
-        "sha256": "35c3501464d7a81e5d92e3649e6216a4fc0a7e612ae5d91c3baa410cd30daccd"
+        "sha256": "9f4a72be78f5c86e7e6984676fe61e022098bd4eba44a2fd88e72e5bdf7352e7"
       },
       "doc": {
-        "why": "GameCube's 480i/480p analog output is presented through the shared CRT chain; aspect-aware bezel selection remains independent."
+        "why": "GameCube's 480i/480p analog output is presented through the shared CRT chain; aspect-aware bezel selection remains independent.",
+        "params": "crt-royale treats a source of 289 to 576 lines as interlaced (interlace_detect_toggle, default 1) and draws one field per frame, and every emulator hands over whole progressive frames: the picture bobbed a field line every frame. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/wii/screen.slangp": {
@@ -382,11 +402,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "interlace_detect_toggle": 0
+      },
       "output": {
-        "sha256": "35c3501464d7a81e5d92e3649e6216a4fc0a7e612ae5d91c3baa410cd30daccd"
+        "sha256": "9f4a72be78f5c86e7e6984676fe61e022098bd4eba44a2fd88e72e5bdf7352e7"
       },
       "doc": {
-        "why": "Wii's analog television output shares the GameCube-era CRT chain while 4:3 and 16:9 geometry remain dynamically resolved."
+        "why": "Wii's analog television output shares the GameCube-era CRT chain while 4:3 and 16:9 geometry remain dynamically resolved.",
+        "params": "crt-royale treats a source of 289 to 576 lines as interlaced (interlace_detect_toggle, default 1) and draws one field per frame, and every emulator hands over whole progressive frames: the picture bobbed a field line every frame. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/ps2/screen.slangp": {
@@ -399,11 +423,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "interlace_detect_toggle": 0
+      },
       "output": {
-        "sha256": "35c3501464d7a81e5d92e3649e6216a4fc0a7e612ae5d91c3baa410cd30daccd"
+        "sha256": "9f4a72be78f5c86e7e6984676fe61e022098bd4eba44a2fd88e72e5bdf7352e7"
       },
       "doc": {
-        "why": "PS2's predominantly 480i analog output uses the shared high-quality CRT chain with aspect-aware 4:3 and 16:9 presentation."
+        "why": "PS2's predominantly 480i analog output uses the shared high-quality CRT chain with aspect-aware 4:3 and 16:9 presentation.",
+        "params": "crt-royale treats a source of 289 to 576 lines as interlaced (interlace_detect_toggle, default 1) and draws one field per frame, and every emulator hands over whole progressive frames: the picture bobbed a field line every frame. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/n3ds/screen.slangp": {
@@ -433,11 +461,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "INTERLACING_TOGGLE": 0
+      },
       "output": {
-        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+        "sha256": "1d7dc8f9603187348ebe56cbdc1bcfae4656d824a199b765e4c4ba477c1b0e29"
       },
       "doc": {
-        "why": "Materially different pinned alternate for nes: Sharp CRT (easymode + halation)."
+        "why": "Materially different pinned alternate for nes: Sharp CRT (easymode + halation).",
+        "params": "crt-easymode-halation draws a source of 400 lines or more as two alternating fields (INTERLACING_TOGGLE, default 1), and every emulator hands over whole progressive frames: the picture bobbed a field line every frame, the Dreamcast flicker. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/snes/sharp.slangp": {
@@ -450,11 +482,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "INTERLACING_TOGGLE": 0
+      },
       "output": {
-        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+        "sha256": "1d7dc8f9603187348ebe56cbdc1bcfae4656d824a199b765e4c4ba477c1b0e29"
       },
       "doc": {
-        "why": "Materially different pinned alternate for snes: Sharp CRT (easymode + halation)."
+        "why": "Materially different pinned alternate for snes: Sharp CRT (easymode + halation).",
+        "params": "crt-easymode-halation draws a source of 400 lines or more as two alternating fields (INTERLACING_TOGGLE, default 1), and every emulator hands over whole progressive frames: the picture bobbed a field line every frame, the Dreamcast flicker. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/genesis/sharp.slangp": {
@@ -467,11 +503,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "INTERLACING_TOGGLE": 0
+      },
       "output": {
-        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+        "sha256": "1d7dc8f9603187348ebe56cbdc1bcfae4656d824a199b765e4c4ba477c1b0e29"
       },
       "doc": {
-        "why": "Materially different pinned alternate for genesis: Sharp CRT (easymode + halation)."
+        "why": "Materially different pinned alternate for genesis: Sharp CRT (easymode + halation).",
+        "params": "crt-easymode-halation draws a source of 400 lines or more as two alternating fields (INTERLACING_TOGGLE, default 1), and every emulator hands over whole progressive frames: the picture bobbed a field line every frame, the Dreamcast flicker. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/n64/sharp.slangp": {
@@ -484,11 +524,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "INTERLACING_TOGGLE": 0
+      },
       "output": {
-        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+        "sha256": "1d7dc8f9603187348ebe56cbdc1bcfae4656d824a199b765e4c4ba477c1b0e29"
       },
       "doc": {
-        "why": "Materially different pinned alternate for n64: Sharp CRT (easymode + halation)."
+        "why": "Materially different pinned alternate for n64: Sharp CRT (easymode + halation).",
+        "params": "crt-easymode-halation draws a source of 400 lines or more as two alternating fields (INTERLACING_TOGGLE, default 1), and every emulator hands over whole progressive frames: the picture bobbed a field line every frame, the Dreamcast flicker. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/psx/sharp.slangp": {
@@ -501,11 +545,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "INTERLACING_TOGGLE": 0
+      },
       "output": {
-        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+        "sha256": "1d7dc8f9603187348ebe56cbdc1bcfae4656d824a199b765e4c4ba477c1b0e29"
       },
       "doc": {
-        "why": "Materially different pinned alternate for psx: Sharp CRT (easymode + halation)."
+        "why": "Materially different pinned alternate for psx: Sharp CRT (easymode + halation).",
+        "params": "crt-easymode-halation draws a source of 400 lines or more as two alternating fields (INTERLACING_TOGGLE, default 1), and every emulator hands over whole progressive frames: the picture bobbed a field line every frame, the Dreamcast flicker. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/dreamcast/sharp.slangp": {
@@ -518,11 +566,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "INTERLACING_TOGGLE": 0
+      },
       "output": {
-        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+        "sha256": "1d7dc8f9603187348ebe56cbdc1bcfae4656d824a199b765e4c4ba477c1b0e29"
       },
       "doc": {
-        "why": "Materially different pinned alternate for dreamcast: Sharp CRT (easymode + halation)."
+        "why": "Materially different pinned alternate for dreamcast: Sharp CRT (easymode + halation).",
+        "params": "crt-easymode-halation draws a source of 400 lines or more as two alternating fields (INTERLACING_TOGGLE, default 1), and every emulator hands over whole progressive frames: the picture bobbed a field line every frame, the Dreamcast flicker. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/gc/sharp.slangp": {
@@ -535,11 +587,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "INTERLACING_TOGGLE": 0
+      },
       "output": {
-        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+        "sha256": "1d7dc8f9603187348ebe56cbdc1bcfae4656d824a199b765e4c4ba477c1b0e29"
       },
       "doc": {
-        "why": "Materially different pinned alternate for gc: Sharp CRT (easymode + halation)."
+        "why": "Materially different pinned alternate for gc: Sharp CRT (easymode + halation).",
+        "params": "crt-easymode-halation draws a source of 400 lines or more as two alternating fields (INTERLACING_TOGGLE, default 1), and every emulator hands over whole progressive frames: the picture bobbed a field line every frame, the Dreamcast flicker. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/wii/sharp.slangp": {
@@ -552,11 +608,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "INTERLACING_TOGGLE": 0
+      },
       "output": {
-        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+        "sha256": "1d7dc8f9603187348ebe56cbdc1bcfae4656d824a199b765e4c4ba477c1b0e29"
       },
       "doc": {
-        "why": "Materially different pinned alternate for wii: Sharp CRT (easymode + halation)."
+        "why": "Materially different pinned alternate for wii: Sharp CRT (easymode + halation).",
+        "params": "crt-easymode-halation draws a source of 400 lines or more as two alternating fields (INTERLACING_TOGGLE, default 1), and every emulator hands over whole progressive frames: the picture bobbed a field line every frame, the Dreamcast flicker. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/ps2/sharp.slangp": {
@@ -569,11 +629,15 @@
       "requires": [
         "shaders_slang"
       ],
+      "params": {
+        "INTERLACING_TOGGLE": 0
+      },
       "output": {
-        "sha256": "1ad465d55c0862bd8e85ecf9bff149a5aa0e5d613540bf0472c2b4e96f2bd3d2"
+        "sha256": "1d7dc8f9603187348ebe56cbdc1bcfae4656d824a199b765e4c4ba477c1b0e29"
       },
       "doc": {
-        "why": "Materially different pinned alternate for ps2: Sharp CRT (easymode + halation)."
+        "why": "Materially different pinned alternate for ps2: Sharp CRT (easymode + halation).",
+        "params": "crt-easymode-halation draws a source of 400 lines or more as two alternating fields (INTERLACING_TOGGLE, default 1), and every emulator hands over whole progressive frames: the picture bobbed a field line every frame, the Dreamcast flicker. Off, the frame is drawn as the one progressive picture it is."
       }
     },
     "assets/shaders/gbc/authentic.slangp": {

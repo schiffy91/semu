@@ -1,0 +1,79 @@
+// Fields and reflections spec: the owner's second Deck round (M14 items 6 and 7). The Dreamcast flickered because its
+// CRT presets split every 480-line frame into two fields and drew one per frame (crt-easymode-halation's
+// INTERLACING_TOGGLE from 400 lines, crt-royale's interlace_detect_toggle from 289): the picture bobbed a field line
+// each frame, as it did on the GameCube, the Wii and the PS2. Every emulator hands Semu whole progressive frames, so
+// every CRT wrapper of an interlacing family turns the split off. And the reflections of Aero the Acro-Bat looked
+// pixelated: the mirror read the shaded picture from the mip whose texel spans one source pixel, a power-of-two grid
+// that matches no scale but 2x and 4x, so it showed that coarse grid and the scanlines it half averaged. Each mirrored
+// point now averages a box of at least one source pixel with five taps a fifth of it apart, which takes whole periods
+// of the shader's scanlines and mask wherever the point lands: the smooth picture, sharp at the edge, wider outward.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ./gameboy.btrc;
+
+class FieldsReflectionsSpecChecks {
+    class string fieldSwitch(JSONValue recipe) {  // the parameter that splits a tall frame into fields, for a preset of an interlacing family; "" for any other
+        string sources = SemuJson.textAt(recipe, "reference.path");
+        JSONValue passes = recipe.get("passes");
+        for (int index = 0; passes != null && passes.isArray() && index < passes.size(); index++) { sources = sources + " " + SemuJson.textAt(passes.at(index), "path"); }
+        if (sources.contains("crt-easymode-halation")) { return "INTERLACING_TOGGLE"; }
+        if (sources.contains("crt-royale")) { return "interlace_detect_toggle"; }
+        if (sources.contains("crt-guest-advanced")) { return "interm"; }  // guest's Interlace Mode: 0 is off
+        return "";
+    }
+
+    class void fields(Contract contract, Fixture fixture) {
+        JSONValue manifest = SemuJson.readFile(PathTools.join(fixture.project, "config/assets/shaders.json"));
+        Vector<string> failures = [];
+        Vector<string> covered = [];
+        for systemId in fixture.model.systemIds() {
+            JSONValue variants = fixture.model.system(systemId).shaders.get("variants");
+            for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
+                string logical = SemuJson.textAt(variants.at(index), "screen");
+                JSONValue recipe = manifest.get("assets").get(logical);
+                if (recipe == null) { continue; }
+                string name = FieldsReflectionsSpecChecks.fieldSwitch(recipe);
+                if (name.isEmpty()) { continue; }
+                bool off = GameBoySpecJson.number(recipe, "params." + name) == 0.0;  // -1 when absent
+                bool emitted = !SemuJson.textAt(recipe, "type").equals("slang_wrapper") || GameBoySpecFiles.wrapperText(manifest, logical).contains(name + " = \"0\"\n");
+                if (!off || !emitted) { failures.push(systemId + " " + logical + ": " + name + (off ? " is not in the emitted preset" : " is not 0")); }
+                covered.push(systemId + "/" + SemuJson.textAt(variants.at(index), "id"));
+            }
+        }
+        string list = covered.join(" ");
+        bool tall = list.contains("dreamcast/default") && list.contains("dreamcast/royale") && list.contains("gc/") && list.contains("wii/") && list.contains("ps2/");
+        contract.expect(failures.isEmpty() && tall, f"every CRT preset of an interlacing family draws a whole frame, never one field per frame ({covered.size()} variants, the 480-line Dreamcast, GameCube, Wii and PS2 among them): " + failures.join("; "));
+    }
+
+    class string shaderFunction(string source, string signature) {  // one function of compositor.frag, from its signature to the next top-level line
+        int start = Strings.find(source, signature, 0);
+        if (start < 0) { return ""; }
+        int end = Strings.find(source, "\n vec", start + signature.len());
+        return end < 0 ? source.substring(start, source.len() - start) : source.substring(start, end - start);
+    }
+
+    class void reflections(Contract contract, Fixture fixture) {
+        string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "render/compositor.frag"));
+        string mirror = FieldsReflectionsSpecChecks.shaderFunction(source, "vec3 reflectAt(");
+        bool sourcePixel = mirror.contains("vec2 cell=1.0/laneAxes(vec2(textureSize(raw,0)),rot);") && mirror.contains(",cell),1.0/rect.zw);");
+        bool fifths = mirror.contains("vec2 stride=box*0.2;") && mirror.contains("for(int y=-2;y<=2;y++)for(int x=-2;x<=2;x++)") && mirror.contains("vec2(float(x),float(y))*stride");
+        bool linear = mirror.contains("float lod=max(log2(max(max(reach.x,reach.y),1.0)),0.01);");
+        contract.expect(!mirror.isEmpty() && sourcePixel && fifths && linear && !source.contains("lightLod"),
+            "each mirrored point averages a box of at least one source pixel (and a screen pixel) with five taps a fifth of it apart, filtered linearly, never the shaded picture's power-of-two mip: " + mirror.substring(0, mirror.len() < 160 ? mirror.len() : 160));
+    }
+}
+
+class FieldsReflectionsSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        FieldsReflectionsSpecChecks.fields(contract, fixture);
+        FieldsReflectionsSpecChecks.reflections(contract, fixture);
+    }
+}

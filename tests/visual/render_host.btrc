@@ -1,6 +1,6 @@
 // The real Semu renderer, offscreen on macOS (CGL, OpenGL 4.1 core): a test card (or a flat one,
 // RENDER_HOST_CARD=white/black with RENDER_HOST_LIT=screen, a measuring card: ramp, lines, bars, clip, or the bezel
-// editor's card with RENDER_HOST_CARD=editor) stands in for the
+// editor's card with RENDER_HOST_CARD=editor, or a screenshot with RENDER_HOST_CARD=/path/to/it.png) stands in for the
 // emulator's picture, SEMU_RENDER_* comes from `semu render-env`, and the last of RENDER_HOST_FRAMES
 // frames (default 12, so a history pass sees a running game) is written as PPM; --switch then journals a
 // bezel and shader select and writes the toast frame and the switched one. RENDER_HOST_CURSOR=X,Y hands
@@ -64,6 +64,7 @@ class RenderHostTestCard {  // the editor's card: blue over green (orange over y
             return data;
         }
         if (flat != null && strcmp(flat, "editor") == 0) { return RenderHostTestCard.editorCard(data, width, height, screen); }
+        if (flat != null && strchr(flat, '/') != null && RenderHostTestCard.picture(data, width, height, flat)) { return data; }
         int cell = width < height ? width / 40 : height / 40;
         if (cell < 2) { cell = 2; }
         int corner = cell * 4;
@@ -113,6 +114,24 @@ class RenderHostTestCard {  // the editor's card: blue over green (orange over y
         if (bar == 5) { return 14725184; }  // 224,176,64
         if (bar == 6) { return 14733376; }  // yellow 224,208,64
         return 10543168;  // yellow-green 160,224,64
+    }
+
+    class bool picture(unsigned char* data, int width, int height, char* path) {  // RENDER_HOST_CARD=/a/picture.png: a game's screenshot, point-sampled to the native size, as the emulator would hand it over
+        int pictureWidth = 0;
+        int pictureHeight = 0;
+        int channels = 0;
+        unsigned char* pixels = stbi_load(path, &pictureWidth, &pictureHeight, &channels, 4);
+        if (pixels == null) { fprintf(stderr, "render-host: RENDER_HOST_CARD %s is not a readable picture; drawing the test card\n", path); return false; }
+        for (int row = 0; row < height; row++) {
+            int source = row * pictureHeight / height;
+            for (int column = 0; column < width; column++) {
+                int from = (source * pictureWidth + column * pictureWidth / width) * 4;
+                int offset = ((height - 1 - row) * width + column) * 4;  // GL rows start at the bottom
+                for (int channel = 0; channel < 4; channel++) { data[offset + channel] = pixels[from + channel]; }
+            }
+        }
+        stbi_image_free((void*)pixels);
+        return true;
     }
 
     class unsigned char* editorCard(unsigned char* data, int width, int height, int screen) {  // RENDER_HOST_CARD=editor: the editor's drawTestCard colours and layout at native size
