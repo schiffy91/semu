@@ -1723,7 +1723,9 @@ Status: started 2026-10-05.
     picture tinting the lip.
   - switch, wiiu: none (no bezel) / none / Ryujinx and Cemu Vulkan layers.
   Verdict: no package that declares a mirror failed to draw it where its shell is shown (178 of 178; the
-  re-run per screen at e379c10, below, gives 186 of 186 with the Wii's 16:9 TV drawn).
+  re-run per screen at e379c10, below, gave 186 of 186, but its six wii tv_wide rows were the 4:3 TV's; re-run at
+  9529a9c with the 16:9 TV drawn as a launch reaches it, through tv on a 16:9 picture: 186 of 186, see the audit
+  tooling review fix below).
   The inconsistency was the strengths, which came from each preset's HSM_REFLECT_GLOBAL_AMOUNT: 0.2 to
   0.5. On the same card the brightest mirror step ranged from 29 (GB) and 40 (PS1) to 110 (NES). Every
   mirror is now one strength, 0.4, marked edited so `semu bezel emit` keeps it, and the range is 54 to
@@ -1816,13 +1818,15 @@ Status: started 2026-10-05.
     tests/visual/reflection-audit.sh measures each screen of a two-screen cell on its own (only that screen's REFLECT
     zeroed) and reports its reach (its mirror's pixels over its picture's perimeter, lanes from the renderer's debug
     lines, which now print lane1): THIN when one screen's reach is under a quarter of its sibling's. A variant for
-    widescreen output (wii tv_wide) is fed a 16:9 card, so the renderer draws tv-soqueroeu-wii-16x9, and its _REFLECT_B
-    is zeroed in the mirror-off pass. A system with no bezel gets its row unrendered. The table states the revision it
+    widescreen output (wii tv_wide) was fed a 16:9 card with bezel_variant tv_wide and its _REFLECT_B zeroed in the
+    mirror-off pass; but render-env does not honour tv_wide (it is not in the radial's bezel list), so the renderer drew
+    the 4:3 tv-soqueroeu-wii round a letterboxed 16:9 picture (corrected in the audit tooling review fix below). A
+    system with no bezel gets its row unrendered. The table states the revision it
     was measured at. Re-run at e379c10 (tests/visual/reflection-audit.tsv, 238 rows): 186 of 186 declared mirrors
     drawn on every screen, none thin. Reach (px): n3ds shell 12.5 top and 5.7 touch at 1280x800 (the old hold gives 12.5 and 1.0:
     THIN, exit 1), 18.5 and 62.7 at 1080p (the touch screen's glass gap); nds shell 14.0 and 14.3, 21.0 and 21.6;
-    the vertical shells 4.7 to 4.9, 9.3 to 9.8. The Wii's 16:9 TV now mirrors in all six cells (88440 to 230922 px;
-    its rows had been copies of the 4:3 TV's). The TV rooms' rows moved with 38ed18a's centring (psx tv fit 1280x800
+    the vertical shells 4.7 to 4.9, 9.3 to 9.8. The six wii tv_wide rows (88440 to 230922 px) were the 4:3 TV's mirror
+    round a letterboxed 16:9 picture, not the 16:9 TV's (re-measured below: 21464 to 88322 px). The TV rooms' rows moved with 38ed18a's centring (psx tv fit 1280x800
     19428 to 18918, ps2 tv fit 1080p 129223 to 129886, n64 tv fit 1080p 53922 to 52570; ps2 speakers fit 1080p
     39462 to 157074, the 2x it has drawn since 38ed18a).
   - SAME AS BEZEL (item 2's toast). It compared a Fit choice with the frame before, so a PS2 at 1080p, whose Fit and Fit:
@@ -1835,7 +1839,9 @@ Status: started 2026-10-05.
   - Editor parity. tests/contracts/spec/editor_dual.btrc pins the editor's port of RendererDualShell (canvasOn and lanes
     through dualShell, the whole-shell and screen steps, the second screen's step, the carried opening and lip, and
     carry itself on both sides). tests/visual/editor-sync.sh now exits non-zero on any framing more than 1 px apart or any
-    pixel over 10 %, and finds the widescreen variant by its "output" (wii:tv_wide no longer reports 9 px). The render
+    pixel over 10 %, and finds the widescreen variant by its "output" (wii:tv_wide no longer reports 9 px; but it named
+    tv_wide to render-env, which draws the 4:3 TV for it, so its six wii:tv_wide cells failed on a state no launch
+    reaches; corrected in the audit tooling review fix below). The render
     host's editor card (RENDER_HOST_CARD=editor) is drawn into the picture a declared crop keeps, black round it as
     GLideN64 hands it over, so with --card test the N64 matches the editor too. editor-sync --card test, bezel and game,
     1280x800 and 1920x1080, for nds:shell, nds:vertical, n3ds:shell, n3ds:vertical, gba (both), n64 (both): 0.000 %,
@@ -2033,7 +2039,9 @@ Status: started 2026-10-05.
     editor-sync --card test, all 19 rooms in fit, bezel and game at 1280x800 and 1920x1080, at e40a944: 108 of 114
     cells 0.000% of pixels, MAE 0, framing equal (the band and the side carry included). The six wii:tv_wide cells
     fail on framing (87 to 866 px) with the same numbers at b39f57b without this change: since b39f57b editor-sync feeds
-    production the 16:9 card, so it draws the 16:9 TV the editor does not frame; reported, not this fix's. Before the
+    production the 16:9 card under bezel_variant tv_wide, which render-env does not honour, so production drew the 4:3
+    TV round a 16:9 picture, a state no launch reaches; the editor was right (corrected in the audit tooling review fix
+    below, where all six match). Before the
     rebase (0f535bb with this change) the same run gave 16 of 19 per state, the N64 (crop card, fixed in b39f57b) and
     wii:tv_wide differing exactly as without the change.
     Contracts: tv_room.btrc's band (rows that follow the depth at the plate's gradients, never a fixed row or a
@@ -2058,6 +2066,48 @@ Status: started 2026-10-05.
     at the canvas's left and right ends the table's front runs on without a step.
   - Docked at 1920x1080: Dreamcast, GameCube or Wii in Fit, and any TV in Fit: Bezel: the wood under the table runs on
     down into the dark (76 to 163 px), no stripes, no black bar.
+- Review fixes, audit tooling (2026-10-05, the verification of the review fixes: the Wii's 16:9 TV in the audits and
+  the editor's carry contract): done on the Mac render host (3ab17b3, c8a326b). No renderer or editor code changed.
+  - The Wii's 16:9 TV in editor-sync and the reflection audit. Since b39f57b both scripts asked `semu render-env` for
+    bezel_variant tv_wide. tv_wide declares "output": "widescreen" and is not in the radial's bezel list
+    (tv|speakers|none), so render-env compiles the default tv-soqueroeu-wii with no _B keys, and fed the 16:9 card the
+    renderer drew the 4:3 TV round a letterboxed picture (debug line "bezel tv-soqueroeu-wii", out 297,207 687x386 in
+    Fit: Bezel at 1280x800, a fractional picture). No launch reaches that state: the owner's path is Living room CRT
+    with the 16:9 output, which draws tv-soqueroeu-wii-16x9 through the _B keys. Both scripts now render a variant that
+    declares an output through the variant listing it under "outputs" (tv) on that output's picture (a 16:9 card); the
+    editor still previews wii:tv_wide. Every cell compares the package on the renderer's debug line with the variant's
+    own and fails on a difference (editor-sync PACKAGE DIFFERS, the audit PACKAGE). Render host at 9529a9c:
+    editor-sync --card test over every system and variant (39) in fit, bezel and game at 1280x800 and 1920x1080, 234
+    cells: 0 failures, every cell 0.000 % and MAE 0, framing equal on the 31 fixed packages per state (the 8 computed
+    DS and 3DS layouts are compared over the whole screen); wii:tv_wide drawn as
+    tv-soqueroeu-wii-16x9 at 1335x751 (fit and bezel), 2002x1126 (game, 1280x800) and 2669x1502 (game, 1080p). By eye:
+    the 16:9 TV round a 16:9 picture filling its tube, the lip mirroring the picture sharp at the edge and fading out.
+    tests/visual/reflection-audit.tsv re-measured whole at 9529a9c, now with the drawn package as its third column: 238
+    rows, 186 of 186 declared mirrors drawn on every screen, 0 failing; tv_wide 21464 px (fit and bezel, both sizes,
+    reach 8.1 px), 37771 (game at 1280x800, 9.4), 88322 (game at 1080p, 16.6). 22 GB, GBC and GBA rows moved with
+    e40a944's LCD edge patches (1 to 38 px, peak at most 1 step; gba shell fit 1280x800 10259 to 10285), verdicts
+    unchanged. Contract audit_packages.btrc: both scripts resolve the base variant and guard the drawn package, the
+    compositor's debug line still names the package, and every bezel row of the committed table names its variant's
+    own package with every declared variant in all six states. It fails under six mutations (the 4:3 package in the
+    tv_wide rows, the tv_wide rows dropped, either script's base selection or guard removed); at run time the old path
+    fails the guards (editor-sync exits 1, "PACKAGE DIFFERS: production drew tv-soqueroeu-wii through tv_wide"; the
+    audit exits 1 with PACKAGE and the old 135057 px).
+  - The editor's carry contract. editor_dual.btrc pinned only the left and top lines of the editor's Geometry.carry:
+    dropping its bottom or right line, or making Geometry.picture always the opening, moved the editor's 3DS touch lip
+    off the Deck's (editor-sync n3ds:shell at 1280x800, 0.137 %) with make test green. It now pins every side's overrun
+    and the hold in RendererLayout.carry and Geometry.carry, the picture rectangle (calibrated image, else the opening)
+    in RendererMirror.picture and Geometry.picture, and laneUniforms carrying from Geometry.picture. It fails under nine
+    mutations: the JS bottom, right, top and left sides, the hold, the picture always the opening and the uniforms'
+    picture; the renderer's bottom side and its picture always the opening.
+  Reversible defaults:
+  - A variant that declares an output is audited the way a launch reaches it (the variant listing it under "outputs",
+    on that output's picture), never by naming it to render-env; its rows keep its own id.
+  - A cell whose renderer draws another package than its variant's fails rather than being measured.
+  - render-env is unchanged: it still compiles the default variant for a bezel_variant outside the radial's list (no
+    launch names one; the radial cycles tv|speakers|none and the output switch selects the _B keys).
+  Deck check (open): Wii, any game, Living room CRT with the 16:9 output: the 16:9 TV with the picture filling its
+  widescreen tube (853x480 in Fit on the Deck), its lip mirroring the picture about 8 px wide, never the 4:3 TV round a
+  letterboxed picture.
 - M15 Deck acceptance (open: nothing below has been seen on the Deck yet). Per item: system, the owner's
   game, variant, placement, what to see; numbers at 1280x800. `tests/deck/m15-check.cases` runs them
   off-screen (`tests/deck/input-check.sh PAD tests/deck/m15-check.cases OUT`; its case comments give the
