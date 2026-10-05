@@ -1381,17 +1381,17 @@ Status: tackled in three parallel tracks (performance, picture, controls), then 
   for 320x240). crt-royale's fixed-width scanlines beat against that fractional step, so a white field
   shows irregular dark rows on the render host at 1280x800. At 1080p (3x) they are gone. The owner's
   reference is Retro Crisis's "RC GDV-NTSC - PlayStation RGB 100", guest.r's crt-guest-advanced-ntsc
-  with his values. His presets live only in GitHub release zips (GPL-3.0). The values were read from
+  with Retro Crisis's values. The presets live only in GitHub release zips (GPL-3.0). The values were read from
   ShaderGlass's import of them (mausimus/ShaderGlass, retro-crisis/720p Steam Deck), and every
-  parameter exists in the pinned slang-shaders 4812a82. psx/default is now that wrapper with his 720p
-  Steam Deck values. His Deck preset turns the mask off (shadowMask -1), and his 1080p and 4K presets
+  parameter exists in the pinned slang-shaders 4812a82. psx/default is now that wrapper with the 720p
+  Steam Deck values. The Deck preset turns the mask off (shadowMask -1), and the 1080p and 4K presets
   differ from it only in the mask, so one preset serves every screen. intres 1 (the one line that
-  separates his 240p and 480i presets) draws a 480-line frame as 240 scanlines and changes nothing at
+  separates the 240p and 480i presets) draws a 480-line frame as 240 scanlines and changes nothing at
   240. interm 0 keeps whole frames. GDV's beam widens with brightness, and the white is even, with
-  only his fine luma grain (addnoised 0.2: drop it if the owner finds it noisy). Crash Bandicoot is
-  softer and brighter, with NTSC chroma bleed and no royale dot grid. The N64 (his N64), SNES (SNES RGB
-  100) and Genesis (Mega Drive RGB 100) follow, with his hum bar and any shader overscan crop left out.
-  The NES was tried with his NES Composite 100 and left on its NTSC composite: brighter, yellower and
+  only the preset's fine luma grain (addnoised 0.2: drop it if the owner finds it noisy). Crash Bandicoot is
+  softer and brighter, with NTSC chroma bleed and no royale dot grid. The N64 (the RC N64 preset), SNES (SNES RGB
+  100) and Genesis (Mega Drive RGB 100) follow, with the presets' hum bar and any shader overscan crop left out.
+  The NES was tried with the RC NES Composite 100 and left on its NTSC composite: brighter, yellower and
   red-fringed, not more accurate. Each previous default stays one step away (psx/royale, n64/hyllian,
   snes/svideo, genesis/rainbow). The 480-line systems keep Sharp CRT, because at 1280x800 their 480
   lines hold 1x (bezel) or 1.67x (screen). Cost: render-host gained RENDER_HOST_GPU_TIME=1, a
@@ -1424,9 +1424,9 @@ Status: tackled in three parallel tracks (performance, picture, controls), then 
     per Soqueroeu TV would allow more (the NES at 3x on 1080p); not done. SemuComposedScale (the
     texture-pack scale for mods) still floors fit and bezel; it matters only for packs on a TV system.
   - GDV fields (item 6): the PS1 and SNES presets set ntsc_fields 0, so ntsc-pass1 flipped the chroma
-    phase every frame. Merged (ntsc_fields 1, as his Mega Drive preset), consecutive frames of a still
+    phase every frame. Merged (ntsc_fields 1, as the RC Mega Drive preset), consecutive frames of a still
     Alundra screenshot differ in 116 pixels instead of 4233, Donkey Kong Country 2768 instead of 8745
-    (the rest is his grain).
+    (the rest is the preset's grain).
   - Restart Game (item 4): the action (settings radial, the Wii layer's centre, Ctrl+Shift+D, the menu
     row) restarts only when something waits, as its Steam doc says, so a stray centre click after a
     live layout switch does nothing. The players page's RESTART GAME keeps the ruling below. With
@@ -1467,8 +1467,21 @@ The owner played the 15cc2ec release in Game Mode and reported (verbatim where q
    inconsistently, please run an audit". Done when an audit of every system, bezel variant and placement
    shows the mirror on every bezel that should have one (render host and Deck), with each gap fixed.
 
-Status: started 2026-10-05.
-- Item 1 (background): done on the Mac render host (db92462); the Deck check is open. The wood desk
+Status: observed on the Deck 2026-10-05 (release bdabd01), off-screen, every item but Wii U sound by ear.
+- Deck run (2026-10-05, 1280x800, `tests/deck/m15-check.cases`, 13 cases with the owner's games, each judged by
+  eye from its shots, journal, receipts and evidence by one reviewer per case): 13 of 13 hold, every launch quit
+  clean. GB (Aerostar) 5x at 240,40 with the game's own column 0 and row 0 mirrored on the 21 px LCD frame, Fit:
+  Bezel the whole DMG at 1x centred on #000000 (164/165 px above and below); studio 2x whole (41/39 px), square
+  LCD at 5x with whole corner pixels and no darker outer row; GBC 1x whole (161/162 px), berry carried over; GBA
+  shell and arctic centred on black, the lip mirroring row by row. N64 (Super Mario 64) the picture mirrored on
+  the lip with no black column; PS1, PS2 (Def Jam), Genesis (Aero), Dreamcast (Crazy Taxi) centred on their
+  tables with the wood carried level, no streaks, no black; PSP mirrored on both variants; DS (Dual Strike) every
+  layout plain and square on black, the shell kept in Fit: Screen, taps landing in every layout; 3DS (Ocarina of
+  Time 3D) the touch screen's lip about 7 px wide; Wii U (Smash) playing on, the compiled settings.xml carrying
+  api 3, TVDevice default, TVVolume 100. PCSX2's frame-60 capture shows no unsafe-settings or texture notice, but
+  it did show "Controller SDL-0 connected." over the TV: OsdMessagesPos = 0 now drops PCSX2's OSD messages
+  (Semu's toasts announce saves, loads and choices; reversible default). Open: Wii U sound heard in Game Mode.
+- Item 1 (background): done on the Mac render host (db92462); seen on the Deck (above). The wood desk
   (desk-night.png: Duimon's dark_wood1 under the night plate) was the `background` of the gb, gbc,
   gba, psp, nds and n3ds shells and the four dual layouts, and the DS and 3DS shells also drew
   Duimon's Canvas_Background (shell) or Canvas_Vignette (vertical) layer over it. All 16 packages now
@@ -2108,7 +2121,7 @@ Status: started 2026-10-05.
   Deck check (open): Wii, any game, Living room CRT with the 16:9 output: the 16:9 TV with the picture filling its
   widescreen tube (853x480 in Fit on the Deck), its lip mirroring the picture about 8 px wide, never the 4:3 TV round a
   letterboxed picture.
-- M15 Deck acceptance (open: nothing below has been seen on the Deck yet). Per item: system, the owner's
+- M15 Deck acceptance (seen off-screen on the Deck 2026-10-05, bdabd01: 13 of 13 cases hold; Wii U sound by ear open). Per item: system, the owner's
   game, variant, placement, what to see; numbers at 1280x800. `tests/deck/m15-check.cases` runs them
   off-screen (`tests/deck/input-check.sh PAD tests/deck/m15-check.cases OUT`; its case comments give the
   same observables as journal codes, receipts and shots). Sound and anything marked by eye need Game Mode.
@@ -3505,13 +3518,13 @@ Update this block whenever a milestone criterion changes state.
   players page, Steam's radial pages and icons, item 1's glow and item 5's PSP by eye.
 - M14 owner feedback, round 2 (2026-10-04): all nine items implemented (191bea1 to 15cc2ec), observed on
   the Mac render host and in the podman VM (Super Mario 64 on GLideN64, Flycast, the build flags in the VM).
-  The owner played 15cc2ec in Game Mode, and what he still saw is M15. Open on the Deck: the reruns M14
+  The owner played 15cc2ec in Game Mode, and what the owner still saw is M15. Open on the Deck: the reruns M14
   names (the Wii layouts and Restart Game, Wii U Bezel, the N64's speed, the Dreamcast flicker, GDV-NTSC's
   look and frame time).
 - M15 owner feedback, round 3 (2026-10-05): all eight items implemented (db92462 to 0f535bb, then the
   review fixes), observed on the Mac render host, in the editor (headless Chrome) and in the podman VM
-  (PCSX2, Beetle PSX, Mupen64Plus, Cemu with Mario Kart 8, the DS and 3DS touch routes). The Deck is open:
-  M15's "Deck acceptance" list, run off-screen by `tests/deck/m15-check.cases`.
+  (PCSX2, Beetle PSX, Mupen64Plus, Cemu with Mario Kart 8, the DS and 3DS touch routes). On the Deck
+  (bdabd01, 2026-10-05) `tests/deck/m15-check.cases` held 13 of 13 off-screen; open: Wii U sound by ear.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,
