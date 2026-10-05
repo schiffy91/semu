@@ -14,6 +14,11 @@
 # from its debug line and the editor's from its console (it frames the canvas itself, integer placements included, for
 # the system and variant named in ?preview=); the framing column says whether they agree within 1 px. A computed DS/3DS
 # layout is the whole screen on both sides.
+# A variant that declares an output (the Wii's 16:9 TV, "output": "widescreen") is not in the radial's bezel list, so
+# `semu render-env` never selects it by name: the owner reaches it through the variant that lists it under "outputs" on
+# that output's picture, which the renderer answers with the _B keys. Production renders it the same way (the base
+# variant, a 16:9 card); the editor previews the variant itself. A cell whose production debug line names another
+# package than the variant's own fails (PACKAGE DIFFERS): it would compare the editor against a state no launch reaches.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 card=white; placement=""; size=1280x800
@@ -62,15 +67,24 @@ environment() {  # SYSTEM VARIANT: the launcher's render environment with the sh
     --settings-json "{\"visual\":{\"systems\":{\"$1\":{\"bezel_variant\":\"$2\",\"shader_variant\":\"none\"${placement:+,\"placement\":\"$placement\"}}}}}"
 }
 
-production() {  # SYSTEM VARIANT OUT.png WIDE: the real renderer, its debug line kept for the canvas rectangle
+production() {  # SYSTEM VARIANT OUT.png WIDE LOG: the real renderer, its debug line kept in LOG for the package and the canvas rectangle
   local hostCard=""; [ "$card" = test ] && hostCard=editor || hostCard="$card"
   ( while IFS= read -r line; do export "$line"; done < <(environment "$1" "$2")
-    SEMU_RENDER_DEBUG=1 RENDER_HOST_CARD="$hostCard" RENDER_HOST_ASPECT="$4" "$host" "$width" "$height" "$work/production.ppm" ) 2>"$work/$1-$2-production.log" \
+    SEMU_RENDER_DEBUG=1 RENDER_HOST_CARD="$hostCard" RENDER_HOST_ASPECT="$4" "$host" "$width" "$height" "$work/production.ppm" ) 2>"$5" \
     && magick "$work/production.ppm" "PNG24:$3"
 }
 
-rendered_rect() {  # SYSTEM VARIANT: production's canvas rectangle as X Y W H from the top left, empty when it drew none
-  sed -n 's/.* bezelrect \(-\{0,1\}[0-9]*\),\(-\{0,1\}[0-9]*\) \([0-9]*\)x\([0-9]*\) .*/\1 \2 \3 \4/p' "$work/$1-$2-production.log" | head -1 \
+chosen_variant() {  # BEZELS VARIANT: the bezel choice that reaches VARIANT, itself unless it declares an output; empty when no variant lists it under "outputs"
+  if [ -z "$(jq -r --arg id "$2" '.variants[] | select(.id == $id) | .output // ""' "$1")" ]; then echo "$2"; return; fi
+  jq -r --arg id "$2" '.variants[] | select((.outputs // {}) | to_entries | any(.value == $id)) | .id' "$1" | head -1
+}
+
+drawn_package() {  # LOG: the package production's debug line names
+  sed -n 's/^semu-renderer: frame [0-9]* bezel \([^ ]*\) fb .*/\1/p' "$1" | head -1
+}
+
+rendered_rect() {  # LOG: production's canvas rectangle as X Y W H from the top left, empty when it drew none
+  sed -n 's/.* bezelrect \(-\{0,1\}[0-9]*\),\(-\{0,1\}[0-9]*\) \([0-9]*\)x\([0-9]*\) .*/\1 \2 \3 \4/p' "$1" | head -1 \
     | awk -v height="$height" '$3 > 0 && $4 > 0 { printf "%d %d %d %d\n", $1, height - $2 - $4, $3, $4 }'
 }
 
@@ -128,11 +142,21 @@ for cell in "${cells[@]}"; do
   for variant in $(jq -r '.variants[].id' "$bezels"); do
     [ -z "$only" ] || [ "$variant" = "$only" ] || continue
     package="$(jq -r --arg id "$variant" '.variants[] | select(.id == $id) | .bezel' "$bezels")"
-    name="$system-$variant"
-    wide=""; [ "$(jq -r --arg id "$variant" '.variants[] | select(.id == $id) | .output // ""' "$bezels")" = widescreen ] && wide="1.777778"  # a variant for widescreen output shows a 16:9 title, so the renderer draws its 16:9 package
+    name="$system-$variant"; productionLog="$work/$name-production.log"
+    wide=""; [ "$(jq -r --arg id "$variant" '.variants[] | select(.id == $id) | .output // ""' "$bezels")" = widescreen ] && wide="1.777778"  # a variant for widescreen output is drawn on a 16:9 picture
+    chosen="$(chosen_variant "$bezels" "$variant")"  # the Wii's tv_wide is reached through tv: render-env never selects it by name
+    [ -n "$chosen" ] || { echo "$name: no variant lists $variant under outputs, so no launch reaches it"; failures=$((failures + 1)); continue; }
     editorImage="$out/$name-editor.png"; productionImage="$out/$name-production.png"; diffImage="$out/$name-diff.png"; sideImage="$out/$name-side.png"
-    if ! production "$system" "$variant" "$productionImage" "$wide"; then
-      echo "$name: production render FAILED (see $work/$name-production.log)"; failures=$((failures + 1)); continue
+    if ! production "$system" "$chosen" "$productionImage" "$wide" "$productionLog"; then
+      echo "$name: production render FAILED (see $productionLog)"; failures=$((failures + 1)); continue
+    fi
+    drawn="$(drawn_package "$productionLog")"
+    if [ "$drawn" != "$package" ]; then  # the renderer drew another package than the one previewed: no comparison means anything
+      framing="PACKAGE DIFFERS: production drew ${drawn:-nothing} through $chosen, the variant declares $package"
+      echo "$name: $framing (see $productionLog)" >&2; failures=$((failures + 1))
+      printf '%s\t%s\t%s\t%s\tn/a\tn/a\tn/a\tn/a\tn/a\tn/a\tn/a\t%s\tn/a\tn/a\n' "$system" "$variant" "$package" "$framing" "$productionImage" >> "$out/metrics.tsv"
+      rows+="<tr><td>$system</td><td>$variant</td><td>$package</td><td>$framing</td><td>n/a</td><td>n/a</td><td>n/a</td><td>n/a</td><td>n/a</td><td><a href=\"$name-production.png\">production</a></td></tr>"
+      continue
     fi
     layout="$(jq -r '.layout // "fixed"' "$root/config/bezels/$package/bezel.json")"
     if [ "$(jq --arg id "$package" 'any(.[]; .id == $id)' "$work/packages.json")" != true ]; then
@@ -145,7 +169,7 @@ for cell in "${cells[@]}"; do
       rows+="<tr><td>$system</td><td>$variant</td><td>$package</td><td>$framing</td><td>n/a</td><td>n/a</td><td>n/a</td><td>n/a</td><td>n/a</td><td><a href=\"$name-side.png\"><img loading=\"lazy\" src=\"$name-side.png\"></a></td></tr>"
       continue
     fi
-    rendered="$(rendered_rect "$system" "$variant")"
+    rendered="$(rendered_rect "$productionLog")"
     cardParameter=""; [ "$card" = test ] || cardParameter="&card=$card"
     url="http://127.0.0.1:$port/?capture=${width}x${height}${cardParameter}&preview=$system:$variant${placement:+&placement=$placement}#$package"
     if ! capture "$url" "$work/editor.png"; then

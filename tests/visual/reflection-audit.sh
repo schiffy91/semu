@@ -4,16 +4,20 @@
 # (SEMU_RENDER_SCREEN_<n>_REFLECT and _REFLECT_B, in the environment and in the cell's variants file): the difference is
 # the mirror and nothing else. A two-screen cell also renders once per screen with only that screen's mirror zeroed, so
 # each screen is measured on its own: one screen with no lip cannot hide behind the other (the M15 review's 1-px 3DS
-# touch lip). A variant that declares "output": "widescreen" (the Wii's 16:9 TV) is fed a 16:9 card (RENDER_HOST_ASPECT),
-# so the renderer draws its widescreen package. A system that declares no bezel gets a row per size, unrendered.
-# A row per cell goes to OUT_DIR/reflection-audit.tsv (the committed copy is tests/visual/reflection-audit.tsv):
-# declared strength, pixels the mirror changes, its brightest step in 0..255, each screen's reach (the pixels its own
+# touch lip). A variant that declares "output": "widescreen" (the Wii's 16:9 TV) is not in the radial's bezel list, so
+# `semu render-env` never selects it by name: it is reached as the owner reaches it, through the variant that lists it
+# under "outputs" on a 16:9 card (RENDER_HOST_ASPECT), which the renderer answers with its _B keys. Every cell checks the
+# package the renderer's debug line names against the variant's own (PACKAGE when they differ). A system that declares
+# no bezel gets a row per size, unrendered.
+# A row per cell goes to OUT_DIR/reflection-audit.tsv (the committed copy is tests/visual/reflection-audit.tsv): the
+# package drawn, declared strength, pixels the mirror changes, its brightest step in 0..255, each screen's reach (the pixels its own
 # mirror changes over its picture's perimeter, about the band's mean width in pixels; lanes from the renderer's
 # SEMU_RENDER_DEBUG lines), the live path, the verdict; the picture and the doubled difference go beside it as PNGs.
 # usage: reflection-audit.sh OUT_DIR [SIZE...] (default 1280x800 1920x1080); CELLS="nds:shell:fit n64:tv:game" narrows it.
 # RENDER_HOST_CARD=/path/frame.png feeds a real frame (a game's native picture) instead of the test card.
 # Verdicts: mirror (declared and drawn on every screen), none (nothing declared), MISSING (declared, a screen draws
-# none), THIN (a screen's reach under a quarter of its sibling's). Exits with the number of MISSING and THIN cells.
+# none), THIN (a screen's reach under a quarter of its sibling's), PACKAGE (the renderer drew another package than the
+# variant's). Exits with the number of failing cells.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 out="$1"; shift
@@ -48,25 +52,34 @@ live() {  # SYSTEM: the path that hands the compositor its frame on the Deck, th
   esac
 }
 
+chosen_variant() {  # BEZELS VARIANT: the bezel choice that reaches VARIANT, itself unless it declares an output; empty when no variant lists it under "outputs"
+  if [ -z "$(jq -r --arg id "$2" '.variants[] | select(.id == $id) | .output // ""' "$1")" ]; then echo "$2"; return; fi
+  jq -r --arg id "$2" '.variants[] | select((.outputs // {}) | to_entries | any(.value == $id)) | .id' "$1" | head -1
+}
+
 revision="$(git -C "$root" rev-parse --short HEAD)$(git -C "$root" diff --quiet -- src config tests/visual || echo '+local')"
 table="$out/reflection-audit.tsv"
 {
   echo "# M15 item 8 reflection audit: tests/visual/reflection-audit.sh on the render host at ${sizes[*]}, revision $revision, $(date -u +%Y-%m-%d), ${RENDER_HOST_CARD:-test} card; mirror = the picture with REFLECT minus without."
   echo "# expected: mirror when the package declares one (no placement drops a DS or 3DS shell, M15 item 2); none for computed layouts. reach0/reach1: each screen's own mirror pixels over its picture's perimeter (about the band's mean width, px)."
+  echo "# package: the package the renderer's debug line names, which must be the variant's own; a variant that declares an output (wii tv_wide) is drawn through the variant listing it under outputs (wii tv) on a 16:9 card, as a launch reaches it."
   echo "# live: the path that hands the compositor its frame on the Deck; every path ends in semu_render_game_gl, which crops (N64) and extracts the reported content rect, so the mirror samples what the emulator presents there."
-  printf 'system\tvariant\tplacement\tsize\tdeclared\texpected\tchanged_px\tpeak\treach0_px\treach1_px\trender_host\tlive_path\tlive_evidence\tverdict\n'
+  printf 'system\tvariant\tpackage\tplacement\tsize\tdeclared\texpected\tchanged_px\tpeak\treach0_px\treach1_px\trender_host\tlive_path\tlive_evidence\tverdict\n'
 } > "$table"
 failures=0
 for size in "${sizes[@]}"; do
   for cell in "${cells[@]}"; do
     IFS=: read -r system variant placement <<<"$cell"
     if [ "$variant" = - ]; then
-      printf '%s\t-\t-\t%s\t0\tnone (no bezel declared)\t0\t0\t-\t-\tnone\t%s\tok\n' "$system" "$size" "$(live "$system")" >> "$table"
+      printf '%s\t-\t-\t-\t%s\t0\tnone (no bezel declared)\t0\t0\t-\t-\tnone\t%s\tok\n' "$system" "$size" "$(live "$system")" >> "$table"
       continue
     fi
     name="$system-$variant-$placement-$size"; state="$(mktemp -d "$scratch/state.XXXXXX")"
-    settings="{\"visual\":{\"systems\":{\"$system\":{\"bezel_variant\":\"$variant\",\"placement\":\"$placement\"}}}}"
-    wide=""; [ "$(jq -r --arg id "$variant" '.variants[] | select(.id == $id) | .output // ""' "$root/config/systems/$system/bezels.json")" = widescreen ] && wide=1.7778
+    bezels="$root/config/systems/$system/bezels.json"
+    package="$(jq -r --arg id "$variant" '.variants[] | select(.id == $id) | .bezel' "$bezels")"
+    chosen="$(chosen_variant "$bezels" "$variant")"  # the Wii's tv_wide is reached through tv: render-env never selects it by name
+    settings="{\"visual\":{\"systems\":{\"$system\":{\"bezel_variant\":\"${chosen:-$variant}\",\"placement\":\"$placement\"}}}}"
+    wide=""; [ "$(jq -r --arg id "$variant" '.variants[] | select(.id == $id) | .output // ""' "$bezels")" = widescreen ] && wide=1.7778
     row="$(
       while IFS= read -r line; do export "$line"; done < <("$root/build/semu" render-env --system "$system" --project "$root/config" \
         --asset-root "${SEMU_ASSET_ROOT:-$root/build/asset-root}" --settings-json "$settings" --variants-file "$state")
@@ -88,6 +101,7 @@ for size in "${sizes[@]}"; do
       }
       changed() { magick compare -metric AE -fuzz 1.5% "$1" "$2" null: 2>&1 | cut -d' ' -f1 | cut -d. -f1; }
       draw "" "$state/with.ppm"
+      drawnPackage="$(sed -n 's/^semu-renderer: frame [0-9]* bezel \([^ ]*\) fb .*/\1/p' "$state/with.ppm.log" | head -1)"
       draw "0 1" "$state/without.ppm"
       total="$(changed "$state/with.ppm" "$state/without.ppm")"
       peak="$(magick "$state/with.ppm" "$state/without.ppm" -compose difference -composite -colorspace gray -format '%[fx:round(maxima*255)]' info:)"
@@ -112,8 +126,9 @@ for size in "${sizes[@]}"; do
         fi
       elif [ "$total" -gt 0 ]; then drawn=UNDECLARED
       fi
+      [ "$drawnPackage" = "$package" ] || drawn=PACKAGE  # another package's mirror measures nothing about this variant
       verdict=ok; [ "$drawn" = "$expected" ] || verdict=FAIL
-      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$system" "$variant" "$placement" "$size" "${declared:-0}" "$expected" "$total" "$peak" "${reaches[0]}" "${reaches[1]}" "$drawn" "$(live "$system")" "$verdict"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$system" "$variant" "${drawnPackage:-nothing}" "$placement" "$size" "${declared:-0}" "$expected" "$total" "$peak" "${reaches[0]}" "${reaches[1]}" "$drawn" "$(live "$system")" "$verdict"
     )"
     printf '%s\n' "$row" >> "$table"
     case "$row" in *FAIL) failures=$((failures + 1)); echo "FAIL: $name: $row" >&2 ;; esac

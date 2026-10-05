@@ -52,6 +52,7 @@ import ./spec/tv_room.btrc;
 import ./spec/shader_edges.btrc;
 import ./spec/fields_reflections.btrc;
 import ./spec/reflection_audit.btrc;
+import ./spec/audit_packages.btrc;
 import ./spec/crt_gdv.btrc;
 import ./spec/radial_choices.btrc;
 import ./spec/radial_render.btrc;
@@ -1016,6 +1017,7 @@ int main() {
     ShaderEdgeSpecContract.run(contract);
     FieldsReflectionsSpecContract.run(contract);
     ReflectionAuditSpecContract.run(contract);
+    AuditPackagesSpecContract.run(contract);
     CrtGdvSpecContract.run(contract);
     RadialChoicesSpecContract.run(contract);
     RadialRenderSpecContract.run(contract);
