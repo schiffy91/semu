@@ -237,6 +237,56 @@
         "sha256": "12a66eb0833ede1086b1aebe31b7fc9a4af1c428691ac921b522446a577b02a1"
       }
     },
+    "assets/shaders/snes/gdv-ntsc.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-guest-advanced-ntsc.slangp",
+        "sha256": "d4e66ed1250ae9101971f5174978ae82061c1e3901397832984d523c543a8163"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "addnoised": 0.4,
+        "beam_max": 1.5,
+        "beam_min": 0.75,
+        "contr": 0,
+        "deconrg": 1,
+        "deconrgy": 1,
+        "gsl": 2,
+        "m_glow": 1,
+        "mask_bloom": 0.05,
+        "mask_gamma": 3.5,
+        "mask_zoom": -1,
+        "maskboost": 3,
+        "maskstr": -0.5,
+        "mcut": 2,
+        "noiseresd": 1,
+        "noisetype": 1,
+        "ntsc_cscale1": 0.8,
+        "ntsc_fields": 0,
+        "ntsc_phase": 3,
+        "ntsc_sat": 1.2,
+        "ntsc_scale": 1.5,
+        "ntsc_sharp": -10,
+        "scan_falloff": 2,
+        "scangamma": 5,
+        "scanline1": 0,
+        "scanline2": 10,
+        "shadowMask": -1,
+        "tds": 1,
+        "interm": 0,
+        "intres": 1
+      },
+      "output": {
+        "sha256": "8c2f62bdecdf142952f2b265606226edebf8c38de231bfd053f1268fa21758d6"
+      },
+      "doc": {
+        "why": "Retro Crisis GDV-NTSC, SNES RGB 100 (720p Steam Deck): guest.r's crt-guest-advanced-ntsc from the pinned libretro tree with Retro Crisis's own Steam Deck (720p) values (GPL-3.0, github.com/RetroCrisis/Retro-Crisis-GDV-NTSC, as imported by ShaderGlass), the look the owner chose for Semu's CRTs (2026-10-04).",
+        "params": "His values as published, float noise rounded, except: the hum bar (barintensity, barspeed) is left out, since a rolling band is the fault the owner reported; any overscan crop (overscanX) is left out, since Semu places the picture at whole steps; and ShaderGlass's own blendMode is not a shader parameter. intres 1 draws a frame of 336 lines or more at round(lines/224) lines per scanline, so an interlaced high-resolution mode keeps the 240-line scanlines, and changes nothing below. interm 0: guest's Interlace Mode (default 2) bobs a field per frame from 375 lines, and every emulator hands over whole progressive frames."
+      }
+    },
     "assets/shaders/genesis/screen.slangp": {
       "type": "slang_wrapper",
       "reference": {
@@ -258,6 +308,61 @@
         "params": "crt-royale treats a source of 289 to 576 lines as interlaced (interlace_detect_toggle, default 1) and draws one field per frame, and every emulator hands over whole progressive frames: the picture bobbed a field line every frame. Off, the frame is drawn as the one progressive picture it is."
       }
     },
+    "assets/shaders/genesis/gdv-ntsc.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-guest-advanced-ntsc.slangp",
+        "sha256": "d4e66ed1250ae9101971f5174978ae82061c1e3901397832984d523c543a8163"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "GAMMA_INPUT": 1.9,
+        "addnoised": 0.3,
+        "beam_max": 1.225,
+        "beam_min": 1.25,
+        "bloom": 0.5,
+        "deconrb": -2,
+        "deconrby": -2,
+        "deconrr": 2,
+        "deconrry": 2,
+        "gsl": 2,
+        "m_glow": 1,
+        "mask_bloom": 0.5,
+        "mask_gamma": 2.5,
+        "mask_zoom": -2,
+        "maskboost": 2,
+        "maskstr": -0.5,
+        "mcut": 2,
+        "noiseresd": 1,
+        "noisetype": 1,
+        "ntsc_charp": 10,
+        "ntsc_cscale": 3,
+        "ntsc_fields": 1,
+        "ntsc_phase": 2,
+        "ntsc_sat": 1.1,
+        "ntsc_scale": 2.125,
+        "ntsc_sharp": 10,
+        "scan_falloff": 0.1,
+        "scangamma": 5,
+        "scanline1": 8,
+        "scanline2": 4,
+        "scans": 1,
+        "shadowMask": -1,
+        "tds": 1,
+        "interm": 0,
+        "intres": 1
+      },
+      "output": {
+        "sha256": "20b8f57a6c8c170dd62a9221f38762d77aa02f7fcaa29c0c3851671d1d405141"
+      },
+      "doc": {
+        "why": "Retro Crisis GDV-NTSC, Mega Drive RGB 100 (720p Steam Deck): guest.r's crt-guest-advanced-ntsc from the pinned libretro tree with Retro Crisis's own Steam Deck (720p) values (GPL-3.0, github.com/RetroCrisis/Retro-Crisis-GDV-NTSC, as imported by ShaderGlass), the look the owner chose for Semu's CRTs (2026-10-04).",
+        "params": "His values as published, float noise rounded, except: the hum bar (barintensity, barspeed) is left out, since a rolling band is the fault the owner reported; any overscan crop (overscanX) is left out, since Semu places the picture at whole steps; and ShaderGlass's own blendMode is not a shader parameter. intres 1 draws a frame of 336 lines or more at round(lines/224) lines per scanline, so an interlaced high-resolution mode keeps the 240-line scanlines, and changes nothing below. interm 0: guest's Interlace Mode (default 2) bobs a field per frame from 375 lines, and every emulator hands over whole progressive frames."
+      }
+    },
     "assets/shaders/n64/screen.slangp": {
       "type": "slang_wrapper",
       "reference": {
@@ -277,6 +382,55 @@
       },
       "params": {
         "PHOSPHOR_LAYOUT": 0
+      }
+    },
+    "assets/shaders/n64/gdv-ntsc.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-guest-advanced-ntsc.slangp",
+        "sha256": "d4e66ed1250ae9101971f5174978ae82061c1e3901397832984d523c543a8163"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "beam_min": 1,
+        "bloom": 0.05,
+        "double_slot": 3,
+        "gamma_c": 1.25,
+        "gsl": 2,
+        "halation": 0.1,
+        "m_glow": 1,
+        "mask_bloom": 0.5,
+        "mask_gamma": 5,
+        "mask_zoom": -5,
+        "maskboost": 3,
+        "masksize": 2,
+        "maskstr": -0.5,
+        "mcut": 2,
+        "ntsc_phase": 3,
+        "ntsc_sat": 1.1,
+        "ntsc_scale": 1,
+        "ntsc_sharp": -10,
+        "scan_falloff": 1,
+        "scangamma": 5,
+        "scanline1": 0,
+        "scanline2": 10,
+        "scans": 1,
+        "shadowMask": -1,
+        "slotmask1": 1,
+        "slotmask": 1,
+        "tds": 1,
+        "interm": 0,
+        "intres": 1
+      },
+      "output": {
+        "sha256": "fda3faee2c9eaaf1a6e48d9d6766a6916b73b67d36ae66ab397869013a84fb72"
+      },
+      "doc": {
+        "why": "Retro Crisis GDV-NTSC, N64 (720p Steam Deck): guest.r's crt-guest-advanced-ntsc from the pinned libretro tree with Retro Crisis's own Steam Deck (720p) values (GPL-3.0, github.com/RetroCrisis/Retro-Crisis-GDV-NTSC, as imported by ShaderGlass), the look the owner chose for Semu's CRTs (2026-10-04).",
+        "params": "His values as published, float noise rounded, except: the hum bar (barintensity, barspeed) is left out, since a rolling band is the fault the owner reported; any overscan crop (overscanX) is left out, since Semu places the picture at whole steps; and ShaderGlass's own blendMode is not a shader parameter. intres 1 draws a frame of 336 lines or more at round(lines/224) lines per scanline, so an interlaced high-resolution mode keeps the 240-line scanlines, and changes nothing below. interm 0: guest's Interlace Mode (default 2) bobs a field per frame from 375 lines, and every emulator hands over whole progressive frames."
       }
     },
     "assets/shaders/psx/screen.slangp": {

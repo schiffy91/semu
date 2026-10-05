@@ -2,11 +2,17 @@
   "schema_version": 3,
   "enabled": true,
   "doc": {
-    "intent": "SNES-era CRT scanlines and soft analog video"
+    "intent": "SNES-era CRT scanlines and soft analog video",
+    "variants": "The owner asked for Retro Crisis's GDV-NTSC for Semu's CRTs (2026-10-04); the previous default stays one step away."
   },
   "variants": [
     {
       "id": "default",
+      "label": "GDV-NTSC (Retro Crisis RGB)",
+      "screen": "assets/shaders/snes/gdv-ntsc.slangp"
+    },
+    {
+      "id": "svideo",
       "label": "NTSC S-Video",
       "screen": "assets/shaders/snes/screen.slangp"
     },

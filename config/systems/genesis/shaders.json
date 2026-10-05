@@ -2,11 +2,17 @@
   "schema_version": 3,
   "enabled": true,
   "doc": {
-    "intent": "Genesis dithering blended by analog CRT video"
+    "intent": "Genesis dithering blended by analog CRT video",
+    "variants": "The owner asked for Retro Crisis's GDV-NTSC for Semu's CRTs (2026-10-04); the previous default stays one step away."
   },
   "variants": [
     {
       "id": "default",
+      "label": "GDV-NTSC (Retro Crisis RGB)",
+      "screen": "assets/shaders/genesis/gdv-ntsc.slangp"
+    },
+    {
+      "id": "rainbow",
       "label": "Composite CRT (Genesis rainbow)",
       "screen": "assets/shaders/genesis/screen.slangp"
     },

@@ -1,9 +1,9 @@
 // GDV-NTSC spec: the owner's second Deck round (M14 item 8). crt-royale drew even dark bands across the PS1's white
-// boot screen, and the owner asked for Retro Crisis's "Realistic PlayStation RGB CRT Shader": guest.r's
-// crt-guest-advanced-ntsc with Retro Crisis's PlayStation RGB 100 values. The PS1's default is that preset over the
-// pinned libretro tree with his Steam Deck (720p) values, every one emitted into the wrapper; intres 1 (his 480i
-// preset's one extra line) draws a 480-line frame as 240 scanlines; interm 0 keeps whole frames; and CRT Royale
-// stays one step away.
+// boot screen, and the owner asked for Retro Crisis's "Realistic PlayStation RGB CRT Shader" for Semu's CRTs: guest.r's
+// crt-guest-advanced-ntsc with Retro Crisis's values. The PS1, N64, SNES and Genesis default to that preset over the
+// pinned libretro tree with his Steam Deck (720p) values for the system, every one emitted into the wrapper; intres 1
+// (his 480i preset's one extra line) draws a 480-line frame as 240 scanlines; interm 0 keeps whole frames; his hum bar
+// and overscan crop are left out; and each system's previous default stays one step away.
 
 import Library.JSON;
 import Library.Strings;
@@ -17,11 +17,33 @@ import ./gameboy.btrc;
 #include <stdlib.h>
 
 class CrtGdvSpecChecks {
-    class Vector<string> playStationRgb() {  // Retro Crisis, RC GDV-NTSC - PlayStation RGB 100 - 240p, 720p Steam Deck (2024.11.15)
-        Vector<string> values = ["addnoised=0.2", "beam_min=1", "bloom=0.5", "deconrry=2.5", "gsl=2", "m_glow=2", "mask_bloom=0.5",
-            "mask_gamma=1.9", "mask_zoom=-1", "maskboost=3", "maskstr=-0.5", "mcut=2", "noisetype=1", "ntsc_cscale=0.5",
-            "ntsc_fields=0", "ntsc_phase=2", "ntsc_sat=1.2", "ntsc_scale=2.5", "scan_falloff=1.5", "scangamma=5",
-            "scanline1=5", "scanline2=10", "shadowMask=-1", "intres=1", "interm=0"];
+    class Vector<string> retroCrisis(string systemId) {  // his RC GDV-NTSC 720p Steam Deck values for the system, as Semu carries them
+        if (systemId.equals("psx")) {  // PlayStation RGB 100 - 240p (2024.11.15)
+            Vector<string> values = ["addnoised=0.2", "beam_min=1", "bloom=0.5", "deconrry=2.5", "gsl=2", "m_glow=2", "mask_bloom=0.5",
+                "mask_gamma=1.9", "mask_zoom=-1", "maskboost=3", "maskstr=-0.5", "mcut=2", "noisetype=1", "ntsc_cscale=0.5",
+                "ntsc_fields=0", "ntsc_phase=2", "ntsc_sat=1.2", "ntsc_scale=2.5", "scan_falloff=1.5", "scangamma=5",
+                "scanline1=5", "scanline2=10", "shadowMask=-1", "intres=1", "interm=0"];
+            return values;
+        }
+        if (systemId.equals("n64")) {  // N64
+            Vector<string> values = ["beam_min=1", "bloom=0.05", "double_slot=3", "gamma_c=1.25", "gsl=2", "halation=0.1", "m_glow=1",
+                "mask_bloom=0.5", "mask_gamma=5", "mask_zoom=-5", "maskboost=3", "masksize=2", "maskstr=-0.5", "mcut=2", "ntsc_phase=3",
+                "ntsc_sat=1.1", "ntsc_scale=1", "ntsc_sharp=-10", "scan_falloff=1", "scangamma=5", "scanline1=0", "scanline2=10",
+                "scans=1", "shadowMask=-1", "slotmask1=1", "slotmask=1", "tds=1", "intres=1", "interm=0"];
+            return values;
+        }
+        if (systemId.equals("snes")) {  // SNES RGB 100
+            Vector<string> values = ["addnoised=0.4", "beam_max=1.5", "beam_min=0.75", "contr=0", "deconrg=1", "deconrgy=1", "gsl=2",
+                "m_glow=1", "mask_bloom=0.05", "mask_gamma=3.5", "mask_zoom=-1", "maskboost=3", "maskstr=-0.5", "mcut=2", "noiseresd=1",
+                "noisetype=1", "ntsc_cscale1=0.8", "ntsc_fields=0", "ntsc_phase=3", "ntsc_sat=1.2", "ntsc_scale=1.5", "ntsc_sharp=-10",
+                "scan_falloff=2", "scangamma=5", "scanline1=0", "scanline2=10", "shadowMask=-1", "tds=1", "intres=1", "interm=0"];
+            return values;
+        }
+        Vector<string> values = ["GAMMA_INPUT=1.9", "addnoised=0.3", "beam_max=1.225", "beam_min=1.25", "bloom=0.5", "deconrb=-2",  // Mega Drive RGB 100
+            "deconrby=-2", "deconrr=2", "deconrry=2", "gsl=2", "m_glow=1", "mask_bloom=0.5", "mask_gamma=2.5", "mask_zoom=-2", "maskboost=2",
+            "maskstr=-0.5", "mcut=2", "noiseresd=1", "noisetype=1", "ntsc_charp=10", "ntsc_cscale=3", "ntsc_fields=1", "ntsc_phase=2",
+            "ntsc_sat=1.1", "ntsc_scale=2.125", "ntsc_sharp=10", "scan_falloff=0.1", "scangamma=5", "scanline1=8", "scanline2=4", "scans=1",
+            "shadowMask=-1", "tds=1", "intres=1", "interm=0"];
         return values;
     }
 
@@ -36,7 +58,6 @@ class CrtGdvSpecChecks {
     class Vector<string> mismatches(JSONValue manifest, string logical, Vector<string> expected) {  // each value the recipe lacks or the wrapper does not emit
         Vector<string> failures = [];
         JSONValue recipe = manifest.get("assets").get(logical);
-        if (recipe == null) { failures.push(logical + " is not in shaders.json"); return failures; }
         string emitted = GameBoySpecFiles.wrapperText(manifest, logical);
         for (int index = 0; index < expected.size(); index++) {
             string pair = expected[index];
@@ -50,29 +71,48 @@ class CrtGdvSpecChecks {
         return failures;
     }
 
-    class void playStation(Contract contract, Fixture fixture) {
-        JSONValue manifest = SemuJson.readFile(PathTools.join(fixture.project, "config/assets/shaders.json"));
-        string defaultId = SemuJson.textAt(fixture.model.system("psx").shaders, "default_variant");
-        JSONValue chosen = CrtGdvSpecChecks.variant(fixture, "psx", defaultId);
+    class void port(Contract contract, Fixture fixture, JSONValue manifest, string systemId, string previousId, string previousPath) {
+        string defaultId = SemuJson.textAt(fixture.model.system(systemId).shaders, "default_variant");
+        JSONValue chosen = CrtGdvSpecChecks.variant(fixture, systemId, defaultId);
         string logical = chosen == null ? "" : SemuJson.textAt(chosen, "screen");
         JSONValue recipe = manifest.get("assets").get(logical);
         bool guest = recipe != null && SemuJson.textAt(recipe, "type").equals("slang_wrapper")
             && SemuJson.textAt(recipe, "reference.path").equals("crt/crt-guest-advanced-ntsc.slangp");
         Vector<string> failures = ["the default is " + logical];
-        if (guest) { failures = CrtGdvSpecChecks.mismatches(manifest, logical, CrtGdvSpecChecks.playStationRgb()); }
+        if (guest) { failures = CrtGdvSpecChecks.mismatches(manifest, logical, CrtGdvSpecChecks.retroCrisis(systemId)); }
         bool pinned = guest && GameBoySpecFiles.wrapperHashes(fixture.scratch, manifest, logical);
         contract.expect(failures.isEmpty() && pinned,
-            "the PS1's default CRT is Retro Crisis's GDV-NTSC PlayStation RGB 100 (crt-guest-advanced-ntsc, his Steam Deck values, intres 1, interm 0), each value emitted and the wrapper pinned: " + failures.join("; "));
-        JSONValue royale = CrtGdvSpecChecks.variant(fixture, "psx", "royale");
-        JSONValue royaleRecipe = royale == null ? null : manifest.get("assets").get(SemuJson.textAt(royale, "screen"));
-        contract.expect(royaleRecipe != null && SemuJson.textAt(royaleRecipe, "reference.path").equals("crt/crt-royale.slangp") && !defaultId.equals("royale"),
-            "CRT Royale, the PS1's old default, stays one step away as psx/royale");
+            systemId + "'s default CRT is Retro Crisis's GDV-NTSC (crt-guest-advanced-ntsc, his Steam Deck values, intres 1, interm 0), each value emitted and the wrapper pinned: " + failures.join("; "));
+        JSONValue previous = CrtGdvSpecChecks.variant(fixture, systemId, previousId);
+        JSONValue previousRecipe = previous == null ? null : manifest.get("assets").get(SemuJson.textAt(previous, "screen"));
+        contract.expect(previousRecipe != null && SemuJson.textAt(previousRecipe, "reference.path").equals(previousPath) && !defaultId.equals(previousId),
+            systemId + "'s previous default (" + previousPath + ") stays one step away as " + systemId + "/" + previousId);
+    }
+
+    class void noHumBar(Contract contract, JSONValue manifest) {  // a rolling band is the fault the owner reported, and Semu places the picture itself
+        Vector<string> failures = [];
+        int guests = 0;
+        JSONValue assets = manifest.get("assets");
+        for logical in assets.keys() {
+            if (!SemuJson.textAt(assets.get(logical), "reference.path").contains("crt-guest-advanced")) { continue; }
+            guests++;
+            double humBar = GameBoySpecJson.number(assets.get(logical), "params.barintensity");
+            if (humBar != -1.0 && humBar != 0.0) { failures.push(logical + " rolls a hum bar"); }
+            JSONValue crop = SemuJson.get(assets.get(logical), "params.overscanX");
+            if (crop != null && crop.isNumber()) { failures.push(logical + " crops overscan"); }
+        }
+        contract.expect(guests >= 4 && failures.isEmpty(), f"no guest-advanced preset rolls a hum bar or crops overscan inside the shader ({guests} presets): " + failures.join("; "));
     }
 }
 
 class CrtGdvSpecContract {
     class void run(Contract contract) {
         Fixture fixture = Fixture("steam-deck");
-        CrtGdvSpecChecks.playStation(contract, fixture);
+        JSONValue manifest = SemuJson.readFile(PathTools.join(fixture.project, "config/assets/shaders.json"));
+        CrtGdvSpecChecks.port(contract, fixture, manifest, "psx", "royale", "crt/crt-royale.slangp");
+        CrtGdvSpecChecks.port(contract, fixture, manifest, "n64", "hyllian", "crt/crt-hyllian.slangp");
+        CrtGdvSpecChecks.port(contract, fixture, manifest, "snes", "svideo", "ntsc/ntsc-256px-svideo-scanline.slangp");
+        CrtGdvSpecChecks.port(contract, fixture, manifest, "genesis", "rainbow", "presets/crt-royale-fast/crt-royale-fast-ntsc-composite-aperture-genesis-rainbow-effect.slangp");
+        CrtGdvSpecChecks.noHumBar(contract, manifest);
     }
 }

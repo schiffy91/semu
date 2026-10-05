@@ -2,11 +2,17 @@
   "schema_version": 3,
   "enabled": true,
   "doc": {
-    "intent": "late-90s CRT with N64 VI softness and scanlines"
+    "intent": "late-90s CRT with N64 VI softness and scanlines",
+    "variants": "The owner asked for Retro Crisis's GDV-NTSC for Semu's CRTs (2026-10-04); the previous default stays one step away."
   },
   "variants": [
     {
       "id": "default",
+      "label": "GDV-NTSC (Retro Crisis N64)",
+      "screen": "assets/shaders/n64/gdv-ntsc.slangp"
+    },
+    {
+      "id": "hyllian",
       "label": "Hyllian CRT",
       "screen": "assets/shaders/n64/screen.slangp"
     },
