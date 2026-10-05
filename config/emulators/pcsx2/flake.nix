@@ -22,12 +22,21 @@
       build = system:
         let pkgs = nixpkgs.legacyPackages.${system}; in
         let semuRendererLoader = renderer.packages.${system}.loader; in  # the loader: renderer changes never rebuild PCSX2
-        pkgs.pcsx2.overrideAttrs (previous: {
+        let llvm = pkgs.llvmPackages; in
+        # Upstream's release links with lld (linux_build_qt.yml:135-148 at v2.6.3); clang's ThinLTO objects need lld and llvm-ar
+        let releaseStdenv = pkgs.overrideCC llvm.stdenv (llvm.clang.override { bintools = llvm.bintools; }); in
+        (pkgs.pcsx2.override { llvmPackages = llvm // { stdenv = releaseStdenv; }; }).overrideAttrs (previous: {
           version = "2.6.3";
           src = source // { tag = "v2.6.3"; };  # the recipe stamps PCSX2_GIT_TAG from it
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
           patches = (previous.patches or [ ]) ++ [ ./semu_render_hook.patch ];  # GSDeviceOGL publishes the presented frame to libsemurenderer (ABI 3)
           buildInputs = (previous.buildInputs or [ ]) ++ [ semuRendererLoader ];
+          # upstream's release flags (linux_build_qt.yml:136-147): Release, whole-program LTO, Multi-ISA (the AVX2 GS is picked at run time on the Deck)
+          cmakeFlags = (previous.cmakeFlags or [ ]) ++ [ (lib.cmakeBool "CMAKE_INTERPROCEDURAL_OPTIMIZATION" true) ];
+          postConfigure = (previous.postConfigure or "") + ''
+            compileFlags="$(grep -rh '^CXX_FLAGS = ' --include=flags.make pcsx2)"
+            grep -F -m1 -- '-flto=thin' <<<"$compileFlags"  # the release flags reached the compiler (printed in the build log)
+          '';
           env = (previous.env or { }) // {
             NIX_CFLAGS_COMPILE = (previous.env.NIX_CFLAGS_COMPILE or "") + " -DHAVE_SEMU_RENDERER -I${semuRendererLoader}/include";
             NIX_LDFLAGS = (previous.env.NIX_LDFLAGS or "") + " -L${semuRendererLoader}/lib --whole-archive -lsemurendererloader --no-whole-archive -ldl";

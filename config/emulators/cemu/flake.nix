@@ -17,6 +17,13 @@
           version = "2.6";
           src = source;
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
+          # upstream's release is CMake's own Release flags, -O3 -DNDEBUG, with LTO (CMakeLists.txt:73-75, build.yml:69 at v2.6);
+          # the nixpkgs recipe sets the Release flags to -DNDEBUG alone, which leaves the hardening wrapper's -O2
+          cmakeFlags = lib.filter (flag: !(lib.hasInfix "_FLAGS_RELEASE" flag)) (previous.cmakeFlags or [ ]);
+          postConfigure = (previous.postConfigure or "") + ''
+            compileFlags="$(grep -h '^  FLAGS = ' build.ninja)"
+            awk '/-O3 -DNDEBUG/ && /-flto/ { print; found = 1; exit } END { exit !found }' <<<"$compileFlags"  # the release flags reached the compiler (printed in the build log)
+          '';
         });
     in {
       semu = {

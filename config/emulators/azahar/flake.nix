@@ -25,6 +25,13 @@
             echo "2126.0" > "$sourceRoot/GIT-TAG"
             echo "${source.rev}" > "$sourceRoot/GIT-COMMIT"
           '';  # the nixpkgs fetch wrote these; the flake input carries no .git
+        } // lib.optionalAttrs (pkgs.stdenv.hostPlatform.isLinux && pkgs.stdenv.hostPlatform.isx86_64) {
+          # the Deck's CPU level, which upstream's ENABLE_NATIVE_OPTIMIZATION (march native, CMakeLists.txt:158, 252-266) gives on
+          # the Deck itself, held at x86-64-v3 so FRACTAL-NORTH runs the same build; Release and LTO are upstream's defaults already
+          env = (previous.env or { }) // { NIX_CFLAGS_COMPILE = ((previous.env or { }).NIX_CFLAGS_COMPILE or "") + " -march=x86-64-v3 -mtune=znver2"; };
+          preConfigure = (previous.preConfigure or "") + ''
+            awk '/__AVX2__/ { avx = 1 } /__tune_znver2__/ { tune = 1 } END { print "compiler CPU level: AVX2 " avx ", tuned for znver2 " tune; exit !(avx && tune) }' < <($CXX -dM -E -x c++ /dev/null)
+          '';  # every compile carries the CPU level (printed in the build log)
         } // lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
           buildInputs = (previous.buildInputs or [ ]) ++ [ pkgs.moltenvk ];  # upstream downloads MoltenVK at configure time; the sandbox has no network
           cmakeFlags = (previous.cmakeFlags or [ ]) ++ [ "-DUSE_SYSTEM_MOLTENVK=ON" "-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0" ];  # the Nix libraries target macOS 14

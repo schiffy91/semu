@@ -1,0 +1,98 @@
+// Release build flags spec (M14 item 9, "make sure we are compiling our emulators with the recommended settings for
+// speed"). Each emulator builds with its upstream's own release flags, and with the Deck's CPU level only where upstream
+// offers a CPU-level build. PLAN.md M14 item 9 holds the table and its evidence. The builds themselves print the flags
+// that reached the compiler and fail without them (postConfigure, preConfigure), so these checks pin the flake text.
+
+import Library.FileSystem;
+import Library.Platform;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+
+class BuildFlagsSpecText {
+    class bool ordered(string text, Vector<string> needles) {  // every needle appears after the previous one
+        string remaining = text;
+        for needle in needles {
+            int position = remaining.indexOf(needle);
+            if (position < 0) { return false; }
+            int start = position + needle.len();
+            remaining = remaining.substring(start, remaining.len() - start);
+        }
+        return true;
+    }
+
+    class int occurrences(string text, string needle) {
+        int count = 0;
+        string remaining = text;
+        while (remaining.contains(needle)) {
+            int start = remaining.indexOf(needle) + needle.len();
+            remaining = remaining.substring(start, remaining.len() - start);
+            count++;
+        }
+        return count;
+    }
+}
+
+class BuildFlagsSpecContract {
+    class string flake(string project, string relative) { return FileSystem.readText(PathTools.join(project, "config/emulators/" + relative + "/flake.nix")); }
+
+    class Vector<string> flakeDirectories(string project) {  // every standalone, RetroArch and core flake, relative to config/emulators
+        Vector<string> directories = [];
+        for name in FileSystem.listDir(PathTools.join(project, "config/emulators")) {
+            if (FileSystem.isFile(PathTools.join(project, "config/emulators/" + name + "/flake.nix"))) { directories.push(name); }
+        }
+        for name in FileSystem.listDir(PathTools.join(project, "config/emulators/retroarch/cores")) {
+            if (FileSystem.isFile(PathTools.join(project, "config/emulators/retroarch/cores/" + name + "/flake.nix"))) { directories.push("retroarch/cores/" + name); }
+        }
+        return directories;
+    }
+
+    class void pcsx2(Contract contract, string project) {  // linux_build_qt.yml:135-148 at v2.6.3
+        string flake = BuildFlagsSpecContract.flake(project, "pcsx2");
+        contract.contains(flake, "(lib.cmakeBool \"CMAKE_INTERPROCEDURAL_OPTIMIZATION\" true)", "pcsx2 builds with upstream's release LTO");
+        contract.contains(flake, "llvm.clang.override { bintools = llvm.bintools; }", "pcsx2 links its ThinLTO objects with lld and llvm-ar, as upstream's release links with lld");
+        contract.contains(flake, "grep -F -m1 -- '-flto=thin' <<<\"$compileFlags\"", "the pcsx2 build fails unless the compile flags carry ThinLTO");
+        contract.lacks(flake, "DISABLE_ADVANCE_SIMD", "pcsx2 keeps upstream's Multi-ISA release (the recipe's DISABLE_ADVANCE_SIMD), which runs the AVX2 GS on the Deck");
+    }
+
+    class void cemu(Contract contract, string project) {  // CMakeLists.txt:73-75 and build.yml:69 at v2.6
+        string flake = BuildFlagsSpecContract.flake(project, "cemu");
+        // CMake's own Release flags are upstream's -O3 -DNDEBUG; the recipe's -DNDEBUG alone left the hardening wrapper's -O2
+        contract.contains(flake, "cmakeFlags = lib.filter (flag: !(lib.hasInfix \"_FLAGS_RELEASE\" flag)) (previous.cmakeFlags or [ ]);", "cemu drops the recipe's -DNDEBUG-only Release flags and sets none of its own");
+        contract.lacks(flake, "_FLAGS_RELEASE\" \"", "cemu compiles at CMake's Release -O3, as upstream does");
+        contract.contains(flake, "awk '/-O3 -DNDEBUG/ && /-flto/", "the cemu build fails unless the compile flags carry -O3 and upstream's LTO");
+    }
+
+    class void azahar(Contract contract, string project, string relative) {  // ENABLE_NATIVE_OPTIMIZATION, CMakeLists.txt:158, 252-266 at 2126.0
+        string flake = BuildFlagsSpecContract.flake(project, relative);
+        string guard = "lib.optionalAttrs (pkgs.stdenv.hostPlatform.isLinux && pkgs.stdenv.hostPlatform.isx86_64) {";
+        string level = "\" -march=x86-64-v3 -mtune=znver2\"";
+        contract.expect(BuildFlagsSpecText.ordered(flake, [guard, level, "/__AVX2__/ { avx = 1 } /__tune_znver2__/ { tune = 1 }"]), relative + " builds at the Deck's CPU level on x86_64 Linux, and its build fails unless the compiler carries it");
+        contract.expect(BuildFlagsSpecText.occurrences(flake, "-march=") == 1, relative + " names the CPU level once");
+        string darwin = "lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {";
+        contract.expect(!flake.contains(darwin) || BuildFlagsSpecText.ordered(flake, [guard, level, darwin]), relative + " keeps the CPU level out of the macOS build");
+    }
+
+    class void levels(Contract contract, string project) {  // the CPU level only where upstream offers a CPU-level build
+        Vector<string> leveled = ["azahar", "retroarch/cores/azahar"];
+        Vector<string> directories = BuildFlagsSpecContract.flakeDirectories(project);
+        contract.expect(directories.size() >= 22, f"every emulator, RetroArch and core flake is checked ({directories.size()})");
+        for relative in directories {
+            string flake = BuildFlagsSpecContract.flake(project, relative);
+            contract.expect(leveled.contains(relative) || !flake.contains("-march="), relative + " takes no fixed CPU level: its JIT picks the Deck's at run time and upstream offers no CPU-level build");
+            for lowered in ["cmakeBuildType", "dontAddCmakeBuildType", "-O0", "-O1 ", "DEBUG=1", "ENABLE_LTO=OFF"] {
+                contract.lacks(flake, lowered, relative + " never lowers upstream's release optimisation");
+            }
+        }
+    }
+
+    class void run(Contract contract) {
+        string project = Environment.get("SEMU_PROJECT", FileSystem.currentDirectory());
+        BuildFlagsSpecContract.pcsx2(contract, project);
+        BuildFlagsSpecContract.cemu(contract, project);
+        BuildFlagsSpecContract.azahar(contract, project, "azahar");
+        BuildFlagsSpecContract.azahar(contract, project, "retroarch/cores/azahar");
+        BuildFlagsSpecContract.levels(contract, project);
+    }
+}

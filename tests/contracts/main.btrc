@@ -51,6 +51,7 @@ import ./spec/radial_render.btrc;
 import ./spec/players.btrc;
 import ./spec/controller_layouts.btrc;
 import ./spec/performance.btrc;
+import ./spec/build_flags.btrc;
 import ./spec/playlist.btrc;
 import ./spec/content.btrc;
 import ./spec/harness.btrc;
@@ -1004,6 +1005,7 @@ int main() {
     PlayersSpecContract.run(contract);
     ControllerLayoutsSpecContract.run(contract);
     PerformanceSpecContract.run(contract);
+    BuildFlagsSpecContract.run(contract);
     ModsSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);

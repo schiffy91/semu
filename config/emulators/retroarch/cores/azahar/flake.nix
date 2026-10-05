@@ -37,6 +37,13 @@
           '';
           passthru = (previous.passthru or { }) // { libretroCore = "/lib/retroarch/cores"; };  # the nixpkgs RetroArch wrapper adds -L for this path
           meta = (removeAttrs (previous.meta or { }) [ "mainProgram" ]) // { description = "Azahar as a libretro core (the citra_libretro target of the Azahar tree)"; };
+        } // lib.optionalAttrs (pkgs.stdenv.hostPlatform.isLinux && pkgs.stdenv.hostPlatform.isx86_64) {
+          # the Deck's CPU level, which upstream's ENABLE_NATIVE_OPTIMIZATION (march native, CMakeLists.txt:158, 252-266) gives on
+          # the Deck itself, held at x86-64-v3 so FRACTAL-NORTH runs the same build; Release and LTO are upstream's defaults already
+          env = (previous.env or { }) // { NIX_CFLAGS_COMPILE = ((previous.env or { }).NIX_CFLAGS_COMPILE or "") + " -march=x86-64-v3 -mtune=znver2"; };
+          preConfigure = (previous.preConfigure or "") + ''
+            awk '/__AVX2__/ { avx = 1 } /__tune_znver2__/ { tune = 1 } END { print "compiler CPU level: AVX2 " avx ", tuned for znver2 " tune; exit !(avx && tune) }' < <($CXX -dM -E -x c++ /dev/null)
+          '';  # every compile carries the CPU level (printed in the build log)
         });
     in {
       semu = {
