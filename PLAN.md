@@ -1288,6 +1288,41 @@ Status: tackled in three parallel tracks (performance, picture, controls), then 
   covered TV. Contracts: the core-options fixture (n64-core-options.cfg), no angrylion or cxd4 in either
   slice, the N64 at 320x240 whatever render_resolution says, and the TV at whole steps of 240, centred,
   at 1280x800 and 1920x1080. Each fails under its mutation.
+- Item 9 (performance, build flags, d08ddbb): every flake compared with its upstream's own release
+  build at the pinned source. The three that differed were fixed and built in the podman VM; the Deck
+  measurement is open. Upstream release, then Semu's build:
+  - PCSX2 2.6.3: Release, CMAKE_INTERPROCEDURAL_OPTIMIZATION=ON, clang linked by lld, Multi-ISA
+    (linux_build_qt.yml:135-148). Was clang 21 Multi-ISA with no LTO (0 ThinLTO symbols). Now IPO on, with
+    LLVM bintools (lld, llvm-ar). Log: CXX_FLAGS "-O3 -DNDEBUG -std=gnu++20 -flto=thin -msse -msse2
+    -msse4.1"; binary "Linker: LLD 21.1.8", 6722 ThinLTO symbols, -help runs. Multi-ISA picks the AVX2
+    GS on the Deck at run time, so no fixed CPU level.
+  - Cemu 2.6: CMake Release (-O3 -DNDEBUG) with IPO (CMakeLists.txt:73-75; build.yml:69 builds with
+    clang-15, BUILD.md:44 recommends clang and documents GCC). The nixpkgs recipe set the Release flags
+    to -DNDEBUG alone, leaving the fortify wrapper's -O2 (add-hardening.sh:95). Now CMake's own flags:
+    "-O3 -DNDEBUG -flto=auto -fno-fat-lto-objects", 3234 LTO symbols. GCC 15 stays.
+  - Azahar 2126.0 (standalone, and the libretro core that is the Deck's default 3DS): Release with LTO on
+    by default (CMakeLists.txt:93-97, 157), SSE4.2, and a CPU-level switch (ENABLE_NATIVE_OPTIMIZATION,
+    CMakeLists.txt:158, 252-266). It already matched ("LTO enabled", 10314/3923 LTO symbols). It now also
+    compiles with -march=x86-64-v3 -mtune=znver2 on x86_64 Linux only: the Deck's level, held at v3 so
+    FRACTAL-NORTH runs the same build. Log: "compiler CPU level: AVX2 1, tuned for znver2 1". AVX2
+    instructions went from 72 to 29752 (standalone) and from 73 to 26868 (core). real-cores passes with it.
+  - Matched already, unchanged: Dolphin 2606a (Flatpak Release, ENABLE_LTO off: Flatpak yml:50-55,
+    CMakeLists.txt:87; 0 LTO symbols); melonDS (Release, ENABLE_LTO_RELEASE on whenever the IPO check
+    passes, CMakeLists.txt:70-76; the binary is fully stripped, so this is not observed directly);
+    Flycast 2.7 (upstream's Linux build is RelWithDebInfo -O2, c-cpp.yml:25; Semu builds Release -O3);
+    PPSSPP 1.20.4 (log "Build type: Release"); Ryujinx 1.3.3 (dotnet publish -c Release, release.yml:58;
+    log bin/Release/net9.0, runtimeconfig System.Runtime.TieredPGO true from Ryujinx.csproj:10; upstream
+    ships no ReadyToRun); RetroArch 1.22.2 (Makefile:40-48 -O3); mupen64plus_next (libretro CI
+    linux-x64 flags, .gitlab-ci.yml:93-100, identical to nixpkgs', -O3 -ffast-math, Makefile:653-660,
+    x86_64 dynarec); Beetle PSX (HAVE_LIGHTREC, -O3); the other cores build with their own Makefile or
+    CMake Release defaults, the same as libretro's buildbot.
+  - The macOS N64 stays slow because upstream's osx build has no dynarec (WITH_DYNAREC is empty,
+    Makefile:399-414 at f275caf). Semu matches upstream there. nixpkgs' default hardening (fortify3, stack
+    protector, stack clash, zero-call-used-regs) is kept in every build. Cemu and Azahar keep GCC, though
+    upstream's releases use clang.
+  Contract build_flags.btrc fails under each mutation: no IPO, no ThinLTO check, -DNDEBUG restored, an
+  explicit -O2, no CPU level, the level outside the x86_64-Linux guard, and a level on Dolphin. Every
+  build also fails by itself if its flags never reach the compiler.
 - Items 2 and 3 (picture): built and checked on the Mac render host at 1280x800 and 1920x1080, every
   system and bezel variant in bezel fit, judged by eye; the Deck look is open. GBC: a3d0dc6's hidden
   carbon plate never carried the buttons. Duimon draws Start and Select in GBC_Decal.png and no Duimon
