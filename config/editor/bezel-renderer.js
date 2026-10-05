@@ -129,7 +129,7 @@ const BezelRenderer = (() => {
         const order = Environment.number(layer.order, 0), canvasSized = layer.size && layer.size.w === canvas.w && layer.size.h === canvas.h;
         const extent = layer.follow === "viewport" ? (canvasSized ? { set: true, x: 0, y: 0, width: 1, height: 1 } : "cover") : Environment.hole(layer.rect, canvas);
         if (extent !== "cover" && !extent.set) continue;  // the renderer is never given a layer that leaves the canvas
-        const room = layer.id === pkg.canvas_layer && layer.follow === "viewport" && !!canvasSized;  // a scene whose canvas is the room: past the canvas its edge rows and columns carry on
+        const room = layer.id === pkg.canvas_layer && layer.id === "background" && layer.follow === "viewport" && !!canvasSized;  // a scene whose canvas is its room: past the canvas its edge rows and columns carry on; a device plate stays on its canvas
         if (layer.id === "background") { backgroundExtent = extent; backgroundOrder = order; backgroundRoom = room; }
         const tinted = recolor && Array.isArray(recolor.layers) && recolor.layers.includes(layer.id);
         place({ id: layer.id, extent, above: order > screensOrder, blend: layer.blend === "add" ? 1 : (layer.blend === "multiply" ? 2 : 0), opacity: Environment.clamp01(Environment.fraction(Environment.number(layer.opacity, 1))),
@@ -170,7 +170,7 @@ const BezelRenderer = (() => {
       }
       return { x, y, width, height };
     }
-    static integerPlacement(nativeHeight, screen, placement, aspect, areaWidth, areaHeight, canvas, fractionalBelow, scene) {  // the picture at a whole multiple of its native height; FRACTIONAL_BELOW: a 3D-era system's opt-in for game; SCENE: a room canvas (canvasCover)
+    static integerPlacement(nativeHeight, screen, placement, aspect, areaWidth, areaHeight, canvas, fractionalBelow, carried) {  // the picture at a whole multiple of its native height; FRACTIONAL_BELOW: a 3D-era system's opt-in for game; CARRIED: a room that carries on past its edges (RendererPlacement.carried)
       let area = screen.image;
       if (!area.set) {
         const tubeWidth = float(screen.tube.width * canvas.width), tubeHeight = float(screen.tube.height * canvas.height);
@@ -184,8 +184,12 @@ const BezelRenderer = (() => {
       if (float(pictureWidth / pictureHeight) > shown) pictureWidth = float(pictureHeight * shown); else pictureHeight = float(pictureWidth / shown);
       const native = float(nativeHeight);
       if (native < 1 || pictureHeight < 1) return canvas;
-      let multiple = integer(float(pictureHeight / native));
+      let multiple = integer(float(float(pictureHeight * float(carried ? 1.01 : 1)) / native));  // bezel: the largest step that keeps the whole shell; a room that carries on may leave up to 1% of its plate off screen
       if (placement === "game") multiple = Math.min(integer(float(areaHeight / native)), integer(float(areaWidth / float(native * shown))));
+      if (placement === "fit") {  // fit on a room: the nearest whole step whose opening stays on screen, else fit as it was
+        multiple = Math.max(integer(float(float(pictureHeight / native) + 0.5)), 1);
+        while (multiple >= 1 && !Geometry.tubeStays(screen, canvas, float(float(multiple * native) / pictureHeight), areaWidth, areaHeight)) multiple--;
+      }
       let steps = multiple;
       if (multiple < 1 || (placement === "game" && multiple < (fractionalBelow || 0))) {  // a system that opts in (display.scaling.game_fractional_below) fills the screen in game placement; bezel stays whole
         const down = float(areaHeight / native), across = float(areaWidth / float(native * shown));
@@ -201,8 +205,16 @@ const BezelRenderer = (() => {
         if (placed.width <= areaWidth) placed.x = float(placed.x + Geometry.wholePixels(float(float(float(areaWidth - placed.width) * 0.5) - placed.x)));
         if (placed.height <= areaHeight) placed.y = float(placed.y + Geometry.wholePixels(float(float(float(areaHeight - placed.height) * 0.5) - placed.y)));
       }
-      if (placement === "bezel" && scene && placed.height < areaHeight) placed.y = float(placed.y + Geometry.wholePixels(float(0 - placed.y)));  // a scene shorter than the screen keeps its table on the bottom edge, the wall carrying on above
+      if (placement !== "game" && carried && placed.height < areaHeight) placed.y = float(placed.y + Geometry.wholePixels(float(0 - placed.y)));  // bezel or fit on a room shorter than the screen keeps its table on the bottom edge, the wall carrying on above
       return placed;
+    }
+    static tubeStays(screen, canvas, grow, areaWidth, areaHeight) {  // RendererPlacement.tubeStays: the opening on screen once the canvas grows by GROW about its centre
+      const tube = screen.tube;
+      if (!tube.set) return true;
+      const width = float(canvas.width * grow), height = float(canvas.height * grow);
+      const left = float(float(canvas.x + float(float(canvas.width - width) * 0.5)) + float(tube.x * width));
+      const bottom = float((height < areaHeight ? 0 : float(canvas.y + float(float(canvas.height - height) * 0.5))) + float(float(float(1 - tube.y) - tube.height) * height));
+      return left >= -0.5 && bottom >= -0.5 && float(left + float(tube.width * width)) <= areaWidth + 0.5 && float(bottom + float(tube.height * height)) <= areaHeight + 0.5;
     }
     static wholePixels(shift) {  // RendererPlacement.wholePixels: rounded half away from zero
       return shift >= 0 ? integer(float(shift + 0.5)) : -integer(float(0.5 - shift));
@@ -219,8 +231,9 @@ const BezelRenderer = (() => {
       let canvas = CompositionContract.contain(areaWidth, areaHeight, variant.canvasWidth, variant.canvasHeight);
       if (variant.layered && variant.canvasCover) canvas = Geometry.coverKeepingTubes(variant, preview.screens.length, areaWidth, areaHeight, canvas);
       const first = variant.screens[0];
-      if (preview.placement !== "fit" && preview.screens.length === 1 && first && (first.image.set || first.tube.set)) {
-        canvas = Geometry.integerPlacement(preview.screens[0].h, first, preview.placement, Geometry.singleAspect(preview), areaWidth, areaHeight, canvas, preview.game_fractional_below, variant.layered && variant.canvasCover);
+      const carried = variant.layered && variant.layers.some(layer => layer.room);  // RendererPlacement.carried: fit on a TV room snaps to a whole step too
+      if ((preview.placement !== "fit" || carried) && preview.screens.length === 1 && first && (first.image.set || first.tube.set)) {
+        canvas = Geometry.integerPlacement(preview.screens[0].h, first, preview.placement, Geometry.singleAspect(preview), areaWidth, areaHeight, canvas, preview.game_fractional_below, carried);
       }
       return canvas;
     }

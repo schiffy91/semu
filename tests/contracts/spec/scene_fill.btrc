@@ -4,6 +4,10 @@
 // or 1920x1080: a handheld or DS stands on its cover-fit desk plate, a TV scene's room covers the screen or
 // carries on past its edges (its layer line, and the night plate over it, end |1), and a scene shorter than the
 // screen keeps its table on the screen's bottom edge, so the room is only ever carried up and sideways.
+// Only a scene's room carries on (a DS device plate stays on its canvas over the desk), a TV room's default
+// placement (fit) draws a whole multiple of the native lines so scanlines never beat into bands, bezel
+// placement lets a room leave 1% of its plate off screen (the NES at 2x on the Deck), and the editor's copy
+// of all of it matches the renderer's.
 
 import Library.FileSystem;
 import Library.JSON;
@@ -96,6 +100,63 @@ class SceneFillSpecChecks {
         }
         contract.expect(failures.isEmpty() && checked > 0 && rooms > 0, f"no system shows black bars in fit, game or bezel at 1280x800 or 1920x1080 ({checked} pictures, {rooms} rooms): " + failures.join("; "));
     }
+
+    class void devices(Contract contract, Fixture fixture) {  // only a scene's room carries on: a DS or 3DS device plate stays on its canvas, so the desk shows around it, never its smeared edge rows
+        Vector<string> found = [];
+        bool plain = true;
+        for systemId in ["nds", "n3ds"] {
+            for variant in SceneFillSpecChecks.variants(fixture, systemId) {
+                for line in PlacementSpecEnvironment.layers(PlacementSpecEnvironment.compile(fixture, systemId, variant), "/device.png") {
+                    found.push(line);
+                    if (!line.endsWith("|-|0")) { plain = false; }
+                }
+            }
+        }
+        contract.expect(plain && found.size() >= 4, "the DS and 3DS shells (and their vertical shells) draw the device plate on its canvas, no room field: " + found.join(" "));
+    }
+
+    class void editor(Contract contract, Fixture fixture) {  // the editor preview places and draws a room exactly as the renderer does
+        string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
+        Vector<string> missing = [];
+        for wanted in ["layer.id === pkg.canvas_layer && layer.id === \"background\" && layer.follow === \"viewport\" && !!canvasSized", "room: backgroundRoom }", "this.set4(\"uLayer\", layer.opacity, layer.blend, layer.lift, layer.room ? 1 : 0)",
+                       "this.scissor(layer.extent === \"cover\" || layer.room ? screen : null)", "if (placement !== \"game\" && carried && placed.height < areaHeight) placed.y = float(placed.y + Geometry.wholePixels(float(0 - placed.y)))",
+                       "const carried = variant.layered && variant.layers.some(layer => layer.room)", "if ((preview.placement !== \"fit\" || carried) && preview.screens.length === 1",
+                       "float(carried ? 1.01 : 1)", "multiple = Math.max(integer(float(float(pictureHeight / native) + 0.5)), 1)", "!Geometry.tubeStays(screen, canvas, float(float(multiple * native) / pictureHeight), areaWidth, areaHeight)"] {
+            if (!source.contains(wanted)) { missing.push(wanted); }
+        }
+        contract.expect(missing.isEmpty(), "the editor's copy keeps the room flag, the night plate's room, the room's scissor and uLayer.w, the 1% room tolerance, fit's nearest whole step on a room and the table on the bottom edge: missing " + missing.join(" | "));
+    }
+
+    class void wholeSteps(Contract contract, Fixture fixture) {  // a TV room's default placement draws a whole multiple of the native lines, so no scanline shader beats into bands
+        int widths[2] = {1280, 1920};
+        int heights[2] = {800, 1080};
+        Vector<string> failures = [];
+        int rooms = 0;
+        for systemId in fixture.model.systemIds() {
+            Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, "");
+            JSONValue native = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0.native");
+            int nativeWidth = SemuJson.intAt(native, "w", 0);
+            int nativeHeight = SemuJson.intAt(native, "h", 0);
+            if (PlacementSpecEnvironment.layers(environment, "/background.png").isEmpty() || !PlacementSpecEnvironment.layers(environment, "/background.png")[0].endsWith("|1") || nativeHeight < 1) { continue; }
+            rooms++;
+            string named = PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_PLACEMENT");
+            int placement = named.equals("game") ? 1 : (named.equals("bezel") ? 2 : 0);
+            for (int size = 0; size < 2; size++) {
+                struct RendererCanvasRect canvas;
+                struct RendererCanvasRect picture;
+                PlacementSpecGeometry.place(fixture, systemId, nativeWidth, nativeHeight, placement, widths[size], heights[size], &canvas, &picture);
+                int steps = PlacementSpecGeometry.rounded(picture.height) / nativeHeight;
+                bool whole = steps >= 1 && PlacementSpecGeometry.near(picture.height, (float)(steps * nativeHeight));
+                bool shown = picture.x >= -0.5f && picture.y >= -0.5f && picture.x + picture.width <= (float)widths[size] + 0.5f && picture.y + picture.height <= (float)heights[size] + 0.5f;
+                if (!whole || !shown) { failures.push(systemId + " " + named + f" at {widths[size]}x{heights[size]}: " + PlacementSpecGeometry.text(&picture) + f" for {nativeHeight} lines"); }
+            }
+        }
+        contract.expect(rooms >= 9 && failures.isEmpty(), f"every TV room's default placement draws a whole multiple of its native lines on screen at 1280x800 and 1920x1080 ({rooms} systems): " + failures.join("; "));
+        struct RendererCanvasRect canvas;
+        struct RendererCanvasRect picture;
+        PlacementSpecGeometry.place(fixture, "nes", 256, 240, 2, 1280, 800, &canvas, &picture);
+        contract.expect(PlacementSpecGeometry.near(picture.height, 480.0f) && canvas.height <= 808.0f, "the NES in bezel placement at 1280x800 is 2x (480 lines): its room carries on, so 1% of the plate may leave the screen: " + PlacementSpecGeometry.text(&picture) + ", canvas " + PlacementSpecGeometry.text(&canvas));
+    }
 }
 
 class SceneFillSpecContract {
@@ -105,5 +166,8 @@ class SceneFillSpecContract {
         SceneFillSpecChecks.startSelect(contract, fixture);
         SceneFillSpecChecks.roomLines(contract, fixture);
         SceneFillSpecChecks.coverage(contract, fixture);
+        SceneFillSpecChecks.devices(contract, fixture);
+        SceneFillSpecChecks.editor(contract, fixture);
+        SceneFillSpecChecks.wholeSteps(contract, fixture);
     }
 }

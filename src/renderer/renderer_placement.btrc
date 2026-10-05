@@ -1,7 +1,8 @@
 // Where a fixed bezel's canvas lands on the screen: contained, covered when the scene asks for it and its
 // openings stay on screen, then moved to the placement's whole step (game: the largest the screen holds,
-// the shell cropped and centred where it fits; bezel: the largest that keeps the shell). Pure arithmetic
-// over the renderer's records, no GL, so the contracts place a package exactly as the compositor does.
+// the shell cropped and centred where it fits; bezel: the largest that keeps the shell; fit on a TV room:
+// the nearest whole step, so a scanline shader never beats into bands). Pure arithmetic over the
+// renderer's records, no GL, so the contracts place a package exactly as the compositor does.
 
 import ./renderer_abi.btrc;
 import ./renderer_config.btrc;
@@ -11,7 +12,13 @@ class RendererPlacement {
         RendererCompositionContract.contain(areaWidth, areaHeight, sourceWidth, sourceHeight, canvas);
         bool layered = variant->layer_count > 0 && variant->canvas_width > 0;
         if (layered && variant->canvas_cover != 0) { RendererPlacement.coverKeepingTubes(frame, variant, areaWidth, areaHeight, canvas); }
-        if (placement != 0 && frame->surface_count == 1 && (variant->screens[0].image.set != 0 || variant->screens[0].tube.set != 0)) { RendererPlacement.integerPlacement(frame, variant, placement, fractionalBelow, aspect, areaWidth, areaHeight, canvas); }
+        bool onePicture = frame->surface_count == 1 && (variant->screens[0].image.set != 0 || variant->screens[0].tube.set != 0);
+        if (onePicture && (placement != 0 || RendererPlacement.carried(variant))) { RendererPlacement.integerPlacement(frame, variant, placement, fractionalBelow, aspect, areaWidth, areaHeight, canvas); }  // fit on a TV room snaps too: the room carries on past its edges, and scanlines at a fractional scale beat into bands
+    }
+
+    class bool carried(struct RendererVariantConfig* variant) {  // a scene whose room carries on past its edges (a layer line ending |1)
+        for (int index = 0; index < variant->layer_count && index < 8; index++) { if (variant->layers[index].room != 0) { return true; } }
+        return false;
     }
 
     class void integerPlacement(struct SemuRenderFrameGl* frame, struct RendererVariantConfig* variant, int placement, int fractionalBelow, float aspect, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas) {  // the picture at a whole multiple of its native height
@@ -34,11 +41,17 @@ class RendererPlacement {
         if (pictureWidth / pictureHeight > shown) { pictureWidth = pictureHeight * shown; } else { pictureHeight = pictureWidth / shown; }  // the game inside its rectangle
         float native = (float)frame->surfaces[0].native_height;  // the height the emulator reports for this frame (a core that crops its overscan reports the cropped height)
         if (native < 1.0f || pictureHeight < 1.0f) { return; }
-        int multiple = (int)(pictureHeight / native);  // bezel: the largest step that keeps the whole shell
+        bool carried = RendererPlacement.carried(variant);
+        int multiple = (int)(pictureHeight * (carried ? 1.01f : 1.0f) / native);  // bezel: the largest step that keeps the whole shell; a room that carries on may leave up to 1% of its plate off screen (the owner's bezel rule), never the TV
         if (placement == 1) {  // game: the largest step the screen holds
             int down = (int)((float)areaHeight / native);
             int across = (int)((float)areaWidth / (native * shown));
             multiple = down < across ? down : across;
+        }
+        if (placement == 0) {  // fit on a room: the nearest whole step whose opening stays on screen, else fit as it was
+            multiple = (int)(pictureHeight / native + 0.5f);
+            if (multiple < 1) { multiple = 1; }
+            while (multiple >= 1 && !RendererPlacement.tubeStays(variant, canvas, (float)multiple * native / pictureHeight, areaWidth, areaHeight)) { multiple--; }
         }
         float steps = (float)multiple;
         bool fills = placement == 1 && multiple < fractionalBelow;  // game on a system that opts in (display.scaling.game_fractional_below): a 480-line picture fills the 800-line screen instead of sitting at 1x; bezel stays whole
@@ -52,7 +65,7 @@ class RendererPlacement {
         float centerY = canvas->y + (1.0f - image->y - image->height * 0.5f) * canvas->height;  // pixel rows count up from the bottom
         float anchorX = placement == 1 ? (float)areaWidth * 0.5f : canvas->x + canvas->width * 0.5f + (centerX - canvas->x - canvas->width * 0.5f) * grow;
         float anchorY = placement == 1 ? (float)areaHeight * 0.5f : canvas->y + canvas->height * 0.5f + (centerY - canvas->y - canvas->height * 0.5f) * grow;
-        canvas->x = anchorX - (centerX - canvas->x) * grow;  // game centres the picture, bezel keeps the shell centred
+        canvas->x = anchorX - (centerX - canvas->x) * grow;  // game centres the picture, bezel and fit keep the shell centred
         canvas->y = anchorY - (centerY - canvas->y) * grow;
         canvas->width = canvas->width * grow;
         canvas->height = canvas->height * grow;
@@ -60,7 +73,17 @@ class RendererPlacement {
             if (canvas->width <= (float)areaWidth) { canvas->x = canvas->x + RendererPlacement.wholePixels(((float)areaWidth - canvas->width) * 0.5f - canvas->x); }
             if (canvas->height <= (float)areaHeight) { canvas->y = canvas->y + RendererPlacement.wholePixels(((float)areaHeight - canvas->height) * 0.5f - canvas->y); }
         }
-        if (placement == 2 && variant->canvas_cover != 0 && canvas->height < (float)areaHeight) { canvas->y = canvas->y + RendererPlacement.wholePixels(0.0f - canvas->y); }  // bezel on a scene shorter than the screen: the table stays on the screen's bottom edge and the wall carries on above, never a band under the table
+        if (placement != 1 && carried && canvas->height < (float)areaHeight) { canvas->y = canvas->y + RendererPlacement.wholePixels(0.0f - canvas->y); }  // bezel or fit on a room shorter than the screen: the table stays on the screen's bottom edge and the wall carries on above, never a band under the table
+    }
+
+    class bool tubeStays(struct RendererVariantConfig* variant, struct RendererCanvasRect* canvas, float grow, int areaWidth, int areaHeight) {  // the opening on screen once the canvas grows by GROW about its centre (a room shorter than the screen standing on the bottom edge)
+        struct RendererNormalizedHole* tube = &variant->screens[0].tube;
+        if (tube->set == 0) { return true; }
+        float width = canvas->width * grow;
+        float height = canvas->height * grow;
+        float left = canvas->x + (canvas->width - width) * 0.5f + tube->x * width;
+        float bottom = (height < (float)areaHeight ? 0.0f : canvas->y + (canvas->height - height) * 0.5f) + (1.0f - tube->y - tube->height) * height;
+        return left >= -0.5f && bottom >= -0.5f && left + tube->width * width <= (float)areaWidth + 0.5f && bottom + tube->height * height <= (float)areaHeight + 0.5f;
     }
 
     class bool shellHidden(int placement, int surfaceCount) { return placement == 1 && surfaceCount == 2; }  // DS and 3DS screen placement: no shell, the whole-step layout over the background
