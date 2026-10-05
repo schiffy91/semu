@@ -242,11 +242,93 @@ const BezelRenderer = (() => {
       if (screen.fit === 1) return area;
       return CompositionContract.fit(area, nativeWidth, nativeHeight, 0, declaredAspect, screen.fit === 2 ? 1 : 0);
     }
+    static hold(rect, output) {  // RendererLayout.hold: a drawn rectangle the picture runs past grows a pixel beyond it
+      if (rect.width < 1 || rect.height < 1) return rect;
+      let right = rect.x + rect.width, top = rect.y + rect.height;
+      if (output.x >= rect.x && output.y >= rect.y && output.x + output.width <= right && output.y + output.height <= top) return rect;
+      const left = Math.min(output.x - 1, rect.x), bottom = Math.min(output.y - 1, rect.y);
+      right = Math.max(right, output.x + output.width + 1); top = Math.max(top, output.y + output.height + 1);
+      return { x: left, y: bottom, width: right - left, height: top - bottom };
+    }
+    static dualPicture(screen, native, sourceWidth, sourceHeight) {  // RendererDualShell.picture, in canvas pixels from the top left
+      let x = float(screen.image.x * sourceWidth), y = float(screen.image.y * sourceHeight), width = float(screen.image.width * sourceWidth), height = float(screen.image.height * sourceHeight);
+      if (!screen.image.set) {
+        const tubeWidth = float(screen.tube.width * sourceWidth), tubeHeight = float(screen.tube.height * sourceHeight), inset = float((screen.inset || 0) * (tubeWidth < tubeHeight ? tubeWidth : tubeHeight));
+        x = float(float(screen.tube.x * sourceWidth) + inset); y = float(float(screen.tube.y * sourceHeight) + inset);
+        width = float(tubeWidth - float(2 * inset)); height = float(tubeHeight - float(2 * inset));
+      }
+      if (width < 1 || height < 1 || !native || native.w < 1 || native.h < 1) return null;
+      const shape = float(native.w / native.h);
+      if (float(width / height) > shape) { x = float(x + float(float(width - float(height * shape)) * 0.5)); width = float(height * shape); }
+      else { y = float(y + float(float(height - float(width / shape)) * 0.5)); height = float(width / shape); }
+      return { x, y, width, height, nativeWidth: native.w, nativeHeight: native.h };
+    }
+    static dualGain(main, step) { return float(float(step * main.nativeHeight) / main.height); }
+    static dualSecondStep(second, gain) {  // the largest whole step its rectangle holds at GAIN (1% grace); below 1x the nearest, else 0 (the fractional fallback)
+      const across = float(float(second.width * gain) / second.nativeWidth), down = float(float(second.height * gain) / second.nativeHeight), held = across < down ? across : down;
+      const step = integer(float(held * float(1.01)));
+      if (step >= 1) return step;
+      return held >= 0.5 ? 1 : 0;
+    }
+    static dualSpan(picture, step, gain, across) {  // [low, high] of the screen at STEP centred on its rectangle, along one axis
+      const centre = across ? float(float(picture.x + float(picture.width * 0.5)) * gain) : float(float(picture.y + float(picture.height * 0.5)) * gain);
+      const size = step >= 1 ? float(step * (across ? picture.nativeWidth : picture.nativeHeight)) : (across ? float(picture.width * gain) : float(picture.height * gain));  // the fallback: the rectangle itself
+      return [float(centre - float(size * 0.5)), float(centre + float(size * 0.5))];
+    }
+    static dualBounds(main, second, step) {  // [left, top, right, bottom] of both screens at STEP
+      const gain = Geometry.dualGain(main, step), other = Geometry.dualSecondStep(second, gain);
+      const [left, right] = Geometry.dualSpan(main, step, gain, true), [top, bottom] = Geometry.dualSpan(main, step, gain, false);
+      const [otherLeft, otherRight] = Geometry.dualSpan(second, other, gain, true), [otherTop, otherBottom] = Geometry.dualSpan(second, other, gain, false);
+      return [Math.min(left, otherLeft), Math.min(top, otherTop), Math.max(right, otherRight), Math.max(bottom, otherBottom)];
+    }
+    static dualWhole(value) { return value >= 0 ? integer(float(value + 0.5)) : -integer(float(0.5 - value)); }
+    static dualShell(variant, preview, areaWidth, areaHeight) {  // RendererDualShell.place: the canvas and both lanes, bottom-up; null leaves them to canvasOn's contain
+      const sourceWidth = variant.canvasWidth, sourceHeight = variant.canvasHeight;
+      if (preview.screens.length !== 2 || !variant.screens[0] || !variant.screens[1] || sourceWidth < 1 || sourceHeight < 1) return null;
+      const main = Geometry.dualPicture(variant.screens[0], preview.screens[0], sourceWidth, sourceHeight), second = Geometry.dualPicture(variant.screens[1], preview.screens[1], sourceWidth, sourceHeight);
+      if (!main || !second) return null;
+      const silhouette = variant.shell && variant.shell.set ? variant.shell : null;  // the device's own bounds, else its whole canvas
+      const shell = silhouette ? [float(silhouette.x * sourceWidth), float(silhouette.y * sourceHeight), float(silhouette.width * sourceWidth), float(silhouette.height * sourceHeight)] : [0, 0, sourceWidth, sourceHeight];
+      let bezel = 0;
+      while (bezel < 64) {
+        const gain = Geometry.dualGain(main, bezel + 1);
+        if (float(shell[2] * gain) > float(areaWidth * float(1.01)) || float(shell[3] * gain) > float(areaHeight * float(1.01))) break;
+        bezel++;
+      }
+      if (bezel < 1) return null;
+      let step = bezel, screen = false;
+      if (preview.placement === "game") {
+        for (let candidate = integer(areaHeight / main.nativeHeight); candidate > bezel; candidate--) {
+          const box = Geometry.dualBounds(main, second, candidate);
+          if (float(box[2] - box[0]) <= float(areaWidth + float(0.01)) && float(box[3] - box[1]) <= float(areaHeight + float(0.01))) { step = candidate; screen = true; break; }
+        }
+      }
+      const gain = Geometry.dualGain(main, step), other = Geometry.dualSecondStep(second, gain);
+      let left = float(float(areaWidth * 0.5) - float(float(shell[0] + float(shell[2] * 0.5)) * gain)), top = float(float(areaHeight * 0.5) - float(float(shell[1] + float(shell[3] * 0.5)) * gain));
+      if (screen) {
+        const box = Geometry.dualBounds(main, second, step);
+        left = float(float(float(areaWidth - float(box[2] - box[0])) * 0.5) - box[0]); top = float(float(float(areaHeight - float(box[3] - box[1])) * 0.5) - box[1]);
+      }
+      const mainLeft = Geometry.dualSpan(main, step, gain, true)[0], mainTop = Geometry.dualSpan(main, step, gain, false)[0];
+      left = float(float(left + Geometry.dualWhole(float(left + mainLeft))) - float(left + mainLeft));
+      top = float(float(top + Geometry.dualWhole(float(top + mainTop))) - float(top + mainTop));
+      const width = float(sourceWidth * gain), height = float(sourceHeight * gain), canvas = { x: left, y: float(float(areaHeight - top) - height), width, height };
+      const lane = (picture, laneStep, screenConfig) => {
+        const across = Geometry.dualSpan(picture, laneStep, gain, true), down = Geometry.dualSpan(picture, laneStep, gain, false);
+        const output = { x: Geometry.dualWhole(float(left + across[0])), width: laneStep >= 1 ? laneStep * picture.nativeWidth : Geometry.dualWhole(float(across[1] - across[0])), height: laneStep >= 1 ? laneStep * picture.nativeHeight : Geometry.dualWhole(float(down[1] - down[0])) };
+        output.y = areaHeight - Geometry.dualWhole(float(top + down[0])) - output.height;
+        const opening = CompositionContract.aperture(canvas, screenConfig.tube);
+        return { output, tube: opening.width < 1 || opening.height < 1 ? { ...output } : Geometry.hold(opening, output) };
+      };
+      return { canvas, lanes: [lane(main, step, variant.screens[0]), lane(second, other, variant.screens[1])] };
+    }
     static canvasOn(variant, preview, areaWidth, areaHeight) {  // resolve()'s canvas for a fixed package on an areaWidth x areaHeight screen
       let canvas = CompositionContract.contain(areaWidth, areaHeight, variant.canvasWidth, variant.canvasHeight);
       if (variant.layered && variant.canvasCover) canvas = Geometry.coverKeepingTubes(variant, preview.screens.length, areaWidth, areaHeight, canvas);
       const first = variant.screens[0];
       const carried = variant.layered && variant.layers.some(layer => layer.room);  // RendererPlacement.carried: fit on a TV room snaps to a whole step too
+      const dual = variant.layout === "fixed" ? Geometry.dualShell(variant, preview, areaWidth, areaHeight) : null;  // DS and 3DS shells: whole steps in every Fit state, the shell always drawn
+      if (dual) return dual.canvas;
       if ((preview.placement !== "fit" || carried) && preview.screens.length === 1 && first && (first.image.set || first.tube.set)) {
         canvas = Geometry.integerPlacement(preview.screens[0].h, first, preview.placement, Geometry.singleAspect(preview), areaWidth, areaHeight, canvas, preview.game_fractional_below, carried, variant.shell);
       }
@@ -258,7 +340,13 @@ const BezelRenderer = (() => {
       if (!(shown > 0.01) || !first || !(first.frame_w > 0) || !(first.frame_h > 0) || (first.w === first.frame_w && first.h === first.frame_h)) return shown;
       return float(float(shown * float(float(first.w) / float(first.frame_w))) / float(float(first.h) / float(first.frame_h)));
     }
-    static lanes(variant, preview, canvas) {  // each screen's opening and fitted picture on that canvas
+    static lanes(variant, preview, canvas, target) {  // each screen's opening and fitted picture on that canvas; a DS or 3DS shell's whole-step lanes, placed on TARGET and carried to the canvas
+      const dual = target && variant.layout === "fixed" ? Geometry.dualShell(variant, preview, target.width, target.height) : null;
+      if (dual) {
+        const same = canvas.x === dual.canvas.x && canvas.y === dual.canvas.y && canvas.width === dual.canvas.width, scale = float(canvas.width / dual.canvas.width);
+        const on = rect => same ? rect : { x: float(canvas.x + float(float(rect.x - dual.canvas.x) * scale)), y: float(canvas.y + float(float(rect.y - dual.canvas.y) * scale)), width: float(rect.width * scale), height: float(rect.height * scale) };
+        return dual.lanes.map((lane, index) => ({ tube: on(lane.tube), output: on(lane.output), native: preview.screens[index] }));
+      }
       return variant.screens.map((screen, index) => {
         if (!screen) return null;
         const tube = CompositionContract.aperture(canvas, screen.tube), image = screen.image.set ? CompositionContract.aperture(canvas, screen.image) : null;
@@ -347,7 +435,11 @@ const BezelRenderer = (() => {
     laneUniforms(screen, lane, canvas, framed, index) {  // RendererCompositor.laneUniforms
       const suffix = index === 0 ? "" : "2", look = !!screen && screen.lookSet;
       let ring = look && screen.ringSet && canvas.width > 0, inner = CompositionContract.empty(), outer = CompositionContract.empty();
-      if (ring) { inner = CompositionContract.aperture(canvas, screen.ringInner); outer = CompositionContract.aperture(canvas, screen.ringOuter); if (outer.width <= 0 || outer.height <= 0) ring = false; }
+      if (ring) {
+        inner = CompositionContract.aperture(canvas, screen.ringInner); outer = CompositionContract.aperture(canvas, screen.ringOuter);
+        if (lane) { inner = Geometry.hold(inner, lane.output); outer = Geometry.hold(outer, lane.output); }  // a whole-step screen past its opening: the lip never masks a pixel
+        if (outer.width <= 0 || outer.height <= 0) ring = false;
+      }
       const value = (name, fallback) => screen && typeof screen[name] === "number" ? screen[name] : fallback;
       this.setRect("uRingIn" + suffix, inner); this.setRect("uRingOut" + suffix, outer);
       this.set4("uRingLook" + suffix, value("ringInnerRadius", 0), value("ringOuterRadius", 0), ring ? 1 : 0, value("ringBevel", 0));

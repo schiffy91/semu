@@ -1,5 +1,5 @@
 # M15 item 8 reflection audit, render host 2026-10-05 (tests/visual/reflection-audit.sh at 1280x800 and 1920x1080, test card; mirror = the picture with REFLECT minus without).
-# expected: mirror when the package declares one and its shell is shown; none for computed layouts; none-no-shell where DS/3DS screen placement drops the shell.
+# expected: mirror when the package declares one and its shell is shown (no placement drops a DS or 3DS shell, M15 item 2); none for computed layouts.
 # live: the path that hands the compositor its frame on the Deck; every path ends in semu_render_game_gl, which crops (N64) and extracts the reported content rect, so the mirror samples what the emulator presents there.
 system	variant	placement	size	declared	expected	changed_px	peak	render_host	live_path	live_evidence	verdict
 dreamcast	tv	fit	1280x800	0.4	mirror	19384	73	drawn	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
@@ -38,9 +38,9 @@ genesis	tv	game	1280x800	0.4	mirror	81657	90	drawn	retroarch-gl-tap	same entry a
 genesis	speakers	fit	1280x800	0.4	mirror	40926	84	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 genesis	speakers	bezel	1280x800	0.4	mirror	40926	84	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 genesis	speakers	game	1280x800	0.4	mirror	90858	84	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-n3ds	shell	fit	1280x800	0.4	mirror	37243	66	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	shell	bezel	1280x800	0.4	mirror	37243	66	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	shell	game	1280x800	0.4	none-no-shell	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	shell	fit	1280x800	0.4	mirror	32962	66	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	shell	bezel	1280x800	0.4	mirror	32962	66	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	shell	game	1280x800	0.4	mirror	32962	66	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	main_right	fit	1280x800	0	none	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	main_right	bezel	1280x800	0	none	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	main_right	game	1280x800	0	none	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
@@ -53,18 +53,18 @@ n3ds	side_by_side	game	1280x800	0	none	0	0	none	azahar-vulkan-layer	same entry a
 n3ds	stacked	fit	1280x800	0	none	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	stacked	bezel	1280x800	0	none	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	stacked	game	1280x800	0	none	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	vertical	fit	1280x800	0.4	mirror	24972	71	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	vertical	bezel	1280x800	0.4	mirror	24972	71	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	vertical	game	1280x800	0.4	none-no-shell	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	vertical	fit	1280x800	0.4	mirror	11343	86	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	vertical	bezel	1280x800	0.4	mirror	11343	86	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	vertical	game	1280x800	0.4	mirror	11343	86	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n64	tv	fit	1280x800	0.4	mirror	23698	84	drawn	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
 n64	tv	bezel	1280x800	0.4	mirror	23698	84	drawn	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
 n64	tv	game	1280x800	0.4	mirror	53897	84	drawn	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
 n64	speakers	fit	1280x800	0.4	mirror	47169	87	drawn	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
 n64	speakers	bezel	1280x800	0.4	mirror	47169	87	drawn	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
 n64	speakers	game	1280x800	0.4	mirror	105912	87	drawn	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-nds	shell	fit	1280x800	0.4	mirror	62093	74	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	shell	bezel	1280x800	0.4	mirror	62093	74	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	shell	game	1280x800	0.4	none-no-shell	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	shell	fit	1280x800	0.4	mirror	50801	74	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	shell	bezel	1280x800	0.4	mirror	50801	74	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	shell	game	1280x800	0.4	mirror	50801	74	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	main_right	fit	1280x800	0	none	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	main_right	bezel	1280x800	0	none	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	main_right	game	1280x800	0	none	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
@@ -77,9 +77,9 @@ nds	side_by_side	game	1280x800	0	none	0	0	none	retroarch-gl-tap	same entry and c
 nds	stacked	fit	1280x800	0	none	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	stacked	bezel	1280x800	0	none	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	stacked	game	1280x800	0	none	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	vertical	fit	1280x800	0.4	mirror	17882	74	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	vertical	bezel	1280x800	0.4	mirror	17882	74	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	vertical	game	1280x800	0.4	none-no-shell	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	vertical	fit	1280x800	0.4	mirror	8840	84	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	vertical	bezel	1280x800	0.4	mirror	8840	84	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	vertical	game	1280x800	0.4	mirror	8840	84	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nes	tv	fit	1280x800	0.4	mirror	48581	88	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nes	tv	bezel	1280x800	0.4	mirror	48581	88	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nes	tv	game	1280x800	0.4	mirror	108048	86	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
@@ -155,9 +155,9 @@ genesis	tv	game	1920x1080	0.4	mirror	146024	90	drawn	retroarch-gl-tap	same entry
 genesis	speakers	fit	1920x1080	0.4	mirror	90858	84	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 genesis	speakers	bezel	1920x1080	0.4	mirror	90858	84	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 genesis	speakers	game	1920x1080	0.4	mirror	160988	84	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-n3ds	shell	fit	1920x1080	0.4	mirror	83915	67	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	shell	bezel	1920x1080	0.4	mirror	83915	67	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	shell	game	1920x1080	0.4	none-no-shell	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	shell	fit	1920x1080	0.4	mirror	141070	69	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	shell	bezel	1920x1080	0.4	mirror	141070	69	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	shell	game	1920x1080	0.4	mirror	141070	69	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	main_right	fit	1920x1080	0	none	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	main_right	bezel	1920x1080	0	none	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	main_right	game	1920x1080	0	none	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
@@ -170,18 +170,18 @@ n3ds	side_by_side	game	1920x1080	0	none	0	0	none	azahar-vulkan-layer	same entry 
 n3ds	stacked	fit	1920x1080	0	none	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	stacked	bezel	1920x1080	0	none	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	stacked	game	1920x1080	0	none	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	vertical	fit	1920x1080	0.4	mirror	47110	65	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	vertical	bezel	1920x1080	0.4	mirror	47110	65	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	vertical	game	1920x1080	0.4	none-no-shell	0	0	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	vertical	fit	1920x1080	0.4	mirror	45630	65	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	vertical	bezel	1920x1080	0.4	mirror	45630	65	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	vertical	game	1920x1080	0.4	mirror	45630	65	drawn	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n64	tv	fit	1920x1080	0.4	mirror	53922	84	drawn	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
 n64	tv	bezel	1920x1080	0.4	mirror	23698	84	drawn	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
 n64	tv	game	1920x1080	0.4	mirror	94606	85	drawn	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
 n64	speakers	fit	1920x1080	0.4	mirror	106720	87	drawn	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
 n64	speakers	bezel	1920x1080	0.4	mirror	47169	87	drawn	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
 n64	speakers	game	1920x1080	0.4	mirror	188553	87	drawn	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-nds	shell	fit	1920x1080	0.4	mirror	135975	75	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	shell	bezel	1920x1080	0.4	mirror	135975	75	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	shell	game	1920x1080	0.4	none-no-shell	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	shell	fit	1920x1080	0.4	mirror	114485	75	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	shell	bezel	1920x1080	0.4	mirror	114485	75	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	shell	game	1920x1080	0.4	mirror	114485	75	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	main_right	fit	1920x1080	0	none	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	main_right	bezel	1920x1080	0	none	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	main_right	game	1920x1080	0	none	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
@@ -196,7 +196,7 @@ nds	stacked	bezel	1920x1080	0	none	0	0	none	retroarch-gl-tap	same entry and comp
 nds	stacked	game	1920x1080	0	none	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	vertical	fit	1920x1080	0.4	mirror	34155	74	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	vertical	bezel	1920x1080	0.4	mirror	34155	74	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	vertical	game	1920x1080	0.4	none-no-shell	0	0	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	vertical	game	1920x1080	0.4	mirror	34155	74	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nes	tv	fit	1920x1080	0.4	mirror	108048	86	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nes	tv	bezel	1920x1080	0.4	mirror	48581	88	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nes	tv	game	1920x1080	0.4	mirror	193543	86	drawn	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok

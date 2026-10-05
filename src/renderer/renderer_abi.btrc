@@ -168,7 +168,6 @@ struct RendererCompositionGeometry {
     float background_height;
     float frame_width;  // drawn frame ring around each tube, in pixels (0 = none)
     int framed;
-    int shell_hidden;  // screen (game) placement on two screens: the whole-step layout over the background, no shell and no screen look
 };
 
 struct SemuRenderPendingFrame {

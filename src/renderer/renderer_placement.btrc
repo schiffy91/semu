@@ -108,8 +108,6 @@ class RendererPlacement {
         return left >= -0.5f && top >= -0.5f && left + tube->width * width <= (float)areaWidth + 0.5f && top + tube->height * height <= (float)areaHeight + 0.5f;
     }
 
-    class bool shellHidden(int placement, int surfaceCount) { return placement == 1 && surfaceCount == 2; }  // DS and 3DS screen placement: no shell, the whole-step layout over the background
-
     class float wholePixels(float shift) {  // rounded half away from zero
         return shift >= 0.0f ? (float)(int)(shift + 0.5f) : -(float)(int)(0.5f - shift);
     }

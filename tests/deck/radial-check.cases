@@ -94,3 +94,11 @@ gba retroarch mgba 30 key:ctrl+b key:ctrl+shift+f key:ctrl+b key:ctrl+shift+r,ct
 #     running, and Restart Game (87/1, RESTARTING GAME) restarts it once in the same launch
 #     (restarts=1), the new argv (cmdline) holding --config SYSCONF.IPL.AR=True.
 wii dolphin - 60 key:ctrl+shift+c key:ctrl+shift+c key:ctrl+shift+c key:ctrl+shift+f key:ctrl+shift+u key:ctrl+backspace key:ctrl+backspace key:ctrl+shift+g key:ctrl+shift+d -- New Super Mario Bros. Wii*.wbfs
+# 17. Fit on the DS (M15 item 2). Case 3 left nds on the large-main layout, which Semu works out from the screen
+#     and draws no art: Fit journals 81/-1 (FIT: NO BEZEL), saves no placement, and the centre tap is still
+#     about 128,96 on surface 1. Four Next Bezels reach the DS vertical shell (79/2, 79/3, 79/4, 79/5), drawn
+#     round both screens at 1x on the 1280x800 Deck (256x192 each, the largest whole step that keeps the whole
+#     shell); Fit then journals 81/1 and toasts FIT: SCREEN SAME AS BEZEL, the shell still there and nothing
+#     moved (both screens cannot be larger at the shell's spacing), the centre tap again about 128,96; choices
+#     nds {"bezel_variant":"vertical","placement":"game"}.
+nds retroarch melonds 40 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+b key:ctrl+shift+b key:ctrl+shift+b key:ctrl+shift+b key:ctrl+shift+f tap:0.5,0.5 -- Legend of Zelda, The - Phantom Hourglass*.zip

@@ -17,6 +17,7 @@ import ../../../src/model.btrc;
 import ../../../src/renderer/renderer_abi.btrc;
 import ../../../src/renderer/renderer_config.btrc;
 import ../../../src/renderer/renderer_placement.btrc;
+import ../../../src/renderer/renderer_dual_shell.btrc;
 import ../../../src/renderer/renderer_mirror.btrc;
 import ../../../src/renderer/renderer_surface_crop.btrc;
 import ./placement.btrc;
@@ -69,10 +70,15 @@ class ReflectionAuditChecks {
         frame.presentation_aspect = PlacementSpecGeometry.aspect(environment, frame.surfaces[0].native_width, frame.surfaces[0].native_height);
         RendererSurfaceCropping.apply(&frame, crops, frame.presentation_aspect);
         bool fixed = variant.layout == SEMU_LAYOUT_FIXED && variant.canvas_width > 0;
-        bool dressed = fixed && !RendererPlacement.shellHidden(placement, count);
+        bool dressed = fixed;  // no placement drops a shell (dual_fit.btrc)
         struct RendererCanvasRect canvas;
         memset(&canvas, 0, sizeof(struct RendererCanvasRect));
-        if (fixed) { RendererPlacement.canvas(&frame, &variant, placement, 0, frame.presentation_aspect, areaWidth, areaHeight, variant.canvas_width, variant.canvas_height, &canvas); }
+        struct RendererCompositionGeometry lanes;  // two screens in a shell are placed as the compositor places them, by RendererDualShell
+        memset(&lanes, 0, sizeof(struct RendererCompositionGeometry));
+        lanes.lane_count = count;
+        for (int index = 0; index < count && index < 2; index++) { lanes.lanes[index].native_width = frame.surfaces[index].native_width; lanes.lanes[index].native_height = frame.surfaces[index].native_height; }
+        bool dual = fixed && count == 2 && RendererDualShell.place(&variant, &lanes, placement, variant.canvas_width, variant.canvas_height, areaWidth, areaHeight, &canvas);
+        if (fixed && !dual) { RendererPlacement.canvas(&frame, &variant, placement, 0, frame.presentation_aspect, areaWidth, areaHeight, variant.canvas_width, variant.canvas_height, &canvas); }
         string row = "";
         for (int index = 0; index < count && index < 2; index++) {
             struct RendererScreenConfig* screen = &variant.screens[index];

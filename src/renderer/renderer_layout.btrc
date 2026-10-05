@@ -33,6 +33,21 @@ class RendererLayout {
         RendererLayout.setTube(lane, lane->output_x, lane->output_y, lane->output_width, lane->output_height);
     }
 
+    class void hold(struct RendererPixelRect* rectangle, struct RendererLaneGeometry* lane) {  // a drawn rectangle the lane's picture runs past grows a pixel beyond it: a whole step past its opening is never masked, nor its edge antialiased
+        if (rectangle->width < 1 || rectangle->height < 1) { return; }
+        int right = rectangle->x + rectangle->width;
+        int top = rectangle->y + rectangle->height;
+        if (lane->output_x >= rectangle->x && lane->output_y >= rectangle->y && lane->output_x + lane->output_width <= right && lane->output_y + lane->output_height <= top) { return; }  // inside or flush: unchanged
+        int left = lane->output_x - 1 < rectangle->x ? lane->output_x - 1 : rectangle->x;
+        int bottom = lane->output_y - 1 < rectangle->y ? lane->output_y - 1 : rectangle->y;
+        if (lane->output_x + lane->output_width + 1 > right) { right = lane->output_x + lane->output_width + 1; }
+        if (lane->output_y + lane->output_height + 1 > top) { top = lane->output_y + lane->output_height + 1; }
+        rectangle->x = left;
+        rectangle->y = bottom;
+        rectangle->width = right - left;
+        rectangle->height = top - bottom;
+    }
+
     class int rotatedWidth(struct RendererLaneGeometry* lane) {
         return lane->rotation == 90 || lane->rotation == 270 ? lane->native_height : lane->native_width;
     }

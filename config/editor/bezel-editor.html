@@ -685,7 +685,7 @@ function targetScreenOnView() { const rect = targetScreenRect(); return rect ? {
 function previewScene(cutouts) {  // what RendererCompositor.game gets: the variant, its lanes on the view, the frames and glass, the target screen
   const variant = previewVariant(), canvasRect = viewCanvasRect(), computed = isComputed() ? computedGeometry() : null, scale = canvasRect.width / state.current.canvas.w;
   const onView = rect => ({ x: canvasRect.x + rect.x * scale, y: canvasRect.y + rect.y * scale, width: rect.width * scale, height: rect.height * scale });  // screen pixels to the view: identical in capture mode
-  const lanes = isComputed() ? (computed ? computed.lanes.map((lane, index) => ({ output: onView(lane.output), tube: onView(lane.tube), native: state.preview.screens[index] })) : []) : BezelRenderer.Geometry.lanes(variant, state.preview, canvasRect);
+  const lanes = isComputed() ? (computed ? computed.lanes.map((lane, index) => ({ output: onView(lane.output), tube: onView(lane.tube), native: state.preview.screens[index] })) : []) : BezelRenderer.Geometry.lanes(variant, state.preview, canvasRect, state.target);
   const framed = variant.frame.set ? 1 : 0, screen = targetScreenOnView();  // geometry->framed: a drawn frame round each opening
   const frameWidth = !framed ? 0 : (isComputed() ? (computed ? computed.frame : 0) : Math.trunc(Math.fround(Math.fround(variant.frame.width * state.target.height) + 0.5))) * screen.width / state.target.width;  // in screen pixels, then on the view
   return {

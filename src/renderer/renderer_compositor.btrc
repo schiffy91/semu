@@ -16,6 +16,7 @@ import ./renderer_file_hash.btrc;
 import ./renderer_layout.btrc;
 import ./renderer_config.btrc;
 import ./renderer_placement.btrc;
+import ./renderer_dual_shell.btrc;
 import ./renderer_mirror.btrc;
 int RGL_VERTEX_SHADER = 0x8B31;
 int RGL_FRAGMENT_SHADER = 0x8B30;
@@ -318,17 +319,17 @@ class RendererGeometry {
             geometry->frame_width = (float)frameWidth;
             geometry->framed = 1;
         }
-        if (bezel && fixed && RendererPlacement.shellHidden(config->placement, frame->surface_count)) { geometry->shell_hidden = 1; }  // DS and 3DS screen placement: the shell goes, the background stays, both screens at their whole step
-        if (bezel && fixed && geometry->shell_hidden == 0) {
+        if (bezel && fixed) {
             struct RendererCanvasRect canvas;
-            RendererPlacement.canvas(frame, variant, config->placement, config->game_fractional_below, singleAspect, areaWidth, areaHeight,
-                layered ? variant->canvas_width : resources->art_width[variantIndex],
-                layered ? variant->canvas_height : resources->art_height[variantIndex], &canvas);  // contained, covered, then at the placement's whole step
+            int sourceWidth = layered ? variant->canvas_width : resources->art_width[variantIndex];
+            int sourceHeight = layered ? variant->canvas_height : resources->art_height[variantIndex];
+            bool dual = frame->surface_count == 2 && RendererDualShell.place(variant, geometry, config->placement, sourceWidth, sourceHeight, areaWidth, areaHeight, &canvas);  // DS and 3DS shells: both screens whole in every Fit state, the shell always drawn
+            if (!dual) { RendererPlacement.canvas(frame, variant, config->placement, config->game_fractional_below, singleAspect, areaWidth, areaHeight, sourceWidth, sourceHeight, &canvas); }  // contained, covered, then at the placement's whole step
             geometry->bezel_x = canvas.x;
             geometry->bezel_y = canvas.y;
             geometry->bezel_width = canvas.width;
             geometry->bezel_height = canvas.height;
-            for (int index = 0; index < frame->surface_count; index++) {
+            for (int index = 0; index < frame->surface_count && !dual; index++) {
                 struct RendererScreenConfig* screen = &variant->screens[index];
                 struct RendererPixelRect tube;
                 RendererCompositionContract.aperture(&canvas, screen->tube.x, screen->tube.y,
@@ -1069,6 +1070,8 @@ class RendererCompositor {
             canvas.height = geometry->bezel_height;
             RendererCompositionContract.aperture(&canvas, screen->ring_inner.x, screen->ring_inner.y, screen->ring_inner.width, screen->ring_inner.height, &inner);
             RendererCompositionContract.aperture(&canvas, screen->ring_outer.x, screen->ring_outer.y, screen->ring_outer.width, screen->ring_outer.height, &outer);
+            RendererLayout.hold(&inner, lane);  // a whole-step screen past its opening (the 3DS touch screen on the Deck): the lip never masks a pixel
+            RendererLayout.hold(&outer, lane);
         }
         bool ring = RendererMirror.ringShown(screen, bezel, &outer, geometry->bezel_width);
         RendererCompositor.setRect(gl, index == 0 ? resources->uniform_ring_inner : resources->uniform_ring_inner2, inner.x, inner.y, inner.width, inner.height);
@@ -1182,17 +1185,16 @@ class RendererCompositor {
         bool background = bezel && resources->background_loaded[variantIndex] != 0
             && geometry->background_width > 0.0f;
         bool framed = bezel && geometry->framed != 0;
-        bool dressed = bezel && geometry->shell_hidden == 0;  // the screens wear the package's look only with its shell
         resources->bezel_actual = (art || framed) ? 1 : 0;
         for (int index = 0; index < 2; index++) {
             int lane = index < geometry->lane_count ? index : second;
-            RendererCompositor.laneUniforms(gl, resources, &variant->screens[lane], &geometry->lanes[lane], geometry, dressed, index);
+            RendererCompositor.laneUniforms(gl, resources, &variant->screens[lane], &geometry->lanes[lane], geometry, bezel, index);
         }
         float rotation0 = filtered[0] != 0 ? 0.0f : (float)geometry->lanes[0].rotation / 90.0f;
         float rotation1 = filtered[second] != 0 ? 0.0f : (float)geometry->lanes[second].rotation / 90.0f;
         RendererCompositor.set4(gl, resources->uniform_rotation, rotation0, rotation1, 0.0f, 0.0f);
-        bool glass0 = dressed && resources->glass_loaded[variantIndex * 2] != 0 && variant->screens[0].look_set != 0;
-        bool glass1 = dressed && geometry->lane_count > 1 && resources->glass_loaded[variantIndex * 2 + 1] != 0 && variant->screens[1].look_set != 0;
+        bool glass0 = bezel && resources->glass_loaded[variantIndex * 2] != 0 && variant->screens[0].look_set != 0;
+        bool glass1 = bezel && geometry->lane_count > 1 && resources->glass_loaded[variantIndex * 2 + 1] != 0 && variant->screens[1].look_set != 0;
         RendererCompositor.set4(gl, resources->uniform_reflect,
             glass0 ? variant->screens[0].reflect : 0.0f, glass1 ? variant->screens[1].reflect : 0.0f,
             glass0 ? 1.0f : 0.0f, glass1 ? 1.0f : 0.0f);
@@ -1211,8 +1213,8 @@ class RendererCompositor {
         RendererCompositor.set4(gl, resources->uniform_frame_color,
             variant->frame_r, variant->frame_g, variant->frame_b, 1.0f);
         RendererCompositor.set4(gl, resources->uniform_bulge,
-            dressed ? variant->screens[0].bulge_x : 0.0f, dressed ? variant->screens[0].bulge_y : 0.0f,
-            dressed ? variant->screens[second].bulge_x : 0.0f, dressed ? variant->screens[second].bulge_y : 0.0f);
+            bezel ? variant->screens[0].bulge_x : 0.0f, bezel ? variant->screens[0].bulge_y : 0.0f,
+            bezel ? variant->screens[second].bulge_x : 0.0f, bezel ? variant->screens[second].bulge_y : 0.0f);
         if (resources->uniform_menu_on >= 0) {
             gl->uniform_1f(resources->uniform_menu_on, 0.0f);
         }

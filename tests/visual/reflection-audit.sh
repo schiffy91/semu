@@ -6,8 +6,8 @@
 # step in 0..255, the verdict), with the picture and the doubled difference as PNGs to judge by eye.
 # usage: reflection-audit.sh OUT_DIR [SIZE...] (default 1280x800 1920x1080); CELLS="nds:shell:fit n64:tv:game" narrows it.
 # RENDER_HOST_CARD=/path/frame.png feeds a real frame (a game's native picture) instead of the test card.
-# Verdicts: mirror (declared and drawn), none (nothing declared), none-no-shell (DS and 3DS screen placement drops the
-# shell), MISSING (declared, shell shown, nothing drawn). Exits with the number of MISSING cells.
+# Verdicts: mirror (declared and drawn), none (nothing declared), MISSING (declared, nothing drawn); no placement drops
+# a DS or 3DS shell any more. Exits with the number of MISSING cells.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 out="$1"; shift
@@ -46,8 +46,7 @@ for size in "${sizes[@]}"; do
       magick "$state/with.ppm" "$state/without.ppm" -compose difference -composite -level 0,50% "PNG24:$out/$name-mirror.png"
       verdict=none
       if [ -n "$declared" ] && [ "$declared" != 0 ]; then
-        if [ "$placement" = game ] && [ "${SEMU_RENDER_SURFACE_COUNT:-1}" = 2 ]; then verdict=none-no-shell
-        elif [ "${changed%.*}" -gt 0 ] && [ "$peak" -gt 2 ]; then verdict=mirror; else verdict=MISSING; fi
+        if [ "${changed%.*}" -gt 0 ] && [ "$peak" -gt 2 ]; then verdict=mirror; else verdict=MISSING; fi  # no placement drops a DS or 3DS shell (dual_fit.btrc)
       fi
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$system" "$variant" "$placement" "$size" "${declared:-0}" "$changed" "$peak" "$verdict"
     )"

@@ -27,6 +27,7 @@ class SemuRenderVariantSet {  // the launch's four choices; all empty when no va
     public SemuVariantChoice shader;
     public SemuVariantChoice placement;
     public SemuVariantChoice output;
+    public Vector<string> computed;  // the bezel ids drawn as a computed layout: no art, so Fit has nothing to place there
     public bool written;
     public string token;  // the header's token, handed to the renderer as SEMU_MENU_VARIANTS_TOKEN
 
@@ -35,6 +36,7 @@ class SemuRenderVariantSet {  // the launch's four choices; all empty when no va
         self.shader = SemuVariantChoice("shader");
         self.placement = SemuVariantChoice("placement");
         self.output = SemuVariantChoice("output");
+        self.computed = [];
         self.written = false;
         self.token = "";
     }
@@ -45,6 +47,8 @@ class SemuRenderVariantSet {  // the launch's four choices; all empty when no va
         if (kind.equals("output")) { return self.output; }
         return self.shader;
     }
+
+    public bool placeable() { return !self.bezel.off() && !self.computed.contains(self.bezel.current()); }  // the live bezel has art for Fit to place: not off, not a computed layout
 
     public Vector<string> shown() {  // the menu rows' `when` names this launch offers: a choice with two or more
         Vector<string> result = [];
@@ -120,6 +124,9 @@ class SemuRenderVariants {
         set.shader = SemuRenderVariants.choice(plan, system, "shader");
         set.placement = SemuRenderChoices.placement(plan, system, set.bezel.available());
         set.output = SemuRenderChoices.output(plan, system);
+        for variantId in set.bezel.ids {  // the DS and 3DS layouts Semu works out from the screen draw no art
+            if (!variantId.equals("none") && SemuBezelPackage.computed(SemuBezelPackage.load(plan, SemuRenderEnvironment.packageFor(plan, system, variantId)))) { set.computed.push(variantId); }
+        }
         return set;
     }
 

@@ -120,6 +120,7 @@
       "chord": "Ctrl+Shift+F",
       "toast": "FIT: {label}",
       "unavailable_toast": "FIT: NO BEZEL",
+      "same_toast": "FIT: {label} SAME AS BEZEL",
       "choices": {
         "bezel": "BEZEL",
         "game": "SCREEN",

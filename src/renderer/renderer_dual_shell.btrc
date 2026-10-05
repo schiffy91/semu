@@ -1,0 +1,197 @@
+// Two screens in a fixed shell (the DS and 3DS shells), placed at whole steps whatever Fit says, and Fit never
+// drops the shell. Bezel (and fit): the largest step of the main screen at which the whole shell (its declared
+// silhouette, else its canvas) stays on the display, up to 1% of it past an edge (the owner's bezel rule). Screen:
+// the largest step at which both screens, at the shell's own spacing, stay on the display, the shell drawn round
+// them at that scale and cropped by the display's edges; when that step is no larger than the bezel's, the
+// bezel's picture, so the toggle never jumps. The second screen takes the largest whole step its own picture
+// rectangle holds at that scale (1% grace for a calibration a pixel short), below 1x the nearest: Duimon's 3DS face
+// draws the touch window at 0.94x of 1x on the Deck, so the touch screen shows at 1x over the window's edge, every
+// pixel whole; under half of 1x (a 4:3 display) it fills its window, the fractional fallback. Pure arithmetic, no
+// GL, so the contracts and the editor place a shell exactly as the compositor does.
+
+import ./renderer_abi.btrc;
+import ./renderer_config.btrc;
+import ./renderer_layout.btrc;
+
+struct RendererDualPicture {  // one screen's picture in canvas pixels, top-left origin, and the native size it shows
+    float x;
+    float y;
+    float width;
+    float height;
+    int native_width;
+    int native_height;
+};
+
+struct RendererDualPlan {  // the steps chosen and where the canvas lands, in display pixels from the top left
+    int main_step;
+    int second_step;
+    int bezel_step;  // the step the whole shell allows: Screen equals it when it cannot do better
+    float gain;  // display pixels per canvas pixel
+    float left;
+    float top;
+};
+
+class RendererDualShell {
+    class bool picture(struct RendererScreenConfig* screen, struct RendererLaneGeometry* lane, int sourceWidth, int sourceHeight, struct RendererDualPicture* picture) {  // the calibrated picture rectangle, else the opening less its inset, the native shape fitted inside and centred
+        float left = screen->image.x * (float)sourceWidth;
+        float top = screen->image.y * (float)sourceHeight;
+        float width = screen->image.width * (float)sourceWidth;
+        float height = screen->image.height * (float)sourceHeight;
+        if (screen->image.set == 0) {
+            float tubeWidth = screen->tube.width * (float)sourceWidth;
+            float tubeHeight = screen->tube.height * (float)sourceHeight;
+            float inset = screen->inset * (tubeWidth < tubeHeight ? tubeWidth : tubeHeight);
+            left = screen->tube.x * (float)sourceWidth + inset;
+            top = screen->tube.y * (float)sourceHeight + inset;
+            width = tubeWidth - 2.0f * inset;
+            height = tubeHeight - 2.0f * inset;
+        }
+        picture->native_width = RendererLayout.rotatedWidth(lane);
+        picture->native_height = RendererLayout.rotatedHeight(lane);
+        if (width < 1.0f || height < 1.0f || picture->native_width < 1 || picture->native_height < 1) { return false; }
+        float shape = (float)picture->native_width / (float)picture->native_height;
+        if (width / height > shape) {
+            left = left + (width - height * shape) * 0.5f;
+            width = height * shape;
+        } else {
+            top = top + (height - width / shape) * 0.5f;
+            height = width / shape;
+        }
+        picture->x = left;
+        picture->y = top;
+        picture->width = width;
+        picture->height = height;
+        return true;
+    }
+
+    class float gain(struct RendererDualPicture* main, int step) { return (float)(step * main->native_height) / main->height; }  // the scale at which the main shows STEP
+
+    class int secondStep(struct RendererDualPicture* second, float gain) {  // the largest whole step the second's rectangle holds at GAIN (1% grace); below 1x the nearest, so 1x from half of it, else 0: the fractional fallback inside the rectangle
+        float across = second->width * gain / (float)second->native_width;
+        float down = second->height * gain / (float)second->native_height;
+        float held = across < down ? across : down;
+        int step = (int)(held * 1.01f);
+        if (step >= 1) { return step; }
+        return held >= 0.5f ? 1 : 0;
+    }
+
+    class int bezelStep(struct RendererDualPicture* main, float* shell, int areaWidth, int areaHeight) {  // the largest step that keeps the whole shell on the display (1% may leave it), 0 when not even 1x does
+        int step = 0;
+        while (step < 64) {
+            float gain = RendererDualShell.gain(main, step + 1);
+            if (shell[2] * gain > (float)areaWidth * 1.01f || shell[3] * gain > (float)areaHeight * 1.01f) { break; }
+            step++;
+        }
+        return step;
+    }
+
+    class void span(struct RendererDualPicture* picture, int step, float gain, float* low, float* high, bool across) {  // the screen drawn at STEP, centred on its rectangle, along one axis of the canvas at GAIN
+        float centre = across ? (picture->x + picture->width * 0.5f) * gain : (picture->y + picture->height * 0.5f) * gain;
+        float size = across ? (float)(step * picture->native_width) : (float)(step * picture->native_height);
+        if (step < 1) { size = across ? picture->width * gain : picture->height * gain; }  // the fallback: the rectangle itself
+        *low = centre - size * 0.5f;
+        *high = centre + size * 0.5f;
+    }
+
+    class void bounds(struct RendererDualPicture* main, struct RendererDualPicture* second, int step, float* box) {  // both screens' extent at STEP: left, top, right, bottom from the canvas's top left
+        float gain = RendererDualShell.gain(main, step);
+        int stepOfSecond = RendererDualShell.secondStep(second, gain);
+        float low = 0.0f;
+        float high = 0.0f;
+        RendererDualShell.span(main, step, gain, &box[0], &box[2], true);
+        RendererDualShell.span(main, step, gain, &box[1], &box[3], false);
+        RendererDualShell.span(second, stepOfSecond, gain, &low, &high, true);
+        if (low < box[0]) { box[0] = low; }
+        if (high > box[2]) { box[2] = high; }
+        RendererDualShell.span(second, stepOfSecond, gain, &low, &high, false);
+        if (low < box[1]) { box[1] = low; }
+        if (high > box[3]) { box[3] = high; }
+    }
+
+    class int screenStep(struct RendererDualPicture* main, struct RendererDualPicture* second, int areaWidth, int areaHeight) {  // the largest step at which both screens, at the shell's spacing, stay on the display
+        float box[4];
+        for (int step = areaHeight / main->native_height; step >= 1; step--) {
+            RendererDualShell.bounds(main, second, step, box);
+            if (box[2] - box[0] <= (float)areaWidth + 0.01f && box[3] - box[1] <= (float)areaHeight + 0.01f) { return step; }
+        }
+        return 0;
+    }
+
+    class bool plan(struct RendererDualPicture* main, struct RendererDualPicture* second, int placement, float* shell, int areaWidth, int areaHeight, struct RendererDualPlan* plan) {  // SHELL: the device in canvas pixels, left, top, width, height; false when it does not fit at 1x: the caller contains the canvas as before
+        plan->bezel_step = RendererDualShell.bezelStep(main, shell, areaWidth, areaHeight);
+        if (plan->bezel_step < 1) { return false; }
+        plan->main_step = plan->bezel_step;
+        int larger = placement == 1 ? RendererDualShell.screenStep(main, second, areaWidth, areaHeight) : 0;  // screen; bezel and fit keep the whole shell
+        bool screen = larger > plan->bezel_step;
+        if (screen) { plan->main_step = larger; }
+        plan->gain = RendererDualShell.gain(main, plan->main_step);
+        plan->second_step = RendererDualShell.secondStep(second, plan->gain);
+        plan->left = (float)areaWidth * 0.5f - (shell[0] + shell[2] * 0.5f) * plan->gain;  // bezel: the whole shell centred
+        plan->top = (float)areaHeight * 0.5f - (shell[1] + shell[3] * 0.5f) * plan->gain;
+        if (screen) {  // screen: the two screens centred as a pair, the shell round them cropped by the edges
+            float box[4];
+            RendererDualShell.bounds(main, second, plan->main_step, box);
+            plan->left = ((float)areaWidth - (box[2] - box[0])) * 0.5f - box[0];
+            plan->top = ((float)areaHeight - (box[3] - box[1])) * 0.5f - box[1];
+        }
+        float mainLow = 0.0f;
+        float mainHigh = 0.0f;
+        RendererDualShell.span(main, plan->main_step, plan->gain, &mainLow, &mainHigh, true);
+        plan->left = plan->left + RendererDualShell.whole(plan->left + mainLow) - (plan->left + mainLow);  // the main on whole pixels, the shell with it
+        RendererDualShell.span(main, plan->main_step, plan->gain, &mainLow, &mainHigh, false);
+        plan->top = plan->top + RendererDualShell.whole(plan->top + mainLow) - (plan->top + mainLow);
+        return true;
+    }
+
+    class float whole(float value) { return value >= 0.0f ? (float)(int)(value + 0.5f) : -(float)(int)(0.5f - value); }  // rounded half away from zero
+
+    class void lane(struct RendererLaneGeometry* lane, struct RendererDualPicture* picture, int step, struct RendererDualPlan* plan, int areaHeight) {  // the screen at STEP on whole pixels; GL rows count up from the bottom
+        float left = 0.0f;
+        float right = 0.0f;
+        float top = 0.0f;
+        float bottom = 0.0f;
+        RendererDualShell.span(picture, step, plan->gain, &left, &right, true);
+        RendererDualShell.span(picture, step, plan->gain, &top, &bottom, false);
+        int width = step >= 1 ? step * picture->native_width : (int)RendererDualShell.whole(right - left);  // the fallback below half of 1x fills its rectangle
+        int height = step >= 1 ? step * picture->native_height : (int)RendererDualShell.whole(bottom - top);
+        int column = (int)RendererDualShell.whole(plan->left + left);
+        int down = (int)RendererDualShell.whole(plan->top + top);
+        lane->output_x = column;
+        lane->output_y = areaHeight - down - height;
+        lane->output_width = width;
+        lane->output_height = height;
+    }
+
+    class void opening(struct RendererLaneGeometry* lane, struct RendererScreenConfig* screen, struct RendererCanvasRect* canvas) {  // the package's opening on screen, grown to hold the whole-step picture so no pixel is masked
+        struct RendererPixelRect tube;
+        RendererCompositionContract.aperture(canvas, screen->tube.x, screen->tube.y, screen->tube.width, screen->tube.height, &tube);
+        if (tube.width < 1 || tube.height < 1) { RendererLayout.tubeFromOutput(lane); return; }
+        RendererLayout.hold(&tube, lane);
+        RendererLayout.setTube(lane, tube.x, tube.y, tube.width, tube.height);
+    }
+
+    class bool place(struct RendererVariantConfig* variant, struct RendererCompositionGeometry* geometry, int placement, int sourceWidth, int sourceHeight, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas) {  // both lanes and the canvas; false leaves them to the caller
+        if (geometry->lane_count != 2 || sourceWidth < 1 || sourceHeight < 1) { return false; }
+        struct RendererDualPicture primary;
+        struct RendererDualPicture secondary;
+        if (!RendererDualShell.picture(&variant->screens[0], &geometry->lanes[0], sourceWidth, sourceHeight, &primary)
+            || !RendererDualShell.picture(&variant->screens[1], &geometry->lanes[1], sourceWidth, sourceHeight, &secondary)) { return false; }
+        struct RendererNormalizedHole* silhouette = &variant->canvas_shell;  // the device's own bounds when the package declares them, else its whole canvas
+        float shell[4];
+        shell[0] = silhouette->set != 0 ? silhouette->x * (float)sourceWidth : 0.0f;
+        shell[1] = silhouette->set != 0 ? silhouette->y * (float)sourceHeight : 0.0f;
+        shell[2] = silhouette->set != 0 ? silhouette->width * (float)sourceWidth : (float)sourceWidth;
+        shell[3] = silhouette->set != 0 ? silhouette->height * (float)sourceHeight : (float)sourceHeight;
+        struct RendererDualPlan plan;
+        if (!RendererDualShell.plan(&primary, &secondary, placement, shell, areaWidth, areaHeight, &plan)) { return false; }
+        canvas->x = plan.left;
+        canvas->width = (float)sourceWidth * plan.gain;
+        canvas->height = (float)sourceHeight * plan.gain;
+        canvas->y = (float)areaHeight - plan.top - canvas->height;
+        RendererDualShell.lane(&geometry->lanes[0], &primary, plan.main_step, &plan, areaHeight);
+        RendererDualShell.lane(&geometry->lanes[1], &secondary, plan.second_step, &plan, areaHeight);
+        RendererDualShell.opening(&geometry->lanes[0], &variant->screens[0], canvas);
+        RendererDualShell.opening(&geometry->lanes[1], &variant->screens[1], canvas);
+        return true;
+    }
+}

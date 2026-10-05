@@ -128,8 +128,9 @@ class SemuRendererLiveVariants {  // a select from the journal: its section repl
     class void apply() {  // in the game phase, once the toast has been on screen for two frames
         long long started = RendererClock.milliseconds();
         int switched = RendererLiveSwitch.apply(&SemuRenderer.post_ui, &SemuRenderer.config, &SemuRenderer.live, &SemuRenderer.resources.variant_images_stale);
-        if (RendererLiveSwitch.applyPlacement(&SemuRenderer.post_ui, &SemuRenderer.config, &SemuRenderer.live) == SEMU_RENDER_SWITCH_APPLIED && getenv("SEMU_RENDER_DEBUG") != null) {
-            fprintf(stderr, "semu-renderer: placement %d\n", SemuRenderer.config.placement);  // the geometry follows on this frame
+        if (RendererLiveSwitch.applyPlacement(&SemuRenderer.post_ui, &SemuRenderer.config, &SemuRenderer.live) == SEMU_RENDER_SWITCH_APPLIED) {
+            RendererPlacementNotice.remember(&SemuRenderer.live, &SemuRenderer.geometry);  // the geometry follows on this frame, compared with the last
+            if (getenv("SEMU_RENDER_DEBUG") != null) { fprintf(stderr, "semu-renderer: placement %d\n", SemuRenderer.config.placement); }
         }
         if (switched != SEMU_RENDER_SWITCH_APPLIED) { return; }
         SemuRenderer.switch_started_ms = started;  // the receipt and the toast count the switch from here
@@ -265,6 +266,7 @@ int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
             &SemuRenderer.resources, &SemuRenderer.config, frame,
             &SemuRenderer.geometry);
     }
+    RendererPlacementNotice.after(&SemuRenderer.post_ui, &SemuRenderer.live, SemuRenderer.geometry.lane_count > 0 ? &SemuRenderer.geometry : null, SemuRenderer.config.placement, RendererClock.milliseconds());  // a Fit choice that moved nothing says so
     RendererGlStateGuard.restore(&SemuRenderer.gl, &SemuRenderer.game_state);
     SemuRendererLiveVariants.receipt(frame, contextGeneration, status);
     if (status != SEMU_RENDER_APPLIED) {

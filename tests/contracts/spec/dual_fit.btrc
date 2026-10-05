@@ -1,0 +1,214 @@
+// Dual fit spec (M15 item 2, "on DS vertical shell, if i hit fit screen, the bezel disappears"): Fit never drops a
+// DS or 3DS shell and every state is at whole steps. For each system's shell and vertical shell, in bezel, screen
+// and fit placement at the Deck's 1280x800, 1080p, 4K and 4:3: the shell is drawn round both screens, each screen
+// is a whole multiple of its native size and on the display, bezel keeps the whole shell (1% may leave it) at the
+// largest step that does, screen is the bezel's picture unless both screens fit a larger step at the shell's
+// spacing (4K only), and the steps the owner sees are pinned. The compositor places two-screen shells through
+// RendererDualShell and never hides one; a Fit that moves nothing toasts FIT: SCREEN SAME AS BEZEL; on the computed
+// layouts Fit journals 81/-1.
+
+#include <stdlib.h>
+#include <string.h>
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/emit/render_variants.btrc;
+import ../../../src/emit/composed_scale.btrc;
+import ../../../src/renderer/renderer_dual_shell.btrc;
+import ../../../src/renderer/renderer_live_switch.btrc;
+import ./live_variants.btrc;
+import ./placement.btrc;
+import ./radial_choices.btrc;
+import ./render_env.btrc;
+
+class DualFitSpecGeometry {
+    class bool place(Fixture fixture, string systemId, string variantId, int placement, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas, struct RendererCompositionGeometry* geometry) {  // the shell as the compositor places it
+        struct RendererVariantConfig variant;
+        PlacementSpecGeometry.load(PlacementSpecEnvironment.compile(fixture, systemId, variantId), &variant);
+        memset(geometry, 0, sizeof(struct RendererCompositionGeometry));
+        geometry->lane_count = 2;
+        JSONValue screens = SemuJson.get(fixture.model.system(systemId).definition, "display.screens");
+        for (int index = 0; index < 2; index++) {
+            geometry->lanes[index].native_width = SemuJson.intAt(screens.at(index), "native.w", 0);
+            geometry->lanes[index].native_height = SemuJson.intAt(screens.at(index), "native.h", 0);
+        }
+        return RendererDualShell.place(&variant, geometry, placement, variant.canvas_width, variant.canvas_height, areaWidth, areaHeight, canvas);
+    }
+
+    class int step(struct RendererLaneGeometry* lane) {  // the whole multiple of native the lane shows, else 0
+        int across = lane->native_width < 1 ? 0 : lane->output_width / lane->native_width;
+        return across >= 1 && lane->output_width == across * lane->native_width && lane->output_height == across * lane->native_height ? across : 0;
+    }
+
+    class bool inside(struct RendererLaneGeometry* lane, int areaWidth, int areaHeight) { return lane->output_x >= 0 && lane->output_y >= 0 && lane->output_x + lane->output_width <= areaWidth && lane->output_y + lane->output_height <= areaHeight; }
+
+    class bool held(struct RendererLaneGeometry* lane) {  // the opening the shader masks holds the whole picture
+        return lane->tube_x <= lane->output_x && lane->tube_y <= lane->output_y && lane->tube_x + lane->tube_width >= lane->output_x + lane->output_width && lane->tube_y + lane->tube_height >= lane->output_y + lane->output_height;
+    }
+
+    class bool within(struct RendererLaneGeometry* lane, struct RendererCanvasRect* canvas) {  // the shell drawn round the screen
+        return (float)lane->output_x >= canvas->x - 0.5f && (float)lane->output_y >= canvas->y - 0.5f && (float)(lane->output_x + lane->output_width) <= canvas->x + canvas->width + 0.5f && (float)(lane->output_y + lane->output_height) <= canvas->y + canvas->height + 0.5f;
+    }
+
+    class bool balanced(float low, float high, int size) { float spare = (float)size - high; return low - spare <= 1.0f && spare - low <= 1.0f; }
+
+    class bool pairCentred(struct RendererCompositionGeometry* geometry, int areaWidth, int areaHeight) {
+        struct RendererLaneGeometry* main = &geometry->lanes[0];
+        struct RendererLaneGeometry* second = &geometry->lanes[1];
+        float left = (float)(main->output_x < second->output_x ? main->output_x : second->output_x);
+        float bottom = (float)(main->output_y < second->output_y ? main->output_y : second->output_y);
+        float right = (float)(main->output_x + main->output_width > second->output_x + second->output_width ? main->output_x + main->output_width : second->output_x + second->output_width);
+        float top = (float)(main->output_y + main->output_height > second->output_y + second->output_height ? main->output_y + main->output_height : second->output_y + second->output_height);
+        return DualFitSpecGeometry.balanced(left, right, areaWidth) && DualFitSpecGeometry.balanced(bottom, top, areaHeight);
+    }
+
+    class bool identical(struct RendererCompositionGeometry* one, struct RendererCanvasRect* oneCanvas, struct RendererCompositionGeometry* other, struct RendererCanvasRect* otherCanvas) {
+        for (int index = 0; index < 2; index++) {
+            if (one->lanes[index].output_x != other->lanes[index].output_x || one->lanes[index].output_y != other->lanes[index].output_y || one->lanes[index].output_width != other->lanes[index].output_width) { return false; }
+        }
+        return oneCanvas->x == otherCanvas->x && oneCanvas->y == otherCanvas->y && oneCanvas->width == otherCanvas->width;
+    }
+
+    class string text(struct RendererCompositionGeometry* geometry, struct RendererCanvasRect* canvas) {
+        return f"top {geometry->lanes[0].output_x},{geometry->lanes[0].output_y} {geometry->lanes[0].output_width}x{geometry->lanes[0].output_height}, bottom {geometry->lanes[1].output_x},{geometry->lanes[1].output_y} {geometry->lanes[1].output_width}x{geometry->lanes[1].output_height}, shell " + PlacementSpecGeometry.text(canvas);
+    }
+
+    class void check(Contract contract, Fixture fixture, string systemId, string variantId, int areaWidth, int areaHeight, bool strict) {  // bezel, screen and fit at one size; STRICT: no fractional fallback (the Deck, 1080p, 4K)
+        struct RendererCanvasRect bezelCanvas;
+        struct RendererCompositionGeometry bezel;
+        bool placed = DualFitSpecGeometry.place(fixture, systemId, variantId, 2, areaWidth, areaHeight, &bezelCanvas, &bezel);
+        string label = systemId + ":" + variantId + f" at {areaWidth}x{areaHeight}";
+        int bezelStep = DualFitSpecGeometry.step(&bezel.lanes[0]);
+        float grown = bezelStep < 1 ? 0.0f : (float)(bezelStep + 1) / (float)bezelStep;
+        bool whole = bezelCanvas.width <= (float)areaWidth * 1.01f + 0.5f && bezelCanvas.height <= (float)areaHeight * 1.01f + 0.5f;
+        bool largest = bezelCanvas.width * grown > (float)areaWidth * 1.01f || bezelCanvas.height * grown > (float)areaHeight * 1.01f;
+        contract.expect(placed && whole && largest && DualFitSpecGeometry.balanced(bezelCanvas.x, bezelCanvas.x + bezelCanvas.width, areaWidth) && DualFitSpecGeometry.balanced(bezelCanvas.y, bezelCanvas.y + bezelCanvas.height, areaHeight),
+            label + ", bezel: the whole shell on the display at the largest step that keeps it (1% may leave it), centred: " + DualFitSpecGeometry.text(&bezel, &bezelCanvas));
+        for (int placement = 0; placement < 3; placement++) {
+            struct RendererCanvasRect canvas;
+            struct RendererCompositionGeometry geometry;
+            bool drawn = DualFitSpecGeometry.place(fixture, systemId, variantId, placement, areaWidth, areaHeight, &canvas, &geometry);
+            string name = placement == 1 ? "screen" : (placement == 2 ? "bezel" : "fit");
+            string shown = label + ", " + name + ": " + DualFitSpecGeometry.text(&geometry, &canvas);
+            contract.expect(drawn && canvas.width > 0.0f && DualFitSpecGeometry.within(&geometry.lanes[0], &canvas) && DualFitSpecGeometry.within(&geometry.lanes[1], &canvas), shown + ": the shell is drawn round both screens, never dropped");
+            bool fallback = !strict && DualFitSpecGeometry.step(&geometry.lanes[1]) == 0 && geometry.lanes[1].output_width < geometry.lanes[1].native_width && geometry.lanes[1].output_height < geometry.lanes[1].native_height;  // a touch window under half of 1x, filled
+            contract.expect(DualFitSpecGeometry.step(&geometry.lanes[0]) >= 1 && (DualFitSpecGeometry.step(&geometry.lanes[1]) >= 1 || fallback), shown + (strict ? ": both screens at whole multiples of their native size" : ": whole multiples, or a second screen under half of 1x filling its window (the fractional fallback)"));
+            contract.expect(DualFitSpecGeometry.inside(&geometry.lanes[0], areaWidth, areaHeight) && DualFitSpecGeometry.inside(&geometry.lanes[1], areaWidth, areaHeight) && DualFitSpecGeometry.held(&geometry.lanes[0]) && DualFitSpecGeometry.held(&geometry.lanes[1]), shown + ": both screens on the display, no pixel masked by their openings");
+            bool larger = DualFitSpecGeometry.step(&geometry.lanes[0]) > bezelStep;
+            if (placement != 1 || !larger) { contract.expect(DualFitSpecGeometry.identical(&geometry, &canvas, &bezel, &bezelCanvas), shown + ": the bezel's picture, so Fit never jumps where the screen cannot be larger"); }
+            else { contract.expect(DualFitSpecGeometry.pairCentred(&geometry, areaWidth, areaHeight), shown + ": a larger step than the bezel's, the two screens centred as a pair"); }
+        }
+    }
+
+    class void pinned(Contract contract, Fixture fixture, string row) {  // "system/variant/WxH/placement/top step/bottom step"
+        Vector<string> fields = Strings.split(row, "/");
+        Vector<string> size = Strings.split(fields[2], "x");
+        struct RendererCanvasRect canvas;
+        struct RendererCompositionGeometry geometry;
+        DualFitSpecGeometry.place(fixture, fields[0], fields[1], fields[3].equals("screen") ? 1 : 2, Strings.toInt(size[0]), Strings.toInt(size[1]), &canvas, &geometry);
+        int top = DualFitSpecGeometry.step(&geometry.lanes[0]);
+        int bottom = DualFitSpecGeometry.step(&geometry.lanes[1]);
+        contract.expect(top == Strings.toInt(fields[4]) && bottom == Strings.toInt(fields[5]), row + f": top {top}x, bottom {bottom}x (" + DualFitSpecGeometry.text(&geometry, &canvas) + ")");
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        int widths[4] = {1280, 1920, 3840, 1024};  // a 4:3 display, where the shell's width binds first
+        int heights[4] = {800, 1080, 2160, 768};
+        for systemId in ["nds", "n3ds"] {
+            for variantId in ["shell", "vertical"] {
+                for (int size = 0; size < 4; size++) { DualFitSpecGeometry.check(contract, fixture, systemId, variantId, widths[size], heights[size], size < 3); }
+            }
+        }
+        for row in ["nds/shell/1280x800/bezel/2/2", "nds/shell/1920x1080/bezel/3/3", "nds/vertical/1280x800/bezel/1/1", "nds/vertical/1920x1080/bezel/2/2",
+                    "n3ds/shell/1280x800/bezel/2/1", "n3ds/shell/1920x1080/bezel/3/1", "n3ds/vertical/1280x800/bezel/1/1", "n3ds/vertical/1920x1080/bezel/2/2",
+                    "nds/shell/1280x800/screen/2/2", "nds/vertical/1280x800/screen/1/1", "n3ds/shell/1280x800/screen/2/1", "nds/shell/3840x2160/bezel/6/6", "nds/shell/3840x2160/screen/7/7", "n3ds/shell/1024x768/bezel/1/0"] {
+            DualFitSpecGeometry.pinned(contract, fixture, row);
+        }
+    }
+}
+
+class DualFitSpecWiring {  // the compositor's two-screen shells and the internal resolution follow RendererDualShell
+    class void run(Contract contract, Fixture fixture) {
+        string compositor = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_compositor.btrc"));
+        string resolve = compositor.substring(Strings.find(compositor, "class bool resolve(", 0), 6000);
+        contract.contains(resolve, "bool dual = frame->surface_count == 2 && RendererDualShell.place(variant, geometry, config->placement, sourceWidth, sourceHeight, areaWidth, areaHeight, &canvas);", "the compositor places a two-screen fixed bezel through RendererDualShell in every placement");
+        contract.lacks(compositor + FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_placement.btrc")), "shell_hidden", "no placement hides the shell any more (the M13 F3 screen placement without it is gone)");
+        string layer = compositor.substring(Strings.find(compositor, "class void laneUniforms(", 0), 2400);
+        contract.contains(layer, "RendererLayout.hold(&outer, lane);", "the drawn lip grows to hold a whole-step screen past its opening, so the 3DS touch screen at 1x on the Deck keeps every pixel");
+        string settings = "{\"visual\":{\"display\":{\"width\":1280,\"height\":800},\"systems\":{\"nds\":{\"bezel_variant\":\"vertical\"}}}}";
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuPlan plan = SemuResolver.plan(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, settings, diagnostics);
+        int deck = SemuComposedScale.of(plan, fixture.model.system("nds"), "retroarch");
+        plan = SemuResolver.plan(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"visual\":{\"display\":{\"width\":3840,\"height\":2160},\"systems\":{\"nds\":{\"placement\":\"game\"}}}}", diagnostics);
+        int wide = SemuComposedScale.of(plan, fixture.model.system("nds"), "retroarch");
+        contract.expect(deck == 1 && wide == 7, f"the internal resolution follows the shell's whole step: the DS vertical shell 1x at 1280x800 ({deck}), the DS shell's screen placement 7x at 4K where its bezel is 6x ({wide})");
+    }
+}
+
+class DualFitSpecNotice {  // FIT: SCREEN SAME AS BEZEL once the geometry shows nothing moved; 81/-1 on the computed layouts
+    class void toast(Contract contract, Fixture fixture) {
+        string state = PathTools.join(fixture.scratch, "dual-fit/nds");
+        SemuRenderVariantSet set = SemuRenderVariants.write(fixture.plan, fixture.model.system("nds"), "retroarch", state);
+        LiveVariantTools.environment(fixture, state, set.token);
+        struct RendererPostUiState post;
+        memset(&post, 0, sizeof(struct RendererPostUiState));
+        RendererMenuModel.initialize(&post);
+        long long now = RendererClock.milliseconds();
+        struct SemuActionRecord record;
+        LiveVariantTools.fill(&record, SemuActions.placementSelect(), 1, now, 1ULL);
+        RendererMenuModel.apply(&post, &record, now);
+        bool plain = strcmp(post.toast, "FIT: SCREEN") == 0 && post.placement_noticed == 1;
+        struct RendererCanvasRect canvas;
+        struct RendererCompositionGeometry before;
+        struct RendererCompositionGeometry after;
+        DualFitSpecGeometry.place(fixture, "nds", "vertical", 2, 1280, 800, &canvas, &before);
+        before.bezel_x = canvas.x;
+        before.bezel_width = canvas.width;
+        DualFitSpecGeometry.place(fixture, "nds", "vertical", 1, 1280, 800, &canvas, &after);
+        after.bezel_x = canvas.x;
+        after.bezel_width = canvas.width;
+        struct RendererLiveChoice live;
+        RendererLiveSwitch.reset(&live);
+        RendererPlacementNotice.remember(&live, &before);
+        RendererPlacementNotice.after(&post, &live, &after, 1, now);
+        contract.expect(plain && strcmp(post.toast, "FIT: SCREEN SAME AS BEZEL") == 0 && post.placement_noticed == 0 && live.placement_compare == 0, "Fit to the screen on the DS vertical shell at 1280x800 moves nothing, so FIT: SCREEN becomes FIT: SCREEN SAME AS BEZEL");
+        LiveVariantTools.fill(&record, SemuActions.placementSelect(), 1, now, 2ULL);
+        RendererMenuModel.apply(&post, &record, now);
+        after.lanes[0].output_x = after.lanes[0].output_x + 1;
+        RendererPlacementNotice.remember(&live, &before);
+        RendererPlacementNotice.after(&post, &live, &after, 1, now);
+        contract.expect(strcmp(post.toast, "FIT: SCREEN") == 0, "a Fit that moves a screen keeps its plain toast");
+        LiveVariantTools.clear();
+    }
+
+    class void computed(Contract contract, Fixture fixture) {  // the large-main, side-by-side and stacked layouts have no art: nothing for Fit to place
+        for variantId in ["main_right", "main_left", "side_by_side", "stacked"] {
+            SemuLaunchPlan launch = RadialBed.launch(fixture, "nds", "fit-" + variantId, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"" + variantId + "\"}}}}", "Mario.nds");
+            SemuActionExecutor.execute(launch, "visual.placement.next", SEMU_SOURCE_X11);
+            contract.expect(RadialBed.record(launch, 0, SemuActions.placementSelect(), -1, 0) && SemuJson.get(RadialBed.saved(launch), "visual.systems.nds.placement").isNull() && launch.variants.placement.index == 0, "nds:" + variantId + ": Fit journals 81/-1 (FIT: NO BEZEL), keeps the placement and saves none");
+        }
+        SemuLaunchPlan shell = RadialBed.launch(fixture, "nds", "fit-vertical", "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"vertical\"}}}}", "Mario.nds");
+        SemuActionExecutor.execute(shell, "visual.placement.next", SEMU_SOURCE_X11);
+        contract.expect(RadialBed.record(shell, 0, SemuActions.placementSelect(), 1, 0), "nds:vertical, a shell: Fit journals the screen placement (81/1)");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
+class DualFitSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        RenderEnvSpecAssets.packages(fixture.plan.assetRoot, fixture.plan.configRoot);
+        DualFitSpecGeometry.run(contract, fixture);
+        DualFitSpecWiring.run(contract, fixture);
+        DualFitSpecNotice.toast(contract, fixture);
+        DualFitSpecNotice.computed(contract, fixture);
+    }
+}

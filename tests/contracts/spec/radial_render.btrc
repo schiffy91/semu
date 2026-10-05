@@ -1,8 +1,8 @@
 // Radial v2 spec, the renderer's and the launcher's side: a placement select changes the geometry
 // after the toast's two frames and survives a context reset; slot -1 and the prompts show their
-// toasts; bezel placement is always whole, screen placement fills only where a 3D-era system opts in,
-// and the DS screen placement drops the shell for the whole-step layout over the background; the
-// Wii's 16:9 output is its own environment, bezel and Dolphin arguments; chords never collide.
+// toasts; bezel placement is always whole, screen placement fills only where a 3D-era system opts in
+// (the DS and 3DS shells stay whole in every placement: dual_fit.btrc); the Wii's 16:9 output is its own
+// environment, bezel and Dolphin arguments; chords never collide.
 
 #include <stdlib.h>
 #include <string.h>
@@ -95,7 +95,7 @@ class RadialRenderLive {  // records 81, 82 and 85 as the post-UI phase and the 
     }
 }
 
-class RadialRenderGeometry {  // whole steps for the bezel, the 3D-era opt-in for the screen, the DS without its shell
+class RadialRenderGeometry {  // whole steps for the bezel, the 3D-era opt-in for the screen
     class void run(Contract contract, Fixture fixture) {
         struct RendererCanvasRect canvas;
         struct RendererCanvasRect picture;
@@ -117,9 +117,6 @@ class RadialRenderGeometry {  // whole steps for the bezel, the 3D-era opt-in fo
             bool psp = PlacementSpecGeometry.rounded(picture.height) % 272 == 0;
             contract.expect(snes && gameBoy && psp, f"at {widths[size]}x{heights[size]} snes's screen placement and the Game Boy's and PSP's bezel placement stay on whole steps: no system that did not opt in goes fractional");
         }
-        contract.expect(RendererPlacement.shellHidden(1, 2) && !RendererPlacement.shellHidden(2, 2) && !RendererPlacement.shellHidden(0, 2) && !RendererPlacement.shellHidden(1, 1), "only the screen placement on two screens drops the shell");
-        string compositor = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_compositor.btrc"));
-        contract.expect(compositor.contains("if (bezel && fixed && RendererPlacement.shellHidden(config->placement, frame->surface_count)) { geometry->shell_hidden = 1; }") && compositor.contains("if (bezel && fixed && geometry->shell_hidden == 0) {") && compositor.contains("bool dressed = bezel && geometry->shell_hidden == 0;"), "the compositor skips the shell for it, keeps the background, draws the computed whole-step layout (dual_layout's contract) and plain screens");
     }
 }
 

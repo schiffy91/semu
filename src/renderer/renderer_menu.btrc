@@ -62,6 +62,7 @@ struct RendererPostUiState {
     char toast[48];
     long long toast_until_ms;  // 0 with no toast
     int toast_pending;  // a LOADING toast waits for its shader chain to build
+    int placement_noticed;  // a fresh Fit toast is up: FIT: SCREEN SAME AS BEZEL replaces it once the geometry shows nothing moved
     char toasts[2048];  // SEMU_MENU_TOASTS, the input.json templates
     struct RendererVariantCatalog catalog;
     unsigned long long last_sequence;
@@ -280,6 +281,7 @@ class RendererMenuModel {
         } else {
             state->placement_request = record->slot;  // geometry only: nothing reloads
             state->placement_shown = record->slot;
+            state->placement_noticed = fresh ? 1 : 0;
         }
         state->apply_countdown = 2;
         if (fresh && action == SemuActions.shaderSelect()) { RendererToast.shader(state, record->slot, now); }

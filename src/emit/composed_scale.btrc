@@ -1,8 +1,9 @@
 // The whole multiple of a system's first screen that the compositor draws on this target's display, from the
 // launch's own render environment and the compositor's arithmetic without GL: a fixed bezel's canvas contained
 // (or covered while every opening stays on screen), the picture fitted to its rectangle, the step the
-// placement takes; without a fixed bezel the whole-step layout of all screens. An emulator rendering at this
-// internal resolution matches what is shown: finer is thrown away, coarser is blurred up.
+// placement takes (two screens in a shell: RendererDualShell's whole step); without a fixed bezel the whole-step
+// layout of all screens. An emulator rendering at this internal resolution matches what is shown: finer is
+// thrown away, coarser is blurred up.
 
 import Library.JSON;
 import Library.Strings;
@@ -43,8 +44,48 @@ class SemuComposedScale {
         return true;
     }
 
+    class Vector<double> fitted(Vector<string> environment, int index, Vector<double> canvas, Vector<double> native) {  // RendererDualShell.picture: the screen's picture rectangle in canvas pixels, its native shape centred inside; empty without one
+        Vector<double> image = SemuComposedScale.numbers(SemuComposedScale.entry(environment, f"SEMU_RENDER_SCREEN_{index}_IMAGE"), ",");
+        if (image.size() != 4) { image = SemuComposedScale.numbers(SemuComposedScale.entry(environment, f"SEMU_RENDER_SCREEN_{index}"), ","); }
+        if (image.size() != 4 || native.size() != 2 || native[1] < 1.0) { Vector<double> none = []; return none; }
+        double left = image[0] * canvas[0];
+        double top = image[1] * canvas[1];
+        double width = image[2] * canvas[0];
+        double height = image[3] * canvas[1];
+        double shape = native[0] / native[1];
+        if (width / height > shape) { left = left + (width - height * shape) * 0.5; width = height * shape; } else { top = top + (height - width / shape) * 0.5; height = width / shape; }
+        return [left, top, width, height];
+    }
+
+    class int dual(Vector<string> environment, Vector<double> canvas, Vector<double> native, double areaWidth, double areaHeight, string placement) {  // RendererDualShell's main step: the whole shell on screen, or for game both screens at the shell's spacing
+        Vector<double> second = SemuComposedScale.numbers(SemuComposedScale.entry(environment, "SEMU_RENDER_SURFACE_1_NATIVE"), "x");
+        Vector<double> main = SemuComposedScale.fitted(environment, 0, canvas, native);
+        Vector<double> other = SemuComposedScale.fitted(environment, 1, canvas, second);
+        if (main.size() != 4 || other.size() != 4 || second[1] < 1.0) { return 0; }
+        Vector<double> shell = SemuComposedScale.numbers(SemuComposedScale.entry(environment, "SEMU_RENDER_CANVAS_SHELL"), ",");  // the device's silhouette, else the whole canvas
+        double shellWidth = shell.size() == 4 ? shell[2] * canvas[0] : canvas[0];
+        double shellHeight = shell.size() == 4 ? shell[3] * canvas[1] : canvas[1];
+        int bezel = 0;
+        while (bezel < 64 && shellWidth * (double)(bezel + 1) * native[1] / main[3] <= areaWidth * 1.01 && shellHeight * (double)(bezel + 1) * native[1] / main[3] <= areaHeight * 1.01) { bezel++; }
+        if (!placement.equals("game")) { return bezel; }
+        for (int step = (int)(areaHeight / native[1]); step > bezel; step--) {
+            double gain = (double)step * native[1] / main[3];
+            double held = fmin(other[2] * gain / second[0], other[3] * gain / second[1]);
+            double otherStep = floor(held * 1.01) >= 1.0 ? floor(held * 1.01) : (held >= 0.5 ? 1.0 : 0.0);  // below 1x the nearest, under half of it the rectangle itself
+            double otherWidth = otherStep >= 1.0 ? otherStep * second[0] : other[2] * gain;
+            double otherHeight = otherStep >= 1.0 ? otherStep * second[1] : other[3] * gain;
+            double left = fmin((main[0] + main[2] * 0.5) * gain - (double)step * native[0] * 0.5, (other[0] + other[2] * 0.5) * gain - otherWidth * 0.5);
+            double right = fmax((main[0] + main[2] * 0.5) * gain + (double)step * native[0] * 0.5, (other[0] + other[2] * 0.5) * gain + otherWidth * 0.5);
+            double top = fmin((main[1] + main[3] * 0.5) * gain - (double)step * native[1] * 0.5, (other[1] + other[3] * 0.5) * gain - otherHeight * 0.5);
+            double bottom = fmax((main[1] + main[3] * 0.5) * gain + (double)step * native[1] * 0.5, (other[1] + other[3] * 0.5) * gain + otherHeight * 0.5);
+            if (right - left <= areaWidth + 0.01 && bottom - top <= areaHeight + 0.01) { return step; }
+        }
+        return bezel;
+    }
+
     class int bezelled(Vector<string> environment, int count, Vector<double> native, double shown, double areaWidth, double areaHeight, string placement) {
         Vector<double> canvas = SemuComposedScale.numbers(SemuComposedScale.entry(environment, "SEMU_RENDER_CANVAS"), ",");
+        if (count == 2 && canvas.size() == 2 && canvas[0] >= 1.0 && canvas[1] >= 1.0) { return SemuComposedScale.dual(environment, canvas, native, areaWidth, areaHeight, placement); }  // a DS or 3DS shell: whole steps in every Fit state
         Vector<double> picture = SemuComposedScale.numbers(SemuComposedScale.entry(environment, "SEMU_RENDER_SCREEN_0_IMAGE"), ",");
         if (picture.size() != 4) { picture = SemuComposedScale.numbers(SemuComposedScale.entry(environment, "SEMU_RENDER_SCREEN_0"), ","); }
         if (canvas.size() != 2 || picture.size() != 4 || canvas[0] < 1.0 || canvas[1] < 1.0) { return 0; }

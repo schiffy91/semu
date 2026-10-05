@@ -111,7 +111,7 @@ class RadialFitSpec {  // the Fit toggle: live, per system, never the fractional
         contract.expect(!bare.bezelsOn && RadialBed.record(bare, 1, SemuActions.placementSelect(), -1, 0) && SemuJson.get(RadialBed.saved(bare), "visual.systems.gba.placement").isNull() && bare.variants.placement.index == 1, "with the bezel switched off, Fit journals 81/-1 (FIT: NO BEZEL), keeps the placement and saves none, so turning the bezel back on brings back the screen the owner had");
         SemuLaunchPlan nds = RadialBed.launch(fixture, "nds", "fit-nds", "", "Mario.nds");
         SemuActionExecutor.execute(nds, "visual.placement.next", SEMU_SOURCE_X11);
-        contract.expect(RadialBed.record(nds, 0, SemuActions.placementSelect(), 1, 0) && SemuJson.textAt(RadialBed.saved(nds), "visual.systems.nds.placement").equals("game"), "the DS starts on the whole shell and Fit moves it to the screen placement (both screens, whole steps, no shell)");
+        contract.expect(RadialBed.record(nds, 0, SemuActions.placementSelect(), 1, 0) && SemuJson.textAt(RadialBed.saved(nds), "visual.systems.nds.placement").equals("game"), "the DS starts on the whole shell and Fit moves it to the screen placement (both screens at whole steps, the shell kept: dual_fit.btrc)");
         memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
     }
 }
