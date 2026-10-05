@@ -72,7 +72,7 @@ class RadialAbiSpec {  // the new codes after 80, their ids and toasts, and the 
         contract.expect(roundTrip && SemuActions.toastAction(81).equals("visual.placement.next") && SemuActions.toastAction(82).equals("visual.output.next") && SemuActions.toastAction(85).equals("system.reset") && SemuActions.toastAction(87).equals("system.restart"), "each new code round-trips id and code, is the renderer's, and shows its action's toasts");
         string toasts = fixture.plan.input.toasts();
         for entry in ["visual.placement.next=FIT: {label}", "visual.placement.next:unavailable=", "visual.bezel.next:unavailable=BEZEL: NONE HERE", "visual.output.next=ASPECT: {label}", "visual.output.next:pending=ASPECT {label}: RESTART TO APPLY", "system.reset:confirm=RESET: PRESS AGAIN", "system.reset:pending=RESET: RESTART TO APPLY", "system.reset:done=RESET TO DEFAULTS",
-                      "system.restart:done=RESTARTING GAME", "system.restart:unchanged=RESTART: NO CHANGES", "controller.layout.next:pending={slot} {label}: RESTART TO APPLY"] {
+                      "system.restart:done=RESTARTING GAME", "system.restart:unchanged=RESTART: NOTHING TO APPLY", "controller.layout.next:pending={slot} {label}: RESTART TO APPLY"] {
             contract.contains(toasts, entry, "SEMU_MENU_TOASTS carries every NAME_toast as action:NAME: " + entry);
         }
         contract.lacks(toasts, "REBOOT", "no toast asks for a second press to reboot: only Restart Game restarts");
@@ -136,7 +136,7 @@ class RadialAspectSpec {  // Aspect: one press saves it for this game and waits;
         SemuActionExecutor.execute(snes, "visual.output.next", SEMU_SOURCE_X11);
         contract.expect(RadialBed.record(snes, 0, SemuActions.outputSelect(), -1, 0) && SemuSupervisorRuntime.relaunch == 0, "a system with one output journals 82/-1 (ASPECT: ONE ONLY) and never restarts");
         SemuActionExecutor.execute(snes, "system.restart", SEMU_SOURCE_X11);
-        contract.expect(RadialBed.record(snes, 1, SemuActions.restartNotice(), 0, 0) && SemuSupervisorRuntime.relaunch == 0 && SemuSupervisorRuntime.quit == 0, "Restart Game with nothing to apply says so (87/0, RESTART: NO CHANGES) and restarts nothing");
+        contract.expect(RadialBed.record(snes, 1, SemuActions.restartNotice(), 0, 0) && SemuSupervisorRuntime.relaunch == 0 && SemuSupervisorRuntime.quit == 0, "Restart Game with nothing to apply says so (87/0, RESTART: NOTHING TO APPLY) and restarts nothing");
         memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
     }
 }

@@ -90,7 +90,7 @@ class RadialRenderLive {  // records 81, 82 and 85 as the post-UI phase and the 
         bool restarting = strcmp(post.toast, "RESTARTING GAME") == 0;
         LiveVariantTools.fill(&record, SemuActions.restartNotice(), 0, now, 9ULL);
         RendererMenuModel.apply(&post, &record, now);
-        contract.expect(restarting && strcmp(post.toast, "RESTART: NO CHANGES") == 0, "Restart Game's notices: RESTARTING GAME, or RESTART: NO CHANGES with nothing to apply");
+        contract.expect(restarting && strcmp(post.toast, "RESTART: NOTHING TO APPLY") == 0, "Restart Game's notices: RESTARTING GAME, or RESTART: NOTHING TO APPLY with nothing to apply");
         LiveVariantTools.clear();
     }
 }

@@ -1,11 +1,12 @@
-// Restart Game: the settings radial's slot, the Wii layer's centre, the menu's RESTART GAME row and
-// the players page's. It is the one action that restarts the game, so the choices an emulator reads
-// only at boot (a Wii game's output, a GameCube pad on the Wii, a pad dealt to another player) are
-// saved when chosen, say RESTART TO APPLY, and wait here. It restarts once when anything differs
-// from the launch (a layout switched live counts too, so every file comes from the saved choice):
-// the supervisor stops the emulator as it does on quit and `semu launch` plans the same game again
-// from semu.json. With nothing to apply it says so and restarts nothing. Records: 87 slot 1
-// restarting, 0 nothing to apply.
+// Restart Game: the settings radial's slot, the Wii layer's centre, its chord, the menu's RESTART GAME row
+// and the players page's. It is the one action that restarts the game, so the choices an emulator reads
+// only at boot (a Wii game's output, a GameCube pad on the Wii, a pad dealt to another player) are saved
+// when chosen, say RESTART TO APPLY, and wait here. The action restarts once when something waits; a
+// layout already switched live waits for nothing, so a stray click on the Wii layer's centre after a live
+// switch never reboots the game. The players page's RESTART GAME also restarts after a layout switched
+// live (the page saw a change; every file then comes from the saved choice). The supervisor stops the
+// emulator as it does on quit and `semu launch` plans the same game again from semu.json. With nothing to
+// apply it says so and restarts nothing. Records: 87 slot 1 restarting, 0 nothing to apply.
 
 import ../renderer/action_abi.btrc;
 import ./journal.btrc;
@@ -22,8 +23,16 @@ class SemuGameRestart {
         return SemuOutputSwitch.pending(launch.variants.output) || launch.players.changed();
     }
 
-    class void execute(SemuLaunchPlan launch) {
-        if (!SemuGameRestart.due(launch)) {
+    class void execute(SemuLaunchPlan launch) {  // the action (radial, Wii layer centre, chord, menu row): only what waits
+        SemuGameRestart.restartWhen(launch, SemuGameRestart.waiting(launch));
+    }
+
+    class void confirmPage(SemuLaunchPlan launch) {  // the players page's RESTART GAME: any change the page saw
+        SemuGameRestart.restartWhen(launch, SemuGameRestart.due(launch));
+    }
+
+    class void restartWhen(SemuLaunchPlan launch, bool needed) {
+        if (!needed) {
             SemuActionJournal.appendWith(launch, SemuActions.restartNotice(), 0, 0);
             return;
         }

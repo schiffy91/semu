@@ -144,7 +144,7 @@
       "label": "Restart Game",
       "chord": "Ctrl+Shift+D",
       "done_toast": "RESTARTING GAME",
-      "unchanged_toast": "RESTART: NO CHANGES"
+      "unchanged_toast": "RESTART: NOTHING TO APPLY"
     },
     "controller.layout.next": {
       "label": "Controller Layout",

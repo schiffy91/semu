@@ -93,7 +93,7 @@ class SemuPlayersPage {
         if (row < set.count) {
             SemuPlayersPage.assign(launch, row);
         } else if (row == set.count) {
-            SemuGameRestart.execute(launch);
+            SemuGameRestart.confirmPage(launch);
         } else {
             SemuPlayersPage.back(launch);
         }

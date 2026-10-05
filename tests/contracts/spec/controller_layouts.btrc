@@ -23,6 +23,7 @@ import ../../../src/emit/profiles.btrc;
 import ../../../src/emit/render_variants.btrc;
 import ../../../src/launch/plan.btrc;
 import ../../../src/launch/actions.btrc;
+import ../../../src/launch/game_restart.btrc;
 import ../../../src/launch/supervisor.btrc;
 import ../../../src/launch/paced_keys.btrc;
 import ../../../src/launch/player_set.btrc;
@@ -211,6 +212,9 @@ class LayoutsRulesSpec {  // the written rules the page and Reset keep: player 1
         contract.expect(set.pads.get(0) == 0 && RadialBed.record(launch, LayoutsRulesSpec.last(launch), SemuActions.playerAssign(), -1, 0), "confirm on P1 with every other pad taken keeps its pad (84 slot -1): player 1 is never moved to none");
         SemuSupervisorRuntime.menu_selected = 0;
         SemuActionExecutor.dispatch(launch, "ui.menu.right", SEMU_SOURCE_X11, 910);
+        SemuActionExecutor.dispatch(launch, "system.restart", SEMU_SOURCE_X11, 911);
+        contract.expect(set.changed() && !SemuGameRestart.waiting(launch) && SemuSupervisorRuntime.relaunch == 0 && RadialBed.record(launch, LayoutsRulesSpec.last(launch), SemuActions.restartNotice(), 0, 0),
+            "Restart Game from the radial, the Wii layer's centre or its chord after a layout switched live has nothing waiting: it says so (87/0) and restarts nothing, so a stray centre click never reboots");
         SemuSupervisorRuntime.menu_selected = set.count;
         SemuPlayersPage.confirm(launch);
         contract.expect(SemuSupervisorRuntime.relaunch == 1 && RadialBed.record(launch, LayoutsRulesSpec.last(launch), SemuActions.restartNotice(), 1, 0), "a layout already switched live still counts as a change: RESTART GAME restarts, so every file comes from the saved choice (the ruling)");
