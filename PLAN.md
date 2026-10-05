@@ -1665,6 +1665,56 @@ Status: started 2026-10-05.
   reflectAt removed, psx back at 0.2, psx's ring outer pulled onto its picture. Reversible default: one
   strength, 0.4, for every bezel: the NES drops from 0.5, and gb, gbc, gba, snes, psx, wii and the
   vertical DS and 3DS shells rise to it.
+- Item 7 (PS2 low on the table): cause found and fixed (38ed18a); seen on the render host and in the
+  podman VM with the real PCSX2 and Beetle PSX at 1280x800 and 1920x1080; the Deck check is open.
+  Read-only on the Deck: the owner's PS2 launch at 01:38 was Def Jam - Fight for NY (SLUS-21004, NTSC,
+  emulog: OpenGL, integer scaling on) in fit (`current=0,0,2` in semu-render-variants.env), the PS1 at
+  01:39 also in fit. No render evidence of that release is on the Deck (only switch receipts are
+  logged), so the VM reproduced it: `tests/integration/live-switch.sh` (now with SEMU_BIOS, the PS1
+  BIOS folder read-only, and SIZE) ran Def Jam with the owner's PS2 BIOS and CTR through `semu launch`
+  under Xvfb on llvmpipe. PCSX2 is not the cause: with AspectRatio Auto 4:3, IntegerScaling and
+  upscale 1 it draws its picture centred in its own fullscreen window (a Deck capture of 2026-10-04,
+  Devil May Cry: 1024x768 at 128,16 in 1280x800, 16 px above and below), and the render hook
+  publishes that rectangle with the GS texture's 1x size, 639x448 for Def Jam (448 NTSC lines,
+  deinterlaced by PCSX2). The renderer placed it: fit on a TV room takes the nearest whole step whose
+  opening stays on screen (renderer_placement.btrc:54-58 at 78ed857), 514.8/448 rounds to 1x where the PS1's
+  514.8/240 rounds to 2x, so the PS2's TV was drawn at 87% of the covered room (1238x696) and the
+  PS1's at 93% (1326x746), and both rooms then stood their table on the screen's bottom edge (the
+  M14 anchor, :83). The smaller PS2 TV's picture sat at rows 199-647, its middle 23 px below the
+  screen's; the PS1's 2x picture at rows 145-625, 15 px above. VM before (renderer debug lines): PS2
+  out 341,153 597x448 in a canvas 21,0 1238x696; PS1 (256x240) out 320,175 640x480 in -23,0 1326x746.
+  Fix: fit and bezel on a TV room centre the picture down the screen at the same whole step (game
+  always did); fit's opening test follows the centred picture; the wall carries on up and the table
+  under the TV, where the compositor draws the plate's last 32 rows averaged (a 32-texel mip
+  footprint) instead of one row pulled into vertical streaks; every picture, rooms included, lands on
+  whole pixels. VM after at 1280x800: PS2 out 341,176 597x448 (rows 176-624, middle 400), canvas
+  21,23 1238x696, so 23 px of table front under the TV; PS1 out 320,160 640x480 (middle 400), and
+  CTR's 640x472 logo screen out 326,164 629x472 (middle 400). VM after at 1920x1080: PS2 out 364,92
+  1193x896, 2x, middle 540 (on the render host it was 59 px above the middle, its opening 6 px from
+  the top); PS1 (256x240) out 480,180 960x720, 3x, middle 540. One 1080p PS1 run lost RetroArch to a
+  SIGSEGV before the renderer's first frame; a rerun (the same renderer on 0abf372) played. The render
+  host shows the same for every TV room (19 variants x fit and bezel x both sizes, judged by eye: no
+  black, the band level). The editor's capture matches the renderer to 0.000% of pixels, MAE 0, for
+  ps2, psx, dreamcast, n64 and nes in fit and bezel at both sizes. Sizes stay whole steps: at
+  1280x800 the PS2 stays 1x (448 lines, its TV 93% the height of a 240-line PS1's TV; 2x needs 896
+  rows); at 1920x1080 the PS2 is 2x (896) and the PS1 3x (720). Not changed, noted: PCSX2's own
+  integer scaling widens 512 to 1024 by a whole step but takes the height to 4:3 (768 for 448 lines),
+  so the renderer reads a 1.71x picture back down to native with a linear blit
+  (renderer_compositor.btrc:808-813); PCSX2's notice "Texture filtering is not set to Bilinear (PS2)"
+  is filter = 0 in the profile. Contract `tests/contracts/spec/tv_room.btrc`: PCSX2's 639x448 and
+  Beetle's 320x240 in fit at both sizes (steps 1/2 and 2/3, centred, whole pixels, the two middles
+  within a pixel), fit's opening test (1.4x the covered PS2 room stays at 1280x800, 1.5x leaves),
+  every TV room in fit, game and bezel at both sizes centred on whole pixels at whole steps (168
+  pictures), the shader's band and the editor's copy. scene_fill.btrc and placement.btrc (the N64)
+  now expect the centred picture. Each fails under its mutation (7 run): the renderer's anchor, its
+  opening test and its snap, the shader band, the editor's anchor, opening test and snap.
+  Reversible defaults:
+  - A TV room's picture is centred down the screen in fit and in bezel. This supersedes the M14
+    ruling that a room shorter than the screen stands its table on the bottom edge.
+  - Under the table the room carries on as a level band of its last 32 rows. At 1920x1080 a
+    480-line TV at 1x (Dreamcast, GameCube, Wii) shows about 140 px of it.
+  - Rooms take the whole-pixel snap in every placement, so a picture may sit up to half a pixel off
+    the exact middle (the N64's 711 lines at 1280x800).
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
