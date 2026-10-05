@@ -1,0 +1,95 @@
+# M15 on the Deck, off-screen: the owner's round 3 (PLAN.md M15, its "Deck acceptance" list), one case per
+# system it changed, with the owner's own games.
+#   input-check.sh PAD m15-check.cases OUT     (input-check.sh --plan m15-check.cases shows every timeline)
+# SYSTEM EMULATOR CORE|- FIRST TOKEN... -- ROM-GLOB; see input-check.sh. key:ctrl+shift+f is the radial's Fit
+# (visual.placement.next) and key:ctrl+shift+b its Next Bezel; tap:0.5,0.5 taps the middle of the touch screen
+# as drawn. The run's choices land in OUT/home/semu.json and later cases start from them, so keep the order.
+# Fit steps through the system's placements from the one it starts on: a TV starts on fit, so its first Fit
+# is FIT: BEZEL (81/0) and its second FIT: SCREEN (81/1); a handheld starts on screen (game), so its first Fit
+# is FIT: BEZEL (81/0); the DS and 3DS start on bezel, so their first Fit is FIT: SCREEN (81/1). Next Bezel
+# journals 79/<index into the system's variants>. A case judges by its shots (before.png, after-N-*.png), its
+# result (journal, touch lines, receipts, choices) and its evidence.log (this launch's receipts: each names
+# surfaceN_native, surfaceN_source and surfaceN_content, the content as x,y,width,height from the bottom
+# left). The frame-60 capture of each launch is the emulator's state root's semu-render-final.ppm. Sound is
+# cut in every case (input-check.sh), so the Wii U case shows only that Cemu plays on; hear it in Game Mode.
+#
+# 1. Item 5, GB pixels. Fit: Screen, the gb default: the picture 800x720 (5x) at 240,40; on the licence
+#    screen the L of LICENSED BY NINTENDO touches the picture's left edge (the game's own column 0), then
+#    the DMG's dark LCD frame (about 21 px) carries the mirror, then the grey lens; any later screen shows
+#    the SCORE line in row 0 the same way. after-1 (81/0, FIT: BEZEL): the whole DMG shell at 1x (160x144)
+#    centred on pure black, about 160 px of black above and below, nothing cut.
+gb retroarch gambatte 15 key:ctrl+shift+f -- Aerostar (USA, Europe).zip
+# 2. Items 1, 4 and 5, GB variants (case 1 left gb on Fit: Bezel). before: the DMG at 1x as in case 1.
+#    after-1 (79/1, BEZEL: STUDIO GRAY): the studio shell at 2x, the whole shell, about 40 px of black above
+#    and below, black where the plate's wood bands were. after-2 (81/1, FIT: SCREEN): the studio LCD at 5x
+#    with square corners and the picture's corner pixels whole, no darkened outer row; pure black wherever
+#    the shell does not cover the screen. choices gb {"bezel_variant":"studio","placement":"game"}.
+gb retroarch gambatte 25 key:ctrl+shift+b key:ctrl+shift+f -- Tetris (World) (Rev 1).zip
+# 3. Items 1 and 4, GBC. before: Fit: Screen, 800x720 (5x) centred, the shell on pure black. after-1 (81/0,
+#    FIT: BEZEL): the whole GBC shell at 1x centred, about 157 px of black above and below. after-2 (79/1,
+#    BEZEL: BERRY): the berry shell, the same place and size. after-3 (81/1, FIT: SCREEN): 5x again.
+gbc retroarch gambatte 25 key:ctrl+shift+f key:ctrl+shift+b key:ctrl+shift+f -- Super Mario Bros. Deluxe (USA, Europe) (Rev 2).zip
+# 4. Items 1 and 8, GBA. before: Fit: Screen, the shell on pure black, the dark lip round the LCD mirroring
+#    the game's colours, never a smeared glow. after-1 (81/0, FIT: BEZEL): the whole shell at 2x, the device
+#    centred, about 74 px of black above and below, the same mirror. after-2 (79/1, BEZEL: ARCTIC): the arctic
+#    shell, the same.
+gba retroarch mgba 30 key:ctrl+shift+f key:ctrl+shift+b -- Advance Wars (USA) (Rev 1).zip
+# 5. Item 3, N64 reflections. before: Fit on the Living room CRT: the picture 626x474 centred (evidence.log:
+#    surface0_native=313x237, the NTSC VI border cropped, and surface0_content about 327,163,626,474); on the
+#    left and right lips the game's colours mirror onto the grey, sharp at the picture's edge and fading
+#    outward, no black column between picture and lip. after-1 (81/0, FIT: BEZEL): 626x474 on the TV's
+#    opening, the same mirror. after-2 (81/1, FIT: SCREEN): 939x711 centred (about 170,44), the lips still
+#    mirrored. after-3 (79/1, BEZEL: CRT WITH SPEAKERS): the same mirror, no black side columns.
+n64 retroarch mupen64plus_next 40 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+b -- Super Mario 64 (USA).zip
+# 6. Items 7 and 8, PS1. before: Fit, the 2x picture (640x480) centred down the screen, rows 160-640
+#    (surface0_content 320,160,640,480 for any 240-line frame), the lip mirror as clear as on the N64's TV.
+#    after-1 (79/1, BEZEL: CRT WITH SPEAKERS): the same centring, speakers and table carried, no black bars.
+psx retroarch mednafen_psx 45 key:ctrl+shift+b -- Crash Bandicoot (USA).m3u
+# 7. Items 7 and 8, PS2, and PCSX2's own picture. The frame-60 capture (the state root's
+#    pcsx2/semu-render-final.ppm, taken a second into the game) shows no PCSX2 notice in its top left: no
+#    "Integer scaling is enabled" and no "Texture filtering is not set to Bilinear (PS2)". before: Fit, the
+#    picture at 1x, 597x448, centred down the screen, rows 176-624 (surface0_content 341,176,597,448); the
+#    TV body about 81 px below the top and the table's wood carried about 23 px under it with its grain,
+#    darkening downward, never streaks or black; evidence.log has surface0_source with the same size as
+#    surface0_native (639x448 for Def Jam):
+#    PCSX2 hands over its GS picture one texel to one pixel, not a 4:3 stretch to read back down. The
+#    picture is sharp, its pixels even. after-1 (81/0, FIT: BEZEL): still 1x and centred, the wall above and
+#    the table below, no black anywhere. after-2 (79/1, BEZEL: CRT WITH SPEAKERS): the same centring.
+ps2 pcsx2 - 60 key:ctrl+shift+f key:ctrl+shift+b -- Def Jam - Fight for NY (USA).iso
+# 8. Item 7, a 4:3 TV room on the RetroArch path: the picture centred down the screen, the table
+#    carried under it, never vertical streaks or black. after-1 (81/0, FIT: BEZEL): the same.
+genesis retroarch genesis_plus_gx 25 key:ctrl+shift+f -- Aero the Acro-Bat (USA).zip
+# 9. Item 7, a 480-line TV: the 1x picture (640x480) centred, rows 160-640, the table carried under the TV.
+dreamcast flycast - 40 key:ctrl+shift+f -- Crazy Taxi (USA).chd
+# 10. Item 1, PSP. before: Fit: Screen, black above, below and round the PSP, no desk. after-1 (81/0, FIT:
+#    BEZEL): the whole E1000 at 1x centred on its outline. after-2 (79/1, BEZEL: DEEP RED): the same.
+psp ppsspp - 45 key:ctrl+shift+f key:ctrl+shift+b -- Ape Escape - On the Loose (USA).iso
+# 11. Items 1 and 2, the DS, every variant (RetroArch melonDS). before: the Duimon shell on pure black (no wood,
+#    no dark canvas), both screens 512x384 (2x) side by side inside it, centred. Each tap: touch.log "->
+#    surface 1 native" about 128,96. after-2 (79/1): Large main, second right: the top screen 768x576 (3x),
+#    the touch screen 256x192 (1x) to its right, square corners, no rounded frames, the pair centred with
+#    about 118 px either side. after-4 (81/-1, FIT: NO BEZEL): nothing moves, no placement saved. after-5
+#    (79/2): Large main, second left, mirrored. after-7 (79/3): Side by side, both 512x384 with a 20 px gap,
+#    centred. after-8 (79/4): Stacked, both 2x with a 20 px gap, 6 px of black above and below. after-10
+#    (79/5): the DS vertical shell on pure black, both screens 256x192 (1x) in the whole shell (about
+#    960x540), centred. after-12 (81/1): FIT: SCREEN, then FIT: SCREEN SAME AS BEZEL two frames later; the
+#    shell stays and nothing moves. The lip mirror shows round both screens in every shell shot. choices
+#    nds {"bezel_variant":"vertical","placement":"game"}.
+nds retroarch melonds 40 tap:0.5,0.5 key:ctrl+shift+b tap:0.5,0.5 key:ctrl+shift+f key:ctrl+shift+b tap:0.5,0.5 key:ctrl+shift+b key:ctrl+shift+b tap:0.5,0.5 key:ctrl+shift+b tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0.5 -- Advance Wars - Dual Strike (USA, Australia).zip
+# 12. Items 1, 2 and 8, the 3DS, every variant (standalone Azahar through the Vulkan layer). before: the Duimon
+#    shell on pure black, the top screen 800x480 (2x), the touch screen 320x240 (1x) filling its window to
+#    the edge, no row or column cut; the lip mirror round both screens, the touch screen's about 7 px wide
+#    (e379c10), never a 1-px line. Each tap: "semu-vulkan: touch X,Y -> 1" at the middle of Azahar's touch
+#    screen, 160,120 on the Deck (radial-check case 4). after-2 (81/1): FIT: SCREEN SAME AS BEZEL,
+#    nothing moves. after-4 (79/1): Large main, second right: top 2x, touch 1x beside it, square, about 70 px
+#    either side. after-6 (81/-1, FIT: NO BEZEL). after-7 (79/2): second left. after-8 (79/3): Side by side,
+#    both 1x. after-9 (79/4): Stacked, both 1x. after-11 (79/5): the 3DS vertical shell, 400x240 over
+#    320x240 (both 1x) in the whole shell, centred. choices n3ds {"bezel_variant":"vertical","placement":"game"}.
+n3ds azahar - 50 tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+b tap:0.5,0.5 key:ctrl+shift+f key:ctrl+shift+b key:ctrl+shift+b key:ctrl+shift+b tap:0.5,0.5 key:ctrl+shift+b tap:0.5,0.5 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+# 13. Item 6, Wii U sound. Sound is cut here, so this shows only that Cemu keeps running past the game's audio
+#    init (it exits there when it has no audio device) and that the launch compiled the audio block: after
+#    the run, ~/.local/share/semu/cemu/config/Cemu/settings.xml holds <api>3</api>, <TVDevice>default</TVDevice>
+#    and <TVVolume>100</TVVolume>. The pad only moves (no dialog is confirmed, so no save is written). In Game
+#    Mode (by ear): the confirm sound, then music on the opening and menus, the Deck's volume buttons
+#    changing it, and ~/.local/state/wireplumber/stream-properties gaining "Cemu Cubeb".
+wiiu cemu - 100 dpad_down -- Super Smash Bros. (US) (v304).wua

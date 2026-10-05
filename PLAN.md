@@ -1775,7 +1775,8 @@ Status: started 2026-10-05.
   integer scaling widens 512 to 1024 by a whole step but takes the height to 4:3 (768 for 448 lines),
   so the renderer reads a 1.71x picture back down to native with a linear blit
   (renderer_compositor.btrc:808-813); PCSX2's notice "Texture filtering is not set to Bilinear (PS2)"
-  is filter = 0 in the profile. Contract `tests/contracts/spec/tv_room.btrc`: PCSX2's 639x448 and
+  is filter = 0 in the profile. Both are fixed in the review round ("Review, PCSX2's notice and
+  picture" below). Contract `tests/contracts/spec/tv_room.btrc`: PCSX2's 639x448 and
   Beetle's 320x240 in fit at both sizes (steps 1/2 and 2/3, centred, whole pixels, the two middles
   within a pixel), fit's opening test (1.4x the covered PS2 room stays at 1280x800, 1.5x leaves),
   every TV room in fit, game and bezel at both sizes centred on whole pixels at whole steps (168
@@ -1863,7 +1864,91 @@ Status: started 2026-10-05.
   - PS2, any game, docked at 1920x1080: switching between Fit and Fit: Screen toasts FIT: FIT or FIT: SCREEN, never SAME
     AS BEZEL. On the Deck's screen, from Fit: Screen back to Fit: FIT: SAME AS BEZEL with the 1x TV.
   - GBA, any game, shell and arctic, Fit: Bezel: the device centred, about 74 px of black above and below at 2x.
-
+- Review, PCSX2's notice and picture (the M15 review's finding on item 7): fixed; seen in the podman VM
+  with the owner's PS2 BIOS, Def Jam - Fight for NY (USA) and Devil May Cry (USA) through `semu launch`
+  (`tests/integration/live-switch.sh`, Xvfb, llvmpipe), A/B against 0f535bb; the Deck check is open
+  (case 7 of `tests/deck/m15-check.cases`).
+  Before: every boot PCSX2 logged and drew "Integer scaling is enabled. This may shrink the image." and
+  "Texture filtering is not set to Bilinear (PS2). This will break rendering in some games." over the
+  composed TV for 10 s (VMManager::WarnAboutUnsafeSettings at v2.6.3; the profile's filter = 0, Nearest,
+  forced since a8fffb1 with no reason given; the forced OpenGL renderer adds a third line). The Deck's
+  frame-60 capture of 2026-10-04 shows the first two; the VM's emulog at 0f535bb holds 5 Unsafe Settings
+  lines. And the render hook published the rectangle PCSX2 had drawn the picture into: Def Jam's 639x448
+  GS picture drawn as 640x480 (receipt surface0_source=320,160,640,480 for native 639x448; the Deck's
+  Devil May Cry 1024x768 for 512x448), which the renderer read back down to native with a linear blit,
+  so the picture was resampled twice before the CRT shader. Now:
+  - The profile sets [EmuCore/GS] filter = 2, Bilinear (PS2), upstream's default (textures filter as
+    the game asks the GS to), and [EmuCore] WarnAboutUnsafeSettings = false.
+  - The hook (`semu_render_hook.patch`) draws the GS output once at its own size, point-sampled, one
+    texel to one pixel, centred in the window, and publishes that rectangle as the picture. PCSX2's own
+    rectangle, on whole pixels as before, gives only the shape (4:3, 3:2 progressive, or a widescreen
+    patch's), so placement is unchanged. When Semu composes nothing the hook clears the window and draws
+    PCSX2's own picture as before. A picture larger than the window (an internal resolution above
+    native, which Semu never sets) is published where PCSX2 drew it.
+  VM after, 1280x800: no Unsafe Settings line in the emulog (5 before) and no notice in the frame-15
+  capture; the receipt reads surface0_source=320,176,639,448 for native 639x448, so the renderer's
+  extraction is a 1:1 nearest copy; the TV room unchanged (out 341,176 597x448, tube 311,162 657x476,
+  identical to 0f535bb) with the shader on and off, in Fit, Fit: Bezel and Fit: Screen, judged by eye
+  on Def Jam's Autosave Warning screen. 1920x1080: out 364,92 1193x896 (2x) as before, the receipt's
+  source 640,316,639,448 for native 639x448 (PCSX2 would have drawn 1278x958). Devil May Cry, the 512x448
+  game the Deck's capture showed as 1024x768: source 384,176,512,448 against 128,16,1024,768 at 0f535bb,
+  the same TV (out 341,176 597x448). On its memory card text, shader off, the new picture is visibly
+  crisper and evener (zoomed side by side); its neighbouring rows differ by 7.79 on average against
+  7.37, its neighbouring columns by 10.90 against 9.80 (0-255, the same static screen). Semu composed
+  every frame of these runs, so the fallback to PCSX2's own picture was not exercised live. Contract
+  `tests/contracts/spec/ps2_picture.btrc`: the compiled PCSX2.ini for the Deck and the desktop (no
+  notice, Bilinear (PS2), native resolution) and
+  the hook's native draw, publish, fallback and order. Each fails under its mutation (5 run: filter 0,
+  the notice switch removed, the fallback's clear removed, the native draw stretched back to PCSX2's
+  rectangle, the published shape replaced). `tests/integration/live-switch.sh` now takes CAPTURE_FRAME
+  and keeps each launch's capture, receipts and PCSX2 emulog. Reversible defaults:
+  - filter = 2, the PS2's own texture filtering. Nearest gave no benefit Semu needs: Semu's renderer
+    scales and shades the output, not the textures.
+  - WarnAboutUnsafeSettings = false hides every PCSX2 unsafe-settings notice. Semu writes PCSX2's
+    settings, so a notice could only repeat Semu's own choices over the game.
+  - IntegerScaling and AspectRatio stay: they shape PCSX2's own picture when Semu composes nothing,
+    and they are where the hook reads the picture's shape.
+- Review, the DS and 3DS live paths after items 1 and 2: checked in the podman VM (Xvfb, llvmpipe and
+  lavapipe); taps land where the picture is drawn in every layout and Fit state at both sizes; the Deck
+  check is open (cases 11 and 12). Nothing needed fixing.
+  - RetroArch's DS and 3DS routes: `tests/integration/touch-x11.sh` (synthetic core as melonDS and
+    Azahar, now with SIZE, CASES and a SHADER=none check of the drawn picture) ran the Duimon and
+    vertical shells in fit, bezel and game and the four computed layouts, 18 sessions per size. At each
+    receipt's rectangle the outermost ring of the drawn screen is the card's white border (254-255) and
+    the ring outside it is not (0 on black, 117-124 on a lip), for both screens, so a tap on the receipt
+    is a tap on the picture (a rectangle a pixel off fails it: 164 to 215 on the 3DS touch screen's
+    capture). Taps at 5, 50 and 95% across the touch screen reach the core at 0.047-0.050,
+    0.500 and 0.949 (DS) and 0.140, 0.500 and 0.860 (3DS, which reads 0.1 + 0.8 f), 0.75 down; a tap on
+    the bezel presses nothing; Semu's arrow shows and hides. 1920x1080: 270 checks pass. 1280x800: 264
+    pass; the first tap of two 3DS sessions (shell in bezel, stacked) never reached RetroArch (no bridge
+    line) while the VM was also compiling PCSX2, the same rectangles passing in the shell's fit and
+    game. Rerun at e379c10 with this change (the 3DS touch screen's lip carried out): the shell in bezel
+    and game, stacked and the vertical shell at 1280x800 (60 checks) and the shell and vertical shell at
+    1920x1080 (30) all pass, every first tap included, the rectangles unchanged; outside the Deck's 1x
+    touch screen the ring now reads 122 (73 before e379c10), its lip mirroring the white border.
+  - Rectangles (left,top from the top left): DS 1280x800: shell 98,180 and 669,180 at 512x384 (2x);
+    vertical 512,175 and 512,431 at 256x192 (1x); main right 118,112 768x576 with 906,304 256x192, main
+    left mirrored; side by side 118,208 and 650,208 (2x); stacked 384,6 and 384,410. 3DS 1280x800: shell
+    50,198 800x480 with the touch screen 933,409 320x240; vertical 440,139 and 480,421 (1x); main right
+    70,160 800x480 with 890,280 320x240; side by side 270,280 and 690,280; stacked 440,150 and 480,410.
+    DS 1920x1080: shell 147,210 and 1004,210 at 768x576 (3x); vertical 704,91 and 704,603 (2x); main
+    right 49,60 1280x960 with 1359,348 512x384; side by side 177,252 and 975,252 (3x); stacked 704,141
+    and 704,555 (a 30 px gap). 3DS 1920x1080: shell 75,237 1200x720 with 1479,613 320x240; vertical
+    560,19 800x480 and 640,583 640x480; main right 25,180 1200x720 with 1255,300 640x480; side by side
+    225,300 800x480 and 1055,300 640x480; stacked 560,45 and 640,555. All as item 2 lists them.
+  - Standalone Azahar through VK_LAYER_SEMU_compositor: `tests/visual/vm-azahar-layer.sh` (now with
+    SETTINGS and TAPS), Pushmo (U), clicked at 5, 50 and 95% across the touch screen as drawn, half way
+    down. The layer mapped every click into Azahar's own touch screen, which spans 480-800 by 400-640
+    of its 1280x800 frame: 496,520, 640,520 and 784,520, exactly 5, 50 and 95% across and half way down.
+    1280x800: the Duimon shell (bezel and game), the vertical shell, main right, main left, side by side
+    and stacked. 1920x1080, where Azahar's touch screen is 640x480 at 640,540: 672,780, 960,780 and
+    1248,780 for the shell (its 1x touch screen at 1479,613), main right, the vertical shell and stacked.
+    Semu's arrow showed after a move and hid 5 s later in every run. Azahar's own X cursor showed at the
+    arrow (maim with and without the X cursor differs by 276-472 px) in 3 of 12 completed runs (the
+    shell in game at 1280x800, the shell and the vertical shell at 1920x1080), each started beside other
+    llvmpipe jobs; the shell's rerun at 1920x1080 was blank. That check is M13's cursor rule, not
+    geometry, and is left open for the Deck (radial-check case 4). A stacked run at 1080p lost Azahar at
+    boot and passed on its rerun.
 - Review fixes, shaders and rooms (2026-10-05, the M15 review's findings on items 5 and 7): done on the Mac render host
   (e40a944 and 567077b) and in headless-Chrome editor-sync; the Deck checks below are open.
   - The LCD looks' edges (item 5: "make sure the gameboy is pixel perfect around the bezel"; item 5 above measured the
@@ -1973,6 +2058,69 @@ Status: started 2026-10-05.
     at the canvas's left and right ends the table's front runs on without a step.
   - Docked at 1920x1080: Dreamcast, GameCube or Wii in Fit, and any TV in Fit: Bezel: the wood under the table runs on
     down into the dark (76 to 163 px), no stripes, no black bar.
+- M15 Deck acceptance (open: nothing below has been seen on the Deck yet). Per item: system, the owner's
+  game, variant, placement, what to see; numbers at 1280x800. `tests/deck/m15-check.cases` runs them
+  off-screen (`tests/deck/input-check.sh PAD tests/deck/m15-check.cases OUT`; its case comments give the
+  same observables as journal codes, receipts and shots). Sound and anything marked by eye need Game Mode.
+  The review-fix entries above give their own Deck checks in more detail; this is the summary per item.
+  Contract `tests/contracts/spec/m15_deck.btrc`: the case file plans under `input-check.sh --plan`, runs
+  the owner's 13 games across the systems M15 changed, types Fit and Next Bezel with input.json's chords,
+  and this list and the Status block's M14 and M15 lines exist. Each fails under its mutation (a case
+  removed, a malformed token, the Fit chord changed, an item's line removed, a Status line renamed, the
+  list renamed).
+  - Item 1, black background (cases 2-4 and 10-12): GB Tetris (World) (Rev 1) DMG and Studio Gray, GBC Super
+    Mario Bros. Deluxe (USA, Europe) (Rev 2) shell and Berry, GBA Advance Wars (USA) (Rev 1) shell and
+    Arctic, PSP Ape Escape - On the Loose (USA) E1000 and Deep Red, each in Fit: Bezel and Fit: Screen; DS
+    Advance Wars - Dual Strike (USA, Australia) and 3DS Ocarina of Time 3D, Duimon shell and vertical shell.
+    Pure black wherever the art does not cover the screen: no wood desk, no dark canvas or vignette, the
+    studio plate's old wood bands black. A TV (Super Mario 64 (USA)) keeps its living-room wall and table.
+  - Item 2, DS and 3DS (cases 11 and 12, radial-check case 17): Dual Strike, Duimon shell in Fit: both
+    screens 512x384 (2x) side by side, centred. Large main, second right: top 768x576 (3x), touch 256x192
+    (1x) to its right, square, no rounded frames, about 118 px either side; second left mirrored; Side by
+    side 2x and 2x with a 20 px gap; Stacked 2x and 2x, 6 px of black above and below. Fit on those four:
+    FIT: NO BEZEL, nothing moves or is saved. DS vertical shell: 256x192 and 256x192 (1x) in the whole
+    shell (about 960x540) on black; Fit: FIT: SCREEN SAME AS BEZEL, the shell stays. A tap on the touch
+    screen's middle lands at melonDS 128,96 in every layout. Ocarina of Time 3D (standalone Azahar): Duimon
+    shell top 800x480 (2x), touch 320x240 (1x) filling its window, nothing cut, a middle tap logs
+    "semu-vulkan: touch ... -> 1" at the middle of Azahar's own touch screen (160,120 on the Deck in
+    radial-check case 4); Large main right 2x and 1x, about 70 px either side; Side by side and Stacked
+    1x and 1x; 3DS vertical shell 400x240 over 320x240 in the whole shell; Fit on a shell SAME AS BEZEL.
+    Docked at 1920x1080, a PS2 game switched between Fit and Fit: Screen toasts FIT: FIT or FIT: SCREEN,
+    never SAME AS BEZEL.
+  - Item 3, N64 (case 5): Super Mario 64 (USA), Living room CRT, Fit: 626x474 centred; the left and right
+    lips carry the game's colours mirrored, sharp at the picture, fading outward, no black column; the
+    receipt reads surface0_native=313x237. Fit: Screen 939x711 at about 170,44, Fit: Bezel 626x474, and CRT
+    with speakers: the same mirror.
+  - Items 4 and 5, GB and GBC (cases 1-3): Aerostar (USA, Europe) DMG, Fit: Screen: 800x720 (5x), 40 px
+    above and below, the L of LICENSED BY NINTENDO on the picture's left edge (the game's column 0), the
+    dark LCD frame (about 21 px) carrying the mirror; Fit: Bezel: the whole DMG at 1x, about 160 px of
+    black above and below. Studio Gray: Fit: Screen square LCD corners, every corner pixel whole; Fit:
+    Bezel 2x, about 40 px. GBC shell and Berry: Fit: Bezel 1x, about 157 px; Fit: Screen 5x. GBA shell and
+    Arctic: Fit: Bezel 2x, the device centred, about 74 px above and below. With each default LCD look on,
+    the picture's edge pixels as bright as the ones inside (e40a944). Docked at 1920x1080, Fit: Bezel: DMG
+    and GBC 2x, Studio 3x, PSP 2x.
+  - Item 6, Wii U sound (case 13 shows only that Cemu plays on, silenced): Super Smash Bros. (US) (v304)
+    from ES-DE in Game Mode: the confirm sound at the album-data dialog, music on the opening and menus,
+    the volume buttons change it; MARIO KART 8 (US): the boot jingle and the title music, following
+    headphones. Then, read-only: ~/.local/share/semu/cemu/config/Cemu/settings.xml has <api>3</api>,
+    <TVDevice>default</TVDevice> and <TVVolume>100</TVVolume>; ~/.local/state/wireplumber/stream-properties
+    gains "Cemu Cubeb". A PS2 and a GameCube game still have sound.
+  - Item 7, PS2 (cases 6-9): Def Jam - Fight for NY (USA), Living room CRT, Fit: 597x448 (1x), rows 176-624,
+    the TV body about 81 px below the top, the table's wood carried about 23 px under it with its grain,
+    darkening downward (567077b); Crash Bandicoot (USA) on the PS1: 640x480 (2x), rows 160-640, at the same
+    height. Fit: Bezel and CRT with speakers: still centred, no black. Genesis Aero the Acro-Bat (USA) and
+    Dreamcast Crazy Taxi (USA): centred, the table carried under the TV, never streaks or black.
+  - Item 8, reflections (cases 4, 5, 6, 11, 12): one mirror strength on every bezel. The PS1 lip as clear as
+    the Genesis and N64 TVs'; a bright Wii screen lights the lip (Living room CRT and the 16:9 TV) as
+    strongly as the GameCube's; the NES slightly softer than in 15cc2ec; the GB, GBC and GBA lips show the
+    LCD mirrored (green on the DMG), never a smeared glow; the vertical DS and 3DS shells' lips as strong
+    as the horizontal shells'; the 3DS touch screen's lip mirror about 7 px wide (the package's lip,
+    e379c10), never a 1-px line.
+  - PCSX2's picture (case 7): Def Jam at boot shows no PCSX2 notice in the top left, the launch's frame-60
+    capture (~/.local/share/semu/pcsx2/semu-render-final.ppm) included; the receipt's surface0_source is
+    the size of surface0_native (639x448), so PCSX2 hands over its GS picture one texel to one pixel; the
+    pixels are even, with and without the CRT shader. By eye: Devil May Cry (USA)'s memory-card text
+    (radial-check case 11) crisp and even, no smeared rows.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
@@ -3305,6 +3453,15 @@ Update this block whenever a milestone criterion changes state.
   release 5f55703. `semu mods migrate` moved the Mac's Drive library too (6 renames, the 5 Lime3DS
   duplicates and 2 empty folders left in place). Open, needing the owner in Game Mode: the Wii IR, the
   players page, Steam's radial pages and icons, item 1's glow and item 5's PSP by eye.
+- M14 owner feedback, round 2 (2026-10-04): all nine items implemented (191bea1 to 15cc2ec), observed on
+  the Mac render host and in the podman VM (Super Mario 64 on GLideN64, Flycast, the build flags in the VM).
+  The owner played 15cc2ec in Game Mode, and what he still saw is M15. Open on the Deck: the reruns M14
+  names (the Wii layouts and Restart Game, Wii U Bezel, the N64's speed, the Dreamcast flicker, GDV-NTSC's
+  look and frame time).
+- M15 owner feedback, round 3 (2026-10-05): all eight items implemented (db92462 to 0f535bb, then the
+  review fixes), observed on the Mac render host, in the editor (headless Chrome) and in the podman VM
+  (PCSX2, Beetle PSX, Mupen64Plus, Cemu with Mario Kart 8, the DS and 3DS touch routes). The Deck is open:
+  M15's "Deck acceptance" list, run off-screen by `tests/deck/m15-check.cases`.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,

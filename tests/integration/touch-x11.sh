@@ -11,6 +11,13 @@
 #   a tap on the bezel presses nothing; RetroArch loads Semu's remap file for that library name;
 #   Semu's whole arrow is drawn with its tip where the pointer moved 1.5 s after the move (xwd sees
 #   it, as it is drawn into the frame; tests/deck/cursor-arrow.sh judges it) and is gone 5 s after.
+#   With SHADER=none the card's pixels reach the screen as they are, so the picture is also checked
+#   where the receipt says it is drawn: each screen's outermost drawn ring is the card's white border
+#   and the ring just outside it is not (a tap on the receipt's rectangle is a tap on the picture).
+# SIZE=WxH sizes the screen (default 1280x800, the Deck). CASES lists the sessions as
+# SYSTEM:BEZEL_VARIANT:PLACEMENT (visual.systems.<id>.bezel_variant and .placement; empty for the
+# system's own default), e.g. CASES="nds:vertical:game n3ds:main_right:"; the default is
+# "n3ds:: nds::". SHADER sets every session's shader_variant (empty: the system's default).
 # On a Mac it runs inside the podman VM (x86_64 under Rosetta, the release builder's Nix store) and
 # never touches the Mac display. Scratch lives in mktemp -d directories, the container is left
 # exited, and nothing is removed.
@@ -24,10 +31,11 @@ if [ "${1:-}" != "--inside" ]; then
   repository="$(cd "$(dirname "$0")/../.." && pwd -P)"
   [ "$(podman machine inspect --format '{{.State}}')" = running ] || podman machine start
   podman machine ssh 'test -e /proc/sys/fs/binfmt_misc/rosetta || { sudo touch /etc/containers/enable-rosetta && sudo systemctl start rosetta-activation.service; }'
-  name="semu-touch-x11-$(date +%Y%m%d%H%M%S)"  # left behind exited
+  name="semu-touch-x11-$(date +%Y%m%d%H%M%S)-$$"  # left behind exited; the shell's pid keeps two runs started in one second apart
   echo "container $name, results in $out"
   exec podman run --name "$name" --platform linux/amd64 --privileged \
     -v semu-nix-x86:/nix -v semu-nix-cache:/root/.cache/nix -v "$repository":/src:ro -v "$out":/out \
+    -e SIZE="${SIZE:-1280x800}" -e CASES="${CASES:-n3ds:: nds::}" -e SHADER="${SHADER:-}" \
     -e NIX_CONFIG="experimental-features = nix-command flakes
 filter-syscalls = false
 sandbox = false
@@ -55,7 +63,7 @@ export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe LIBGL_DRIVERS_PATH="$mesa
 export __EGL_VENDOR_LIBRARY_DIRS="$mesa/share/glvnd/egl_vendor.d" LD_LIBRARY_PATH="$mesa/lib" SDL_AUDIODRIVER=dummy
 unset WAYLAND_DISPLAY
 display=:93
-width=1280; height=800
+size="${SIZE:-1280x800}"; width="${size%x*}"; height="${size#*x}"
 "$xvfb/bin/Xvfb" "$display" -screen 0 ${width}x${height}x24 >"$out/xvfb.log" 2>&1 & xvfb_pid=$!
 sleep 2
 x() { DISPLAY="$display" "$xdotool/bin/xdotool" "$@"; }
@@ -65,9 +73,22 @@ presses() { grep -c 'synthetic: pointer press' "$1" || true; }
 inside() {  # X Y LEFT TOP W H: is the point on that rectangle
   [ "$1" -ge "$3" ] && [ "$1" -lt $(($3 + $5)) ] && [ "$2" -ge "$4" ] && [ "$2" -lt $(($4 + $6)) ]
 }
+summed() {  # IMAGE LEFT TOP W H: the sum over that rectangle of each pixel's darkest channel (0-255), 0 for an empty one
+  [ "$4" -gt 0 ] && [ "$5" -gt 0 ] || { echo 0; return; }
+  "$magick" "$1" -crop "${4}x${5}+${2}+${3}" +repage -separate -evaluate-sequence min -format "%[fx:mean]" info: \
+    | "$awk" -v area=$(($4 * $5)) '{ printf "%d\n", $1 * 255 * area + 0.5 }'  # fx prints large sums in exponent form, which bash cannot add
+}
+ring() {  # IMAGE LEFT TOP W H: the mean darkest channel along the rectangle's one-pixel outline, or "off" when it leaves the screen
+  if [ "$2" -lt 0 ] || [ "$3" -lt 0 ] || [ $(($2 + $4)) -gt "$width" ] || [ $(($3 + $5)) -gt "$height" ]; then echo off; return; fi
+  local whole inner
+  whole="$(summed "$1" "$2" "$3" "$4" "$5")"; inner="$(summed "$1" $(($2 + 1)) $(($3 + 1)) $(($4 - 2)) $(($5 - 2)))"
+  echo $(( (whole - inner) / (2 * $4 + 2 * $5 - 4) ))
+}
 
-session() {  # $1 system, $2 core file, $3 library name, $4 the core's frame width over the touch screen's
-  system="$1"; corefile="$2"; library="$3"; ratio="$4"; label="$system-$corefile"
+session() {  # $1 system, $2 core file, $3 library name, $4 the core's frame width over the touch screen's, $5 bezel variant, $6 placement
+  system="$1"; corefile="$2"; library="$3"; ratio="$4"; variant="$5"; placement="$6"
+  label="$system-$corefile${variant:+-$variant}${placement:+-$placement}"
+  printf '%s %s %s\n' "$label" "$library" "$ratio" >> "$out/labels"
   root="$(mktemp -d)"
   mkdir -p "$root/home" "$root/assets/bin" "$root/assets/lib/retroarch/cores" "$root/roms/$system"
   ln -s "$assets/share" "$root/assets/share"
@@ -75,7 +96,10 @@ session() {  # $1 system, $2 core file, $3 library name, $4 the core's frame wid
   ln -s "$core/lib/retroarch/cores/synthetic_libretro.so" "$root/assets/lib/retroarch/cores/${corefile}_libretro.so"
   ln -s "$renderer/lib/libsemurenderer.so" "$root/assets/lib/libsemurenderer.so"
   printf 'semu synthetic content\n' > "$root/roms/$system/pattern.semu"
-  settings="{\"paths\":{\"roms\":\"$root/roms\",\"state_root\":\"$root/state\",\"content_root\":\"$root/content\"}}"
+  settings="$("$jq" -n -c --arg root "$root" --arg system "$system" --arg variant "$variant" --arg placement "$placement" --arg shader "${SHADER:-}" \
+    '{paths: {roms: ($root + "/roms"), state_root: ($root + "/state"), content_root: ($root + "/content")},
+      visual: {systems: {($system): ({} + (if $variant == "" then {} else {bezel_variant: $variant} end)
+        + (if $placement == "" then {} else {placement: $placement} end) + (if $shader == "" then {} else {shader_variant: $shader} end))}}}')"
   HOME="$root/home" "$cli/lib/semu/semu-btrc" launch retroarch --system "$system" --core "$corefile" --rom pattern.semu --project /src/config \
     --asset-root "$root/assets" --settings-json "$settings" --semu-home "$root/home/semu" --target linux-desktop --print-plan > "$out/$label.plan.json"
   [ -z "$("$jq" -r .error "$out/$label.plan.json")" ] || { echo "$label: plan error $("$jq" -r .error "$out/$label.plan.json")"; return 1; }
@@ -108,6 +132,8 @@ EOF
   x search --onlyvisible --name . getwindowgeometry %@ > "$out/$label.windows" 2>&1 || true
   sleep 3
   shot "$out/$label-0-running.png"
+  drawn_touch="$(ring "$out/$label-0-running.png" "$touch_left" "$touch_top" "$touch_width" "$touch_height"):$(ring "$out/$label-0-running.png" $((touch_left - 1)) $((touch_top - 1)) $((touch_width + 2)) $((touch_height + 2)))"
+  drawn_top="$(ring "$out/$label-0-running.png" "$top_left" "$top_top" "$top_width" "$top_height"):$(ring "$out/$label-0-running.png" $((top_left - 1)) $((top_top - 1)) $((top_width + 2)) $((top_height + 2)))"
   middle=$((touch_top + touch_height / 2))
   : > "$out/$label.taps"
   for percent in 5 50 95; do
@@ -148,6 +174,7 @@ EOF
     echo "label=$label"
     echo "alive=$alive"
     echo "touch_rect=$touch_left,$touch_top,${touch_width}x$touch_height top_rect=$top_left,$top_top,${top_width}x$top_height frame_height=$frame_height"
+    echo "drawn_touch=$drawn_touch drawn_top=$drawn_top"  # the darkest channel along each screen's outermost drawn ring : along the ring outside it
     echo "ratio=$ratio"
     "$awk" '{ if ($3 == "none") { printf "tap_%s=none\n", $1; next } split($8, core, ","); printf "tap_%s=%s,%s\n", $1, core[1], core[2] }' "$out/$label.taps"  # 5 X,Y synthetic: pointer press RAW normalized NX,NY
     echo "bezel_tap=$bezel bezel_presses=$bezel_presses"
@@ -172,16 +199,36 @@ expect_near() {  # LABEL ACTUAL EXPECTED: within 0.01
 expect() { if [ "$2" = "$3" ]; then echo "ok   $1 ($2)"; else echo "FAIL $1: got $2, want $3"; fi; }
 value() { "$awk" -v key="$2" '{ for (field = 1; field <= NF; field++) if (index($field, key "=") == 1) { print substr($field, length(key) + 2); exit } }' "$out/$1.result"; }
 
-session n3ds azahar Azahar 0.8 || echo "FAIL: the n3ds session did not run" >> "$out/sessions"
-session nds melonds melonDS 1.0 || echo "FAIL: the nds session did not run" >> "$out/sessions"
+drawn() {  # LABEL SCREEN RINGS: the outermost drawn ring is the card's white border, the ring outside it is not
+  local inner="${3%%:*}" outer="${3#*:}"
+  if [ "$inner" != off ] && [ "$inner" -ge 245 ] && { [ "$outer" = off ] || [ "$outer" -lt 200 ]; }; then
+    echo "ok   $1: the $2 screen is drawn on its receipt's rectangle (ring $inner, outside $outer)"
+  else
+    echo "FAIL $1: the $2 screen is not drawn on its receipt's rectangle (ring ${inner:-nothing}, outside ${outer:-nothing}; want 245 or more, then under 200)"
+  fi
+}
+
+: > "$out/labels"
+for case in ${CASES:-n3ds:: nds::}; do
+  IFS=: read -r system variant placement <<EOF
+$case
+EOF
+  case "$system" in
+    n3ds) session n3ds azahar Azahar 0.8 "$variant" "$placement" || echo "FAIL: the n3ds $case session did not run" >> "$out/sessions" ;;
+    nds) session nds melonds melonDS 1.0 "$variant" "$placement" || echo "FAIL: the nds $case session did not run" >> "$out/sessions" ;;
+    *) echo "FAIL: case $case names no DS or 3DS system" >> "$out/sessions" ;;
+  esac
+done
 kill "$xvfb_pid" 2>/dev/null || true
 
 {
   cat "$out/sessions" 2>/dev/null || true
-  for case in "n3ds-azahar Azahar 0.8" "nds-melonds melonDS 1.0"; do
-    set -- $case
-    label="$1"; library="$2"; ratio="$3"
+  while read -r label library ratio; do
     [ -f "$out/$label.result" ] || continue
+    if [ "${SHADER:-}" = none ]; then
+      drawn "$label" touch "$(value "$label" drawn_touch)"
+      drawn "$label" top "$(value "$label" drawn_top)"
+    fi
     for percent in 5 50 95; do
       tap="$(value "$label" "tap_$percent")"
       want_x="$("$awk" -v ratio="$ratio" -v percent="$percent" 'BEGIN { printf "%.4f", (1 - ratio) / 2 + ratio * percent / 100 }')"
@@ -198,7 +245,7 @@ kill "$xvfb_pid" 2>/dev/null || true
     expect "$label: Semu's whole arrow at the pointer 1.5 s after a relative move (cursor-arrow.sh: $(value "$label" arrow_text))" "$(value "$label" arrow_shown)" 0
     expect "$label: and gone 5 s after it" "$(value "$label" arrow_idle)" 1
     expect "$label: RetroArch ran to the end" "$(value "$label" alive)" yes
-  done
+  done < "$out/labels"
 } | tee "$out/result"
 grep -q '^FAIL' "$out/result" && { echo "touch-x11: FAIL" | tee -a "$out/result"; exit 1; }
 echo "touch-x11: PASS" | tee -a "$out/result"

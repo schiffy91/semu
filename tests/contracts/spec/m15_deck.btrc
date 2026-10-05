@@ -1,0 +1,94 @@
+// M15 Deck spec: the owner's round 3 has a Deck acceptance list in PLAN.md and a runnable case file,
+// tests/deck/m15-check.cases, so the checks outlive the reports of the tracks that built them. The case file
+// must plan cleanly under input-check.sh, cover every system M15 changed with the owner's own games, and type
+// the radial's Fit and Next Bezel with input.json's chords; the plan must name the list and the file, and the
+// live Status block must carry M14 and M15.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Process;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ./deck_harness.btrc;
+
+class M15DeckSpecCases {
+    class Vector<string> lines(string text) {  // the case lines, comments and blanks left out
+        Vector<string> found = [];
+        for line in Strings.split(text, "\n") { if (!line.isEmpty() && !line.startsWith("#")) { found.push(line); } }
+        return found;
+    }
+
+    class bool covers(Vector<string> lines, string system, string game) {  // a case of SYSTEM runs GAME
+        for line in lines { if (line.startsWith(system + " ") && line.endsWith(" -- " + game)) { return true; } }
+        return false;
+    }
+
+    class string chord(JSONValue input, string action) {  // input.json's chord for ACTION, as an input-check key: token
+        JSONValue entry = SemuJson.get(input, "actions").get(action);  // ids hold dots, so not one path
+        string chord = entry == null ? "" : SemuJson.textAt(entry, "chord").toLower();
+        return chord.isEmpty() ? "" : "key:" + chord;
+    }
+}
+
+class M15DeckSpecContract {
+    class void cases(Contract contract, string project) {
+        string script = PathTools.join(project, "tests/deck/input-check.sh");
+        string path = PathTools.join(project, "tests/deck/m15-check.cases");
+        string text = FileSystem.readText(path);
+        Vector<string> lines = M15DeckSpecCases.lines(text);
+        ExecResult planned = DeckHarnessShell.run(script, ["--plan", path]);
+        contract.expect(planned.ok(), "input-check.sh --plan m15-check.cases succeeds: " + planned.stderr());
+        contract.expect(lines.size() >= 13 && DeckHarnessShell.count(planned.stdout(), "== ") == lines.size(), f"every M15 case is planned ({DeckHarnessShell.count(planned.stdout(), "== ")} of {lines.size()})");
+        contract.lacks(planned.stdout(), "not run", "no M15 case is malformed");
+        Vector<string> owned = ["gb|Aerostar (USA, Europe).zip", "gb|Tetris (World) (Rev 1).zip", "gbc|Super Mario Bros. Deluxe (USA, Europe) (Rev 2).zip",
+            "gba|Advance Wars (USA) (Rev 1).zip", "n64|Super Mario 64 (USA).zip", "psx|Crash Bandicoot (USA).m3u", "ps2|Def Jam - Fight for NY (USA).iso",
+            "genesis|Aero the Acro-Bat (USA).zip", "dreamcast|Crazy Taxi (USA).chd", "psp|Ape Escape - On the Loose (USA).iso",
+            "nds|Advance Wars - Dual Strike (USA, Australia).zip", "n3ds|Legend of Zelda, The - Ocarina of Time 3D*.3ds", "wiiu|Super Smash Bros. (US) (v304).wua"];
+        for row in owned {
+            Vector<string> field = Strings.split(row, "|");
+            contract.expect(M15DeckSpecCases.covers(lines, field.get(0), field.get(1)), "m15-check.cases runs " + field.get(0) + " with the owner's " + field.get(1));
+        }
+        JSONValue input = SemuJson.readFile(PathTools.join(project, "config/input/linux-desktop/input.json"));
+        string fit = M15DeckSpecCases.chord(input, "visual.placement.next");
+        string bezel = M15DeckSpecCases.chord(input, "visual.bezel.next");
+        int fits = 0;
+        int bezels = 0;
+        for line in lines {
+            for token in Strings.split(line.substring(0, line.indexOf(" -- ")), " ") {
+                if (!fit.isEmpty() && token.equals(fit)) { fits++; }
+                if (!bezel.isEmpty() && token.equals(bezel)) { bezels++; }
+            }
+        }
+        contract.expect(fits >= 12 && bezels >= 12, f"the cases press Fit ({fit}, {fits} times) and Next Bezel ({bezel}, {bezels} times) with input.json's chords");
+        contract.expect(M15DeckSpecCases.covers(lines, "nds", "Advance Wars - Dual Strike (USA, Australia).zip") && text.contains("key:ctrl+shift+b tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0.5 -- Advance Wars"), "the DS case ends on the vertical shell: Fit, then a tap on the touch screen");
+        contract.contains(text, "surface0_native=313x237", "the N64 case names the cropped picture's receipt");
+        contract.contains(text, "semu-render-final.ppm", "the PS2 case names the frame-60 capture that would hold PCSX2's notice");
+    }
+
+    class void plan(Contract contract, string project) {
+        string plan = FileSystem.readText(PathTools.join(project, "PLAN.md"));
+        int milestone = plan.indexOf("### M15. ");
+        int acceptance = plan.indexOf("- M15 Deck acceptance");
+        int gaps = plan.indexOf("## Gap review");
+        contract.expect(milestone > 0 && acceptance > milestone && gaps > acceptance, "PLAN.md M15 holds its Deck acceptance list");
+        string list = acceptance > 0 && gaps > acceptance ? plan.substring(acceptance, gaps - acceptance) : "";
+        contract.contains(list, "`tests/deck/m15-check.cases`", "the list names the case file that runs it");
+        for item in ["Item 1, ", "Item 2, ", "Item 3, ", "Items 4 and 5, ", "Item 6, ", "Item 7, ", "Item 8, ", "PCSX2's picture"] {
+            contract.contains(list, "\n  - " + item, "the M15 Deck list has a line for " + item.trim());
+        }
+        int status = plan.indexOf("\n## Status\n");
+        string live = status > 0 ? plan.substring(status, plan.len() - status) : "";
+        contract.contains(live, "\n- M14 owner feedback, round 2 (2026-10-04): ", "the live Status block carries M14");
+        contract.contains(live, "\n- M15 owner feedback, round 3 (2026-10-05): ", "the live Status block carries M15");
+        contract.contains(live, "M15's \"Deck acceptance\" list, run off-screen by `tests/deck/m15-check.cases`", "and says where the Deck checks are");
+    }
+
+    class void run(Contract contract) {
+        string project = Fixture("steam-deck").project;
+        M15DeckSpecContract.cases(contract, project);
+        M15DeckSpecContract.plan(contract, project);
+    }
+}

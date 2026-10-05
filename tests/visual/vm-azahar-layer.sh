@@ -11,7 +11,9 @@
 # replaces Semu's hideInactiveMouse pin (Azahar's own hiding, for a run without Semu's layer).
 # The ROM is mounted read-only; the container is left exited.
 # usage: vm-azahar-layer.sh REPOSITORY ROM OUT_DIR   (env: WAIT seconds before the capture, TOUCH_X, TOUCH_Y, ARROW_X, ARROW_Y (40,44),
-#   WIDTH and HEIGHT of the virtual screen, 1280x720 unless set; 1280x800 is the Steam Deck)
+#   WIDTH and HEIGHT of the virtual screen, 1280x720 unless set; 1280x800 is the Steam Deck; SETTINGS, a settings
+#   overlay for render-env such as {"visual":{"systems":{"n3ds":{"bezel_variant":"main_right"}}}}; TAPS, more clicks
+#   as "X,Y X,Y", whose mapped touches land in OUT/touch.result)
 set -euo pipefail
 repository="$(cd "$1" && pwd)"; rom="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; out="$(mkdir -p "$3" && cd "$3" && pwd)"
 cat > "$out/inside.sh" <<'INSIDE'
@@ -33,7 +35,7 @@ while IFS= read -r line; do  # Semu's file; HIDE_INACTIVE_MOUSE replaces its pin
   printf '%s\n' "$line"
 done < /tmp/configs/profiles/azahar/config/azahar-emu/qt-config.ini > /tmp/home/config/azahar-emu/qt-config.ini
 grep -E '^(graphics_api|use_integer_scaling|fullscreen|hideInactiveMouse|confirmClose)=' /tmp/home/config/azahar-emu/qt-config.ini
-mapfile -t envs < <($CLI/bin/semu render-env --system n3ds --emulator azahar --project /src/config --asset-root $ASSETS | grep '^SEMU_' | grep -v '^SEMU_RENDER_STATE_DIR')
+mapfile -t envs < <($CLI/bin/semu render-env --system n3ds --emulator azahar --project /src/config --asset-root $ASSETS ${SETTINGS:+--settings-json "$SETTINGS"} | grep '^SEMU_' | grep -v '^SEMU_RENDER_STATE_DIR')
 env "${envs[@]}" SEMU_RENDER_STATE_DIR=/out/state SEMU_RENDER_DEBUG=1 DISPLAY=:97 QT_QPA_PLATFORM=xcb XDG_CONFIG_HOME=/tmp/home/config XDG_DATA_HOME=/tmp/home/data \
   VK_DRIVER_FILES=$(ls $MESA/share/vulkan/icd.d/lvp_icd*.json) __EGL_VENDOR_LIBRARY_DIRS=$MESA/share/glvnd/egl_vendor.d \
   VK_ADD_LAYER_PATH=$R/share/vulkan/explicit_layer.d VK_INSTANCE_LAYERS=VK_LAYER_SEMU_compositor \
@@ -45,6 +47,10 @@ $XWD/bin/xwd -root -silent -display :97 | $IM/bin/magick xwd:- /out/azahar.png
 DISPLAY=:97 $XDO/bin/xdotool mousemove ${TOUCH_X:-1100} ${TOUCH_Y:-400} mousedown 1 sleep 2 mouseup 1
 sleep 20
 $XWD/bin/xwd -root -silent -display :97 | $IM/bin/magick xwd:- /out/azahar-after-touch.png
+for point in ${TAPS:-}; do  # more clicks at X,Y on the composed picture, each mapped by the layer into Azahar's touch screen (touch.result)
+  DISPLAY=:97 $XDO/bin/xdotool mousemove ${point%,*} ${point#*,} mousedown 1 sleep 0.5 mouseup 1
+  sleep 3
+done
 xcursor() {  # NAME: pixels where the X cursor differs at the arrow, with it (maim) and without (maim -u)
   DISPLAY=:97 $MAIM/bin/maim /out/$1-with.png; DISPLAY=:97 $MAIM/bin/maim -u /out/$1-without.png
   $IM/bin/magick /out/$1-with.png -crop 64x80+$((ARROW_X - 16))+$((ARROW_Y - 16)) +repage /out/$1-with-crop.png
@@ -67,8 +73,9 @@ hidden=$(arrow cursor-idle); hidden_status=$?
   grep 'semu-renderer: cursor' /out/azahar.log | tail -4; } | tee /out/cursor.result
 kill $A; sleep 2; kill $X
 grep -E "touch|swapchain" /out/azahar.log | head -20
+grep "semu-vulkan: touch" /out/azahar.log > /out/touch.result
 if [ "$shown_status" -eq 0 ] && [ "${blank:-1}" -eq 0 ] && [ "$hidden_status" -eq 1 ]; then echo "azahar cursor: Semu's arrow shown after the move, Azahar's own cursor blank, the arrow gone 5 s later" | tee -a /out/cursor.result; else echo "azahar cursor: FAIL" | tee -a /out/cursor.result; fi
 INSIDE
-podman run --name "semu-azahar-layer-$(date +%Y%m%d%H%M%S)" --platform linux/amd64 --privileged -e WAIT="${WAIT:-240}" -e WIDTH="${WIDTH:-1280}" -e HEIGHT="${HEIGHT:-720}" -e TOUCH_X="${TOUCH_X:-1100}" -e TOUCH_Y="${TOUCH_Y:-400}" -e ARROW_X="${ARROW_X:-40}" -e ARROW_Y="${ARROW_Y:-44}" -e HIDE_INACTIVE_MOUSE="${HIDE_INACTIVE_MOUSE:-}" \
+podman run --name "semu-azahar-layer-$(date +%Y%m%d%H%M%S)-$$" --platform linux/amd64 --privileged -e WAIT="${WAIT:-240}" -e WIDTH="${WIDTH:-1280}" -e HEIGHT="${HEIGHT:-720}" -e TOUCH_X="${TOUCH_X:-1100}" -e TOUCH_Y="${TOUCH_Y:-400}" -e ARROW_X="${ARROW_X:-40}" -e ARROW_Y="${ARROW_Y:-44}" -e HIDE_INACTIVE_MOUSE="${HIDE_INACTIVE_MOUSE:-}" -e SETTINGS="${SETTINGS:-}" -e TAPS="${TAPS:-}" \
   -e ROM_NAME="$(basename "$rom")" -v semu-nix-x86:/nix -v "$repository":/src:ro -v "$out":/out -v "$(dirname "$rom")":/rom:ro \
   docker.io/nixos/nix:latest bash /out/inside.sh
