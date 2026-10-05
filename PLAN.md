@@ -1651,7 +1651,8 @@ Status: started 2026-10-05.
     integer placement, so the picture is exactly the step on any screen. Odd sizes such as 1281x801
     drew 801x721 before. LCD look on, by sampling: the DMG grid is symmetric in each k by k cell,
     the outermost row profiled like the interior. The GBC subpixel triad is locked to the native
-    grid at 5x and 2x.
+    grid at 5x and 2x. (With a look on, the GBC and GBA looks, the DS and 3DS grid looks and the DMG at 7x darkened
+    the edge pixels' outermost line: fixed in e40a944, see the review fixes below.)
   - "Text at the bezel": the game draws there. Aerostar, the owner's GB game (ES-DE log, 01:18),
     puts LICENSED BY NINTENDO in native column 0 (8 dark pixels in that column). Its SCORE line sits
     in row 0 (64 dark pixels). As in Duimon's art, the picture ends at the DMG's dark LCD frame, about 4
@@ -1785,7 +1786,8 @@ Status: started 2026-10-05.
   - A TV room's picture is centred down the screen in fit and in bezel. This supersedes the M14
     ruling that a room shorter than the screen stands its table on the bottom edge.
   - Under the table the room carries on as a level band of its last 32 rows. At 1920x1080 a
-    480-line TV at 1x (Dreamcast, GameCube, Wii) shows about 140 px of it.
+    480-line TV at 1x (Dreamcast, GameCube, Wii) shows about 140 px of it. (Superseded by 567077b: the band
+    showed vertical streaks; the wood now carries on as mirrored rows falling into the dark, see the review fixes below.)
   - Rooms take the whole-pixel snap in every placement, so a picture may sit up to half a pixel off
     the exact middle (the N64's 711 lines at 1280x800).
 
@@ -1861,6 +1863,116 @@ Status: started 2026-10-05.
   - PS2, any game, docked at 1920x1080: switching between Fit and Fit: Screen toasts FIT: FIT or FIT: SCREEN, never SAME
     AS BEZEL. On the Deck's screen, from Fit: Screen back to Fit: FIT: SAME AS BEZEL with the 1x TV.
   - GBA, any game, shell and arctic, Fit: Bezel: the device centred, about 74 px of black above and below at 2x.
+
+- Review fixes, shaders and rooms (2026-10-05, the M15 review's findings on items 5 and 7): done on the Mac render host
+  (e40a944 and 567077b) and in headless-Chrome editor-sync; the Deck checks below are open.
+  - The LCD looks' edges (item 5: "make sure the gameboy is pixel perfect around the bezel"; item 5 above measured the
+    shader off). With a look on, the outermost output row and column of the edge pixels were darker than the same pixel
+    one in. Causes, all in the pinned slang-shaders (4812a82): lcd-grid-v2 (the GBC and GBA default looks, the DS and 3DS
+    grid looks) lights each output pixel from its 2x2 source neighbours through texelFetchOffset, and a fetch past the
+    source returns black, which no wrap_mode reaches (the review tried clamp_to_edge: no change); the authentic GBC look
+    samples the four nearest texels, and the AGB-001 look scales its 4x pattern to the screen with a linear filter, both
+    through the default clamp_to_border (black); and the Game Boy looks draw their backlight paper across the picture
+    with a linear filter the same way, which reaches the paper's border once the picture outgrows it (the DMG's 1024 px
+    paper under its 1120x1008 picture at 7x on 1920x1080; at 5x on the Deck it stays inside). Fix (e40a944): shaders.json
+    `patches`, which shaders.nix applies to the staged tree after writing the presets, so every preset keeps pinning the
+    upstream files it names. Each is a Semu-owned diff in config/assets/shader-patches with its provenance, pinned before
+    (the upstream file's sha256) and after: lcd-grid-v2's fetch_offset clamps the fetched texel onto the source
+    (clamp_to_edge for a fetch); authentic_gbc.slangp and agb001.slangp gain wrap_mode1 = clamp_to_edge;
+    gameboy.slangp and gameboy-pocket.slangp gain BACKGROUND_wrap_mode = clamp_to_edge. An edge pixel's outside neighbour
+    is now itself, and every read inside the picture is unchanged. NOTICE.md lists the patched files.
+    Measured with `tests/visual/pixel-grid.sh`, extended: every screen gets a card at its own native size (the second
+    through the render host's new RENDER_HOST_CARD_1), its coloured border drawn four pixels deep, so each outermost pixel
+    has an inward twin of the same colour with the same neighbours once the edge carries on. Shader off, each picture
+    equals its card k by k (whole). Shader on, each side's outermost k-pixel strip is compared with its twin: darker
+    counts the pixels whose light (Rec. 709 luma) is more than three levels below the twin's (the Game Boy papers and the
+    authentic look's 1x sub-pixels vary by a level or two, or in hue, from place to place), outer is the outermost
+    line's light over its twin line's, lowest side. PIXEL_GRID_BASELINE compares the interior with another bundle,
+    PIXEL_GRID_ASSET_ROOT measures one. Every handheld look on its default bezel in game and bezel placement, the DS and
+    3DS also beside a large main (main_right), both sizes. Before (0f535bb's bundle), darker / outer, and after (e40a944):
+    - GB DMG: 5x and 1x clean already (0 / 0.9999). 7x at 1080p 2044 / 0.942 to 0 / 0.9999 (the paper); 2x clean.
+    - GB pocket: clean at every step (0 / 1.000; its paper is 2048 px).
+    - GBC default: 5x 2162 / 0.938, 1x 4 / 0.987; 7x 4011 / 0.914, 2x 16 / 0.982. All now 0 / 1.000.
+    - GBC authentic: 5x 44 / 0.950, 1x 4 / 0.998; 7x 274 / 0.922, 2x 16 / 0.975. All now 0 / 1.000.
+    - GBA default: 5x 2516 / 0.937, 2x 16 / 0.984; 6x 3675 / 0.925, 3x 32 / 0.973. All now 0 / 1.000.
+    - GBA AGB-001: 5x 2201 / 0.877 to 0 / 0.977; 6x 4800 / 0.799 to 4 / 0.960; 2x and 3x clean.
+    - DS default (lcd1x_nds) and 3DS default (lcd1x, sharp-bilinear): clean already in every cell (0 / 1.000).
+    - DS grid: shell 2x+2x 392+392 / 0.881 and 0.839, main_right 3x+1x 1156+4 / 0.788 and 0.968; at 1080p shell 3x+3x
+      1156+1160 / 0.788 and 0.713, main_right 5x+2x 2242+392 / 0.711 and 0.839. All now 0 / 1.000.
+    - 3DS grid: shell and main_right 2x+1x 17+4 / 0.989 and 0.977; at 1080p shell 3x+1x 29+4 / 0.981 and 0.977,
+      main_right 3x+2x 29+480 / 0.981 and 0.865. All now 0 / 1.000.
+    Every picture is whole (0) with the shader off, both screens of every DS and 3DS cell included. The interior (all
+    but the outermost ring of native pixels) equals 0f535bb's bundle in every shaded cell (AE 0): the changed pixels are
+    the ring's (3631 of the GBC's 800x720 at 5x). The lcd-grid looks (GBC and GBA default, DS and 3DS grid) and the
+    authentic look now draw each edge strip as its twin, exactly (AE 0) but for the GBA default at 5x (143 pixels a
+    level apart: float rounding) and the authentic look's 1x, whose own sub-pixel pattern varies in hue at 1x (2 pixels,
+    luma within 2 levels). The DMG and pocket papers vary a level
+    or two from place to place (edge and twin differ in 372 to 18767 pixels, none darker). The AGB-001 look keeps a
+    blur residual: at 5x and 6x its last pass mixes each pixel's outer line with a sixth or a tenth of the neighbour's
+    sub-pixel, and the picture's outermost line, with no neighbour past it, shows its own sub-pixel (outer 0.977 at 5x and
+    0.960 at 6x, was 0.877 and 0.799; luma never more than 4.4 levels below the twin, 4 pixels at 6x). pixel-grid.sh
+    reports that look rather than failing it (PIXEL_GRID_RESAMPLED). By eye (GBC default at 5x, 10x zoom on the top-left
+    corner): the leftmost column, dark grey-green before, now shows the red sub-pixel stripe like every column in.
+    Contract tests/contracts/spec/shader_edges.btrc: each patch turns its pinned upstream file (the bezel tree) into its
+    pinned output (a unified-diff applier in BTRC), shaders.nix applies every patch and checks what it leaves, and no
+    handheld look's pass fetches past its edge, samples past it through a border-clamped pass, or draws a linearly
+    filtered texture over the picture without clamping it. Each fails under its mutation (run in a clone, restored with
+    cp, checked with cmp): the lcd-grid patch dropped, its fetch unclamped, the authentic and AGB-001 wrap lines removed,
+    the DMG paper's wrap removed, the pocket's patch dropped, shaders.nix never patching.
+    Reversible defaults:
+    - The patches touch only reads past the picture; a look is otherwise upstream's, pixel for pixel.
+    - Edge pixels carry on as themselves (clamp to edge), never as black and never as the opposite edge (repeat).
+    - The pocket's paper is clamped too, though it changes nothing below 13x.
+    - The AGB-001 look keeps its linear scaling and so its 5x and 6x outer-line blur; a nearest final pass would change
+      its interior.
+  - The table under a centred TV (item 7). 38ed18a drew the room below its plate as the plate's last 32 rows averaged (a
+    32-texel mip footprint at the clamped edge), so every column was one value all the way down: coarse vertical streaks
+    (render host, PS2 in Fit at 1280x800: rows changed 0 levels row to row against 0.024 column to column). With the
+    picture centred the band is on screen under the PS2 on the Deck (23 px in fit and bezel) and at 1920x1080 under the
+    480-line TVs in fit (Dreamcast, GameCube and Wii, 102 to 135 px) and under most TVs in bezel (76 to 163 px). The
+    plate's last rows are the wood below the table's front, out of the shadow under it (row light 7 to 20 of 255 over
+    the last 20 of 1440 rows). Now (567077b, config/render/compositor.frag roomPlate) the room below the plate mirrors
+    its last rows back and forth with the depth, a window of 0.55% of the plate's height (8 of 1440 rows, 12 of 2160,
+    inside the wood and clear of the shadow), at the plate's own scale, so every row carries the plate's grain; and a
+    normal-blend room layer falls off with the depth to 40% of that light over a tenth of the plate's height, as the
+    TV's light falls off, never to black (the night plate, a multiply room layer, carries on as drawn). To either side
+    the room now carries on from four texels in, past the dark two-texel bevel Soqueroeu draws at each end of the
+    table's front, which carried out as a darker slab (17 against 23 of 255 at the left end) and showed as a step where
+    the canvas ends; it now meets the table level. Render host: PS2 Fit at 1280x800, row to row 0.82 levels against
+    0.26 column to column (level grain, no streaks); Dreamcast Fit at 1920x1080 0.63 against 0.21. Judged by eye at
+    1280x800 and 1920x1080, all 19 TV rooms (ps2, psx, n64, snes, genesis, nes, dreamcast, gc and wii with their
+    speakers, purple, black and 16:9 variants) in fit, bezel and game: the wood under the table reads as one surface
+    going down into the dark, no streaks, no black bar, the side carry level with the table; the TV centred and at the
+    same whole steps (the pictures are unchanged; ps2 tv and psx speakers at 1280x800 and dreamcast tv at 1080p are
+    identical to the pixel before and after the rebase onto b39f57b). The editor draws the same file:
+    editor-sync --card test, all 19 rooms in fit, bezel and game at 1280x800 and 1920x1080, at e40a944: 108 of 114
+    cells 0.000% of pixels, MAE 0, framing equal (the band and the side carry included). The six wii:tv_wide cells
+    fail on framing (87 to 866 px) with the same numbers at b39f57b without this change: since b39f57b editor-sync feeds
+    production the 16:9 card, so it draws the 16:9 TV the editor does not frame; reported, not this fix's. Before the
+    rebase (0f535bb with this change) the same run gave 16 of 19 per state, the N64 (crop card, fixed in b39f57b) and
+    wii:tv_wide differing exactly as without the change.
+    Contracts: tv_room.btrc's band (rows that follow the depth at the plate's gradients, never a fixed row or a
+    stretched footprint; the 40% floor; the inset) and scene_fill.btrc's room check, each failing under its mutation
+    (the old band, a fixed row, a fall to black, no inset).
+    Reversible defaults:
+    - The window is 0.55% of the plate's height and the fall-off 40% over a tenth of it.
+    - The side carry starts four texels in, so the art's own outermost columns (the bevel) are replaced by the fourth.
+    - Only a normal-blend room layer darkens; the night plate carries on unchanged.
+  Deck checks (open):
+  - GBC, any game (Aliens - Thanatos Encounter), default look (GBC color LCD), Fit: Screen 5x: the leftmost column and the
+    top row of the picture show the same sub-pixel stripes and light as the column and row one pixel in, no dark line
+    where the picture meets the lens; the same with the Authentic GBC LCD look.
+  - GBA, Advance Wars, default look and AGB-001 LCD, Fit: Screen (5x, the picture filling the height): the top and
+    bottom rows and both side columns lit like the next row and column in.
+  - DS, LCD grid v2 look (both screens) and 3DS, LCD grid v2 look: no darker outer line round either screen (on the Deck
+    it was up to 21% darker, the DS beside a large main; 29% at 1080p).
+  - Docked at 1920x1080: Game Boy, DMG look, Fit: Screen (7x): the right edge column and the top row as light as the
+    rest.
+  - PS2, Def Jam - Fight for NY (any PS2 game), Living room CRT, Fit and Fit: Bezel: the 23 px under the table's front
+    show dark wood with level grain, a little darker toward the screen's bottom edge, no vertical stripes and no black;
+    at the canvas's left and right ends the table's front runs on without a step.
+  - Docked at 1920x1080: Dreamcast, GameCube or Wii in Fit, and any TV in Fit: Bezel: the wood under the table runs on
+    down into the dark (76 to 163 px), no stripes, no black bar.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
