@@ -1208,9 +1208,9 @@ the Wii IR, the players page by eye, Steam's own radials and icons.
     listing, a padless player on GameCube at Reset, and the checkers' layout keys, single layout,
     undeclared output and partner.
   - Rulings (reversible, the owner being unattended): RESTART GAME after a layout already switched live
-    still restarts (the page saw a change; every file then comes from the saved choice). Fit stays a
+    still restarts from the players page (the page saw a change; every file then comes from the saved choice); the Restart Game action restarts only for what waits (review round, M14). Fit stays a
     two-way integer toggle (bezel and screen, the owner's "always integer scale"), so on TVs the default
-    fractional fit (686x515 on the Wii at 1280x800) is reached only by Reset, which also returns the
+    fit (on a TV room the nearest whole step since the M14 review round) is reached only by Reset, which also returns the
     players' layouts and pads and, on a 16:9 Wii game, reboots it.
 
 ### M14. Owner feedback from the Deck, round 2 (2026-10-04)
@@ -1250,8 +1250,8 @@ Status: tackled in three parallel tracks (performance, picture, controls), then 
   Restart Game action (Ctrl+Shift+D, Lucide refresh-cw icon, journal 87) sits in the settings radial
   after Controller Layout, in the centre of the held Wii layer, as the menu's RESTART GAME row (the
   Wii menu is 13 rows; the texture grew to 683 px, still scale 1 at 1280x800, seen on the render
-  host) and as the players page's RESTART GAME. It restarts once when anything differs from the
-  launch, else toasts RESTART: NO CHANGES. radial-check.cases case 16 now cycles Classic, GameCube
+  host) and as the players page's RESTART GAME. It restarts once when something waits (the players page: when anything differs from the
+  launch), else toasts RESTART: NOTHING TO APPLY. radial-check.cases case 16 now cycles Classic, GameCube
   and Wii Remote without a restart, then applies 16:9 with one Restart Game.
 - Item 5 (controls, Wii U Bezel): cause found and fixed, measured in the podman VM; the Deck rerun is
   open. The Deck's journal from that session (Mario Kart 8, 15:00) holds exactly four records within
@@ -1406,6 +1406,36 @@ Status: tackled in three parallel tracks (performance, picture, controls), then 
   of this same 19-pass chain. Contract (crt_gdv.btrc): the four defaults with every value emitted and
   pinned, the previous defaults one step away, and no guest preset rolling a hum bar or cropping
   overscan. Each check fails under its mutation (12 run).
+- Review round (2026-10-05, ec25cb8, e363bca, 9227e7e): six findings on the three tracks, all fixed and
+  checked on the Mac render host at 1280x800 and 1920x1080; the Deck look is open.
+  - Rooms (items 3, 8): b86dada's room test also caught the Duimon DS and 3DS device plates (canvas-sized,
+    viewport-following), which smeared their edge rows over the wood desk at 1280x800. Only a scene's
+    own room plate, the Mega Bezel BackgroundImage, carries on now; the DS desk is back, judged by eye.
+  - Fit on a TV room (items 1, 6, 8): every TV system defaults to fit, which drew 240 lines at 2.14x and
+    480 at 1.07x on the Deck, so scanlines beat into bands on any field that is not pure white (a grey
+    card banded every ~7 lines under GDV, the Dreamcast every ~14 px). Fit on a room now snaps to the
+    nearest whole multiple of the native lines whose opening stays on screen (2x for 240 lines and 1x
+    for 480 at 1280x800, 3x for 240 at 1920x1080), the room carrying on and its table on the bottom
+    edge. A 50% grey card in the PS1's fit is now grain only, the Dreamcast's even. The editor preview
+    carries the same arithmetic. This supersedes the 2026-10-04 ruling that left the default fit
+    fractional on TVs.
+  - Bezel placement on a room lets 1% of the plate leave the screen (the owner's bezel rule of
+    2026-07-07), so the NES TV draws at 2x and fills the Deck's height instead of 1x. A body rectangle
+    per Soqueroeu TV would allow more (the NES at 3x on 1080p); not done. SemuComposedScale (the
+    texture-pack scale for mods) still floors fit and bezel; it matters only for packs on a TV system.
+  - GDV fields (item 6): the PS1 and SNES presets set ntsc_fields 0, so ntsc-pass1 flipped the chroma
+    phase every frame. Merged (ntsc_fields 1, as his Mega Drive preset), consecutive frames of a still
+    Alundra screenshot differ in 116 pixels instead of 4233, Donkey Kong Country 2768 instead of 8745
+    (the rest is his grain).
+  - Restart Game (item 4): the action (settings radial, the Wii layer's centre, Ctrl+Shift+D, the menu
+    row) restarts only when something waits, as its Steam doc says, so a stray centre click after a
+    live layout switch does nothing. The players page's RESTART GAME keeps the ruling below. With
+    nothing to apply the toast reads RESTART: NOTHING TO APPLY.
+  Contracts: scene_fill.btrc (the DS and 3DS device lines carry no room field; every TV room's default
+  placement is a whole multiple of its native lines at both sizes; the NES in bezel is 480 lines at
+  1280x800; the editor's copy of the room flag, uLayer.w, scissor, tolerance, fit snap and bottom-edge
+  anchor), fields_reflections.btrc (every GDV-NTSC variant merges its fields) and controller_layouts.btrc
+  (the action after a live switch journals 87/0). Each fails under its mutation (10 run).
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
