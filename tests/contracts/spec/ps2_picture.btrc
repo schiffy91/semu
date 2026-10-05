@@ -1,0 +1,69 @@
+// PS2 picture spec (M15, the live review's item 1). PCSX2 drew its unsafe-settings notice over Semu's composed TV
+// at every boot ("Integer scaling is enabled. This may shrink the image." and "Texture filtering is not set to
+// Bilinear (PS2)", the profile's filter = 0, Nearest), and its render hook published PCSX2's own presented
+// rectangle: with integer scaling a whole step across but 4:3 down (448 lines drawn as 768), which the renderer then
+// read back down to native with a linear blit, so the PS2 picture was resampled twice before the CRT shader saw it.
+// PCSX2 now filters textures as the PS2 does (Bilinear (PS2), upstream's default), keeps its unsafe-settings notice
+// off the frame, and the hook draws the GS output one texel to one pixel and publishes that picture, with PCSX2's
+// own rectangle giving only its shape; when Semu composes nothing PCSX2's own picture is drawn as before.
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+
+class Ps2PictureSpecText {
+    class string section(string document, string header) {  // the lines under HEADER, up to the next section
+        int start = document.indexOf(header + "\n");
+        if (start < 0) { return ""; }
+        int from = start + header.len() + 1;
+        string rest = document.substring(from, document.len() - from);
+        int next = rest.indexOf("\n[");
+        return next < 0 ? rest : rest.substring(0, next + 1);
+    }
+
+    class bool ordered(string text, Vector<string> parts) {  // each part found after the one before it
+        int position = 0;
+        for part in parts {
+            string rest = text.substring(position, text.len() - position);
+            int found = rest.indexOf(part);
+            if (found < 0) { return false; }
+            position = position + found + part.len();
+        }
+        return true;
+    }
+}
+
+class Ps2PictureSpecContract {
+    class void profile(Contract contract, string target) {  // the compiled PCSX2.ini: no notice over the frame, the PS2's own texture filtering
+        Fixture fixture = Fixture(target);
+        string main = fixture.profile("pcsx2", "config/PCSX2/inis/PCSX2.ini");
+        string core = Ps2PictureSpecText.section(main, "[EmuCore]");
+        string graphics = Ps2PictureSpecText.section(main, "[EmuCore/GS]");
+        contract.contains(core, "WarnAboutUnsafeSettings = false\n", target + " pcsx2 draws no unsafe-settings notice over the composed frame (VMManager::WarnAboutUnsafeSettings returns at once)");
+        contract.contains(graphics, "filter = 2\n", target + " pcsx2 filters textures as the PS2 asks (Bilinear (PS2), upstream's default), so no texture-filtering notice either");
+        contract.lacks(graphics, "filter = 0", target + " pcsx2 never forces Nearest texture filtering, which breaks games that rely on the GS's bilinear");
+        contract.contains(graphics, "upscale_multiplier = 1\n", target + " pcsx2 renders at native resolution, so one GS texel is one game pixel for the hook to publish");
+        contract.expect(fixture.diagnostics.ok(), target + " the pcsx2 profile renders cleanly: " + fixture.diagnostics.render());
+    }
+
+    class void hook(Contract contract, string project) {  // the render hook publishes the GS output at its own size
+        string patch = FileSystem.readText(PathTools.join(project, "config/emulators/pcsx2/semu_render_hook.patch"));
+        contract.contains(patch, "+\tif (semu_content && native_width <= ds.x && native_height <= ds.y)\n", "the hook draws the GS output at its own size whenever it fits the window");
+        contract.contains(patch, "+\t\tconst GSVector4 native_rect(static_cast<float>(native_left), static_cast<float>(native_bottom),\n+\t\t\tstatic_cast<float>(native_left + native_width), static_cast<float>(native_bottom + native_height));\n", "the native rectangle is exactly the GS output's size, on whole pixels");
+        contract.contains(patch, "+\t\tPSSetSamplerState(m_convert.pt); // one texel to one pixel\n+\t\tDrawStretchRect(flip_sr, native_rect, ds);\n", "the hook copies the GS output point-sampled into that rectangle");
+        contract.contains(patch, "+\t\tif (SemuPublishFrame(m_gl_context.get(), native_left, native_bottom, native_width, native_height,\n+\t\t\t\tnative_width, native_height, content_aspect, ds) == SEMU_RENDER_APPLIED)\n+\t\t\treturn;\n", "and publishes it as its own native size, PCSX2's rectangle giving only the shape");
+        contract.contains(patch, "+\tconst float content_aspect = semu_content ? static_cast<float>(content_right - content_left) / static_cast<float>(content_top - content_bottom) : 0.0f;", "the shape is PCSX2's own presented rectangle on whole pixels, as the hook published it before (4:3, 3:2 progressive, or a widescreen patch's)");
+        Vector<string> fallback = ["== SEMU_RENDER_APPLIED)", "+\t\tcb.SetTarget(dRect, ds);", "+\t\tPSSetSamplerState(linear ? m_convert.ln : m_convert.pt);", "+\t\tglClear(GL_COLOR_BUFFER_BIT);", "+\t\tDrawStretchRect(flip_sr, dRect, ds);\n+\t\treturn;\n"];
+        contract.expect(Ps2PictureSpecText.ordered(patch, fallback), "when Semu composes nothing, PCSX2's own picture is drawn on a cleared window, as without the hook");
+        Vector<string> larger = ["+\t\treturn;\n", " \tDrawStretchRect(flip_sr, dRect, ds);\n", "+\t// A picture larger than the window", "+\tif (semu_content)\n", "+\t\tSemuPublishFrame(m_gl_context.get(), content_left, content_bottom,"];
+        contract.expect(Ps2PictureSpecText.ordered(patch, larger), "PCSX2's own rectangle is published only for a picture larger than the window, after the native path has returned");
+        contract.expect(Strings.split(patch, "semu_render_game_gl(&s_semu_frame)").size() == 2, "one call publishes every frame (SemuPublishFrame)");
+    }
+
+    class void run(Contract contract) {
+        for target in ["steam-deck", "linux-desktop"] { Ps2PictureSpecContract.profile(contract, target); }
+        Ps2PictureSpecContract.hook(contract, Fixture("steam-deck").project);
+    }
+}

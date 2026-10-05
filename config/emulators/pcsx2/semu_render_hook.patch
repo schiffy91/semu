@@ -1,6 +1,6 @@
 --- a/pcsx2/GS/Renderers/OpenGL/GSDeviceOGL.cpp
 +++ b/pcsx2/GS/Renderers/OpenGL/GSDeviceOGL.cpp
-@@ -17,10 +17,45 @@
+@@ -17,10 +17,78 @@
  #include "imgui.h"
  #include "IconsFontAwesome6.h"
  
@@ -41,12 +41,45 @@
 +		s_semu_context_generation++;
 +	}
 +}
++
++// One frame to Semu's renderer: the picture at left,bottom (rows counted up from the window's bottom),
++// width by height window pixels holding native_width by native_height GS pixels, shown at aspect.
++static int SemuPublishFrame(GLContext* context, int left, int bottom, int width, int height,
++	int native_width, int native_height, float aspect, const GSVector2i& window)
++{
++	SemuClearFrame();
++	SemuBindContext(context);
++	if (++s_semu_frame_id == 0)
++		s_semu_frame_id = 1;
++
++	s_semu_frame.abi = SEMU_RENDER_ABI_GL;
++	s_semu_frame.struct_size = sizeof(s_semu_frame);
++	s_semu_frame.frame_id = s_semu_frame_id;
++	s_semu_frame.framebuffer = 0;
++	s_semu_frame.color_buffer = GL_BACK;
++	s_semu_frame.framebuffer_width = window.x;
++	s_semu_frame.framebuffer_height = window.y;
++	s_semu_frame.presentation_aspect = aspect;
++	s_semu_frame.layout_variant = SEMU_RENDER_LAYOUT_AUTO;
++	s_semu_frame.surface_count = 1;
++	s_semu_frame.surfaces[0].x = left;
++	s_semu_frame.surfaces[0].y = bottom;
++	s_semu_frame.surfaces[0].width = width;
++	s_semu_frame.surfaces[0].height = height;
++	s_semu_frame.surfaces[0].native_width = native_width;
++	s_semu_frame.surfaces[0].native_height = native_height;
++	s_semu_frame.surfaces[0].rotation = 0;
++	s_semu_frame.surfaces[0].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
++	s_semu_frame.get_proc = SemuGetProcAddress;
++	s_semu_frame.context_generation = s_semu_context_generation;
++	return semu_render_game_gl(&s_semu_frame);
++}
 +#endif
 +
  static constexpr u32 g_vs_cb_index        = 1;
  static constexpr u32 g_ps_cb_index        = 0;
  
-@@ -928,6 +963,28 @@
+@@ -928,6 +996,28 @@
  {
  	if (frame_skip || m_window_info.type == WindowInfo::Type::Surfaceless)
  		return PresentResult::FrameSkipped;
@@ -75,7 +108,7 @@
  
  	OMSetFBO(0);
  	OMSetColorMaskState();
-@@ -948,6 +1005,12 @@
+@@ -948,6 +1038,12 @@
  {
  	RenderImGui();
  
@@ -88,51 +121,63 @@
  	if (m_gpu_timing_enabled)
  		PopTimestampQuery();
  
-@@ -1566,6 +1629,49 @@
+@@ -1565,7 +1661,61 @@
+ 	// 2/ in case some GS code expect thing in dx order.
  	// Only flipping the backbuffer is transparent (I hope)...
  	const GSVector4 flip_sr(sRect.xwzy());
++
++#ifdef HAVE_SEMU_RENDERER
++	// Semu: the GS output is drawn at its own size, one texel to one pixel, and published so: Semu's
++	// renderer scales that picture by whole steps and shades it. PCSX2's own rectangle gives only the
++	// picture's shape (with integer scaling it is a whole step across but 4:3 down, 448 lines drawn
++	// as 768), so publishing it made the renderer read a stretched picture back down. When Semu
++	// composes nothing, PCSX2's own picture is drawn, as without the hook.
++	const bool semu_window = dTex == nullptr && ds.x > 0 && ds.y > 0 && m_gl_context && m_gl_context->IsCurrent();
++	const int content_left = std::clamp(static_cast<int>(std::floor(std::min(dRect.x, dRect.z))), 0, ds.x);
++	const int content_bottom = std::clamp(static_cast<int>(std::floor(std::min(dRect.y, dRect.w))), 0, ds.y);
++	const int content_right = std::clamp(static_cast<int>(std::ceil(std::max(dRect.x, dRect.z))), 0, ds.x);
++	const int content_top = std::clamp(static_cast<int>(std::ceil(std::max(dRect.y, dRect.w))), 0, ds.y);
++	const int native_width = static_cast<int>(std::lround(std::abs(sRect.z - sRect.x) * sTex->GetWidth()));
++	const int native_height = static_cast<int>(std::lround(std::abs(sRect.w - sRect.y) * sTex->GetHeight()));
++	const bool semu_content = semu_window && content_right > content_left && content_top > content_bottom && native_width > 0 && native_height > 0;
++	const float content_aspect = semu_content ? static_cast<float>(content_right - content_left) / static_cast<float>(content_top - content_bottom) : 0.0f; // the shape PCSX2 presents
++	if (semu_content && native_width <= ds.x && native_height <= ds.y)
++	{
++		const int native_left = (ds.x - native_width) / 2;
++		const int native_bottom = (ds.y - native_height) / 2;
++		const GSVector4 native_rect(static_cast<float>(native_left), static_cast<float>(native_bottom),
++			static_cast<float>(native_left + native_width), static_cast<float>(native_bottom + native_height));
++		cb.SetTarget(native_rect, ds);
++		prog.Uniform4fv(1, cb.TargetRect.F32);
++		prog.Uniform2fv(3, &cb.TargetSize.x);
++		PSSetSamplerState(m_convert.pt); // one texel to one pixel
++		DrawStretchRect(flip_sr, native_rect, ds);
++		if (SemuPublishFrame(m_gl_context.get(), native_left, native_bottom, native_width, native_height,
++				native_width, native_height, content_aspect, ds) == SEMU_RENDER_APPLIED)
++			return;
++
++		// Semu composed nothing: PCSX2's own picture on a cleared window (the frame stays published for the post-UI pass)
++		cb.SetTarget(dRect, ds);
++		prog.Uniform4fv(1, cb.TargetRect.F32);
++		prog.Uniform2fv(3, &cb.TargetSize.x);
++		PSSetSamplerState(linear ? m_convert.ln : m_convert.pt);
++		glDisable(GL_SCISSOR_TEST);
++		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
++		glClear(GL_COLOR_BUFFER_BIT);
++		glEnable(GL_SCISSOR_TEST);
++		DrawStretchRect(flip_sr, dRect, ds);
++		return;
++	}
++#endif
++
  	DrawStretchRect(flip_sr, dRect, ds);
 +
 +#ifdef HAVE_SEMU_RENDERER
-+	if (dTex == nullptr && ds.x > 0 && ds.y > 0 && m_gl_context && m_gl_context->IsCurrent())
++	// A picture larger than the window (an internal resolution above native) is published where PCSX2 drew it.
++	if (semu_content)
 +	{
-+		const int content_left = std::clamp(static_cast<int>(std::floor(std::min(dRect.x, dRect.z))), 0, ds.x);
-+		const int content_bottom = std::clamp(static_cast<int>(std::floor(std::min(dRect.y, dRect.w))), 0, ds.y);
-+		const int content_right = std::clamp(static_cast<int>(std::ceil(std::max(dRect.x, dRect.z))), 0, ds.x);
-+		const int content_top = std::clamp(static_cast<int>(std::ceil(std::max(dRect.y, dRect.w))), 0, ds.y);
-+		const int native_width = static_cast<int>(std::lround(std::abs(sRect.z - sRect.x) * sTex->GetWidth()));
-+		const int native_height = static_cast<int>(std::lround(std::abs(sRect.w - sRect.y) * sTex->GetHeight()));
-+
-+		if (content_right > content_left && content_top > content_bottom && native_width > 0 && native_height > 0)
-+		{
-+			SemuClearFrame();
-+			SemuBindContext(m_gl_context.get());
-+			if (++s_semu_frame_id == 0)
-+				s_semu_frame_id = 1;
-+
-+			s_semu_frame.abi = SEMU_RENDER_ABI_GL;
-+			s_semu_frame.struct_size = sizeof(s_semu_frame);
-+			s_semu_frame.frame_id = s_semu_frame_id;
-+			s_semu_frame.framebuffer = 0;
-+			s_semu_frame.color_buffer = GL_BACK;
-+			s_semu_frame.framebuffer_width = ds.x;
-+			s_semu_frame.framebuffer_height = ds.y;
-+			s_semu_frame.presentation_aspect = static_cast<float>(content_right - content_left) /
-+				static_cast<float>(content_top - content_bottom);
-+			s_semu_frame.layout_variant = SEMU_RENDER_LAYOUT_AUTO;
-+			s_semu_frame.surface_count = 1;
-+			s_semu_frame.surfaces[0].x = content_left;
-+			s_semu_frame.surfaces[0].y = content_bottom;
-+			s_semu_frame.surfaces[0].width = content_right - content_left;
-+			s_semu_frame.surfaces[0].height = content_top - content_bottom;
-+			s_semu_frame.surfaces[0].native_width = native_width;
-+			s_semu_frame.surfaces[0].native_height = native_height;
-+			s_semu_frame.surfaces[0].rotation = 0;
-+			s_semu_frame.surfaces[0].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
-+			s_semu_frame.get_proc = SemuGetProcAddress;
-+			s_semu_frame.context_generation = s_semu_context_generation;
-+			semu_render_game_gl(&s_semu_frame);
-+		}
++		SemuPublishFrame(m_gl_context.get(), content_left, content_bottom, content_right - content_left,
++			content_top - content_bottom, native_width, native_height, content_aspect, ds);
 +	}
 +#endif
  }

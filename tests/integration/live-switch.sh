@@ -13,7 +13,9 @@
 #
 # SEMU_REV=<rev> builds that commit instead of this checkout's tracked files; SEMU_PS2_BIOS=DIR
 # mounts a PS2 BIOS folder; SEMU_BIOS=DIR mounts a firmware folder read-only as paths.bios (the PS1 BIOS for
-# Beetle PSX); SIZE=WxH sizes the screen (default 1280x800, the Deck); WAIT seconds before the first chord (default 120); PLACEMENT=bezel
+# Beetle PSX); SIZE=WxH sizes the screen (default 1280x800, the Deck); CAPTURE_FRAME=N has the renderer save its Nth composed frame,
+# the emulator's own overlay included (OUT/<n>-<emulator>-<system>-semu-render-final.ppm, beside the launch's receipts and PCSX2's
+# emulog); WAIT seconds before the first chord (default 120); PLACEMENT=bezel
 # shows a handheld's whole shell instead of the cropped integer picture; CHORDS="ctrl+shift+f ctrl+shift+r,ctrl+shift+r"
 # presses more radial chords after the menu, each with its toast and picture (a,b: twice, a second apart). Each case writes
 # OUT/<n>-<emulator>.result (actions seen, journal records, switch receipts, saved choices) and
@@ -41,7 +43,7 @@ if [ "${1:-}" != "--inside" ] && [ "${1:-}" != "--build" ]; then
   [ -n "${SEMU_BIOS:-}" ] && mounts+=(-v "$SEMU_BIOS:/bios:ro")
   name="semu-live-switch-$(date +%Y%m%d%H%M%S)"  # left behind exited
   echo "container $name, results in $out"
-  environment=(-e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" -e CHORDS="${CHORDS:-}" -e SETTLE="${SETTLE:-}" -e PADS="${PADS:-0}" -e BASICS="${BASICS:-1}" -e SIZE="${SIZE:-1280x800}" -e FIRMWARE="${SEMU_BIOS:+/bios}")
+  environment=(-e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" -e CHORDS="${CHORDS:-}" -e SETTLE="${SETTLE:-}" -e PADS="${PADS:-0}" -e BASICS="${BASICS:-1}" -e SIZE="${SIZE:-1280x800}" -e CAPTURE_FRAME="${CAPTURE_FRAME:-}" -e FIRMWARE="${SEMU_BIOS:+/bios}")
   nixConfig="experimental-features = nix-command flakes
 filter-syscalls = false
 sandbox = false
@@ -130,7 +132,7 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
     export SteamVirtualGamepadInfo="$root/steam-slots"
     sleep 2
   fi
-  HOME="$root/home" DISPLAY="$display" SEMU_RENDER_DEBUG=1 "$bundle/bin/semu" launch "$emulator" --system "$system" --rom "$rom" \
+  HOME="$root/home" DISPLAY="$display" SEMU_RENDER_DEBUG=1 SEMU_RENDER_CAPTURE_FRAME="${CAPTURE_FRAME:-}" "$bundle/bin/semu" launch "$emulator" --system "$system" --rom "$rom" \
     --settings-json "$settings" --semu-home "$root/home/semu" > "$out/$label.log" 2>&1 &
   launcher=$!
   profiles="$root/state/$emulator/dolphin-user/Config/Profiles"
@@ -167,6 +169,10 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
   status=0; wait "$launcher" 2>/dev/null || status=$?
   kill "$watcher" 2>/dev/null || true
   for pid in "${pads[@]}"; do kill "$pid" 2>/dev/null || true; done
+  for evidence in semu-render-final.ppm semu-render-evidence.log; do  # the frame-CAPTURE_FRAME picture (the emulator's own overlay included) and every receipt
+    if [ -f "$root/state/$emulator/$evidence" ]; then cp "$root/state/$emulator/$evidence" "$out/$label-$evidence"; fi
+  done
+  find "$root/state/$emulator" -name emulog.txt -exec cp {} "$out/$label-emulog.txt" \; 2>/dev/null || true  # PCSX2's own log
   {
     echo "emulator=$emulator system=$system rom=$rom"
     echo "alive_until_the_end=$alive launcher_status=$status"
@@ -187,6 +193,7 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
     echo "remote_sources=$(grep -E "^(WiimoteSource|SIDevice)" "$root/state/$emulator/dolphin-user/Config/Dolphin.ini" 2>/dev/null | tr "\n" " ")"
     echo "remote2_device=$(grep -A 1 "^\[Wiimote2\]" "$root/state/$emulator/dolphin-user/Config/WiimoteNew.ini" 2>/dev/null | grep "^Device" | head -1)"
     echo "saved_input=$("$jq" -c ".input" "$root/home/semu/semu.json" 2>/dev/null || echo none)"
+    echo "unsafe_settings_notices=$(grep -a -c "Unsafe Settings" "$out/$label-emulog.txt" 2>/dev/null || true) sources=$(grep -a -o "surface0_source=[^ ]* surface0_native=[^ ]*\|surface0_native=[^ ]* surface0_source=[^ ]*" "$out/$label-semu-render-evidence.log" 2>/dev/null | sort | uniq -c | tr -s " \n" " ;")"
   } > "$out/$label.result"
   cat "$out/$label.result"
 done < "$out/cases"

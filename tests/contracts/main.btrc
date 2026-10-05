@@ -75,6 +75,7 @@ import ./spec/visual_cycle.btrc;
 import ./spec/live_variants.btrc;
 import ./spec/mods.btrc;
 import ./spec/audio.btrc;
+import ./spec/ps2_picture.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -1023,6 +1024,7 @@ int main() {
     BuildFlagsSpecContract.run(contract);
     ModsSpecContract.run(contract);
     AudioSpecContract.run(contract);
+    Ps2PictureSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);
