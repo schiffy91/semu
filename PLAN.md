@@ -2185,6 +2185,38 @@ Status: observed on the Deck 2026-10-05 (release bdabd01), off-screen, every ite
     pixels are even, with and without the CRT shader. By eye: Devil May Cry (USA)'s memory-card text
     (radial-check case 11) crisp and even, no smeared rows.
 
+### M16. Owner feedback from the Deck, round 4 (2026-10-06)
+
+The owner played the M15 release (3682cb6) in Game Mode and reported (verbatim where quoted):
+
+1. **Pointer** "the mouse pointers in the systems with it should move to a crosshairs". Done when every
+   pointer Semu shows (DS, 3DS, Wii) is a crosshair, with no second cursor beside it.
+2. **Rendering scale** "should be available through the radial / settings". Done when each system whose
+   emulator can render above native offers a render-scale choice in the settings radial and the menu,
+   saved per system, applied live or through Restart Game, with the picture still placed correctly.
+3. **GB studio** "the gb studio gray bezel is bad. it has a weird texture to it and the proportions and
+   everything are off...delete it". Done when the variant and its package are gone (the owner asked for
+   the deletion).
+4. **Boot resize** "why do some emulators go from correctly-sized (full screen), to 1/3 screen (oriented at
+   top-left with bottom right, bottom, and right as black bars) to properly oriented again while loading a
+   game? e.g. gamecube". Done when the cause is known and no emulator shows a wrongly sized frame at boot.
+5. **Fit** "should cycle between integer-game, integer-bezel, non-integer-game, non-integer-bezel". Done
+   when Fit cycles those four states on every system with a bezel (reversible: integer stays the default).
+6. **Wii controller** "why does changing the wii controller require a restart?" Done when the reason is
+   answered from Dolphin's source and every change Dolphin can make live is live.
+7. **Wii sizes** "with wii, why is bezel + fit screen larger than no bezel?" Done when the cause is known and
+   bezel-off follows the same Fit state as bezel-on.
+8. **Dreamcast speed** "super laggy at like 23fps on sonic adventure". Done when Sonic Adventure runs at
+   full speed on the Deck (measured).
+9. **Shaders per system** "are we using the right shaders for each system? for example, dreamcast shaders vs
+   sega genesis? both are on crts but one is easy and royal; the other is gdv-ntsc." Done when every
+   system's default shader follows one stated rule (era, signal, display) and runs at full speed on the Deck.
+10. **TV cutout** "there is a light bar and aliasing on the playstation bezel + screen cutout ...in fact i
+    think there is a lot of aliasing with the tv curve on a few consoles". Done when every TV's curved
+    opening is antialiased and the PS1's light bar is gone, checked by eye at 1280x800 and 1920x1080.
+
+Status: started 2026-10-06.
+
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
 The review ran on the Mac (mbp21, aarch64-darwin, macOS 27). FRACTAL-NORTH did not resolve
