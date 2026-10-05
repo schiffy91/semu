@@ -1,0 +1,7 @@
+--- a/handheld/agb001.slangp
++++ b/handheld/agb001.slangp
+@@ -8,3 +8,4 @@
+ shader1 = ../stock.slang
+ filter_linear1 = true
+ scale_type1 = viewport
++wrap_mode1 = clamp_to_edge

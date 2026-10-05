@@ -1,0 +1,7 @@
+--- a/handheld/authentic_gbc.slangp
++++ b/handheld/authentic_gbc.slangp
+@@ -8,3 +8,4 @@
+ shader1 = shaders/authentic_gbc/authentic_gbc.slang
+ filter_linear1 = false
+ scale_type1 = viewport
++wrap_mode1 = clamp_to_edge

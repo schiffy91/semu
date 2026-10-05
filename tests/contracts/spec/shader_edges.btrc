@@ -1,0 +1,174 @@
+// Shader edge spec (M15 item 5, "make sure the gameboy is pixel perfect around the bezel"): with the LCD looks on, the
+// outermost row and column of every edge pixel were darker than the rest. lcd-grid-v2 (the GBC and GBA default looks, the
+// DS and 3DS grid looks) reads each output pixel's 2x2 source neighbours with texelFetchOffset, and a fetch past the
+// source's edge returns black, which no wrap_mode reaches. The authentic GBC look samples the four nearest texels and the
+// AGB-001 look's last pass filters linearly at the viewport, both through the default clamp_to_border, black past the edge;
+// the Game Boy looks draw their backlight paper over the picture with a linear filter the same way, which blended black
+// into the outermost line once the picture grew past the paper's size (the DMG at 7x on 1920x1080).
+// config/assets/shaders.json now patches those upstream files after staging the pinned tree (Semu-owned diffs in
+// config/assets/shader-patches, each pinned before and after): the fetch is clamped onto the source and the passes and
+// the paper clamp to the edge, so an edge pixel's outside neighbour is itself and the interior is untouched.
+// tests/visual/pixel-grid.sh measures it on the render host: each edge strip against its inward twin, the interior
+// against the release before.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Map;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/bezel/preset.btrc;
+import ./gameboy.btrc;
+import ./core_colour.btrc;
+
+class ShaderEdgeSpecPatch {  // a unified diff as patch(1) applies it: each hunk's old lines (context and removed) become its new lines
+    class string apply(string original, string diff) {
+        string text = original;
+        Vector<string> lines = Strings.split(diff, "\n");
+        int index = 0;
+        int hunks = 0;
+        while (index < lines.size()) {
+            if (!lines.get(index).startsWith("@@")) { index++; continue; }
+            index++;
+            string before = "";
+            string after = "";
+            string last = "";
+            while (index < lines.size() && !lines.get(index).startsWith("@@")) {
+                string line = lines.get(index);
+                string body = line.len() > 0 ? line.substring(1, line.len() - 1) + "\n" : "";
+                if (line.startsWith("-")) { before = before + body; last = "-"; }
+                if (line.startsWith("+")) { after = after + body; last = "+"; }
+                if (line.startsWith(" ")) { before = before + body; after = after + body; last = " "; }
+                if (line.startsWith("\\")) {  // "\ No newline at end of file": the line above ends the file without one
+                    if (!last.equals("+") && before.endsWith("\n")) { before = before.substring(0, before.len() - 1); }
+                    if (!last.equals("-") && after.endsWith("\n")) { after = after.substring(0, after.len() - 1); }
+                }
+                index++;
+            }
+            int at = before.isEmpty() ? -1 : Strings.find(text, before, 0);
+            if (at < 0) { return ""; }
+            text = text.substring(0, at) + after + text.substring(at + before.len(), text.len() - at - before.len());
+            hunks++;
+        }
+        return hunks > 0 ? text : "";
+    }
+
+    class bool hex(string digest) { return digest.len() == 64 && Strings.find(digest, " ", 0) < 0; }
+}
+
+class ShaderEdgeSpecLooks {  // the handheld looks: every shader variant of the systems whose pixels the owner counts
+    class Vector<JSONValue> variants(Fixture fixture) {
+        Vector<JSONValue> found = [];
+        for systemId in ["gb", "gbc", "gba", "nds", "n3ds"] {
+            JSONValue variants = fixture.model.system(systemId).shaders.get("variants");
+            for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) { found.push(variants.at(index)); }
+        }
+        return found;
+    }
+
+    class Vector<string> wrappers(JSONValue manifest, JSONValue variant) {  // the upstream presets a look's wrappers reference
+        Vector<string> logicals = [SemuJson.textAt(variant, "screen")];
+        JSONValue screens = variant.get("screens");
+        if (screens != null && screens.isObject()) { for name in screens.keys().sorted() { logicals.push(SemuJson.text(screens.get(name))); } }
+        Vector<string> found = [];
+        for logical in logicals {
+            JSONValue recipe = manifest.get("assets").get(logical);
+            if (recipe != null && SemuJson.textAt(recipe, "type").equals("slang_wrapper") && !found.contains(SemuJson.textAt(recipe, "reference.path"))) { found.push(SemuJson.textAt(recipe, "reference.path")); }
+        }
+        return found;
+    }
+}
+
+class ShaderEdgeSpecContract {
+    class string patched(Fixture fixture, JSONValue patches, string slang, string path) {  // the staged file: the pinned upstream with its patch applied, if one names it
+        string upstream = FileSystem.readText(PathTools.join(slang, path));
+        if (patches == null || !patches.isObject()) { return upstream; }
+        for name in patches.keys() {
+            JSONValue patch = patches.get(name);
+            if (SemuJson.textAt(patch, "path").equals(path)) { return ShaderEdgeSpecPatch.apply(upstream, FileSystem.readText(PathTools.join(fixture.project, "config/assets/" + SemuJson.textAt(patch, "patch")))); }
+        }
+        return upstream;
+    }
+
+    class void reproduce(Contract contract, Fixture fixture, JSONValue patches, string slang) {  // each patch turns its pinned upstream file into its pinned output, as shaders.nix checks
+        string scratch = PathTools.join(fixture.scratch, "patched");
+        for name in patches.keys().sorted() {
+            JSONValue patch = patches.get(name);
+            string path = SemuJson.textAt(patch, "path");
+            string upstream = PathTools.join(slang, path);
+            contract.expect(SemuJson.textAt(patch, "tree").equals("shaders_slang") && FileSystem.isFile(upstream) && GameBoySpecFiles.sha256(upstream).equals(SemuJson.textAt(patch, "source_sha256")),
+                name + ": the upstream file it patches is the pinned tree's " + path);
+            string text = ShaderEdgeSpecContract.patched(fixture, patches, slang, path);
+            contract.expect(!text.isEmpty() && FileSystem.writeText(scratch, text) && GameBoySpecFiles.sha256(scratch).equals(SemuJson.textAt(patch, "sha256")),
+                name + ": " + SemuJson.textAt(patch, "patch") + " applies to it and gives its pinned output");
+        }
+    }
+
+    class void cover(Contract contract, Fixture fixture, JSONValue manifest, JSONValue patches, string slang) {  // no handheld look reads past its picture's edge
+        int looks = 0;
+        int fetches = 0;
+        int clamped = 0;
+        int textures = 0;
+        for variant in ShaderEdgeSpecLooks.variants(fixture) {
+            looks++;
+            string label = SemuJson.textAt(variant, "screen");
+            for pass in CoreColourSpecPipeline.passes(manifest, slang, variant) {
+                if (!FileSystem.readText(PathTools.join(slang, pass)).contains("texelFetch")) { continue; }
+                fetches++;
+                string text = ShaderEdgeSpecContract.patched(fixture, patches, slang, pass);
+                contract.expect(!text.contains("texelFetchOffset") && text.contains("texelFetch(Source, clamp((coord) + (offset), ivec2(0), ivec2(global.SourceSize.xy) - 1), 0)"),
+                    label + ": " + pass + " fetches its neighbours clamped onto the source, never black past the edge");
+            }
+            for preset in ShaderEdgeSpecLooks.wrappers(manifest, variant) {
+                string path = PathTools.join(fixture.scratch, "preset.slangp");
+                FileSystem.writeText(path, ShaderEdgeSpecContract.patched(fixture, patches, slang, preset));
+                Map<string, string> values = MegaBezelPreset.fileValues(path);
+                for (int pass = 0; values.has(f"shader{pass}"); pass++) {
+                    bool viewport = values.has(f"scale_type{pass}") && values.get(f"scale_type{pass}").equals("viewport");
+                    bool linear = values.has(f"filter_linear{pass}") && values.get(f"filter_linear{pass}").equals("true");
+                    bool taps = values.get(f"shader{pass}").endsWith("authentic_gbc/authentic_gbc.slang");  // the four nearest texels, through the sampler
+                    if (!viewport || (!linear && !taps)) { continue; }
+                    clamped++;
+                    contract.expect(values.has(f"wrap_mode{pass}") && values.get(f"wrap_mode{pass}").equals("clamp_to_edge"),
+                        label + ": " + preset + f" pass {pass} reads past the picture's edge through its sampler, so it clamps to the edge");
+                }
+                for key in values.keys().sorted() {  // a texture drawn across the picture with a linear filter (the Game Boy's backlight paper)
+                    if (!key.endsWith("_linear") || !values.get(key).equals("true")) { continue; }
+                    string texture = key.substring(0, key.len() - 7);
+                    textures++;
+                    contract.expect(values.has(texture + "_wrap_mode") && values.get(texture + "_wrap_mode").equals("clamp_to_edge"),
+                        label + ": " + preset + " filters " + texture + " linearly over the picture, so it clamps to the texture's edge, never blending its border's black into the outermost line");
+                }
+            }
+        }
+        contract.expect(looks >= 10 && fetches >= 4 && clamped >= 2 && textures >= 2, f"the handheld looks were checked: {looks} looks, {fetches} fetching passes, {clamped} passes and {textures} textures sampled past the edge");
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        JSONValue manifest = SemuJson.readFile(PathTools.join(fixture.project, "config/assets/shaders.json"));
+        JSONValue patches = manifest.get("patches");
+        contract.expect(patches != null && patches.isObject() && patches.keys().size() >= 3, "shaders.json declares the edge patches of the pinned slang tree");
+        if (patches == null || !patches.isObject()) { return; }
+        for name in patches.keys().sorted() {
+            JSONValue patch = patches.get(name);
+            contract.expect(ShaderEdgeSpecPatch.hex(SemuJson.textAt(patch, "source_sha256")) && ShaderEdgeSpecPatch.hex(SemuJson.textAt(patch, "sha256")) && SemuJson.textAt(patch, "patch").startsWith("shader-patches/")
+                && FileSystem.isFile(PathTools.join(fixture.project, "config/assets/" + SemuJson.textAt(patch, "patch"))) && !SemuJson.textAt(patch, "doc.provenance").isEmpty(),
+                name + ": a Semu-owned diff under config/assets/shader-patches, pinned before and after, with its provenance");
+        }
+        string interpreter = FileSystem.readText(PathTools.join(fixture.project, "config/assets/shaders.nix"));
+        contract.expect(interpreter.contains("${lib.concatStrings (lib.mapAttrsToList applyPatch (sources.patches or { }))}") && interpreter.contains("patch --no-backup-if-mismatch --forward --silent \"${target}\" ${./. + \"/${spec.patch}\"}")
+            && interpreter.contains("${verifyHash \"patched ${spec.path} (${name})\" target spec.sha256}"),
+            "shaders.nix applies every declared patch to its staged file and checks the file it leaves");
+        string root = MegaBezelTree.locate(fixture.plan.configRoot, "");
+        string slang = SemuPaths.normalize(PathTools.join(root, "shaders_slang"));
+        if (root.isEmpty() || !FileSystem.isDir(PathTools.join(slang, "handheld/shaders"))) {
+            contract.skip("shader edges", "no pinned slang tree (build it with `make bezel-tree` or set SEMU_BEZEL_TREE)");
+            return;
+        }
+        ShaderEdgeSpecContract.reproduce(contract, fixture, patches, slang);
+        ShaderEdgeSpecContract.cover(contract, fixture, manifest, patches, slang);
+    }
+}

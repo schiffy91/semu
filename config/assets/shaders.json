@@ -18,6 +18,63 @@
       "stage": "shaders_slang"
     }
   },
+  "patches": {
+    "lcd-grid-v2-edge": {
+      "tree": "shaders_slang",
+      "path": "handheld/shaders/lcd-cgwg/lcd-grid-v2.slang",
+      "source_sha256": "dc77b29530e5b771f12a5a2dd68c390805139bc25d84a30dead021fd38e581c5",
+      "patch": "shader-patches/lcd-grid-v2-edge.patch",
+      "sha256": "3f4cf1a8166a1207513ade6d6b1d50c3dc65b2f589c288d818138904a69d7c60",
+      "doc": {
+        "why": "lcd-grid-v2 lights each output pixel from its 2x2 source neighbours through texelFetchOffset, and a fetch past the source's edge returns black, so the outermost row and column of every edge pixel were drawn darker (the GBC and GBA default looks, the DS and 3DS grid looks). wrap_mode cannot reach a fetch. The patch clamps the fetched texel onto the source, as clamp_to_edge does for a sampled read: an edge pixel's outside neighbour is itself, every in-range fetch is unchanged, so the interior is identical.",
+        "provenance": "libretro/slang-shaders 4812a82f6c9a11cc8b5a7447040a98c9fc80c00e, handheld/shaders/lcd-cgwg/lcd-grid-v2.slang (cgwg's LCD grid); only its fetch_offset macro changes."
+      }
+    },
+    "authentic-gbc-edge": {
+      "tree": "shaders_slang",
+      "path": "handheld/authentic_gbc.slangp",
+      "source_sha256": "b8c0f7e63f8ee0232b77dd02cca99452db6f4bc44cedb7b77b1707c423e4eaa6",
+      "patch": "shader-patches/authentic-gbc-edge.patch",
+      "sha256": "c74d11a1f626386f6f2badbd7b5e5fc5f302f8a7cb57c4cb69f619008e63de16",
+      "doc": {
+        "why": "The authentic GBC pass samples the four nearest source texels through its sampler, and the preset leaves pass 1 at the default clamp_to_border, so past the edge it read black and the outermost row and column of every edge pixel were darker. wrap_mode1 clamp_to_edge makes the outside neighbour the edge texel; samples inside the picture are unchanged.",
+        "provenance": "libretro/slang-shaders 4812a82f6c9a11cc8b5a7447040a98c9fc80c00e, handheld/authentic_gbc.slangp (fishku, CC0); one line added."
+      }
+    },
+    "gameboy-background-edge": {
+      "tree": "shaders_slang",
+      "path": "handheld/gameboy.slangp",
+      "source_sha256": "0aeebf5dcc15a8a3e5a3aa5c0a2a6f66cf13eb15aec890b483424d23bce9f4e7",
+      "patch": "shader-patches/gameboy-background-edge.patch",
+      "sha256": "5b11aa9480f3c789310656dae0f84c66d92f195f7fb820c1d968d0a2f862003a",
+      "doc": {
+        "why": "The DMG look draws its backlight paper (a 1024x1024 texture) across the picture with a linear filter and the default clamp_to_border. Once the picture is wider or taller than the paper (7x, 1120x1008 on 1920x1080), the outermost line's filter reaches past the paper's edge and blends its black border in: up to 7 levels darker on the right edge and 4 on the top. BACKGROUND_wrap_mode clamp_to_edge keeps that line on the paper; every sample inside it is unchanged.",
+        "provenance": "libretro/slang-shaders 4812a82f6c9a11cc8b5a7447040a98c9fc80c00e, handheld/gameboy.slangp (Harlequin's Game Boy shader); one line added, and a final newline."
+      }
+    },
+    "gameboy-pocket-background-edge": {
+      "tree": "shaders_slang",
+      "path": "handheld/gameboy-pocket.slangp",
+      "source_sha256": "77359eb26be0a1a7c8a77df217918144b2438d633c2009d781415d10086a56c8",
+      "patch": "shader-patches/gameboy-pocket-background-edge.patch",
+      "sha256": "4313d63eaf077af8ce78869a6737e8bcbc172b23cbb255b9c0dc464737131f1d",
+      "doc": {
+        "why": "The pocket look draws its paper (2048x2048) the same way. It stays inside the paper up to 12x, so nothing changes at 1280x800 or 1920x1080 (5x and 7x); the same line keeps a larger screen's outermost line off the black border.",
+        "provenance": "libretro/slang-shaders 4812a82f6c9a11cc8b5a7447040a98c9fc80c00e, handheld/gameboy-pocket.slangp (Harlequin's Game Boy shader); one line added, and a final newline."
+      }
+    },
+    "agb001-edge": {
+      "tree": "shaders_slang",
+      "path": "handheld/agb001.slangp",
+      "source_sha256": "8701c0b7971d0b52ef9d45c3b1bf820e428fdffe1fd07874b9a6e1707038cda6",
+      "patch": "shader-patches/agb001-edge.patch",
+      "sha256": "4f715b218f58e1ac209d39ae576f7b710f908200c8a8be4b97479fb8b0bb8d2e",
+      "doc": {
+        "why": "The AGB-001 look draws its 4x pattern and then scales it to the viewport with a linear filter (stock.slang), whose footprint at the outermost output pixels reaches past the edge into the default clamp_to_border black. wrap_mode1 clamp_to_edge keeps those taps on the picture; every footprint inside it is unchanged.",
+        "provenance": "libretro/slang-shaders 4812a82f6c9a11cc8b5a7447040a98c9fc80c00e, handheld/agb001.slangp (mGBA's AGB-001 shader); one line added."
+      }
+    }
+  },
   "assets": {
     "assets/shaders/gb/screen.slangp": {
       "type": "slang_wrapper",

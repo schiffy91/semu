@@ -1,8 +1,9 @@
 # semu_shaders.nix — generic interpreter for the shader half of
 # config/assets/shaders.json: stages every "trees"
-# entry under share/libretro/shaders/<stage> and emits each declarative shader
+# entry under share/libretro/shaders/<stage>, emits each declarative shader
 # recipe at share/libretro/shaders/semu/<relative> — the "semu/" namespace
-# ShaderSelector.resolvePath maps "assets/shaders/..." onto. No pins or
+# ShaderSelector.resolvePath maps "assets/shaders/..." onto — and applies each
+# "patches" diff (config/assets/shader-patches) to its staged file. No pins or
 # preset names live here; shaders.json additions need zero nix edits.
 { lib, stdenvNoCC, fetchFromGitHub, pkgs }:
 
@@ -114,6 +115,23 @@ let
         "$out/${root}/semu/${relative}" recipe.output.sha256}
     '';
 
+  # A Semu-owned diff to one staged upstream file (shaders.json "patches"). It runs after the
+  # presets are written, so every preset keeps pinning the upstream files it names, and each
+  # patch pins both ends: the upstream file it expects and the file it leaves.
+  applyPatch = name: spec:
+    let
+      target = "$out/${root}/${sources.trees.${spec.tree}.stage}/${spec.path}";
+    in
+    assert lib.assertMsg (validSha256 (spec.source_sha256 or null))
+      "shader patch ${name} must pin the upstream file's sha256";
+    assert lib.assertMsg (validSha256 (spec.sha256 or null))
+      "shader patch ${name} must pin the patched file's sha256";
+    ''
+      ${verifyHash "upstream ${spec.path} for patch ${name}" target spec.source_sha256}
+      patch --no-backup-if-mismatch --forward --silent "${target}" ${./. + "/${spec.patch}"}
+      ${verifyHash "patched ${spec.path} (${name})" target spec.sha256}
+    '';
+
   emitPipeline = key: recipe:
     let
       relative = lib.removePrefix "assets/shaders/" key;
@@ -178,6 +196,7 @@ stdenvNoCC.mkDerivation {
   version = toString sources.schema_version;
 
   dontUnpack = true;
+  nativeBuildInputs = [ pkgs.gnupatch ];
 
   installPhase = ''
     runHook preInstall
@@ -190,6 +209,7 @@ stdenvNoCC.mkDerivation {
       | while IFS= read -r shader; do gawk -f ${./flatten-shader-tables.awk} "$shader" > "$shader.flat" && mv "$shader.flat" "$shader"; done
     ${lib.concatStrings (lib.mapAttrsToList emitWrapper slangAssets)}
     ${lib.concatStrings (lib.mapAttrsToList emitPipeline pipelineAssets)}
+    ${lib.concatStrings (lib.mapAttrsToList applyPatch (sources.patches or { }))}
     runHook postInstall
   '';
 

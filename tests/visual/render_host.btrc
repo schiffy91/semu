@@ -1,6 +1,7 @@
 // The real Semu renderer, offscreen on macOS (CGL, OpenGL 4.1 core): a test card (or a flat one,
 // RENDER_HOST_CARD=white/black with RENDER_HOST_LIT=screen, a measuring card: ramp, lines, bars, clip, or the bezel
-// editor's card with RENDER_HOST_CARD=editor, or a screenshot with RENDER_HOST_CARD=/path/to/it.png) stands in for the
+// editor's card with RENDER_HOST_CARD=editor, or a screenshot with RENDER_HOST_CARD=/path/to/it.png, the second screen's
+// from RENDER_HOST_CARD_1 when it is set) stands in for the
 // emulator's picture, SEMU_RENDER_* comes from `semu render-env`, and the last of RENDER_HOST_FRAMES
 // frames (default 12, so a history pass sees a running game) is written as PPM; --switch then journals a
 // bezel and shader select and writes the toast frame and the switched one. RENDER_HOST_CURSOR=X,Y hands
@@ -44,7 +45,8 @@ class RenderHostContext {  // a core-profile context with nothing on screen; CGL
 class RenderHostTestCard {  // the editor's card: blue over green (orange over yellow on the second screen), checkered corners, centre lines
     class unsigned char* pixels(int width, int height, int screen) {
         unsigned char* data = (unsigned char*)malloc((size_t)(width * height * 4));
-        char* flat = getenv("RENDER_HOST_CARD");  // white or black lands the picture; ramp, lines, bars, clip measure shaders
+        char* second = getenv("RENDER_HOST_CARD_1");  // a card of the second screen's own, so a test can tell the two pictures apart
+        char* flat = screen == 1 && second != null ? second : getenv("RENDER_HOST_CARD");  // white or black lands the picture; ramp, lines, bars, clip measure shaders
         char* litText = getenv("RENDER_HOST_LIT");
         int lit = litText == null ? -1 : atoi(litText);
         if (flat != null && (strcmp(flat, "white") == 0 || strcmp(flat, "black") == 0)) {

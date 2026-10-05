@@ -1,0 +1,13 @@
+--- a/handheld/shaders/lcd-cgwg/lcd-grid-v2.slang
++++ b/handheld/shaders/lcd-cgwg/lcd-grid-v2.slang
+@@ -43,7 +43,9 @@
+ 
+ #define outgamma 2.2
+ 
+-#define fetch_offset(coord, offset) (pow(vec3(params.gain) * texelFetchOffset(Source, (coord), 0, (offset)).rgb + vec3(params.blacklevel), vec3(params.gamma)) + vec3(params.ambient))
++// Semu: the neighbour a pixel on the picture's edge reads is clamped onto the picture (clamp_to_edge for a fetch,
++// which no wrap_mode reaches), so the outermost pixels are whole instead of half lit by black past the edge.
++#define fetch_offset(coord, offset) (pow(vec3(params.gain) * texelFetch(Source, clamp((coord) + (offset), ivec2(0), ivec2(global.SourceSize.xy) - 1), 0).rgb + vec3(params.blacklevel), vec3(params.gamma)) + vec3(params.ambient))
+ 
+ #pragma stage vertex
+ layout(location = 0) in vec4 Position;

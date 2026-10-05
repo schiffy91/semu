@@ -32,3 +32,9 @@ run time over the unmodified plates.
 - Source: https://github.com/libretro/slang-shaders (pinned in `config/assets/shaders.json`)
 - Licences: per shader, as recorded in that repository. Semu reads the Mega Bezel presets
   and parameters to place the art and runs the CRT and LCD presets through librashader.
+- Patched at build time: the `patches` in `config/assets/shaders.json` apply Semu's own diffs
+  (`config/assets/shader-patches`) to five files of the staged tree, each pinned before and
+  after: `handheld/shaders/lcd-cgwg/lcd-grid-v2.slang` (its edge fetch clamped onto the picture),
+  and `handheld/authentic_gbc.slangp`, `handheld/agb001.slangp`, `handheld/gameboy.slangp` and
+  `handheld/gameboy-pocket.slangp` (one wrap mode line each), so a picture's edge pixels are
+  never lit from the black past it.

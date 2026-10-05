@@ -1,0 +1,10 @@
+--- a/handheld/gameboy-pocket.slangp
++++ b/handheld/gameboy-pocket.slangp
+@@ -36,4 +36,5 @@
+ COLOR_PALETTE = shaders/gameboy/resources/sample-palettes/gbp-palette.png
+ COLOR_PALETTE_linear = false
+ BACKGROUND = shaders/gameboy/resources/sample-bgs/paper-bg.png
+-BACKGROUND_linear = true
+\ No newline at end of file
++BACKGROUND_linear = true
++BACKGROUND_wrap_mode = clamp_to_edge

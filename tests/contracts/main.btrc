@@ -49,6 +49,7 @@ import ./spec/placement.btrc;
 import ./spec/scene_fill.btrc;
 import ./spec/gameboy_fit.btrc;
 import ./spec/tv_room.btrc;
+import ./spec/shader_edges.btrc;
 import ./spec/fields_reflections.btrc;
 import ./spec/reflection_audit.btrc;
 import ./spec/crt_gdv.btrc;
@@ -1010,6 +1011,7 @@ int main() {
     SceneFillSpecContract.run(contract);
     GameBoyFitSpecContract.run(contract);
     TvRoomSpecContract.run(contract);
+    ShaderEdgeSpecContract.run(contract);
     FieldsReflectionsSpecContract.run(contract);
     ReflectionAuditSpecContract.run(contract);
     CrtGdvSpecContract.run(contract);

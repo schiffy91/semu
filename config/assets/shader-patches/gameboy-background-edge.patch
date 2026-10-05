@@ -1,0 +1,10 @@
+--- a/handheld/gameboy.slangp
++++ b/handheld/gameboy.slangp
+@@ -36,4 +36,5 @@
+ COLOR_PALETTE = shaders/gameboy/resources/palette.png
+ COLOR_PALETTE_linear = false
+ BACKGROUND = shaders/gameboy/resources/background.png
+-BACKGROUND_linear = true
+\ No newline at end of file
++BACKGROUND_linear = true
++BACKGROUND_wrap_mode = clamp_to_edge
