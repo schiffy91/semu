@@ -1,6 +1,7 @@
 // Bezel emit spec: `semu bezel emit` over a copy of the committed packages writes every one back byte for byte,
 // so the committed files are its output, and what a person set by hand survives it: a ring's bevel and painted
-// band, bowed tube edges, an edited reflection on the second emit, a recolour's parent's ring. The writer once
+// band, bowed tube edges, an edited reflection on the second emit, a recolour's parent's ring and its silhouette
+// (`shell`, which sets the recolour's Fit: Bezel step). The writer once
 // rebuilt each ring from four fields and the renderer's missing-bevel default put the lit chamfer on every LCD lip.
 
 import Library.FileSystem;
@@ -138,6 +139,23 @@ class BezelEmitSpecContract {
         }
     }
 
+    class void inheritedShell(Contract contract, Fixture fixture, string configRoot, string root) {  // a recolour follows its base's silhouette, so its Fit: Bezel step and centring stay the base's after the base is retouched
+        string copy = BezelEmitSpecContract.stage(contract, fixture, configRoot, "emit-shell");
+        BezelRepository repository = BezelRepository(copy);
+        BezelPackageWriter writer = BezelPackageWriter(repository, MegaBezelTree(copy, root));
+        Vector<string> drifted = [];
+        for pair in ["gbc-shell:gbc-berry", "psp-e1000:psp-red", "gba-shell:gba-arctic"] {
+            Vector<string> names = Strings.split(pair, ":");
+            JSONValue base = repository.package(names[0]);
+            JSONValue retouched = JSONValue.parse("{\"x\":11,\"y\":12,\"w\":1300,\"h\":1400}");  // a silhouette no package carries
+            base.set("shell", retouched);
+            string failure = repository.save(names[0], base) ? writer.inherit(names[1]) : "the retouched base was not staged";
+            string inherited = SemuJson.get(repository.package(names[1]), "shell") == null ? "none" : SemuJson.get(repository.package(names[1]), "shell").stringify();
+            if (!failure.isEmpty() || !inherited.equals(retouched.stringify())) { drifted.push(f"{names[1]} kept {inherited} after {names[0]} became {retouched.stringify()} {failure}"); }
+        }
+        contract.expect(drifted.isEmpty(), "a recolour inherits its base's shell (BezelPackageWriter.inherit), so gbc-berry, psp-red and gba-arctic step and centre as their base does: " + drifted.join("; "));
+    }
+
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
         string configRoot = PathTools.join(fixture.project, "config");
@@ -146,5 +164,6 @@ class BezelEmitSpecContract {
         BezelEmitSpecContract.fixedPoint(contract, fixture, configRoot, root);
         BezelEmitSpecContract.handSet(contract, fixture, configRoot, root);
         BezelEmitSpecContract.hiddenLayers(contract, fixture, configRoot, root);
+        BezelEmitSpecContract.inheritedShell(contract, fixture, configRoot, root);
     }
 }

@@ -226,9 +226,11 @@ class PlacementSpecGeometry {
             f"the N64 crops what GLideN64 draws black around the VI picture (4 columns left, 3 right, the 3 lines under the 237 shown), so the lip mirrors the game: crop {declared}, RetroArch's 3x frame becomes {surface->x},{surface->y} {surface->width}x{surface->height} of native {surface->native_width}x{surface->native_height}, aspect {frame.presentation_aspect}");
         string entry = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/libsemurenderer.btrc"));
         string configuration = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_config.btrc"));
-        int cropAt = Strings.find(entry, "RendererSurfaceCropping.apply(frame, SemuRenderer.config.surface_crops, SemuRenderer.config.display_aspect);", 0);
-        int resolveAt = Strings.find(entry, "RendererGeometry.resolve(frame,", 0);
-        contract.expect(cropAt >= 0 && resolveAt > cropAt && configuration.contains("RendererSurfaceCropping.load(config->surface_crops);"),
+        int body = Strings.find(entry, "int semu_render_game_gl(struct SemuRenderFrameGl* frame) {", 0);  // the frame path: the Fit notice's second resolve (SemuRendererLiveVariants.notice) runs from it after the crop too
+        int cropAt = Strings.find(entry, "RendererSurfaceCropping.apply(frame, SemuRenderer.config.surface_crops, SemuRenderer.config.display_aspect);", body);
+        int resolveAt = Strings.find(entry, "RendererGeometry.resolve(frame,", body);
+        int noticeAt = Strings.find(entry, "SemuRendererLiveVariants.notice(frame);", body);
+        contract.expect(body >= 0 && cropAt > body && resolveAt > cropAt && noticeAt > cropAt && configuration.contains("RendererSurfaceCropping.load(config->surface_crops);"),
             "the renderer loads each screen's crop with the launch and takes it off the frame before it resolves any geometry, so placement, the extracted picture and its mirror all see the picture only");
         string editor = FileSystem.readText(PathTools.join(fixture.project, "src/bezel/editor.btrc"));
         string preview = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));

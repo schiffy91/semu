@@ -1,7 +1,8 @@
 // Game Boy fit spec (M15 items 4 and 5): bezel placement keeps the device's own silhouette on screen (the
 // package's shell, its plates' alpha bounds measured from the pinned files), never the transparent margin around
 // it, up to 1% of it off screen (the owner's bezel rule of 2026-07-07), and centres it; the step is the largest
-// that rule allows, at 1280x800 and 1920x1080. Every Game Boy and Game Boy Color picture lands whole, each native
+// that rule allows, at 1280x800 and 1920x1080. The GBA's silhouette is its device, decal, glass and top plates: its
+// led plate is a black matte (alpha over black, at most 1% luma), invisible on the black around the art. Every Game Boy and Game Boy Color picture lands whole, each native
 // pixel k by k on whole pixels, at any screen size in game and bezel placement, and no screen shape covers or
 // darkens one of its pixels (the shader's shapeMaskB, ported, is opaque at every outermost pixel).
 
@@ -120,9 +121,9 @@ class GameBoyFitScreen {  // one package placed on one screen, as RendererGeomet
 
 class GameBoyFitSpecContract {
     class void shells(Contract contract, Fixture fixture) {  // the silhouette rides with the package, a recolour shares its base's
-        string systems[6] = {"gb", "gb", "gbc", "gbc", "psp", "psp"};
-        string variants[6] = {"dmg", "studio", "shell", "berry", "e1000", "red"};
-        for (int index = 0; index < 6; index++) {
+        string systems[8] = {"gb", "gb", "gbc", "gbc", "psp", "psp", "gba", "gba"};
+        string variants[8] = {"dmg", "studio", "shell", "berry", "e1000", "red", "shell", "arctic"};
+        for (int index = 0; index < 8; index++) {
             Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systems[index], variants[index]);
             string shell = PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_CANVAS_SHELL");
             GameBoyFitScreen placed = GameBoyFitScreen(fixture, systems[index], variants[index], 2, 1280, 800);
@@ -134,16 +135,19 @@ class GameBoyFitSpecContract {
         string base = PlacementSpecEnvironment.entry(PlacementSpecEnvironment.compile(fixture, "gbc", "shell"), "SEMU_RENDER_CANVAS_SHELL");
         string berry = PlacementSpecEnvironment.entry(PlacementSpecEnvironment.compile(fixture, "gbc", "berry"), "SEMU_RENDER_CANVAS_SHELL");
         contract.expect(!base.isEmpty() && base.equals(berry), "the berry recolour keeps the colour shell's silhouette: " + berry + " and " + base);
+        string advance = PlacementSpecEnvironment.entry(PlacementSpecEnvironment.compile(fixture, "gba", "shell"), "SEMU_RENDER_CANVAS_SHELL");
+        string arctic = PlacementSpecEnvironment.entry(PlacementSpecEnvironment.compile(fixture, "gba", "arctic"), "SEMU_RENDER_CANVAS_SHELL");
+        contract.expect(!advance.isEmpty() && advance.equals(arctic), "the arctic recolour keeps the GBA shell's silhouette: " + arctic + " and " + advance);
     }
 
     class void steps(Contract contract, Fixture fixture) {  // the numbers the owner asked for: the largest step whose whole shell fits, 1% leeway
-        string systems[5] = {"gb", "gb", "gbc", "gbc", "psp"};
-        string variants[5] = {"dmg", "studio", "shell", "berry", "e1000"};
-        int deck[5] = {1, 2, 1, 1, 1};
-        int docked[5] = {2, 3, 2, 2, 2};
+        string systems[7] = {"gb", "gb", "gbc", "gbc", "psp", "gba", "gba"};
+        string variants[7] = {"dmg", "studio", "shell", "berry", "e1000", "shell", "arctic"};
+        int deck[7] = {1, 2, 1, 1, 1, 2, 2};
+        int docked[7] = {2, 3, 2, 2, 2, 3, 3};
         int widths[2] = {1280, 1920};
         int heights[2] = {800, 1080};
-        for (int index = 0; index < 5; index++) {
+        for (int index = 0; index < 7; index++) {
             for (int size = 0; size < 2; size++) {
                 GameBoyFitScreen placed = GameBoyFitScreen(fixture, systems[index], variants[index], 2, widths[size], heights[size]);
                 int wanted = size == 0 ? deck[index] : docked[index];

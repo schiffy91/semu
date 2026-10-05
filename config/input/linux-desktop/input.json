@@ -121,6 +121,7 @@
       "toast": "FIT: {label}",
       "unavailable_toast": "FIT: NO BEZEL",
       "same_toast": "FIT: {label} SAME AS BEZEL",
+      "same_fit_toast": "FIT: SAME AS BEZEL",
       "choices": {
         "bezel": "BEZEL",
         "game": "SCREEN",

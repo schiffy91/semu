@@ -250,6 +250,19 @@ const BezelRenderer = (() => {
       right = Math.max(right, output.x + output.width + 1); top = Math.max(top, output.y + output.height + 1);
       return { x: left, y: bottom, width: right - left, height: top - bottom };
     }
+    static carry(rect, picture, output) {  // RendererLayout.carry: a whole-step picture past the package's picture rectangle carries a drawn rectangle out with it, each side by its overrun, then holds it a pixel past
+      if (rect.width < 1 || rect.height < 1) return rect;
+      let carried = { ...rect };
+      if (picture && picture.width >= 1 && picture.height >= 1) {
+        const left = picture.x - output.x, bottom = picture.y - output.y, right = output.x + output.width - picture.x - picture.width, top = output.y + output.height - picture.y - picture.height;
+        if (left > 0) { carried.x -= left; carried.width += left; }
+        if (bottom > 0) { carried.y -= bottom; carried.height += bottom; }
+        if (right > 0) carried.width += right;
+        if (top > 0) carried.height += top;
+      }
+      return Geometry.hold(carried, output);
+    }
+    static picture(canvas, screen) { return CompositionContract.aperture(canvas, screen.image && screen.image.set ? screen.image : screen.tube); }  // RendererMirror.picture: the calibrated image, else the opening
     static dualPicture(screen, native, sourceWidth, sourceHeight) {  // RendererDualShell.picture, in canvas pixels from the top left
       let x = float(screen.image.x * sourceWidth), y = float(screen.image.y * sourceHeight), width = float(screen.image.width * sourceWidth), height = float(screen.image.height * sourceHeight);
       if (!screen.image.set) {
@@ -318,7 +331,7 @@ const BezelRenderer = (() => {
         const output = { x: Geometry.dualWhole(float(left + across[0])), width: laneStep >= 1 ? laneStep * picture.nativeWidth : Geometry.dualWhole(float(across[1] - across[0])), height: laneStep >= 1 ? laneStep * picture.nativeHeight : Geometry.dualWhole(float(down[1] - down[0])) };
         output.y = areaHeight - Geometry.dualWhole(float(top + down[0])) - output.height;
         const opening = CompositionContract.aperture(canvas, screenConfig.tube);
-        return { output, tube: opening.width < 1 || opening.height < 1 ? { ...output } : Geometry.hold(opening, output) };
+        return { output, tube: opening.width < 1 || opening.height < 1 ? { ...output } : Geometry.carry(opening, Geometry.picture(canvas, screenConfig), output) };  // carried with a whole-step picture past its picture rectangle, as the lip is
       };
       return { canvas, lanes: [lane(main, step, variant.screens[0]), lane(second, other, variant.screens[1])] };
     }
@@ -437,7 +450,7 @@ const BezelRenderer = (() => {
       let ring = look && screen.ringSet && canvas.width > 0, inner = CompositionContract.empty(), outer = CompositionContract.empty();
       if (ring) {
         inner = CompositionContract.aperture(canvas, screen.ringInner); outer = CompositionContract.aperture(canvas, screen.ringOuter);
-        if (lane) { inner = Geometry.hold(inner, lane.output); outer = Geometry.hold(outer, lane.output); }  // a whole-step screen past its opening: the lip never masks a pixel
+        if (lane) { const picture = Geometry.picture(canvas, screen); inner = Geometry.carry(inner, picture, lane.output); outer = Geometry.carry(outer, picture, lane.output); }  // RendererMirror.ring: a whole-step screen past its picture rectangle carries its lip out with it, the declared width round the picture drawn
         if (outer.width <= 0 || outer.height <= 0) ring = false;
       }
       const value = (name, fallback) => screen && typeof screen[name] === "number" ? screen[name] : fallback;

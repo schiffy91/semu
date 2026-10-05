@@ -1,0 +1,54 @@
+// Editor dual spec (M15 item 2): config/editor/bezel-renderer.js ports RendererDualShell, so the editor previews a
+// DS or 3DS shell framed as the renderer frames it: the canvas, both lanes, the whole-shell step, the second screen's
+// whole step and the opening and lip carried out with a second screen past its picture rectangle (the 3DS touch screen
+// at 1x on the Deck). tests/visual/editor-sync.sh --card test measures the pixels and exits non-zero on any framing or
+// pixel difference; this contract pins the port's source so an edit that bypasses it fails `make test` as well.
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+
+class EditorDualSpecContract {
+    class void need(Vector<string> missing, string scope, string wanted) { if (!scope.contains(wanted)) { missing.push(wanted); } }
+
+    class string method(string source, string signature, int span) {  // SPAN characters from SIGNATURE on, "" when it is gone
+        int start = Strings.find(source, signature, 0);
+        if (start < 0) { return ""; }
+        int length = start + span > source.len() ? source.len() - start : span;
+        return source.substring(start, length);
+    }
+
+    class void port(Contract contract, Fixture fixture) {
+        string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
+        string canvasOn = EditorDualSpecContract.method(source, "static canvasOn(variant, preview, areaWidth, areaHeight) {", 1400);
+        string lanes = EditorDualSpecContract.method(source, "static lanes(variant, preview, canvas, target) {", 1400);
+        string shell = EditorDualSpecContract.method(source, "static dualShell(variant, preview, areaWidth, areaHeight) {", 4600);
+        string uniforms = EditorDualSpecContract.method(source, "laneUniforms(screen, lane, canvas, framed, index) {", 1400);
+        Vector<string> missing = [];
+        EditorDualSpecContract.need(missing, canvasOn, "const dual = variant.layout === \"fixed\" ? Geometry.dualShell(variant, preview, areaWidth, areaHeight) : null;");
+        EditorDualSpecContract.need(missing, canvasOn, "if (dual) return dual.canvas;");
+        EditorDualSpecContract.need(missing, lanes, "const dual = target && variant.layout === \"fixed\" ? Geometry.dualShell(variant, preview, target.width, target.height) : null;");
+        EditorDualSpecContract.need(missing, lanes, "return dual.lanes.map((lane, index) => ({ tube: on(lane.tube), output: on(lane.output), native: preview.screens[index] }));");
+        EditorDualSpecContract.need(missing, shell, "if (float(shell[2] * gain) > float(areaWidth * float(1.01)) || float(shell[3] * gain) > float(areaHeight * float(1.01))) break;");
+        EditorDualSpecContract.need(missing, shell, "if (preview.placement === \"game\") {");
+        EditorDualSpecContract.need(missing, shell, "Geometry.carry(opening, Geometry.picture(canvas, screenConfig), output)");
+        EditorDualSpecContract.need(missing, shell, "return { canvas, lanes: [lane(main, step, variant.screens[0]), lane(second, other, variant.screens[1])] };");
+        EditorDualSpecContract.need(missing, source, "const step = integer(float(held * float(1.01)));");
+        EditorDualSpecContract.need(missing, source, "return held >= 0.5 ? 1 : 0;");
+        EditorDualSpecContract.need(missing, uniforms, "inner = Geometry.carry(inner, picture, lane.output); outer = Geometry.carry(outer, picture, lane.output);");
+        contract.expect(!canvasOn.isEmpty() && !lanes.isEmpty() && !shell.isEmpty() && !uniforms.isEmpty() && missing.isEmpty(),
+            "the editor frames a DS or 3DS shell through its port of RendererDualShell (the canvas, both lanes, the whole-shell step, the screen step, the second screen's step and the carried opening and lip), so its preview matches the renderer: missing " + missing.join(" | "));
+        string layout = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_layout.btrc"));
+        string carry = EditorDualSpecContract.method(source, "static carry(rect, picture, output) {", 900);
+        bool renderer = layout.contains("if (left > 0) { rectangle->x = rectangle->x - left; rectangle->width = rectangle->width + left; }") && layout.contains("RendererLayout.hold(rectangle, lane);");
+        bool editor = carry.contains("if (left > 0) { carried.x -= left; carried.width += left; }") && carry.contains("if (top > 0) carried.height += top;") && carry.contains("return Geometry.hold(carried, output);");
+        contract.expect(renderer && editor, "RendererLayout.carry and the editor's Geometry.carry move a drawn rectangle out by the picture's overrun on each side, then hold it a pixel past the picture");
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        EditorDualSpecContract.port(contract, fixture);
+    }
+}

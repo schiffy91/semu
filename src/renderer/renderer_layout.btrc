@@ -48,6 +48,21 @@ class RendererLayout {
         rectangle->height = top - bottom;
     }
 
+    class void carry(struct RendererPixelRect* rectangle, struct RendererPixelRect* picture, struct RendererLaneGeometry* lane) {  // a whole-step picture past the package's own picture rectangle (PICTURE) carries a drawn rectangle out with it, each side by the picture's overrun there, so a lip keeps its declared width round the picture actually drawn; then held a pixel past it
+        if (rectangle->width < 1 || rectangle->height < 1) { return; }
+        if (picture->width >= 1 && picture->height >= 1) {
+            int left = picture->x - lane->output_x;
+            int bottom = picture->y - lane->output_y;
+            int right = lane->output_x + lane->output_width - picture->x - picture->width;
+            int top = lane->output_y + lane->output_height - picture->y - picture->height;
+            if (left > 0) { rectangle->x = rectangle->x - left; rectangle->width = rectangle->width + left; }
+            if (bottom > 0) { rectangle->y = rectangle->y - bottom; rectangle->height = rectangle->height + bottom; }
+            if (right > 0) { rectangle->width = rectangle->width + right; }
+            if (top > 0) { rectangle->height = rectangle->height + top; }
+        }
+        RendererLayout.hold(rectangle, lane);
+    }
+
     class int rotatedWidth(struct RendererLaneGeometry* lane) {
         return lane->rotation == 90 || lane->rotation == 270 ? lane->native_height : lane->native_width;
     }

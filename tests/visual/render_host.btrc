@@ -18,6 +18,7 @@ import Library.Console;
 import Library.Platform;
 import Library.Strings;
 import ../../src/renderer/libsemurenderer.btrc;
+import ../../src/renderer/renderer_surface_crop.btrc;
 
 void* semuHostProcedure(const char* name) { return dlsym((void*)RTLD_DEFAULT, name); }  // the emulator's get_proc
 unsigned long long RenderHostGeneration = 1ULL;  // a new context after RENDER_HOST_RESET
@@ -64,7 +65,7 @@ class RenderHostTestCard {  // the editor's card: blue over green (orange over y
             }
             return data;
         }
-        if (flat != null && strcmp(flat, "editor") == 0) { return RenderHostTestCard.editorCard(data, width, height, screen); }
+        if (flat != null && strcmp(flat, "editor") == 0) { return RenderHostTestCard.editorFrame(data, width, height, screen); }
         if (flat != null && strchr(flat, '/') != null && RenderHostTestCard.picture(data, width, height, flat)) { return data; }
         int cell = width < height ? width / 40 : height / 40;
         if (cell < 2) { cell = 2; }
@@ -133,6 +134,24 @@ class RenderHostTestCard {  // the editor's card: blue over green (orange over y
         }
         stbi_image_free((void*)pixels);
         return true;
+    }
+
+    class unsigned char* editorFrame(unsigned char* data, int width, int height, int screen) {  // the editor's card in the picture a declared crop keeps (the N64's 313x237 of GLideN64's 320x240), black round it as the emulator hands it over, so the renderer's crop leaves exactly the card the editor draws
+        char name[64];
+        snprintf(name, sizeof(name), "SEMU_RENDER_SURFACE_%d_CROP", screen);
+        struct RendererSurfaceCrop crop;
+        RendererSurfaceCropping.parse(&crop, getenv(name));
+        int keptWidth = width - crop.left - crop.right;
+        int keptHeight = height - crop.top - crop.bottom;
+        if (crop.set == 0 || keptWidth < 1 || keptHeight < 1) { return RenderHostTestCard.editorCard(data, width, height, screen); }
+        unsigned char* kept = (unsigned char*)malloc((size_t)(keptWidth * keptHeight * 4));
+        RenderHostTestCard.editorCard(kept, keptWidth, keptHeight, screen);
+        for (int at = 0; at < width * height * 4; at += 4) { data[at] = (unsigned char)0; data[at + 1] = (unsigned char)0; data[at + 2] = (unsigned char)0; data[at + 3] = (unsigned char)255; }
+        for (int row = 0; row < keptHeight; row++) {  // GL rows from the bottom: the crop's bottom lines lie under the picture
+            memcpy((void*)(data + ((row + crop.bottom) * width + crop.left) * 4), (void*)(kept + row * keptWidth * 4), (size_t)(keptWidth * 4));
+        }
+        free((void*)kept);
+        return data;
     }
 
     class unsigned char* editorCard(unsigned char* data, int width, int height, int screen) {  // RENDER_HOST_CARD=editor: the editor's drawTestCard colours and layout at native size

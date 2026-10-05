@@ -1068,10 +1068,7 @@ class RendererCompositor {
             canvas.y = geometry->bezel_y;
             canvas.width = geometry->bezel_width;
             canvas.height = geometry->bezel_height;
-            RendererCompositionContract.aperture(&canvas, screen->ring_inner.x, screen->ring_inner.y, screen->ring_inner.width, screen->ring_inner.height, &inner);
-            RendererCompositionContract.aperture(&canvas, screen->ring_outer.x, screen->ring_outer.y, screen->ring_outer.width, screen->ring_outer.height, &outer);
-            RendererLayout.hold(&inner, lane);  // a whole-step screen past its opening (the 3DS touch screen on the Deck): the lip never masks a pixel
-            RendererLayout.hold(&outer, lane);
+            RendererMirror.ring(screen, &canvas, lane, &inner, &outer);  // a whole-step screen past its picture rectangle (the 3DS touch screen on the Deck) carries its lip out with it: the declared width round the picture drawn, never a pixel masked
         }
         bool ring = RendererMirror.ringShown(screen, bezel, &outer, geometry->bezel_width);
         RendererCompositor.setRect(gl, index == 0 ? resources->uniform_ring_inner : resources->uniform_ring_inner2, inner.x, inner.y, inner.width, inner.height);
@@ -1245,6 +1242,12 @@ class RendererCompositor {
                 lane0->native_width, lane0->native_height, art ? 1 : 0, background ? 1 : 0, framed ? 1 : 0,
                 geometry->bezel_x, geometry->bezel_y, geometry->bezel_width, geometry->bezel_height,
                 resources->shader_actual, drew ? 1 : 0);
+            if (geometry->lane_count == 2) {  // the second screen: tests/visual/reflection-audit.sh measures each screen's mirror against its own picture
+                struct RendererLaneGeometry* lane1 = &geometry->lanes[1];
+                fprintf(stderr, "semu-renderer: frame %llu lane1 out %d,%d %dx%d tube %d,%d %dx%d native %dx%d\n",
+                    frame->frame_id, lane1->output_x, lane1->output_y, lane1->output_width, lane1->output_height,
+                    lane1->tube_x, lane1->tube_y, lane1->tube_width, lane1->tube_height, lane1->native_width, lane1->native_height);
+            }
         }
         if (!drew) {
             resources->shader_actual = 0;

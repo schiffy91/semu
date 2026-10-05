@@ -142,7 +142,9 @@ class DualFitSpecWiring {  // the compositor's two-screen shells and the interna
         contract.contains(resolve, "bool dual = frame->surface_count == 2 && RendererDualShell.place(variant, geometry, config->placement, sourceWidth, sourceHeight, areaWidth, areaHeight, &canvas);", "the compositor places a two-screen fixed bezel through RendererDualShell in every placement");
         contract.lacks(compositor + FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_placement.btrc")), "shell_hidden", "no placement hides the shell any more (the M13 F3 screen placement without it is gone)");
         string layer = compositor.substring(Strings.find(compositor, "class void laneUniforms(", 0), 2400);
-        contract.contains(layer, "RendererLayout.hold(&outer, lane);", "the drawn lip grows to hold a whole-step screen past its opening, so the 3DS touch screen at 1x on the Deck keeps every pixel");
+        contract.contains(layer, "RendererMirror.ring(screen, &canvas, lane, &inner, &outer);", "the drawn lip is carried out with a whole-step screen past its picture rectangle, so the 3DS touch screen at 1x on the Deck keeps every pixel and its lip");
+        string shell = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_dual_shell.btrc"));
+        contract.contains(shell.substring(Strings.find(shell, "class void opening(", 0), 900), "RendererLayout.carry(&tube, &picture, lane);", "a two-screen shell's opening is carried out with its whole-step picture as the lip is, so the lip is never masked off");
         string settings = "{\"visual\":{\"display\":{\"width\":1280,\"height\":800},\"systems\":{\"nds\":{\"bezel_variant\":\"vertical\"}}}}";
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuPlan plan = SemuResolver.plan(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, settings, diagnostics);
@@ -153,7 +155,29 @@ class DualFitSpecWiring {  // the compositor's two-screen shells and the interna
     }
 }
 
-class DualFitSpecNotice {  // FIT: SCREEN SAME AS BEZEL once the geometry shows nothing moved; 81/-1 on the computed layouts
+class DualFitSpecNotice {  // FIT: SCREEN SAME AS BEZEL once the geometry shows Fit: Bezel's picture; 81/-1 on the computed layouts
+    class void select(struct RendererPostUiState* post, int slot, unsigned long long sequence, long long now) {  // the radial's Fit select, as the menu model takes it
+        struct SemuActionRecord record;
+        LiveVariantTools.fill(&record, SemuActions.placementSelect(), slot, now, sequence);
+        RendererMenuModel.apply(post, &record, now);
+    }
+
+    class void room(struct RendererCompositionGeometry* geometry, Fixture fixture, int placement, int areaWidth, int areaHeight) {  // PCSX2's 639x448 on the PS2 TV, as the compositor resolves it: the picture and the room's canvas
+        struct RendererCanvasRect canvas;
+        struct RendererCanvasRect picture;
+        PlacementSpecGeometry.placeVariant(fixture, "ps2", "tv", 639, 448, placement, areaWidth, areaHeight, &canvas, &picture);
+        memset(geometry, 0, sizeof(struct RendererCompositionGeometry));
+        geometry->lane_count = 1;
+        geometry->lanes[0].output_x = PlacementSpecGeometry.rounded(picture.x);
+        geometry->lanes[0].output_y = PlacementSpecGeometry.rounded(picture.y);
+        geometry->lanes[0].output_width = PlacementSpecGeometry.rounded(picture.width);
+        geometry->lanes[0].output_height = PlacementSpecGeometry.rounded(picture.height);
+        geometry->bezel_x = canvas.x;
+        geometry->bezel_y = canvas.y;
+        geometry->bezel_width = canvas.width;
+        geometry->bezel_height = canvas.height;
+    }
+
     class void toast(Contract contract, Fixture fixture) {
         string state = PathTools.join(fixture.scratch, "dual-fit/nds");
         SemuRenderVariantSet set = SemuRenderVariants.write(fixture.plan, fixture.model.system("nds"), "retroarch", state);
@@ -162,31 +186,80 @@ class DualFitSpecNotice {  // FIT: SCREEN SAME AS BEZEL once the geometry shows 
         memset(&post, 0, sizeof(struct RendererPostUiState));
         RendererMenuModel.initialize(&post);
         long long now = RendererClock.milliseconds();
-        struct SemuActionRecord record;
-        LiveVariantTools.fill(&record, SemuActions.placementSelect(), 1, now, 1ULL);
-        RendererMenuModel.apply(&post, &record, now);
+        DualFitSpecNotice.select(&post, 1, 1ULL, now);
         bool plain = strcmp(post.toast, "FIT: SCREEN") == 0 && post.placement_noticed == 1;
         struct RendererCanvasRect canvas;
-        struct RendererCompositionGeometry before;
+        struct RendererCompositionGeometry bezel;
         struct RendererCompositionGeometry after;
-        DualFitSpecGeometry.place(fixture, "nds", "vertical", 2, 1280, 800, &canvas, &before);
-        before.bezel_x = canvas.x;
-        before.bezel_width = canvas.width;
+        DualFitSpecGeometry.place(fixture, "nds", "vertical", 2, 1280, 800, &canvas, &bezel);
+        bezel.bezel_x = canvas.x;
+        bezel.bezel_width = canvas.width;
         DualFitSpecGeometry.place(fixture, "nds", "vertical", 1, 1280, 800, &canvas, &after);
         after.bezel_x = canvas.x;
         after.bezel_width = canvas.width;
         struct RendererLiveChoice live;
         RendererLiveSwitch.reset(&live);
-        RendererPlacementNotice.remember(&live, &before);
-        RendererPlacementNotice.after(&post, &live, &after, 1, now);
-        contract.expect(plain && strcmp(post.toast, "FIT: SCREEN SAME AS BEZEL") == 0 && post.placement_noticed == 0 && live.placement_compare == 0, "Fit to the screen on the DS vertical shell at 1280x800 moves nothing, so FIT: SCREEN becomes FIT: SCREEN SAME AS BEZEL");
-        LiveVariantTools.fill(&record, SemuActions.placementSelect(), 1, now, 2ULL);
-        RendererMenuModel.apply(&post, &record, now);
+        RendererPlacementNotice.remember(&live);
+        RendererPlacementNotice.after(&post, &live, &after, &bezel, 1, now);
+        contract.expect(plain && strcmp(post.toast, "FIT: SCREEN SAME AS BEZEL") == 0 && post.placement_noticed == 0 && live.placement_compare == 0, "Fit to the screen on the DS vertical shell at 1280x800 draws Fit: Bezel's picture, so FIT: SCREEN becomes FIT: SCREEN SAME AS BEZEL");
+        DualFitSpecNotice.select(&post, 1, 2ULL, now);
         after.lanes[0].output_x = after.lanes[0].output_x + 1;
-        RendererPlacementNotice.remember(&live, &before);
-        RendererPlacementNotice.after(&post, &live, &after, 1, now);
-        contract.expect(strcmp(post.toast, "FIT: SCREEN") == 0, "a Fit that moves a screen keeps its plain toast");
+        RendererPlacementNotice.remember(&live);
+        RendererPlacementNotice.after(&post, &live, &after, &bezel, 1, now);
+        contract.expect(strcmp(post.toast, "FIT: SCREEN") == 0, "a Fit that moves a screen off Fit: Bezel's keeps its plain toast");
         LiveVariantTools.clear();
+    }
+
+    class void television(Contract contract, Fixture fixture) {  // compared with Fit: Bezel, never with the frame before: the PS2 at 1080p is 2x in Fit and Fit: Screen, 1x in Fit: Bezel
+        struct RendererCompositionGeometry fit;
+        struct RendererCompositionGeometry game;
+        struct RendererCompositionGeometry bezel;
+        struct RendererCompositionGeometry deckFit;
+        struct RendererCompositionGeometry deckBezel;
+        DualFitSpecNotice.room(&fit, fixture, 0, 1920, 1080);  // before the menu's environment: placing a variant sets and clears the launch's variables
+        DualFitSpecNotice.room(&game, fixture, 1, 1920, 1080);
+        DualFitSpecNotice.room(&bezel, fixture, 2, 1920, 1080);
+        DualFitSpecNotice.room(&deckFit, fixture, 0, 1280, 800);
+        DualFitSpecNotice.room(&deckBezel, fixture, 2, 1280, 800);
+        bool premise = RendererPlacementNotice.same(&fit, &game) && !RendererPlacementNotice.same(&fit, &bezel) && game.lanes[0].output_height == 896 && bezel.lanes[0].output_height == 448;
+        bool deckPremise = RendererPlacementNotice.same(&deckBezel, &deckFit) && deckFit.lanes[0].output_height == 448;
+        string state = PathTools.join(fixture.scratch, "dual-fit/ps2");
+        SemuRenderVariantSet set = SemuRenderVariants.write(fixture.plan, fixture.model.system("ps2"), "pcsx2", state);
+        LiveVariantTools.environment(fixture, state, set.token);
+        setenv("SEMU_RENDER_SYSTEM_ID", "ps2", 1);  // the catalog answers for the system it was written for (placements bezel|game|fit)
+        struct RendererPostUiState post;
+        memset(&post, 0, sizeof(struct RendererPostUiState));
+        RendererMenuModel.initialize(&post);
+        long long now = RendererClock.milliseconds();
+        struct RendererLiveChoice live;
+        RendererLiveSwitch.reset(&live);
+        DualFitSpecNotice.select(&post, 2, 10ULL, now);  // game to fit, the radial's wrap: the frame before was Fit: Screen's, the same picture
+        RendererPlacementNotice.remember(&live);
+        RendererPlacementNotice.after(&post, &live, &fit, &bezel, 0, now);
+        bool fitPlain = strcmp(post.toast, "FIT: FIT") == 0;
+        DualFitSpecNotice.select(&post, 1, 11ULL, now);  // fit to game, the menu row's left step
+        RendererPlacementNotice.remember(&live);
+        RendererPlacementNotice.after(&post, &live, &game, &bezel, 1, now);
+        bool screenPlain = strcmp(post.toast, "FIT: SCREEN") == 0;
+        contract.expect(premise && fitPlain && screenPlain, "ps2:tv at 1920x1080: Fit and Fit: Screen are both 2x (896 lines) and Fit: Bezel 1x, so switching between Fit and Fit: Screen keeps the plain toasts, never SAME AS BEZEL" + (premise ? "" : "; the premise (fit = game 2x, bezel 1x) no longer holds") + (fitPlain ? "" : "; the switch to Fit claimed SAME AS BEZEL") + (screenPlain ? "" : "; the switch to Fit: Screen claimed SAME AS BEZEL"));
+        DualFitSpecNotice.select(&post, 2, 12ULL, now);  // on the Deck the PS2's Fit is Fit: Bezel's 1x TV
+        RendererPlacementNotice.remember(&live);
+        RendererPlacementNotice.after(&post, &live, &deckFit, &deckBezel, 0, now);
+        contract.expect(deckPremise && strcmp(post.toast, "FIT: SAME AS BEZEL") == 0, "ps2:tv at 1280x800: Fit draws Fit: Bezel's 1x TV and says FIT: SAME AS BEZEL, never FIT: FIT SAME AS BEZEL" + (deckPremise ? "" : "; the premise (fit = bezel at 1x) no longer holds"));
+        LiveVariantTools.clear();
+    }
+
+    class void wiring(Contract contract, Fixture fixture) {  // every live path's frame compares with Fit: Bezel's own geometry
+        string library = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/libsemurenderer.btrc"));
+        int game = Strings.find(library, "status = RendererCompositor.game(&SemuRenderer.gl,", 0);
+        int notice = Strings.find(library, "SemuRendererLiveVariants.notice(frame);", 0);
+        contract.expect(game > 0 && notice > game, "semu_render_game_gl asks for the Fit notice once this frame's geometry is resolved and drawn");
+        string applied = library.substring(Strings.find(library, "class void apply() {  // in the game phase", 0), 1200);
+        contract.contains(applied, "RendererPlacementNotice.remember(&SemuRenderer.live);", "an applied placement select arms the notice");
+        string noticed = library.substring(Strings.find(library, "class void notice(struct SemuRenderFrameGl* frame) {", 0), 1400);
+        contract.contains(noticed, "SemuRenderer.config.placement = 2;", "the notice resolves the same frame as Fit: Bezel");
+        contract.contains(noticed, "placed = RendererGeometry.resolve(frame, &SemuRenderer.config, &SemuRenderer.resources, &bezel);", "with the compositor's own geometry");
+        contract.contains(noticed, "RendererPlacementNotice.after(&SemuRenderer.post_ui, &SemuRenderer.live, resolved ? &SemuRenderer.geometry : null, placed ? &bezel : null, placement, RendererClock.milliseconds());", "and compares the drawn geometry with it");
     }
 
     class void computed(Contract contract, Fixture fixture) {  // the large-main, side-by-side and stacked layouts have no art: nothing for Fit to place
@@ -209,6 +282,8 @@ class DualFitSpecContract {
         DualFitSpecGeometry.run(contract, fixture);
         DualFitSpecWiring.run(contract, fixture);
         DualFitSpecNotice.toast(contract, fixture);
+        DualFitSpecNotice.television(contract, fixture);
+        DualFitSpecNotice.wiring(contract, fixture);
         DualFitSpecNotice.computed(contract, fixture);
     }
 }

@@ -129,12 +129,26 @@ class SemuRendererLiveVariants {  // a select from the journal: its section repl
         long long started = RendererClock.milliseconds();
         int switched = RendererLiveSwitch.apply(&SemuRenderer.post_ui, &SemuRenderer.config, &SemuRenderer.live, &SemuRenderer.resources.variant_images_stale);
         if (RendererLiveSwitch.applyPlacement(&SemuRenderer.post_ui, &SemuRenderer.config, &SemuRenderer.live) == SEMU_RENDER_SWITCH_APPLIED) {
-            RendererPlacementNotice.remember(&SemuRenderer.live, &SemuRenderer.geometry);  // the geometry follows on this frame, compared with the last
+            RendererPlacementNotice.remember(&SemuRenderer.live);  // the geometry follows on this frame, compared with Fit: Bezel's
             if (getenv("SEMU_RENDER_DEBUG") != null) { fprintf(stderr, "semu-renderer: placement %d\n", SemuRenderer.config.placement); }
         }
         if (switched != SEMU_RENDER_SWITCH_APPLIED) { return; }
         SemuRenderer.switch_started_ms = started;  // the receipt and the toast count the switch from here
         SemuRenderer.switch_images_ms = 0LL;
+    }
+
+    class void notice(struct SemuRenderFrameGl* frame) {  // once a placement's geometry resolves: the same frame placed as Fit: Bezel, what the toast compares it with
+        bool resolved = SemuRenderer.geometry.lane_count > 0;
+        int placement = SemuRenderer.config.placement;
+        struct RendererCompositionGeometry bezel;
+        memset(&bezel, 0, sizeof(struct RendererCompositionGeometry));
+        bool placed = false;
+        if (SemuRenderer.live.placement_compare != 0 && resolved && placement != 2) {
+            SemuRenderer.config.placement = 2;
+            placed = RendererGeometry.resolve(frame, &SemuRenderer.config, &SemuRenderer.resources, &bezel);
+            SemuRenderer.config.placement = placement;
+        }
+        RendererPlacementNotice.after(&SemuRenderer.post_ui, &SemuRenderer.live, resolved ? &SemuRenderer.geometry : null, placed ? &bezel : null, placement, RendererClock.milliseconds());
     }
 
     class void reapply() {  // a freshly loaded config (a new context) starts on the live choice
@@ -266,7 +280,7 @@ int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
             &SemuRenderer.resources, &SemuRenderer.config, frame,
             &SemuRenderer.geometry);
     }
-    RendererPlacementNotice.after(&SemuRenderer.post_ui, &SemuRenderer.live, SemuRenderer.geometry.lane_count > 0 ? &SemuRenderer.geometry : null, SemuRenderer.config.placement, RendererClock.milliseconds());  // a Fit choice that moved nothing says so
+    SemuRendererLiveVariants.notice(frame);  // a Fit choice that draws what Fit: Bezel draws says so
     RendererGlStateGuard.restore(&SemuRenderer.gl, &SemuRenderer.game_state);
     SemuRendererLiveVariants.receipt(frame, contextGeneration, status);
     if (status != SEMU_RENDER_APPLIED) {

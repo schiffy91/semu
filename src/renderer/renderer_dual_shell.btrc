@@ -5,13 +5,14 @@
 // them at that scale and cropped by the display's edges; when that step is no larger than the bezel's, the
 // bezel's picture, so the toggle never jumps. The second screen takes the largest whole step its own picture
 // rectangle holds at that scale (1% grace for a calibration a pixel short), below 1x the nearest: Duimon's 3DS face
-// draws the touch window at 0.94x of 1x on the Deck, so the touch screen shows at 1x over the window's edge, every
+// draws the touch window at 0.94x of 1x on the Deck, so the touch screen shows at 1x over the window's edge (its opening and lip carried out with it), every
 // pixel whole; under half of 1x (a 4:3 display) it fills its window, the fractional fallback. Pure arithmetic, no
 // GL, so the contracts and the editor place a shell exactly as the compositor does.
 
 import ./renderer_abi.btrc;
 import ./renderer_config.btrc;
 import ./renderer_layout.btrc;
+import ./renderer_mirror.btrc;
 
 struct RendererDualPicture {  // one screen's picture in canvas pixels, top-left origin, and the native size it shows
     float x;
@@ -162,11 +163,13 @@ class RendererDualShell {
         lane->output_height = height;
     }
 
-    class void opening(struct RendererLaneGeometry* lane, struct RendererScreenConfig* screen, struct RendererCanvasRect* canvas) {  // the package's opening on screen, grown to hold the whole-step picture so no pixel is masked
+    class void opening(struct RendererLaneGeometry* lane, struct RendererScreenConfig* screen, struct RendererCanvasRect* canvas) {  // the package's opening on screen, carried with a whole-step picture past its picture rectangle (as the lip is, RendererMirror.ring) so the lip keeps its width and no pixel is masked
         struct RendererPixelRect tube;
         RendererCompositionContract.aperture(canvas, screen->tube.x, screen->tube.y, screen->tube.width, screen->tube.height, &tube);
         if (tube.width < 1 || tube.height < 1) { RendererLayout.tubeFromOutput(lane); return; }
-        RendererLayout.hold(&tube, lane);
+        struct RendererPixelRect picture;
+        RendererMirror.picture(screen, canvas, &picture);
+        RendererLayout.carry(&tube, &picture, lane);
         RendererLayout.setTube(lane, tube.x, tube.y, tube.width, tube.height);
     }
 

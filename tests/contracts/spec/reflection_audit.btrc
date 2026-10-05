@@ -1,8 +1,10 @@
 // Reflection audit spec (M15 item 8): every bezel that declares a mirror draws it, on every system, variant,
 // placement and the two screens Semu targets (the Deck's 1280x800 and 1920x1080). The compositor's lane
 // strength (RendererMirror, the value reflectAt receives) must be the package's own wherever the package's
-// shell is shown, its ring band must stand on the canvas around the picture on every side whose picture edge
-// is on screen, and the fragment shader must mirror onto each band it paints, for both screens. Every mirror is
+// shell is shown, its ring band (as RendererMirror.ring sends it) must stand round the picture the compositor draws,
+// at least half the package's own lip width on every side whose picture edge is on screen (a two-screen shell's
+// whole-step lane can run past its picture rectangle: the 3DS touch screen at 1x on the Deck), and the fragment
+// shader must mirror onto each band it paints, for both screens. Every mirror is
 // one strength, the TVs' 0.4 (the owner found them inconsistent: 0.2 to 0.5 from the presets' global amounts).
 // tests/visual/reflection-audit.sh measures the same matrix on the render host (tests/visual/reflection-audit.tsv).
 
@@ -84,21 +86,32 @@ class ReflectionAuditChecks {
             struct RendererScreenConfig* screen = &variant.screens[index];
             float declared = screen->look_set != 0 && screen->ring_set != 0 ? screen->ring_reflect : 0.0f;
             if (declared > 0.0f && (declared - 0.4f > 0.0001f || 0.4f - declared > 0.0001f) && placement == 0 && areaWidth == 1280) { uneven.push(f"{systemId}:{variantId} screen{index} {declared}"); }
+            struct RendererPixelRect inner;
             struct RendererPixelRect outer;
             struct RendererPixelRect picture;
+            struct RendererPixelRect declaredOuter;
+            struct RendererPixelRect declaredPicture;
+            memset(&inner, 0, sizeof(struct RendererPixelRect));
             memset(&outer, 0, sizeof(struct RendererPixelRect));
             memset(&picture, 0, sizeof(struct RendererPixelRect));
-            struct RendererNormalizedHole* hole = screen->image.set != 0 ? &screen->image : &screen->tube;
+            memset(&declaredOuter, 0, sizeof(struct RendererPixelRect));
+            memset(&declaredPicture, 0, sizeof(struct RendererPixelRect));
             if (dressed) {
-                RendererCompositionContract.aperture(&canvas, screen->ring_outer.x, screen->ring_outer.y, screen->ring_outer.width, screen->ring_outer.height, &outer);
-                RendererCompositionContract.aperture(&canvas, hole->x, hole->y, hole->width, hole->height, &picture);  // the picture fits inside this rectangle, so its band is at least this wide
+                RendererMirror.picture(screen, &canvas, &declaredPicture);
+                RendererCompositionContract.aperture(&canvas, screen->ring_outer.x, screen->ring_outer.y, screen->ring_outer.width, screen->ring_outer.height, &declaredOuter);
+                struct RendererLaneGeometry drawn = lanes.lanes[index];  // the picture the compositor draws: a two-screen shell's whole-step lane, else the package's own rectangle, which a single screen fits inside
+                if (!dual) { drawn.output_x = declaredPicture.x; drawn.output_y = declaredPicture.y; drawn.output_width = declaredPicture.width; drawn.output_height = declaredPicture.height; }
+                picture.x = drawn.output_x; picture.y = drawn.output_y; picture.width = drawn.output_width; picture.height = drawn.output_height;
+                RendererMirror.ring(screen, &canvas, &drawn, &inner, &outer);  // the lip's edges as the compositor sends them
             }
             bool ring = RendererMirror.ringShown(screen, dressed, &outer, canvas.width);
-            float drawn = RendererMirror.strength(screen, dressed, ring, 0);
+            float drawnStrength = RendererMirror.strength(screen, dressed, ring, 0);
             int band = ring ? ReflectionAuditBand.narrowest(&outer, &picture, areaWidth, areaHeight) : 0;
+            int lip = ring ? ReflectionAuditBand.narrowest(&declaredOuter, &declaredPicture, areaWidth, areaHeight) : 0;  // the package's own lip width at this scale
+            int needed = lip >= 9999 ? 1 : (lip / 2 > 1 ? lip / 2 : 1);
             string expected = declared <= 0.0f ? "none" : (dressed ? "mirror" : "none (no shell)");
-            row = row + f" screen{index} declared {declared} drawn {drawn} band {band}px {expected};";
-            bool wrong = (declared > 0.0f && dressed && (drawn != declared || band < 1)) || (declared <= 0.0f && drawn > 0.0f);
+            row = row + f" screen{index} declared {declared} drawn {drawnStrength} band {band}px of a {lip}px lip {expected};";
+            bool wrong = (declared > 0.0f && dressed && (drawnStrength != declared || band < needed)) || (declared <= 0.0f && drawnStrength > 0.0f);
             if (wrong) { failures.push(f"{systemId}:{variantId} placement {placement} at {areaWidth}x{areaHeight}:" + row); }
         }
         return row;
@@ -142,6 +155,7 @@ class ReflectionAuditChecks {
         string compositor = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_compositor.btrc"));
         bool lanes = compositor.contains("RendererMirror.strength(screen, bezel, ring, geometry->framed)") && compositor.contains("bool ring = RendererMirror.ringShown(screen, bezel, &outer, geometry->bezel_width);");
         contract.expect(lanes, "the compositor sends each lane the strength the audit computes (RendererMirror), so the audit is the renderer's own decision");
+        contract.expect(compositor.contains("RendererMirror.ring(screen, &canvas, lane, &inner, &outer);"), "the compositor sends each lane the lip edges the audit measures (RendererMirror.ring), so a band the audit passes is the band drawn");
     }
 }
 

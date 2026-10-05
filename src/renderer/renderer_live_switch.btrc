@@ -1,8 +1,10 @@
 // A bezel or shader select applied to the renderer's config without GL: the section the request
 // names replaces the variant keys, the image signature says whether the bezel images must reload,
 // and the live choice is kept, so a context reset starts on it and the next select compares to it.
-// A Fit choice that leaves every screen and the shell where they were (the DS shells on the Deck, where the
-// screen step is the bezel's) turns its toast into FIT: SCREEN SAME AS BEZEL.
+// A Fit choice whose geometry is the bezel placement's on this frame (the DS shells on the Deck, where the screen
+// step is the bezel's) turns its toast into FIT: SCREEN SAME AS BEZEL. It is compared with Fit: Bezel itself, never with
+// the frame before: a PS2 at 1080p whose Fit and Fit: Screen are both 2x while Fit: Bezel is 1x keeps its plain toast.
+// Fit itself says FIT: SAME AS BEZEL (its own same_fit toast), so no toast repeats FIT.
 
 #include <stdio.h>
 #include <string.h>
@@ -20,8 +22,7 @@ struct RendererLiveChoice {  // the variants-file section a select applied, and 
     int bezel;  // -1 before any select
     int shader;
     int placement;  // RendererConfig.placement a placement select set; -1 before any
-    int placement_compare;  // a placement applied this frame: its geometry is compared with the frame before
-    struct RendererCompositionGeometry placement_before;
+    int placement_compare;  // a placement applied this frame: once its geometry resolves it is compared with the bezel placement's
     struct RendererVariantOverlay overlay;  // that section's keys, re-applied over a freshly loaded config
 };
 
@@ -74,31 +75,30 @@ class RendererLiveSwitch {
     }
 }
 
-class RendererPlacementNotice {  // a Fit choice that moves nothing on this display says so: FIT: SCREEN SAME AS BEZEL
-    class void remember(struct RendererLiveChoice* live, struct RendererCompositionGeometry* before) {  // the frame before the placement applied
-        memcpy(&live->placement_before, before, sizeof(struct RendererCompositionGeometry));
-        live->placement_compare = 1;
-    }
+class RendererPlacementNotice {  // a Fit choice that draws exactly what Fit: Bezel draws on this display says so: FIT: SCREEN SAME AS BEZEL
+    class void remember(struct RendererLiveChoice* live) { live->placement_compare = 1; }  // a placement applied: compare once its geometry resolves
 
-    class bool same(struct RendererCompositionGeometry* before, struct RendererCompositionGeometry* after) {  // the same screens and the same shell, to the pixel
-        if (before->lane_count != after->lane_count || before->lane_count < 1) { return false; }
+    class bool same(struct RendererCompositionGeometry* bezel, struct RendererCompositionGeometry* after) {  // the same screens and the same shell, to the pixel
+        if (bezel->lane_count != after->lane_count || bezel->lane_count < 1) { return false; }
         for (int index = 0; index < after->lane_count && index < 2; index++) {
-            struct RendererLaneGeometry* old = &before->lanes[index];
+            struct RendererLaneGeometry* old = &bezel->lanes[index];
             struct RendererLaneGeometry* now = &after->lanes[index];
             if (old->output_x != now->output_x || old->output_y != now->output_y || old->output_width != now->output_width || old->output_height != now->output_height) { return false; }
         }
-        float moved = before->bezel_x - after->bezel_x;
-        float grown = before->bezel_width - after->bezel_width;
-        float lifted = before->bezel_y - after->bezel_y;
+        float moved = bezel->bezel_x - after->bezel_x;
+        float grown = bezel->bezel_width - after->bezel_width;
+        float lifted = bezel->bezel_y - after->bezel_y;
         return moved * moved < 0.25f && grown * grown < 0.25f && lifted * lifted < 0.25f;
     }
 
-    class void after(struct RendererPostUiState* state, struct RendererLiveChoice* live, struct RendererCompositionGeometry* after, int placement, long long now) {  // once the new geometry is resolved (null when it was not)
+    class void after(struct RendererPostUiState* state, struct RendererLiveChoice* live, struct RendererCompositionGeometry* after, struct RendererCompositionGeometry* bezel, int placement, long long now) {  // once the new geometry is resolved (null when it was not); BEZEL: this frame placed as Fit: Bezel (null when it was not)
         if (live->placement_compare == 0) { return; }
         live->placement_compare = 0;
         bool noticed = state != null && state->placement_noticed != 0;
         if (state != null) { state->placement_noticed = 0; }
-        if (!noticed || after == null || placement == 2 || !RendererPlacementNotice.same(&live->placement_before, after)) { return; }  // bezel is what the others are compared to
-        RendererMenuModel.notice(state, SemuActions.placementSelect(), "same", RendererVariantFile.choiceLabel(&state->catalog, SemuActions.placementSelect(), state->placement_shown), now);
+        if (!noticed || after == null || bezel == null || placement == 2 || !RendererPlacementNotice.same(bezel, after)) { return; }  // bezel is what the others are compared to
+        char* label = RendererVariantFile.choiceLabel(&state->catalog, SemuActions.placementSelect(), state->placement_shown);
+        if (placement == 0) { RendererMenuModel.notice(state, SemuActions.placementSelect(), "same_fit", label, now); return; }  // Fit itself reads FIT: SAME AS BEZEL, never FIT: FIT SAME AS BEZEL
+        RendererMenuModel.notice(state, SemuActions.placementSelect(), "same", label, now);
     }
 }

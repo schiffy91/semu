@@ -5,6 +5,8 @@
 # OUT_DIR/<system>-<variant>-{editor,production,diff,side}.png, a row of OUT_DIR/metrics.tsv and OUT_DIR/index.html.
 # usage: editor-sync.sh [--card white|black|test] [--placement fit|game|bezel] [--size WxH] OUT_DIR [system[:variant]...]
 # --card test draws the editor's test card on both sides (RENDER_HOST_CARD=editor). --placement overrides the system's.
+# Exits with the number of failing cells: a render or capture that failed, framing more than 1 px apart, or any pixel
+# whose largest channel differs by more than 10 % (the editor must show what the renderer draws).
 # Metric: the share of pixels whose largest channel differs by more than 10 % (and 3 %) once both sides are blurred by 1 px
 # (so nearest-neighbour aliasing is not a difference), the mean absolute error of the raw images, and the bounding box
 # of the largest connected differing region; the canvas share counts only the canvas on screen (the renderer paints its
@@ -127,7 +129,7 @@ for cell in "${cells[@]}"; do
     [ -z "$only" ] || [ "$variant" = "$only" ] || continue
     package="$(jq -r --arg id "$variant" '.variants[] | select(.id == $id) | .bezel' "$bezels")"
     name="$system-$variant"
-    wide=""; [ "$variant" = "$(jq -r '.widescreen_variant // ""' "$bezels")" ] && wide="1.777778"  # the wide variant shows a 16:9 title, as the gallery does
+    wide=""; [ "$(jq -r --arg id "$variant" '.variants[] | select(.id == $id) | .output // ""' "$bezels")" = widescreen ] && wide="1.777778"  # a variant for widescreen output shows a 16:9 title, so the renderer draws its 16:9 package
     editorImage="$out/$name-editor.png"; productionImage="$out/$name-production.png"; diffImage="$out/$name-diff.png"; sideImage="$out/$name-side.png"
     if ! production "$system" "$variant" "$productionImage" "$wide"; then
       echo "$name: production render FAILED (see $work/$name-production.log)"; failures=$((failures + 1)); continue
@@ -160,6 +162,7 @@ for cell in "${cells[@]}"; do
     [ "$layout" = fixed ] || { placed="0 0 $width $height"; framing="computed layout $layout: the whole screen, lanes from RendererLayout.computed"; }
     metrics="$(compare "$editorImage" "$productionImage" "$diffImage" "$placed")" || { echo "$name: comparison FAILED"; failures=$((failures + 1)); continue; }
     read -r share subtle inside mae region area <<<"$metrics"
+    if [ "$share" != 0.000 ] || [ "${framing#FRAMING DIFFERS}" != "$framing" ]; then echo "$name: DIFFERS ($share% over 10%; $framing)" >&2; failures=$((failures + 1)); fi  # the editor must show what the renderer draws: a framing or pixel difference fails the run
     panel "$editorImage" "editor · $name" "$work/editor-panel.miff"
     panel "$productionImage" "production · $name" "$work/production-panel.miff"
     panel "$diffImage" "difference x3 · $share% over 10% · largest $region" "$work/diff-panel.miff"
