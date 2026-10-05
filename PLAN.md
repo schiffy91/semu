@@ -1597,6 +1597,74 @@ Status: started 2026-10-05.
   no shape mask under an outermost pixel, the texture-pack scale and the editor's copy. Each check
   fails under its mutation (9 run): shell ignored, no leeway, not centred, no snap, studio rounded,
   berry's own shell, not emitted, composed scale floored, editor not centred.
+- Item 3 (N64 reflections): cause found and fixed (cc323cf); seen on the render host and with the real
+  core in the podman VM; the Deck check is open. Since M14, GLideN64 hands RetroArch a 320x240 frame with
+  the VI pass region drawn black: 4 columns on the left and 3 on the right (vi_minhpass 8 and
+  vi_maxhpass 7 half-dots, FrameBuffer.cpp:1249-1250 and 1557-1564 at mupen64plus-libretro-nx f275caf4),
+  and the 3 lines under the 237 active lines of the standard NTSC modes. The lip mirrors the picture's
+  outermost pixels, so it mirrored those black bands, 8 to 12 px at 2x and 3x, about half the lip. The
+  fade left the game only on the lip's faint outer half. angrylion's Hide overscan had cropped the same
+  border until M14. Measured with Super Mario 64 in the VM (real core, bezel and shader off, 3x): columns
+  0-3 and 317-319 and lines 237-239 black. Its own 8-line border is the game's and stays. Ruled out: the
+  tap's texture or a bound FBO (the picture and the lip draw from the same extracted frame), the
+  strength (0.4 since M13), and the GDV-NTSC preset (the same black band with the shader off). Fix:
+  `display.screens[0].crop` 4,0,3,3 in n64/system.json, emitted as SEMU_RENDER_SURFACE_0_CROP. The
+  renderer takes the crop off every producer's reported surface before any geometry
+  (renderer_surface_crop.btrc). Placement, the extracted picture and the mirror all see the 313x237
+  picture, with square pixels and whole steps of 237: game 939x711 at 1280x800 and 1252x948 at 1080p,
+  fit and bezel 626x474 at 1280x800. The editor previews the same picture. Seen:
+  - Render host with SM64's real frame as the card (RENDER_HOST_CARD), the N64 TV in fit, bezel and
+    game at both sizes. Before: a black column between the picture and a plain grey lip on both
+    sides. After: the scene's green and blue, and a Bob-omb, mirrored across the edge onto the lip,
+    sharp at the edge and fading outward.
+  - VM, real core through the RetroArch GL tap (cc323cf): the renderer read native 313x237 and drew
+    626x474 at 327,172 in fit and bezel. The left lip shades from #3C3D3E to #3E4250 toward the edge
+    (the title's navy, mirrored) and meets the picture directly. The M14 capture there had 7 columns
+    of #0B0E16 and a neutral #343433 lip.
+  - Editor (`tests/visual/editor-sync.sh`, headless Chrome) against the renderer for n64:tv and
+    n64:speakers in fit, bezel and game at 1280x800 and 1920x1080: framing equal, 0.000% of pixels
+    differ, MAE 0.
+  Reversible defaults: the crop is the standard NTSC VI's. A PAL game, or one with its own VI start,
+  keeps a thin black edge of its own picture. SM64's own 8-line border still mirrors black at the top
+  and bottom: it is the game.
+- Item 8 (reflection audit): done on the render host; the Deck check is open. Every system (17) x
+  bezel variant x placement (fit, bezel, game) at 1280x800 and 1920x1080 is 234 cells, plus switch and
+  wiiu, which declare no bezel. `tests/visual/reflection-audit.sh` renders each cell twice, as declared
+  and with every SEMU_RENDER_SCREEN_<n>_REFLECT zeroed, and the difference is the mirror. The full table
+  is `tests/visual/reflection-audit.tsv`: declared strength, pixels changed, brightest step, live path
+  and verdict. Compact (expected / render host / live path):
+  - gb, gbc, gba (all variants): mirror / drawn in all 36 cells / RetroArch GL tap. Was 0.2-0.25,
+    now 0.4; brightest step 29-46, now 54-93.
+  - nes, snes, genesis, n64, psx (all variants): mirror / drawn in all 60 / RetroArch GL tap. nes was
+    0.5, snes 0.3, psx 0.2; n64 drew only on black until item 3.
+  - nds, n3ds shell and vertical shell: mirror in fit and bezel, drawn in all 16 / RetroArch tap
+    (nds) and the Azahar Vulkan layer (n3ds). In game (Fit: Screen) the shell is dropped, so none
+    (8 cells, item 2's track). The vertical shells were 0.2.
+  - nds, n3ds main_right, main_left, side_by_side, stacked: none (computed layouts, nothing to
+    mirror on) / none in all 48.
+  - gc, wii (tv, tv_wide, speakers): mirror / drawn in all 30 / Dolphin GL preload. A Deck capture of
+    2026-10-04 shows the white Wii safety screen mirrored bright on the TV lip. wii was 0.2.
+  - dreamcast, ps2: mirror / drawn in all 24 / Flycast and PCSX2 GL preload. PCSX2's dark memory-card
+    screen mirrors dark on the Deck, as it should.
+  - psp (e1000, red): mirror / drawn in all 12 / PPSSPP GL preload. The Deck capture shows the
+    picture tinting the lip.
+  - switch, wiiu: none (no bezel) / none / Ryujinx and Cemu Vulkan layers.
+  Verdict: no package that declares a mirror failed to draw it where its shell is shown (178 of 178).
+  The inconsistency was the strengths, which came from each preset's HSM_REFLECT_GLOBAL_AMOUNT: 0.2 to
+  0.5. On the same card the brightest mirror step ranged from 29 (GB) and 40 (PS1) to 110 (NES). Every
+  mirror is now one strength, 0.4, marked edited so `semu bezel emit` keeps it, and the range is 54 to
+  93. The GB's green LCD is the darkest picture, so it stays the lowest. Live paths: the RetroArch
+  bridge, the GL preload and the Vulkan layer all end in semu_render_game_gl, which crops and extracts
+  the reported content rectangle. The mirror samples that frame's outermost pixels, so black inside the
+  reported rectangle mirrors black. The N64 was the only such frame found. Contract:
+  `tests/contracts/spec/reflection_audit.btrc` checks every cell (RendererMirror's lane strength, which
+  the compositor sends to reflectAt, equals the package's wherever its shell is shown, and its ring band
+  stands at least 1 px on screen on every side with screen beyond the picture), one strength for every
+  mirror, the fragment shader's three mirrored bands per screen, and the compositor using RendererMirror.
+  Each fails under its mutation: the lane strength sent as 0, the ring never shown, one chrome-pass
+  reflectAt removed, psx back at 0.2, psx's ring outer pulled onto its picture. Reversible default: one
+  strength, 0.4, for every bezel: the NES drops from 0.5, and gb, gbc, gba, snes, psx, wii and the
+  vertical DS and 3DS shells rise to it.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 

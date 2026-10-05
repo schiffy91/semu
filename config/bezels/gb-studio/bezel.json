@@ -43,7 +43,7 @@
         "mode": "aspect_constrained_lens_fit"
       },
       "reflection": {
-        "strength": 0.25,
+        "strength": 0.4,
         "blur": 0.95,
         "fade": 1
       },

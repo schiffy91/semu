@@ -47,6 +47,7 @@ import ./spec/placement.btrc;
 import ./spec/scene_fill.btrc;
 import ./spec/gameboy_fit.btrc;
 import ./spec/fields_reflections.btrc;
+import ./spec/reflection_audit.btrc;
 import ./spec/crt_gdv.btrc;
 import ./spec/radial_choices.btrc;
 import ./spec/radial_render.btrc;
@@ -304,12 +305,12 @@ class RenderingContract {
         bool nesRing = false;
         bool nesReflect = false;
         for entry in nesTv {
-            if (entry.equals("SEMU_RENDER_SCREEN_0_REFLECT=0.5,0.95,1")) { nesReflect = true; }  // HSM_REFLECT_GLOBAL_AMOUNT 50, BLUR_MAX 95, FADE_AMOUNT 100
+            if (entry.equals("SEMU_RENDER_SCREEN_0_REFLECT=0.4,0.95,1")) { nesReflect = true; }  // every mirror at the TVs' 0.4 (M15 item 8, edited over HSM_REFLECT_GLOBAL_AMOUNT 50); BLUR_MAX 95, FADE_AMOUNT 100
             if (entry.startsWith("SEMU_RENDER_SCREEN_0_IMAGE=0.275781,0.123148,0.448437,0.597685")) { nesImage = true; }  // 1059,266,1722,1291: HSM_NON_INTEGER_SCALE 59.77 at 4:3, POSITION_Y 78
             if (entry.startsWith("SEMU_RENDER_SCREEN_0_RING=0.273698,0.119444,0.452604,0.605093,0.246354,0.099537,0.507292,0.644907,") && entry.endsWith(",0.0901961,0.0941176,0.0980392,1,1")) { nesRing = true; }  // black edge to bezel edge, bezel color #171819, a lit chamfer
         }
         contract.expect(nesImage && nesRing, "the NES picture and bezel ring follow Soqueroeu's preset");
-        contract.expect(nesReflect, "the NES ring reflection strength, blur and fade come from the preset");
+        contract.expect(nesReflect, "the NES ring reflection is the TVs' 0.4, its blur and fade the preset's");
         bool compositorDir = false;
         for entry in nesTv { if (entry.startsWith("SEMU_RENDER_COMPOSITOR_DIR=") && entry.endsWith("/config/render")) { compositorDir = true; } }
         contract.expect(compositorDir && FileSystem.isFile(PathTools.join(fixture.project, "config/render/compositor.frag")) && FileSystem.isFile(PathTools.join(fixture.project, "config/render/compositor.vert")), "the compositor shader is data under config/render and the launch points the renderer at it");
@@ -1004,6 +1005,7 @@ int main() {
     SceneFillSpecContract.run(contract);
     GameBoyFitSpecContract.run(contract);
     FieldsReflectionsSpecContract.run(contract);
+    ReflectionAuditSpecContract.run(contract);
     CrtGdvSpecContract.run(contract);
     RadialChoicesSpecContract.run(contract);
     RadialRenderSpecContract.run(contract);

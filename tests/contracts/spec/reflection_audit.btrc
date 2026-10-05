@@ -1,0 +1,148 @@
+// Reflection audit spec (M15 item 8): every bezel that declares a mirror draws it, on every system, variant,
+// placement and the two screens Semu targets (the Deck's 1280x800 and 1920x1080). The compositor's lane
+// strength (RendererMirror, the value reflectAt receives) must be the package's own wherever the package's
+// shell is shown, its ring band must stand on the canvas around the picture on every side whose picture edge
+// is on screen, and the fragment shader must mirror onto each band it paints, for both screens. Every mirror is
+// one strength, the TVs' 0.4 (the owner found them inconsistent: 0.2 to 0.5 from the presets' global amounts).
+// tests/visual/reflection-audit.sh measures the same matrix on the render host (tests/visual/reflection-audit.tsv).
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+import ../../../src/renderer/renderer_config.btrc;
+import ../../../src/renderer/renderer_placement.btrc;
+import ../../../src/renderer/renderer_mirror.btrc;
+import ../../../src/renderer/renderer_surface_crop.btrc;
+import ./placement.btrc;
+
+class ReflectionAuditBand {
+    class int visible(int from, int to, int limit) {  // the part of [FROM, TO) on a screen LIMIT pixels across
+        int start = from < 0 ? 0 : from;
+        int end = to > limit ? limit : to;
+        return end > start ? end - start : 0;
+    }
+
+    class int narrowest(struct RendererPixelRect* outer, struct RendererPixelRect* picture, int areaWidth, int areaHeight) {  // the thinnest band side whose picture edge has screen beyond it; 9999 when none has
+        int sides[4] = {
+            picture->x > 0 ? ReflectionAuditBand.visible(outer->x, picture->x, areaWidth) : 9999,
+            picture->x + picture->width < areaWidth ? ReflectionAuditBand.visible(picture->x + picture->width, outer->x + outer->width, areaWidth) : 9999,
+            picture->y > 0 ? ReflectionAuditBand.visible(outer->y, picture->y, areaHeight) : 9999,
+            picture->y + picture->height < areaHeight ? ReflectionAuditBand.visible(picture->y + picture->height, outer->y + outer->height, areaHeight) : 9999};
+        int least = 9999;
+        for (int index = 0; index < 4; index++) { if (sides[index] < least) { least = sides[index]; } }
+        return least;
+    }
+}
+
+class ReflectionAuditChecks {
+    class Vector<string> variantIds(Fixture fixture, string systemId) {
+        Vector<string> ids = [];
+        JSONValue declared = fixture.model.system(systemId).bezels.get("variants");
+        for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) { ids.push(SemuJson.textAt(declared.at(index), "id")); }
+        return ids;
+    }
+
+    class string cell(Fixture fixture, string systemId, string variantId, int placement, int areaWidth, int areaHeight, Vector<string> failures, Vector<string> uneven) {  // one row of the audit: declared, drawn strength, narrowest band; UNEVEN collects a declared strength other than 0.4
+        Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, variantId);
+        struct RendererVariantConfig variant;
+        PlacementSpecGeometry.load(environment, &variant);
+        JSONValue screens = SemuJson.get(fixture.model.system(systemId).definition, "display.screens");
+        int count = screens != null && screens.isArray() ? screens.size() : 1;
+        struct SemuRenderFrameGl frame;
+        memset(&frame, 0, sizeof(struct SemuRenderFrameGl));
+        frame.surface_count = count;
+        for (int index = 0; index < count && index < 2; index++) {
+            frame.surfaces[index].native_width = SemuJson.intAt(screens.at(index), "native.w", 0);
+            frame.surfaces[index].native_height = SemuJson.intAt(screens.at(index), "native.h", 0);
+            frame.surfaces[index].width = frame.surfaces[index].native_width;
+            frame.surfaces[index].height = frame.surfaces[index].native_height;
+        }
+        struct RendererSurfaceCrop crops[2];
+        memset(crops, 0, sizeof(crops));
+        PlacementSpecGeometry.crops(environment, crops);
+        frame.presentation_aspect = PlacementSpecGeometry.aspect(environment, frame.surfaces[0].native_width, frame.surfaces[0].native_height);
+        RendererSurfaceCropping.apply(&frame, crops, frame.presentation_aspect);
+        bool fixed = variant.layout == SEMU_LAYOUT_FIXED && variant.canvas_width > 0;
+        bool dressed = fixed && !RendererPlacement.shellHidden(placement, count);
+        struct RendererCanvasRect canvas;
+        memset(&canvas, 0, sizeof(struct RendererCanvasRect));
+        if (fixed) { RendererPlacement.canvas(&frame, &variant, placement, 0, frame.presentation_aspect, areaWidth, areaHeight, variant.canvas_width, variant.canvas_height, &canvas); }
+        string row = "";
+        for (int index = 0; index < count && index < 2; index++) {
+            struct RendererScreenConfig* screen = &variant.screens[index];
+            float declared = screen->look_set != 0 && screen->ring_set != 0 ? screen->ring_reflect : 0.0f;
+            if (declared > 0.0f && (declared - 0.4f > 0.0001f || 0.4f - declared > 0.0001f) && placement == 0 && areaWidth == 1280) { uneven.push(f"{systemId}:{variantId} screen{index} {declared}"); }
+            struct RendererPixelRect outer;
+            struct RendererPixelRect picture;
+            memset(&outer, 0, sizeof(struct RendererPixelRect));
+            memset(&picture, 0, sizeof(struct RendererPixelRect));
+            struct RendererNormalizedHole* hole = screen->image.set != 0 ? &screen->image : &screen->tube;
+            if (dressed) {
+                RendererCompositionContract.aperture(&canvas, screen->ring_outer.x, screen->ring_outer.y, screen->ring_outer.width, screen->ring_outer.height, &outer);
+                RendererCompositionContract.aperture(&canvas, hole->x, hole->y, hole->width, hole->height, &picture);  // the picture fits inside this rectangle, so its band is at least this wide
+            }
+            bool ring = RendererMirror.ringShown(screen, dressed, &outer, canvas.width);
+            float drawn = RendererMirror.strength(screen, dressed, ring, 0);
+            int band = ring ? ReflectionAuditBand.narrowest(&outer, &picture, areaWidth, areaHeight) : 0;
+            string expected = declared <= 0.0f ? "none" : (dressed ? "mirror" : "none (no shell)");
+            row = row + f" screen{index} declared {declared} drawn {drawn} band {band}px {expected};";
+            bool wrong = (declared > 0.0f && dressed && (drawn != declared || band < 1)) || (declared <= 0.0f && drawn > 0.0f);
+            if (wrong) { failures.push(f"{systemId}:{variantId} placement {placement} at {areaWidth}x{areaHeight}:" + row); }
+        }
+        return row;
+    }
+
+    class void matrix(Contract contract, Fixture fixture) {
+        Vector<string> failures = [];
+        Vector<string> uneven = [];
+        int mirrored = 0;
+        int cells = 0;
+        int widths[2] = {1280, 1920};
+        int heights[2] = {800, 1080};
+        for systemId in fixture.model.systemIds() {
+            for variantId in ReflectionAuditChecks.variantIds(fixture, systemId) {
+                for (int placement = 0; placement < 3; placement++) {
+                    for (int size = 0; size < 2; size++) {
+                        string row = ReflectionAuditChecks.cell(fixture, systemId, variantId, placement, widths[size], heights[size], failures, uneven);
+                        cells++;
+                        if (row.contains(" mirror;")) { mirrored++; }
+                    }
+                }
+            }
+        }
+        contract.expect(failures.isEmpty() && cells >= 200 && mirrored >= 150, f"every bezel that declares a mirror draws it at its own strength on a band around the picture, in every placement at 1280x800 and 1920x1080 ({mirrored} of {cells} cells mirror): " + failures.join(" | "));
+        contract.expect(uneven.isEmpty() && mirrored >= 150, "every mirror is one strength, the TVs' 0.4, so no system's reflection looks weaker beside another's: " + uneven.join(", "));
+    }
+
+    class int count(string text, string needle) {
+        int found = 0;
+        int at = Strings.find(text, needle, 0);
+        while (at >= 0) { found++; at = Strings.find(text, needle, at + needle.len()); }
+        return found;
+    }
+
+    class void sources(Contract contract, Fixture fixture) {
+        string shader = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "render/compositor.frag"));
+        int first = ReflectionAuditChecks.count(shader, "reflectAt(uGame,uRaw,p,uTube,uRect,uRingOut,uFx,uRotation.x,uRingReflect)");
+        int second = ReflectionAuditChecks.count(shader, "reflectAt(uGame2,uRaw2,p,uTube2,uRect2,uRingOut2,uFx2,uRotation.y,uRingReflect2)");
+        bool mirrored = shader.contains("vec2 src=e+(e-g)");  // across the bent edge: sharp there, never the edge pixel clamped outward
+        contract.expect(first == 3 && second == 3 && mirrored, f"the fragment shader mirrors the picture onto each band it paints, for both screens: the lip at the bent edge, the ring over the screen and the ring over the chrome ({first} and {second} of 3), mirrored across the edge");
+        string compositor = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_compositor.btrc"));
+        bool lanes = compositor.contains("RendererMirror.strength(screen, bezel, ring, geometry->framed)") && compositor.contains("bool ring = RendererMirror.ringShown(screen, bezel, &outer, geometry->bezel_width);");
+        contract.expect(lanes, "the compositor sends each lane the strength the audit computes (RendererMirror), so the audit is the renderer's own decision");
+    }
+}
+
+class ReflectionAuditSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        ReflectionAuditChecks.matrix(contract, fixture);
+        ReflectionAuditChecks.sources(contract, fixture);
+    }
+}

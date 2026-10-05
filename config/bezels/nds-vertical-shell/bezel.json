@@ -134,9 +134,6 @@
           "HSM_LED_SCALE_X": "100",
           "HSM_NON_INTEGER_SCALE": "71.170181",
           "HSM_NON_INTEGER_SCALE_OFFSET": "100",
-          "HSM_REFLECT_BLUR_MAX": "95",
-          "HSM_REFLECT_FADE_AMOUNT": "100",
-          "HSM_REFLECT_GLOBAL_AMOUNT": "20",
           "HSM_ROTATE_CORE_IMAGE": "0",
           "HSM_SCREEN_POSITION_X": "0",
           "HSM_SCREEN_POSITION_Y": "-50.000000",
@@ -145,12 +142,16 @@
           "HSM_TUBE_EMPTY_THICKNESS": "0",
           "HSM_TUBE_EMPTY_THICKNESS_X_SCALE": "100",
           "HSM_TUBE_EXPLICIT_ASPECT": "1.3332999999999999"
+        },
+        "edited": {
+          "tool": "semu bezel edit",
+          "when": "2026-10-05"
         }
       },
       "inset": null,
       "measurement": null,
       "reflection": {
-        "strength": 0.20000000000000001,
+        "strength": 0.40000000000000002,
         "blur": 0.94999999999999996,
         "fade": 1
       }
@@ -278,9 +279,6 @@
           "HSM_LED_SCALE_X": "100",
           "HSM_NON_INTEGER_SCALE": "71.170181",
           "HSM_NON_INTEGER_SCALE_OFFSET": "100",
-          "HSM_REFLECT_BLUR_MAX": "95",
-          "HSM_REFLECT_FADE_AMOUNT": "100",
-          "HSM_REFLECT_GLOBAL_AMOUNT": "20",
           "HSM_ROTATE_CORE_IMAGE": "0",
           "HSM_SCREEN_POSITION_X": "0",
           "HSM_SCREEN_POSITION_Y": "-50.000000",
@@ -289,12 +287,16 @@
           "HSM_TUBE_EMPTY_THICKNESS": "0",
           "HSM_TUBE_EMPTY_THICKNESS_X_SCALE": "100",
           "HSM_TUBE_EXPLICIT_ASPECT": "1.3332999999999999"
+        },
+        "edited": {
+          "tool": "semu bezel edit",
+          "when": "2026-10-05"
         }
       },
       "inset": null,
       "measurement": null,
       "reflection": {
-        "strength": 0.20000000000000001,
+        "strength": 0.40000000000000002,
         "blur": 0.94999999999999996,
         "fade": 1
       }
