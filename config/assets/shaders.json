@@ -265,7 +265,7 @@
         "noiseresd": 1,
         "noisetype": 1,
         "ntsc_cscale1": 0.8,
-        "ntsc_fields": 0,
+        "ntsc_fields": 1,
         "ntsc_phase": 3,
         "ntsc_sat": 1.2,
         "ntsc_scale": 1.5,
@@ -280,11 +280,11 @@
         "intres": 1
       },
       "output": {
-        "sha256": "8c2f62bdecdf142952f2b265606226edebf8c38de231bfd053f1268fa21758d6"
+        "sha256": "9a5505257dde75d96c29f31233e8adef9fec2858ed884f47127d9c75da9156fd"
       },
       "doc": {
         "why": "Retro Crisis GDV-NTSC, SNES RGB 100 (720p Steam Deck): guest.r's crt-guest-advanced-ntsc from the pinned libretro tree with Retro Crisis's own Steam Deck (720p) values (GPL-3.0, github.com/RetroCrisis/Retro-Crisis-GDV-NTSC, as imported by ShaderGlass), the look the owner chose for Semu's CRTs (2026-10-04).",
-        "params": "His values as published, float noise rounded, except: the hum bar (barintensity, barspeed) is left out, since a rolling band is the fault the owner reported; any overscan crop (overscanX) is left out, since Semu places the picture at whole steps; and ShaderGlass's own blendMode is not a shader parameter. intres 1 draws a frame of 336 lines or more at round(lines/224) lines per scanline, so an interlaced high-resolution mode keeps the 240-line scanlines, and changes nothing below. interm 0: guest's Interlace Mode (default 2) bobs a field per frame from 375 lines, and every emulator hands over whole progressive frames."
+        "params": "His values as published, float noise rounded, except: the hum bar (barintensity, barspeed) is left out, since a rolling band is the fault the owner reported; any overscan crop (overscanX) is left out, since Semu places the picture at whole steps; and ShaderGlass's own blendMode is not a shader parameter. intres 1 draws a frame of 336 lines or more at round(lines/224) lines per scanline, so an interlaced high-resolution mode keeps the 240-line scanlines, and changes nothing below. interm 0: guest's Interlace Mode (default 2) bobs a field per frame from 375 lines, and every emulator hands over whole progressive frames. ntsc_fields 1 (his preset has 0): unmerged, ntsc-pass1 flips the chroma phase every frame (mod(FrameCount, 2.0)), a 30 Hz shimmer on coloured edges and dithering measured on the render host; merged, both phases are averaged into one steady frame, as his Mega Drive preset does."
       }
     },
     "assets/shaders/genesis/screen.slangp": {
@@ -480,7 +480,7 @@
         "mcut": 2,
         "noisetype": 1,
         "ntsc_cscale": 0.5,
-        "ntsc_fields": 0,
+        "ntsc_fields": 1,
         "ntsc_phase": 2,
         "ntsc_sat": 1.2,
         "ntsc_scale": 2.5,
@@ -491,11 +491,11 @@
         "shadowMask": -1
       },
       "output": {
-        "sha256": "ce7172eb6f825efe00420753cc0df6db98c0614b7c3d1826dc7d549e7dee1f51"
+        "sha256": "21af98e76e1eccbaabea9026fd47a070510ef75fa1de20ad3c56d67d64787380"
       },
       "doc": {
         "why": "Retro Crisis GDV-NTSC, PlayStation RGB 100 (the owner's reference, https://www.youtube.com/watch?v=cyktna9FF08): guest.r's crt-guest-advanced-ntsc from the pinned libretro tree with Retro Crisis's own Steam Deck (720p) values, read from the 2024.11.15 'RC GDV-NTSC - PlayStation RGB 100' presets (GPL-3.0, github.com/RetroCrisis/Retro-Crisis-GDV-NTSC, as imported by ShaderGlass). The beam widens with brightness (beam_min 1, scanline1 5, scanline2 10, scangamma 5), so a white screen fills its line gaps the way a lit tube did instead of drawing even dark bands, and the glow, bloom and red deconvergence give the soft RGB tube.",
-        "params": "Retro Crisis's 720p Steam Deck preset turns the phosphor mask off (shadowMask -1): a mask needs about four screen pixels per triad, which 1280 columns do not have, and its 1080p and 4K presets differ from it only in the mask. intres 1 is the one line that separates his 240p and 480i presets: it draws a 480-line frame (the PS1's high-resolution modes) as 240 scanlines (round(lines/224) per line) and changes nothing at 240 lines, so one preset serves both. interm 0: guest's Interlace Mode (default 2) bobs a field per frame from 375 lines, and every emulator hands over whole progressive frames."
+        "params": "Retro Crisis's 720p Steam Deck preset turns the phosphor mask off (shadowMask -1): a mask needs about four screen pixels per triad, which 1280 columns do not have, and its 1080p and 4K presets differ from it only in the mask. intres 1 is the one line that separates his 240p and 480i presets: it draws a 480-line frame (the PS1's high-resolution modes) as 240 scanlines (round(lines/224) per line) and changes nothing at 240 lines, so one preset serves both. interm 0: guest's Interlace Mode (default 2) bobs a field per frame from 375 lines, and every emulator hands over whole progressive frames. ntsc_fields 1 (his preset has 0): unmerged, ntsc-pass1 flips the chroma phase every frame (mod(FrameCount, 2.0)), a 30 Hz shimmer on coloured edges and dithering measured on the render host; merged, both phases are averaged into one steady frame, as his Mega Drive preset does."
       }
     },
     "assets/shaders/nds/screen.slangp": {

@@ -3,7 +3,8 @@
 // crt-guest-advanced-ntsc with Retro Crisis's values. The PS1, N64, SNES and Genesis default to that preset over the
 // pinned libretro tree with his Steam Deck (720p) values for the system, every one emitted into the wrapper; intres 1
 // (his 480i preset's one extra line) draws a 480-line frame as 240 scanlines; interm 0 keeps whole frames; his hum bar
-// and overscan crop are left out; and each system's previous default stays one step away.
+// and overscan crop are left out; the PS1 and SNES merge their NTSC fields (ntsc_fields 1, his presets have 0), so the
+// chroma phase does not flip every frame; and each system's previous default stays one step away.
 
 import Library.JSON;
 import Library.Strings;
@@ -21,7 +22,7 @@ class CrtGdvSpecChecks {
         if (systemId.equals("psx")) {  // PlayStation RGB 100 - 240p (2024.11.15)
             Vector<string> values = ["addnoised=0.2", "beam_min=1", "bloom=0.5", "deconrry=2.5", "gsl=2", "m_glow=2", "mask_bloom=0.5",
                 "mask_gamma=1.9", "mask_zoom=-1", "maskboost=3", "maskstr=-0.5", "mcut=2", "noisetype=1", "ntsc_cscale=0.5",
-                "ntsc_fields=0", "ntsc_phase=2", "ntsc_sat=1.2", "ntsc_scale=2.5", "scan_falloff=1.5", "scangamma=5",
+                "ntsc_fields=1", "ntsc_phase=2", "ntsc_sat=1.2", "ntsc_scale=2.5", "scan_falloff=1.5", "scangamma=5",
                 "scanline1=5", "scanline2=10", "shadowMask=-1", "intres=1", "interm=0"];
             return values;
         }
@@ -35,7 +36,7 @@ class CrtGdvSpecChecks {
         if (systemId.equals("snes")) {  // SNES RGB 100
             Vector<string> values = ["addnoised=0.4", "beam_max=1.5", "beam_min=0.75", "contr=0", "deconrg=1", "deconrgy=1", "gsl=2",
                 "m_glow=1", "mask_bloom=0.05", "mask_gamma=3.5", "mask_zoom=-1", "maskboost=3", "maskstr=-0.5", "mcut=2", "noiseresd=1",
-                "noisetype=1", "ntsc_cscale1=0.8", "ntsc_fields=0", "ntsc_phase=3", "ntsc_sat=1.2", "ntsc_scale=1.5", "ntsc_sharp=-10",
+                "noisetype=1", "ntsc_cscale1=0.8", "ntsc_fields=1", "ntsc_phase=3", "ntsc_sat=1.2", "ntsc_scale=1.5", "ntsc_sharp=-10",
                 "scan_falloff=2", "scangamma=5", "scanline1=0", "scanline2=10", "shadowMask=-1", "tds=1", "intres=1", "interm=0"];
             return values;
         }

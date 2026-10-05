@@ -7,6 +7,7 @@
 // that matches no scale but 2x and 4x, so it showed that coarse grid and the scanlines it half averaged. Each mirrored
 // point now averages a box of at least one source pixel with five taps a fifth of it apart, which takes whole periods
 // of the shader's scanlines and mask wherever the point lands: the smooth picture, sharp at the edge, wider outward.
+// And a GDV-NTSC preset merges its NTSC fields, so its chroma phase never flips frame to frame (a 30 Hz shimmer).
 
 import Library.FileSystem;
 import Library.JSON;
@@ -52,6 +53,25 @@ class FieldsReflectionsSpecChecks {
         contract.expect(failures.isEmpty() && tall, f"every CRT preset of an interlacing family draws a whole frame, never one field per frame ({covered.size()} variants, the 480-line Dreamcast, GameCube, Wii and PS2 among them): " + failures.join("; "));
     }
 
+    class void phases(Contract contract, Fixture fixture) {  // guest's NTSC passes flip the chroma phase every frame unless the fields merge (ntsc-pass1 mod(FrameCount, 2.0)): a 30 Hz shimmer on coloured edges and dithering
+        JSONValue manifest = SemuJson.readFile(PathTools.join(fixture.project, "config/assets/shaders.json"));
+        Vector<string> failures = [];
+        int checked = 0;
+        for systemId in fixture.model.systemIds() {
+            JSONValue variants = fixture.model.system(systemId).shaders.get("variants");
+            for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
+                string logical = SemuJson.textAt(variants.at(index), "screen");
+                JSONValue recipe = manifest.get("assets").get(logical);
+                if (recipe == null || !SemuJson.textAt(recipe, "reference.path").contains("crt-guest-advanced-ntsc")) { continue; }
+                checked++;
+                double fields = GameBoySpecJson.number(recipe, "params.ntsc_fields");  // -1 when absent: Auto, which merges only at 3 phases
+                double phase = GameBoySpecJson.number(recipe, "params.ntsc_phase");
+                if (fields != 1.0 && !(fields == -1.0 && phase == 3.0)) { failures.push(systemId + " " + logical + f": ntsc_fields {fields}, ntsc_phase {phase}"); }
+            }
+        }
+        contract.expect(failures.isEmpty() && checked >= 4, f"every GDV-NTSC preset merges its fields, so a still picture is the same frame to frame ({checked} variants): " + failures.join("; "));
+    }
+
     class string shaderFunction(string source, string signature) {  // one function of compositor.frag, from its signature to the next top-level line
         int start = Strings.find(source, signature, 0);
         if (start < 0) { return ""; }
@@ -74,6 +94,7 @@ class FieldsReflectionsSpecContract {
     class void run(Contract contract) {
         Fixture fixture = Fixture("steam-deck");
         FieldsReflectionsSpecChecks.fields(contract, fixture);
+        FieldsReflectionsSpecChecks.phases(contract, fixture);
         FieldsReflectionsSpecChecks.reflections(contract, fixture);
     }
 }
