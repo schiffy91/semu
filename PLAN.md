@@ -1550,6 +1550,53 @@ Status: started 2026-10-05.
     So mods.sh, like live-switch.sh, menu-pause.sh and the Deck scripts, gives cubeb a null ALSA
     device. The Deck always runs PipeWire, and a Linux desktop almost always runs PipeWire or
     PulseAudio.
+- Items 4 and 5 (GB and GBC bezel fit and pixels): fixed and measured on the Mac render host at
+  1280x800 and 1920x1080 (2807952); the Deck check is open.
+  - Item 4, Fit: Bezel. It measured the plate's whole canvas, transparent margin included (the DMG
+    plate is 3440x6115 around a 2610x4252 device), so at 1920x1080 the DMG and GBC sat at 1x and the
+    studio at 2x when the next step fits. Packages now carry `shell`, the alpha bounds of their
+    visible plates measured from the pinned files with ImageMagick (DMG 2610x4252+415+936, GBC and
+    berry 2624x4306+408+910, studio 766x1337+149+103, PSP 4999x2133+168+22), emitted as
+    SEMU_RENDER_CANVAS_SHELL. Bezel takes the largest step whose shell fits with the 1% leeway and
+    centres the shell. Shell sizes per step (with the soft drop shadow; body alone in brackets):
+    - DMG: 1x 295x480, 2x 590x961 (569x940), 3x 885x1441. Deck: 1x, 160 px above and below, 492 at
+      the sides. 2x would need 961 px of height (940 without the shadow, 1382 with the plate's
+      margin); the Deck has 800, 808 with the leeway, so no reading of the rule allows it. 1080p: 2x
+      (was 1x), 60 px above and below.
+    - GBC (shell and berry): 1x 296x487, 2x 593x973 (573x952). Deck: 1x, 157 px above and below; 2x
+      needs 973 (952). 1080p: 2x (was 1x), 54 px.
+    - Studio: 2x 413x720, 3x 619x1080. Deck: 2x as before, 40 px; 3x needs 1080. 1080p: 3x (was
+      2x), the height filled, 0.4 px over, inside the leeway.
+    - PSP E1000 and red, the same defect: Deck 1x as before (2x needs 1818 px of width); 1080p 2x
+      (was 1x).
+    Seen by eye: whole shells, centred, on black. The editor's capture matches the renderer to 0.000%
+    of pixels for gb dmg and studio, gbc shell and berry, and psp, in bezel and game at both sizes.
+  - Item 5, pixels. `tests/visual/pixel-grid.sh` sends a 160x144 card through the renderer: a
+    one-pixel border in four colours, a one-pixel checker and a marker in each corner. It compares
+    the 160k x 144k rectangle with the card scaled k by k. DMG, GBC and berry were already exact: AE
+    0, 5x at 800x720+240+40 on the Deck, 7x at 1120x1008+400+36 at 1080p, margins equal to the pixel.
+    The studio was not. Its rounded LCD (radius 0.0336) cut every corner pixel, and its antialiased
+    edge darkened the outermost device row of each edge pixel by 6% (198 for 211). Its LCD is now
+    square like the real one, AE 0. Each device's picture corner now lands on a whole pixel in every
+    integer placement, so the picture is exactly the step on any screen. Odd sizes such as 1281x801
+    drew 801x721 before. LCD look on, by sampling: the DMG grid is symmetric in each k by k cell,
+    the outermost row profiled like the interior. The GBC subpixel triad is locked to the native
+    grid at 5x and 2x.
+  - "Text at the bezel": the game draws there. Aerostar, the owner's GB game (ES-DE log, 01:18),
+    puts LICENSED BY NINTENDO in native column 0 (8 dark pixels in that column). Its SCORE line sits
+    in row 0 (64 dark pixels). As in Duimon's art, the picture ends at the DMG's dark LCD frame, about 4
+    native pixels wide (21-22 px at 5x on the Deck, 30 at 7x, 4 at 1x bezel, 9 at 2x), and the
+    mirror is on it. The frame is centred on the picture within a canvas pixel (DMG 38/38 and
+    39/39, GBC 45/45 and 46/46). The studio plate's lens is off centre: 60 canvas px left and 14
+    right, beside its BATTERY label. Centring it would shrink the studio screen; left as drawn.
+  Reversible defaults: the shell is alpha above 0 (shadow included, the strictest reading). The 1%
+  leeway now applies to every bezel placement, not only rooms; no GBA step changes at either size.
+  GBA keeps its canvas, because its LED layer's faint glow spans the plate. The PSP took the same
+  fix. The studio LCD is square. Contract `tests/contracts/spec/gameboy_fit.btrc` covers the
+  silhouettes, the steps and centring at both sizes, and whole pixels at ten sizes. It also covers
+  no shape mask under an outermost pixel, the texture-pack scale and the editor's copy. Each check
+  fails under its mutation (9 run): shell ignored, no leeway, not centred, no snap, studio rounded,
+  berry's own shell, not emitted, composed scale floored, editor not centred.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
