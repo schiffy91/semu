@@ -1,0 +1,81 @@
+// A declared crop of a screen's frame: the columns and lines an emulator hands over that carry no picture.
+// GLideN64 at native factor 1 draws the N64 VI's unused pass columns black, 4 on the left and 3 on the right,
+// and the 3 lines under its 237 active ones (FrameBuffer.cpp:1249-1250 and 1557-1564 at mupen64plus-libretro-nx
+// f275caf4), as angrylion did until its Hide overscan cropped them. The renderer takes them off the reported
+// surface before anything places, extracts or mirrors it, so the picture's edge is the game's own, the lip
+// mirrors the game instead of black, and the whole steps are of the cropped height. No GL, so the contracts
+// crop a frame exactly as the renderer does.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+import ./renderer_abi.btrc;
+
+struct RendererSurfaceCrop {
+    int set;
+    int left;    // native columns off the picture's left edge
+    int top;     // native lines off its top edge
+    int right;
+    int bottom;
+};
+
+class RendererSurfaceCropping {
+    class void parse(struct RendererSurfaceCrop* crop, char* value) {  // SEMU_RENDER_SURFACE_<n>_CROP: left,top,right,bottom in native pixels
+        if (crop == null) { return; }
+        memset(crop, 0, sizeof(struct RendererSurfaceCrop));
+        if (value == null || sscanf(value, "%d,%d,%d,%d", &crop->left, &crop->top, &crop->right, &crop->bottom) != 4
+                || crop->left < 0 || crop->top < 0 || crop->right < 0 || crop->bottom < 0) {
+            memset(crop, 0, sizeof(struct RendererSurfaceCrop));
+            return;
+        }
+        crop->set = crop->left + crop->top + crop->right + crop->bottom > 0 ? 1 : 0;
+    }
+
+    class void load(struct RendererSurfaceCrop* crops) {  // both screens' crops from the launch's environment
+        if (crops == null) { return; }
+        char name[64];
+        for (int index = 0; index < 2; index++) {
+            snprintf(name, sizeof(name), "SEMU_RENDER_SURFACE_%d_CROP", index);
+            RendererSurfaceCropping.parse(&crops[index], getenv(name));
+        }
+    }
+
+    class int scaled(int pixels, float perPixel) { return (int)((float)pixels * perPixel + 0.5f); }  // native pixels in the frame's own pixels, to the nearest
+
+    class bool applySurface(struct SemuRenderSurfaceGl* surface, struct RendererSurfaceCrop* crop) {  // the reported rectangle shrinks to the picture; false leaves it whole
+        if (surface == null || crop == null || crop->set == 0 || surface->rotation != 0) { return false; }  // the crop is in the picture's own axes, and no rotated screen declares one
+        int keptWidth = surface->native_width - crop->left - crop->right;
+        int keptHeight = surface->native_height - crop->top - crop->bottom;
+        if (keptWidth < 1 || keptHeight < 1 || surface->width < 1 || surface->height < 1) { return false; }
+        float across = (float)surface->width / (float)surface->native_width;  // frame pixels per native pixel: 3 in RetroArch's integer viewport
+        float down = (float)surface->height / (float)surface->native_height;
+        int left = RendererSurfaceCropping.scaled(crop->left, across);
+        int right = RendererSurfaceCropping.scaled(crop->right, across);
+        int top = RendererSurfaceCropping.scaled(crop->top, down);
+        int bottom = RendererSurfaceCropping.scaled(crop->bottom, down);
+        if (surface->width - left - right < 1 || surface->height - top - bottom < 1) { return false; }
+        surface->x = surface->x + left;
+        surface->width = surface->width - left - right;
+        surface->y = surface->y + (surface->origin == SEMU_RENDER_ORIGIN_TOP_LEFT ? top : bottom);  // rows count up from the bottom unless the surface says otherwise
+        surface->height = surface->height - top - bottom;
+        surface->native_width = keptWidth;
+        surface->native_height = keptHeight;
+        return true;
+    }
+
+    class void apply(struct SemuRenderFrameGl* frame, struct RendererSurfaceCrop* crops, float declaredAspect) {  // once per frame, before the geometry: one screen's shown aspect keeps its pixels square
+        if (frame == null || crops == null) { return; }
+        int firstWidth = frame->surfaces[0].native_width;
+        int firstHeight = frame->surfaces[0].native_height;
+        for (int index = 0; index < frame->surface_count && index < 2; index++) {
+            bool cropped = RendererSurfaceCropping.applySurface(&frame->surfaces[index], &crops[index]);
+            if (!cropped || index != 0 || frame->surface_count != 1 || firstWidth < 1 || firstHeight < 1) { continue; }
+            float shown = frame->presentation_aspect > 0.01f ? frame->presentation_aspect : declaredAspect;
+            if (shown <= 0.01f) { continue; }
+            float widthKept = (float)frame->surfaces[0].native_width / (float)firstWidth;
+            float heightKept = (float)frame->surfaces[0].native_height / (float)firstHeight;
+            frame->presentation_aspect = shown * widthKept / heightKept;
+        }
+    }
+}

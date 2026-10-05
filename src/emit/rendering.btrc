@@ -452,6 +452,8 @@ class SemuRenderEnvironment {
             JSONValue screen = screens.at(index);
             env.set(f"SEMU_RENDER_SURFACE_{index}_ID", SemuJson.textAt(screen, "id"));
             env.set(f"SEMU_RENDER_SURFACE_{index}_NATIVE", f"{SemuJson.intAt(screen, "native.w", 0)}x{SemuJson.intAt(screen, "native.h", 0)}");
+            string crop = SemuRenderEnvironment.crop(system, screen, index, diagnostics);
+            if (!crop.isEmpty()) { env.set(f"SEMU_RENDER_SURFACE_{index}_CROP", crop); }  // columns and lines the emulator draws that are no picture
         }
         int touch = SemuRenderEnvironment.mappedScreen(system, display, screens, "touch_screen", diagnostics);
         if (touch >= 0) {
@@ -460,6 +462,23 @@ class SemuRenderEnvironment {
         }
         int pointer = SemuRenderEnvironment.mappedScreen(system, display, screens, "pointer_screen", diagnostics);
         if (pointer >= 0) { env.set("SEMU_RENDER_POINTER_SURFACE_INDEX", Strings.fromInt(pointer)); }  // libsemupreload's remap reads the index alone
+    }
+
+    // display.screens[].crop as left,top,right,bottom native pixels, or "" when the screen declares none. A crop
+    // that is negative or leaves no picture is refused.
+    class string crop(SemuSystem system, JSONValue screen, int index, SemuDiagnostics diagnostics) {
+        JSONValue declared = screen.get("crop");
+        if (declared == null || !declared.isObject()) { return ""; }
+        int left = SemuJson.intAt(declared, "left", 0);
+        int top = SemuJson.intAt(declared, "top", 0);
+        int right = SemuJson.intAt(declared, "right", 0);
+        int bottom = SemuJson.intAt(declared, "bottom", 0);
+        bool fits = left + right < SemuJson.intAt(screen, "native.w", 0) && top + bottom < SemuJson.intAt(screen, "native.h", 0);
+        if (left < 0 || top < 0 || right < 0 || bottom < 0 || !fits) {
+            diagnostics.add(system.file, f"display.screens.{index}.crop", "a crop is whole native pixels that leave a picture");
+            return "";
+        }
+        return f"{left},{top},{right},{bottom}";
     }
 
     // The index of the screen surface_mapping names under KEY, or -1: touch_screen takes presses (DS

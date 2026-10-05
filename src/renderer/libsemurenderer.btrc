@@ -248,6 +248,7 @@ int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
         return SEMU_RENDER_GL_UNAVAILABLE;
     }
 
+    RendererSurfaceCropping.apply(frame, SemuRenderer.config.surface_crops, SemuRenderer.config.display_aspect);  // the picture only, before anything places or mirrors it
     SemuRendererLiveVariants.apply();  // a pending select replaces the variant keys before this frame's geometry
     RendererConfiguration.select(&SemuRenderer.config, frame);
     int status = SEMU_RENDER_APPLIED;

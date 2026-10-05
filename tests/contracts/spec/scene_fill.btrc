@@ -154,6 +154,8 @@ class SceneFillSpecChecks {
             JSONValue native = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0.native");
             int nativeWidth = SemuJson.intAt(native, "w", 0);
             int nativeHeight = SemuJson.intAt(native, "h", 0);
+            JSONValue crop = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0.crop");
+            int lines = nativeHeight - SemuJson.intAt(crop, "top", 0) - SemuJson.intAt(crop, "bottom", 0);  // the renderer steps the picture less its declared crop
             if (PlacementSpecEnvironment.layers(environment, "/background.png").isEmpty() || !PlacementSpecEnvironment.layers(environment, "/background.png")[0].endsWith("|1") || nativeHeight < 1) { continue; }
             rooms++;
             string named = PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_PLACEMENT");
@@ -162,10 +164,10 @@ class SceneFillSpecChecks {
                 struct RendererCanvasRect canvas;
                 struct RendererCanvasRect picture;
                 PlacementSpecGeometry.place(fixture, systemId, nativeWidth, nativeHeight, placement, widths[size], heights[size], &canvas, &picture);
-                int steps = PlacementSpecGeometry.rounded(picture.height) / nativeHeight;
-                bool whole = steps >= 1 && PlacementSpecGeometry.near(picture.height, (float)(steps * nativeHeight));
+                int steps = PlacementSpecGeometry.rounded(picture.height) / lines;
+                bool whole = steps >= 1 && PlacementSpecGeometry.near(picture.height, (float)(steps * lines));
                 bool shown = picture.x >= -0.5f && picture.y >= -0.5f && picture.x + picture.width <= (float)widths[size] + 0.5f && picture.y + picture.height <= (float)heights[size] + 0.5f;
-                if (!whole || !shown) { failures.push(systemId + " " + named + f" at {widths[size]}x{heights[size]}: " + PlacementSpecGeometry.text(&picture) + f" for {nativeHeight} lines"); }
+                if (!whole || !shown) { failures.push(systemId + " " + named + f" at {widths[size]}x{heights[size]}: " + PlacementSpecGeometry.text(&picture) + f" for {lines} lines"); }
             }
         }
         contract.expect(rooms >= 9 && failures.isEmpty(), f"every TV room's default placement draws a whole multiple of its native lines on screen at 1280x800 and 1920x1080 ({rooms} systems): " + failures.join("; "));

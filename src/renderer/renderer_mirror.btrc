@@ -1,0 +1,19 @@
+// Where a screen's reflection lands and how strongly: the picture mirrored onto its bezel's ring band (or a
+// drawn frame), at the package's strength, whenever the package's shell is shown and its ring is on the canvas.
+// The compositor sends this strength to the fragment shader's reflectAt; no GL, so the contracts audit every
+// package, placement and screen size against the same decision.
+
+import ./renderer_abi.btrc;
+import ./renderer_config_screen.btrc;
+
+class RendererMirror {
+    class bool ringShown(struct RendererScreenConfig* screen, bool dressed, struct RendererPixelRect* outer, float bezelWidth) {  // the drawn bezel lives on the plate: only a fixed package with its shell shown has one
+        return dressed && screen != null && screen->look_set != 0 && screen->ring_set != 0 && bezelWidth > 0.0f
+            && outer != null && outer->width > 0 && outer->height > 0;
+    }
+
+    class float strength(struct RendererScreenConfig* screen, bool dressed, bool ring, int framed) {  // the reflection lands on a ring band or a drawn frame, never on a bare screen
+        if (screen == null || !dressed || screen->look_set == 0) { return 0.0f; }
+        return ring || framed == 1 ? screen->ring_reflect : 0.0f;
+    }
+}

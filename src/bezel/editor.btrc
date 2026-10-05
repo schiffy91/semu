@@ -292,11 +292,19 @@ class BezelPreview {  // what the launcher gives the renderer when a system show
         preview.set("label", JSONValue.makeString(SemuJson.textAt(definition, "name") + " · " + SemuJson.textAt(variant, "label")));
         JSONValue screens = JSONValue.makeArray();
         JSONValue declared = SemuJson.get(definition, "display.screens");
-        for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) {  // SEMU_RENDER_SURFACE_<n>_NATIVE
+        for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) {  // SEMU_RENDER_SURFACE_<n>_NATIVE, less its _CROP
             JSONValue screen = JSONValue.makeObject();
-            screen.set("id", JSONValue.makeString(SemuJson.textAt(declared.at(index), "id")));
-            screen.set("w", JSONValue.makeInt(SemuJson.intAt(declared.at(index), "native.w", 0)));
-            screen.set("h", JSONValue.makeInt(SemuJson.intAt(declared.at(index), "native.h", 0)));
+            JSONValue entry = declared.at(index);
+            int frameWidth = SemuJson.intAt(entry, "native.w", 0);
+            int frameHeight = SemuJson.intAt(entry, "native.h", 0);
+            int keptWidth = frameWidth - SemuJson.intAt(entry, "crop.left", 0) - SemuJson.intAt(entry, "crop.right", 0);
+            int keptHeight = frameHeight - SemuJson.intAt(entry, "crop.top", 0) - SemuJson.intAt(entry, "crop.bottom", 0);
+            bool cropped = keptWidth >= 1 && keptHeight >= 1 && (keptWidth != frameWidth || keptHeight != frameHeight);
+            screen.set("id", JSONValue.makeString(SemuJson.textAt(entry, "id")));
+            screen.set("w", JSONValue.makeInt(cropped ? keptWidth : frameWidth));  // the picture the renderer places
+            screen.set("h", JSONValue.makeInt(cropped ? keptHeight : frameHeight));
+            screen.set("frame_w", JSONValue.makeInt(frameWidth));  // the whole frame the emulator hands over
+            screen.set("frame_h", JSONValue.makeInt(frameHeight));
             screens.push(screen);
         }
         preview.set("screens", screens);

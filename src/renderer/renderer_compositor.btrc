@@ -16,6 +16,7 @@ import ./renderer_file_hash.btrc;
 import ./renderer_layout.btrc;
 import ./renderer_config.btrc;
 import ./renderer_placement.btrc;
+import ./renderer_mirror.btrc;
 int RGL_VERTEX_SHADER = 0x8B31;
 int RGL_FRAGMENT_SHADER = 0x8B30;
 int RGL_LINK_STATUS = 0x8B82;
@@ -1056,12 +1057,11 @@ class RendererCompositor {
                             struct RendererCompositionGeometry* geometry,
                             bool bezel, int index) {  // without a bezel the screen is a plain rectangle: the look belongs to the bezel
         bool look = bezel && screen->look_set != 0;
-        bool ring = look && screen->ring_set != 0 && geometry->bezel_width > 0.0f;  // the drawn bezel lives on the plate: only a fixed package has one
         struct RendererPixelRect inner;
         struct RendererPixelRect outer;
         memset(&inner, 0, sizeof(struct RendererPixelRect));
         memset(&outer, 0, sizeof(struct RendererPixelRect));
-        if (ring) {
+        if (look && screen->ring_set != 0 && geometry->bezel_width > 0.0f) {
             struct RendererCanvasRect canvas;
             canvas.x = geometry->bezel_x;
             canvas.y = geometry->bezel_y;
@@ -1069,8 +1069,8 @@ class RendererCompositor {
             canvas.height = geometry->bezel_height;
             RendererCompositionContract.aperture(&canvas, screen->ring_inner.x, screen->ring_inner.y, screen->ring_inner.width, screen->ring_inner.height, &inner);
             RendererCompositionContract.aperture(&canvas, screen->ring_outer.x, screen->ring_outer.y, screen->ring_outer.width, screen->ring_outer.height, &outer);
-            if (outer.width <= 0 || outer.height <= 0) { ring = false; }
         }
+        bool ring = RendererMirror.ringShown(screen, bezel, &outer, geometry->bezel_width);
         RendererCompositor.setRect(gl, index == 0 ? resources->uniform_ring_inner : resources->uniform_ring_inner2, inner.x, inner.y, inner.width, inner.height);
         RendererCompositor.setRect(gl, index == 0 ? resources->uniform_ring_outer : resources->uniform_ring_outer2, outer.x, outer.y, outer.width, outer.height);
         RendererCompositor.set4(gl, index == 0 ? resources->uniform_ring_look : resources->uniform_ring_look2,
@@ -1078,7 +1078,7 @@ class RendererCompositor {
         RendererCompositor.set4(gl, index == 0 ? resources->uniform_ring_color : resources->uniform_ring_color2,
             screen->ring_r, screen->ring_g, screen->ring_b, screen->ring_opacity);
         RendererCompositor.set4(gl, index == 0 ? resources->uniform_ring_reflect : resources->uniform_ring_reflect2,
-            (ring || (look && geometry->framed == 1)) ? screen->ring_reflect : 0.0f, screen->ring_reflect_blur, screen->ring_reflect_fade, 0.0f);  // the reflection lands on a ring band or a drawn frame
+            RendererMirror.strength(screen, bezel, ring, geometry->framed), screen->ring_reflect_blur, screen->ring_reflect_fade, 0.0f);  // the reflection lands on a ring band or a drawn frame
         RendererCompositor.setRect(gl, index == 0 ? resources->uniform_rect : resources->uniform_rect2,
             lane->output_x, lane->output_y, lane->output_width, lane->output_height);
         RendererCompositor.setRect(gl, index == 0 ? resources->uniform_tube : resources->uniform_tube2,

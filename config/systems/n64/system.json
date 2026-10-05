@@ -47,6 +47,12 @@
         "native": {
           "w": 320,
           "h": 240
+        },
+        "crop": {
+          "left": 4,
+          "top": 0,
+          "right": 3,
+          "bottom": 3
         }
       }
     ],
@@ -69,8 +75,9 @@
     "hardware": "consumer CRT over composite/S-Video",
     "intent": "Do not sharpen away the hardware VI softness.",
     "orientation": "The RetroArch frame_output contract requires an upright bottom-left-origin game frame in GL space; the N64 acceptance test composes this system binding with that platform contract.",
-    "shader": "Mupen renders GLideN64 at native factor 1 with the HLE RSP (RetroArch core options), a 320x240 frame the compositor steps in whole multiples of 240 and the declared soft 240p preset reads when shaders are enabled.",
+    "shader": "Mupen renders GLideN64 at native factor 1 with the HLE RSP (RetroArch core options), a 320x240 frame; the renderer takes off what GLideN64 draws black around the VI picture (display.screens[0].crop), so the compositor steps the 313x237 picture in whole multiples of 237 and the declared soft 240p preset reads when shaders are enabled.",
     "renderer": "M14 item 1: angrylion with the cxd4 LLE RSP is software rasterisation plus an interpreted RSP, which lagged Super Mario 64 on the Deck; its Hide overscan crop also handed a game-dependent frame (582x222 for SM64). GLideN64 runs on the GPU in RetroArch's glcore context; ParaLLEl-RDP needs Vulkan, which the GL frame tap does not have.",
-    "extensions": "Only what Mupen64Plus-Next declares it opens plus the archives RetroArch unpacks. A 64DD .ndd or .d64 is no game on its own (the core finds a .ndd beside the ROM), so both were dropped; neither occurs in the library."
+    "extensions": "Only what Mupen64Plus-Next declares it opens plus the archives RetroArch unpacks. A 64DD .ndd or .d64 is no game on its own (the core finds a .ndd beside the ROM), so both were dropped; neither occurs in the library.",
+    "crop": "M15 item 3: GLideN64 draws the VI pass region black, 8 half-dots on the left and 7 on the right (vi_minhpass and vi_maxhpass, FrameBuffer.cpp:1249-1250), which at 320 columns are 4 and 3 (FrameBuffer.cpp:1557-1564), and the 3 lines under the 237 active ones of the standard NTSC modes. The TV lip mirrored those black bands instead of the game. The crop is the same picture angrylion handed over with Hide overscan until M14, at whole steps of 237. Super Mario 64 in the podman VM: columns 0-3 and 317-319 and lines 237-239 black; its own 8-line border stays, as it is the game."
   }
 }

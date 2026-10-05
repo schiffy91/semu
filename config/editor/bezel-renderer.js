@@ -237,9 +237,11 @@ const BezelRenderer = (() => {
       }
       return canvas;
     }
-    static singleAspect(preview) {  // the frame's presentation aspect, else SEMU_RENDER_ASPECT
-      if (preview.presentation > 0.01) return float(preview.presentation);
-      return preview.aspect && preview.aspect.w > 0 && preview.aspect.h > 0 ? float(float(preview.aspect.w) / float(preview.aspect.h)) : 0;
+    static singleAspect(preview) {  // the frame's presentation aspect, else SEMU_RENDER_ASPECT; a cropped screen keeps its pixels square (RendererSurfaceCropping.apply)
+      const shown = preview.presentation > 0.01 ? float(preview.presentation) : (preview.aspect && preview.aspect.w > 0 && preview.aspect.h > 0 ? float(float(preview.aspect.w) / float(preview.aspect.h)) : 0);
+      const first = preview.screens.length === 1 ? preview.screens[0] : null;
+      if (!(shown > 0.01) || !first || !(first.frame_w > 0) || !(first.frame_h > 0) || (first.w === first.frame_w && first.h === first.frame_h)) return shown;
+      return float(float(shown * float(float(first.w) / float(first.frame_w))) / float(float(first.h) / float(first.frame_h)));
     }
     static lanes(variant, preview, canvas) {  // each screen's opening and fitted picture on that canvas
       return variant.screens.map((screen, index) => {

@@ -13,6 +13,7 @@ import ./renderer_layout.btrc;
 import ./renderer_variants.btrc;
 import ./variant_keys.btrc;
 import ./renderer_config_screen.btrc;
+import ./renderer_surface_crop.btrc;
 
 struct RendererVariantConfig {
     int declared;
@@ -51,6 +52,7 @@ struct RendererConfig {
     float dual_screen_gap;  // SEMU_RENDER_DUAL_GAP: space between two screens, fraction of width
     struct RendererPath system_id;
     struct RendererPath emulator_id;
+    struct RendererSurfaceCrop surface_crops[2];  // SEMU_RENDER_SURFACE_<n>_CROP: what the emulator hands over that is no picture
     struct RendererVariantConfig variants[4];  // A and B are emitted; C and D stay undeclared
 };
 
@@ -241,6 +243,7 @@ class RendererConfiguration {
             "SEMU_RENDER_SYSTEM_ID");
         RendererConfigKeys.copyEnvironment(&config->emulator_id,
             "SEMU_RENDER_EMULATOR_ID");
+        RendererSurfaceCropping.load(config->surface_crops);
         char* suffixes[2] = {"", "_B"};
         for (int index = 0; index < 2; index++) {
             RendererConfiguration.loadVariant(&config->variants[index],

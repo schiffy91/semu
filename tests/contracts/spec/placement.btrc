@@ -3,8 +3,10 @@
 // left nothing to mirror); every handheld and DS bezel stands on black (M15), no desk, no Duimon carbon plate;
 // game placement centres a shell that fits the screen (the PSP at 1280x800, whose screen sits above the
 // device's middle) and leaves one that does not alone, so gb, gbc and gba keep their picture centred; and the
-// whole step follows the height the emulator reports: the N64 (GLideN64 at native factor 1) at multiples of 240.
+// whole step follows the height the emulator reports less its declared crop: the N64 (GLideN64 at native factor 1,
+// the black around its VI picture cropped, M15 item 3) at multiples of 237.
 
+import Library.FileSystem;
 import Library.JSON;
 import Library.Strings;
 import Library.Vector;
@@ -17,6 +19,7 @@ import ../../../src/emit/rendering.btrc;
 import ../../../src/renderer/renderer_abi.btrc;
 import ../../../src/renderer/renderer_config.btrc;
 import ../../../src/renderer/renderer_placement.btrc;
+import ../../../src/renderer/renderer_surface_crop.btrc;
 import ./render_env.btrc;
 
 class PlacementSpecEnvironment {
@@ -100,6 +103,16 @@ class PlacementSpecGeometry {
         for name in names { unsetenv(name); }
     }
 
+    class void crops(Vector<string> environment, struct RendererSurfaceCrop* crops) {  // SEMU_RENDER_SURFACE_<n>_CROP as RendererConfiguration.load reads them
+        for (int index = 0; index < 2; index++) {
+            string value = PlacementSpecEnvironment.entry(environment, f"SEMU_RENDER_SURFACE_{index}_CROP");
+            if (value.isEmpty()) { unsetenv(f"SEMU_RENDER_SURFACE_{index}_CROP"); } else { setenv(f"SEMU_RENDER_SURFACE_{index}_CROP", value, 1); }
+        }
+        RendererSurfaceCropping.load(crops);
+        unsetenv("SEMU_RENDER_SURFACE_0_CROP");
+        unsetenv("SEMU_RENDER_SURFACE_1_CROP");
+    }
+
     class float aspect(Vector<string> environment, int nativeWidth, int nativeHeight) {  // SEMU_RENDER_ASPECT=W:H, else the native shape, as the render host reads it
         Vector<string> parts = Strings.split(PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_ASPECT"), ":");
         if (parts.size() == 2 && atof(parts[1]) > 0.0) { return (float)(atof(parts[0]) / atof(parts[1])); }
@@ -115,7 +128,14 @@ class PlacementSpecGeometry {
         frame.surface_count = 1;
         frame.surfaces[0].native_width = nativeWidth;
         frame.surfaces[0].native_height = nativeHeight;
-        float shown = PlacementSpecGeometry.aspect(environment, nativeWidth, nativeHeight);
+        frame.surfaces[0].width = nativeWidth;  // the frame at 1x: the crop works in its own pixels
+        frame.surfaces[0].height = nativeHeight;
+        struct RendererSurfaceCrop crops[2];
+        memset(crops, 0, sizeof(crops));
+        PlacementSpecGeometry.crops(environment, crops);
+        frame.presentation_aspect = PlacementSpecGeometry.aspect(environment, nativeWidth, nativeHeight);
+        RendererSurfaceCropping.apply(&frame, crops, frame.presentation_aspect);  // what the renderer does before it places: the picture only, its pixels square
+        float shown = frame.presentation_aspect;
         int fractionalBelow = 0;  // SEMU_RENDER_GAME_FRACTIONAL_BELOW, as RendererConfiguration reads it
         for entry in environment { if (entry.startsWith("SEMU_RENDER_GAME_FRACTIONAL_BELOW=")) { fractionalBelow = atoi(entry.substring(34, entry.len() - 34)); } }
         RendererPlacement.canvas(&frame, &variant, placement, fractionalBelow, shown, areaWidth, areaHeight, variant.canvas_width, variant.canvas_height, canvas);
@@ -161,25 +181,54 @@ class PlacementSpecGeometry {
         }
     }
 
-    class void television(Contract contract, Fixture fixture) {  // GLideN64 at native factor 1 hands 320x240 (mupen64plus-libretro-nx f275caf4 libretro.c:1438-1446): the step is of 240, centred
+    class void television(Contract contract, Fixture fixture) {  // GLideN64 at native factor 1 hands 320x240 (mupen64plus-libretro-nx f275caf4 libretro.c:1438-1446) with the VI's pass columns and unshown lines black; the renderer crops them, so the step is of 237, centred
         struct RendererCanvasRect canvas;
         struct RendererCanvasRect picture;
         int widths[2] = {1280, 1920};
         int heights[2] = {800, 1080};
-        int lines[2] = {720, 960};
+        int lines[2] = {711, 948};
         for (int size = 0; size < 2; size++) {
             PlacementSpecGeometry.place(fixture, "n64", 320, 240, 1, widths[size], heights[size], &canvas, &picture);
-            contract.expect(PlacementSpecGeometry.near(picture.height, (float)lines[size]) && PlacementSpecGeometry.near(picture.width, (float)lines[size] * 4.0f / 3.0f) && PlacementSpecGeometry.centred(&picture, widths[size], heights[size]),
-                f"N64 320x240 at {widths[size]}x{heights[size]}, game placement: the largest whole step of 240, {lines[size]} lines, 4:3, centred on the screen: " + PlacementSpecGeometry.text(&picture));
+            contract.expect(PlacementSpecGeometry.near(picture.height, (float)lines[size]) && PlacementSpecGeometry.near(picture.width, (float)lines[size] * 313.0f / 237.0f) && PlacementSpecGeometry.centred(&picture, widths[size], heights[size]),
+                f"N64 320x240 cropped to 313x237 at {widths[size]}x{heights[size]}, game placement: the largest whole step of 237, {lines[size]} lines, square pixels, centred on the screen: " + PlacementSpecGeometry.text(&picture));
             PlacementSpecGeometry.place(fixture, "n64", 320, 240, 2, widths[size], heights[size], &canvas, &picture);
-            int steps = PlacementSpecGeometry.rounded(picture.height) / 240;
+            int steps = PlacementSpecGeometry.rounded(picture.height) / 237;
             bool shorter = canvas.height < (float)heights[size];
             bool standing = (shorter && canvas.y > -0.5f && canvas.y <= 0.5f) || (!shorter && PlacementSpecGeometry.near(canvas.y * 2.0f + canvas.height, (float)heights[size]));  // a room shorter than the screen keeps its table on the bottom edge, within the half pixel that keeps the picture on the grid (scene_fill.btrc); else it is centred
-            contract.expect(steps >= 1 && PlacementSpecGeometry.near(picture.height, (float)(steps * 240)) && PlacementSpecGeometry.near(canvas.x * 2.0f + canvas.width, (float)widths[size]) && standing,
-                f"N64 320x240 at {widths[size]}x{heights[size]}, bezel placement: a whole multiple of 240 in the TV, the TV centred across the screen, its table on the bottom edge: " + PlacementSpecGeometry.text(&picture) + ", canvas " + PlacementSpecGeometry.text(&canvas));
+            contract.expect(steps >= 1 && PlacementSpecGeometry.near(picture.height, (float)(steps * 237)) && PlacementSpecGeometry.near(canvas.x * 2.0f + canvas.width, (float)widths[size]) && standing,
+                f"N64 313x237 at {widths[size]}x{heights[size]}, bezel placement: a whole multiple of 237 in the TV, the TV centred across the screen, its table on the bottom edge: " + PlacementSpecGeometry.text(&picture) + ", canvas " + PlacementSpecGeometry.text(&canvas));
         }
-        PlacementSpecGeometry.place(fixture, "n64", 625, 237, 1, 1280, 800, &canvas, &picture);
-        contract.expect(PlacementSpecGeometry.near(picture.height, 711.0f) && PlacementSpecGeometry.centred(&picture, 1280, 800), "a core that crops to 625x237, game placement at 1280x800: 3x the reported height, 711 lines, so the step is the reported height's: " + PlacementSpecGeometry.text(&picture));
+        Vector<string> environment = PlacementSpecEnvironment.compile(fixture, "n64", "");
+        string declared = PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_SURFACE_0_CROP");
+        struct RendererSurfaceCrop crops[2];
+        memset(crops, 0, sizeof(crops));
+        PlacementSpecGeometry.crops(environment, crops);
+        struct SemuRenderFrameGl frame;
+        memset(&frame, 0, sizeof(struct SemuRenderFrameGl));
+        frame.surface_count = 1;
+        frame.presentation_aspect = 4.0f / 3.0f;
+        frame.surfaces[0].x = 160;  // RetroArch's integer viewport at 1280x800: an exact 3x, rows counted from the bottom
+        frame.surfaces[0].y = 40;
+        frame.surfaces[0].width = 960;
+        frame.surfaces[0].height = 720;
+        frame.surfaces[0].native_width = 320;
+        frame.surfaces[0].native_height = 240;
+        frame.surfaces[0].origin = SEMU_RENDER_ORIGIN_BOTTOM_LEFT;
+        RendererSurfaceCropping.apply(&frame, crops, 4.0f / 3.0f);
+        struct SemuRenderSurfaceGl* surface = &frame.surfaces[0];
+        float square = frame.presentation_aspect - 313.0f / 237.0f;
+        contract.expect(declared.equals("4,0,3,3") && surface->x == 172 && surface->y == 49 && surface->width == 939 && surface->height == 711 && surface->native_width == 313 && surface->native_height == 237 && square < 0.0005f && square > -0.0005f,
+            f"the N64 crops what GLideN64 draws black around the VI picture (4 columns left, 3 right, the 3 lines under the 237 shown), so the lip mirrors the game: crop {declared}, RetroArch's 3x frame becomes {surface->x},{surface->y} {surface->width}x{surface->height} of native {surface->native_width}x{surface->native_height}, aspect {frame.presentation_aspect}");
+        string entry = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/libsemurenderer.btrc"));
+        string configuration = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_config.btrc"));
+        int cropAt = Strings.find(entry, "RendererSurfaceCropping.apply(frame, SemuRenderer.config.surface_crops, SemuRenderer.config.display_aspect);", 0);
+        int resolveAt = Strings.find(entry, "RendererGeometry.resolve(frame,", 0);
+        contract.expect(cropAt >= 0 && resolveAt > cropAt && configuration.contains("RendererSurfaceCropping.load(config->surface_crops);"),
+            "the renderer loads each screen's crop with the launch and takes it off the frame before it resolves any geometry, so placement, the extracted picture and its mirror all see the picture only");
+        string editor = FileSystem.readText(PathTools.join(fixture.project, "src/bezel/editor.btrc"));
+        string preview = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
+        contract.expect(editor.contains("screen.set(\"w\", JSONValue.makeInt(cropped ? keptWidth : frameWidth));") && preview.contains("float(float(shown * float(float(first.w) / float(first.frame_w))) / float(float(first.h) / float(first.frame_h)))"),
+            "the editor previews the cropped picture at the renderer's square-pixel aspect");
     }
 }
 
