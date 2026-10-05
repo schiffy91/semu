@@ -2,7 +2,9 @@
 // DS or 3DS shell framed as the renderer frames it: the canvas, both lanes, the whole-shell step, the second screen's
 // whole step and the opening and lip carried out with a second screen past its picture rectangle (the 3DS touch screen
 // at 1x on the Deck). tests/visual/editor-sync.sh --card test measures the pixels and exits non-zero on any framing or
-// pixel difference; this contract pins the port's source so an edit that bypasses it fails `make test` as well.
+// pixel difference; this contract pins the port's source so an edit that bypasses it fails `make test` as well: the
+// carry's four sides and its hold, and the picture rectangle it carries from, in both languages (the M15 review found
+// a dropped bottom or right side, or a picture always the opening, moved the editor's 3DS touch lip with tests green).
 
 import Library.FileSystem;
 import Library.Strings;
@@ -18,6 +20,44 @@ class EditorDualSpecContract {
         if (start < 0) { return ""; }
         int length = start + span > source.len() ? source.len() - start : span;
         return source.substring(start, length);
+    }
+
+    class string body(string source, string signature, string next) {  // SIGNATURE's text up to the following NEXT (the next method), "" when it is gone
+        int start = Strings.find(source, signature, 0);
+        if (start < 0) { return ""; }
+        int end = Strings.find(source, next, start + signature.len());
+        return source.substring(start, (end < 0 ? source.len() : end) - start);
+    }
+
+    class void carry(Contract contract, Fixture fixture, string source) {  // the carried lip in both languages, every side and the hold, from the same picture rectangle
+        string layout = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_layout.btrc"));
+        string mirror = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_mirror.btrc"));
+        string rendererCarry = EditorDualSpecContract.body(layout, "class void carry(struct RendererPixelRect* rectangle, struct RendererPixelRect* picture, struct RendererLaneGeometry* lane) {", "\n    class ");
+        string rendererPicture = EditorDualSpecContract.body(mirror, "class void picture(struct RendererScreenConfig* screen, struct RendererCanvasRect* canvas, struct RendererPixelRect* picture) {", "\n    class ");
+        string editorCarry = EditorDualSpecContract.body(source, "static carry(rect, picture, output) {", "\n    static ");
+        string editorPicture = EditorDualSpecContract.body(source, "static picture(canvas, screen) {", "\n    static ");
+        string uniforms = EditorDualSpecContract.method(source, "laneUniforms(screen, lane, canvas, framed, index) {", 1400);
+        Vector<string> missing = [];
+        EditorDualSpecContract.need(missing, rendererCarry, "int left = picture->x - lane->output_x;");
+        EditorDualSpecContract.need(missing, rendererCarry, "int bottom = picture->y - lane->output_y;");
+        EditorDualSpecContract.need(missing, rendererCarry, "int right = lane->output_x + lane->output_width - picture->x - picture->width;");
+        EditorDualSpecContract.need(missing, rendererCarry, "int top = lane->output_y + lane->output_height - picture->y - picture->height;");
+        EditorDualSpecContract.need(missing, rendererCarry, "if (left > 0) { rectangle->x = rectangle->x - left; rectangle->width = rectangle->width + left; }");
+        EditorDualSpecContract.need(missing, rendererCarry, "if (bottom > 0) { rectangle->y = rectangle->y - bottom; rectangle->height = rectangle->height + bottom; }");
+        EditorDualSpecContract.need(missing, rendererCarry, "if (right > 0) { rectangle->width = rectangle->width + right; }");
+        EditorDualSpecContract.need(missing, rendererCarry, "if (top > 0) { rectangle->height = rectangle->height + top; }");
+        EditorDualSpecContract.need(missing, rendererCarry, "RendererLayout.hold(rectangle, lane);");
+        EditorDualSpecContract.need(missing, rendererPicture, "struct RendererNormalizedHole* hole = screen->image.set != 0 ? &screen->image : &screen->tube;");
+        EditorDualSpecContract.need(missing, editorCarry, "const left = picture.x - output.x, bottom = picture.y - output.y, right = output.x + output.width - picture.x - picture.width, top = output.y + output.height - picture.y - picture.height;");
+        EditorDualSpecContract.need(missing, editorCarry, "if (left > 0) { carried.x -= left; carried.width += left; }");
+        EditorDualSpecContract.need(missing, editorCarry, "if (bottom > 0) { carried.y -= bottom; carried.height += bottom; }");
+        EditorDualSpecContract.need(missing, editorCarry, "if (right > 0) carried.width += right;");
+        EditorDualSpecContract.need(missing, editorCarry, "if (top > 0) carried.height += top;");
+        EditorDualSpecContract.need(missing, editorCarry, "return Geometry.hold(carried, output);");
+        EditorDualSpecContract.need(missing, editorPicture, "return CompositionContract.aperture(canvas, screen.image && screen.image.set ? screen.image : screen.tube);");
+        EditorDualSpecContract.need(missing, uniforms, "const picture = Geometry.picture(canvas, screen);");
+        contract.expect(missing.isEmpty(),
+            "RendererLayout.carry and the editor's Geometry.carry move a drawn rectangle out by the picture's overrun on each of its four sides, then hold it a pixel past the picture; the picture rectangle is the calibrated image, else the opening, in both (RendererMirror.picture and Geometry.picture), so the editor's 3DS touch lip is the Deck's: missing " + missing.join(" | "));
     }
 
     class void port(Contract contract, Fixture fixture) {
@@ -40,11 +80,7 @@ class EditorDualSpecContract {
         EditorDualSpecContract.need(missing, uniforms, "inner = Geometry.carry(inner, picture, lane.output); outer = Geometry.carry(outer, picture, lane.output);");
         contract.expect(!canvasOn.isEmpty() && !lanes.isEmpty() && !shell.isEmpty() && !uniforms.isEmpty() && missing.isEmpty(),
             "the editor frames a DS or 3DS shell through its port of RendererDualShell (the canvas, both lanes, the whole-shell step, the screen step, the second screen's step and the carried opening and lip), so its preview matches the renderer: missing " + missing.join(" | "));
-        string layout = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_layout.btrc"));
-        string carry = EditorDualSpecContract.method(source, "static carry(rect, picture, output) {", 900);
-        bool renderer = layout.contains("if (left > 0) { rectangle->x = rectangle->x - left; rectangle->width = rectangle->width + left; }") && layout.contains("RendererLayout.hold(rectangle, lane);");
-        bool editor = carry.contains("if (left > 0) { carried.x -= left; carried.width += left; }") && carry.contains("if (top > 0) carried.height += top;") && carry.contains("return Geometry.hold(carried, output);");
-        contract.expect(renderer && editor, "RendererLayout.carry and the editor's Geometry.carry move a drawn rectangle out by the picture's overrun on each side, then hold it a pixel past the picture");
+        EditorDualSpecContract.carry(contract, fixture, source);
     }
 
     class void run(Contract contract) {
