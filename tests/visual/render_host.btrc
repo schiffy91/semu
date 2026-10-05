@@ -5,6 +5,7 @@
 // frames (default 12, so a history pass sees a running game) is written as PPM; --switch then journals a
 // bezel and shader select and writes the toast frame and the switched one. RENDER_HOST_CURSOR=X,Y hands
 // the renderer a moving pointer there, as RetroArch's bridge does on a touch system.
+// RENDER_HOST_GPU_TIME=1 prints the renderer's GPU time per frame (median past ten warm-up frames) on stderr.
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/gl3.h>
 #include <dlfcn.h>
@@ -222,6 +223,39 @@ class RenderHostTarget {  // the emulator's backbuffer: an FBO with the game dra
     }
 }
 
+double RenderHostGpuTimes[1000];  // RENDER_HOST_GPU_TIME: each settled frame's GPU milliseconds
+int RenderHostGpuSamples = 0;
+
+class RenderHostGpuClock {  // RENDER_HOST_GPU_TIME=1: the GPU time of each frame's game and menu passes (GL_TIME_ELAPSED), past ten warm-up frames
+    class unsigned int begin() {
+        unsigned int query = 0u;
+        if (getenv("RENDER_HOST_GPU_TIME") == null) { return query; }
+        glGenQueries(1, &query);
+        glBeginQuery((unsigned int)GL_TIME_ELAPSED, query);
+        return query;
+    }
+
+    class void end(unsigned int query, unsigned long long frameId) {
+        if (query == 0u) { return; }
+        glEndQuery((unsigned int)GL_TIME_ELAPSED);
+        unsigned long long elapsed = 0ULL;
+        glGetQueryObjectui64v(query, (unsigned int)GL_QUERY_RESULT, (GLuint64*)&elapsed);
+        glDeleteQueries(1, &query);
+        if (frameId > 10ULL && RenderHostGpuSamples < 1000) { RenderHostGpuTimes[RenderHostGpuSamples] = (double)elapsed / 1000000.0; RenderHostGpuSamples++; }
+    }
+
+    class void report() {  // the median and the spread, on stderr
+        if (RenderHostGpuSamples < 1) { return; }
+        for (int index = 1; index < RenderHostGpuSamples; index++) {
+            double value = RenderHostGpuTimes[index];
+            int slot = index;
+            while (slot > 0 && RenderHostGpuTimes[slot - 1] > value) { RenderHostGpuTimes[slot] = RenderHostGpuTimes[slot - 1]; slot--; }
+            RenderHostGpuTimes[slot] = value;
+        }
+        fprintf(stderr, "render-host: gpu %.3f ms median, %.3f to %.3f ms over %d frames\n", RenderHostGpuTimes[RenderHostGpuSamples / 2], RenderHostGpuTimes[0], RenderHostGpuTimes[RenderHostGpuSamples - 1], RenderHostGpuSamples);
+    }
+}
+
 class RenderHost {
     class int frames() {  // frames drawn before the capture: RENDER_HOST_FRAMES, else 12; -1 unless all digits and at most 1000
         string text = Environment.get("RENDER_HOST_FRAMES", "");  // response-time reads seven frames of history: settle it
@@ -310,8 +344,10 @@ class RenderHost {
             frame.surfaces[screen].origin = 0;
             x += width;
         }
+        unsigned int query = RenderHostGpuClock.begin();
         int game = semu_render_game_gl(&frame);
         int menu = semu_render_post_ui_gl(&frame);
+        RenderHostGpuClock.end(query, frameId);
         glFinish();
         if (game != 1) { Console.error(f"render-host: semu_render_game_gl returned {game}, post-ui {menu}"); return 3; }
         return 0;
@@ -404,6 +440,7 @@ int main(int argc, char** argv) {  // render_host WIDTH HEIGHT OUT.ppm [--reload
     int frames = RenderHost.frames();
     if (frames < 0) { Console.error("render-host: RENDER_HOST_FRAMES must be a whole number of frames, not '" + Environment.get("RENDER_HOST_FRAMES", "") + "'"); return 64; }
     int result = RenderHost.settle(target, frames);
+    RenderHostGpuClock.report();
     if (result != 0) { return result; }
     if (!target.writePortablePixmap(argv[3])) { return 1; }
     if (argc >= 6 && (int)strcmp(argv[4], "--reload") == 0) {  // edit the compositor, wait out the one-second check, draw again

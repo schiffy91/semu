@@ -1,0 +1,78 @@
+// GDV-NTSC spec: the owner's second Deck round (M14 item 8). crt-royale drew even dark bands across the PS1's white
+// boot screen, and the owner asked for Retro Crisis's "Realistic PlayStation RGB CRT Shader": guest.r's
+// crt-guest-advanced-ntsc with Retro Crisis's PlayStation RGB 100 values. The PS1's default is that preset over the
+// pinned libretro tree with his Steam Deck (720p) values, every one emitted into the wrapper; intres 1 (his 480i
+// preset's one extra line) draws a 480-line frame as 240 scanlines; interm 0 keeps whole frames; and CRT Royale
+// stays one step away.
+
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ./gameboy.btrc;
+
+#include <stdlib.h>
+
+class CrtGdvSpecChecks {
+    class Vector<string> playStationRgb() {  // Retro Crisis, RC GDV-NTSC - PlayStation RGB 100 - 240p, 720p Steam Deck (2024.11.15)
+        Vector<string> values = ["addnoised=0.2", "beam_min=1", "bloom=0.5", "deconrry=2.5", "gsl=2", "m_glow=2", "mask_bloom=0.5",
+            "mask_gamma=1.9", "mask_zoom=-1", "maskboost=3", "maskstr=-0.5", "mcut=2", "noisetype=1", "ntsc_cscale=0.5",
+            "ntsc_fields=0", "ntsc_phase=2", "ntsc_sat=1.2", "ntsc_scale=2.5", "scan_falloff=1.5", "scangamma=5",
+            "scanline1=5", "scanline2=10", "shadowMask=-1", "intres=1", "interm=0"];
+        return values;
+    }
+
+    class JSONValue variant(Fixture fixture, string systemId, string variantId) {  // null when the system has no such variant
+        JSONValue variants = fixture.model.system(systemId).shaders.get("variants");
+        for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
+            if (SemuJson.textAt(variants.at(index), "id").equals(variantId)) { return variants.at(index); }
+        }
+        return null;
+    }
+
+    class Vector<string> mismatches(JSONValue manifest, string logical, Vector<string> expected) {  // each value the recipe lacks or the wrapper does not emit
+        Vector<string> failures = [];
+        JSONValue recipe = manifest.get("assets").get(logical);
+        if (recipe == null) { failures.push(logical + " is not in shaders.json"); return failures; }
+        string emitted = GameBoySpecFiles.wrapperText(manifest, logical);
+        for (int index = 0; index < expected.size(); index++) {
+            string pair = expected[index];
+            int equals = Strings.find(pair, "=", 0);
+            string name = pair.substring(0, equals);
+            string value = pair.substring(equals + 1, pair.len() - equals - 1);
+            JSONValue declared = SemuJson.get(recipe, "params." + name);
+            bool same = declared != null && declared.isNumber() && GameBoySpecJson.close(declared.asFloat(), atof(value));
+            if (!same || !emitted.contains(name + " = \"" + value + "\"\n")) { failures.push(name + " is not " + value); }
+        }
+        return failures;
+    }
+
+    class void playStation(Contract contract, Fixture fixture) {
+        JSONValue manifest = SemuJson.readFile(PathTools.join(fixture.project, "config/assets/shaders.json"));
+        string defaultId = SemuJson.textAt(fixture.model.system("psx").shaders, "default_variant");
+        JSONValue chosen = CrtGdvSpecChecks.variant(fixture, "psx", defaultId);
+        string logical = chosen == null ? "" : SemuJson.textAt(chosen, "screen");
+        JSONValue recipe = manifest.get("assets").get(logical);
+        bool guest = recipe != null && SemuJson.textAt(recipe, "type").equals("slang_wrapper")
+            && SemuJson.textAt(recipe, "reference.path").equals("crt/crt-guest-advanced-ntsc.slangp");
+        Vector<string> failures = ["the default is " + logical];
+        if (guest) { failures = CrtGdvSpecChecks.mismatches(manifest, logical, CrtGdvSpecChecks.playStationRgb()); }
+        bool pinned = guest && GameBoySpecFiles.wrapperHashes(fixture.scratch, manifest, logical);
+        contract.expect(failures.isEmpty() && pinned,
+            "the PS1's default CRT is Retro Crisis's GDV-NTSC PlayStation RGB 100 (crt-guest-advanced-ntsc, his Steam Deck values, intres 1, interm 0), each value emitted and the wrapper pinned: " + failures.join("; "));
+        JSONValue royale = CrtGdvSpecChecks.variant(fixture, "psx", "royale");
+        JSONValue royaleRecipe = royale == null ? null : manifest.get("assets").get(SemuJson.textAt(royale, "screen"));
+        contract.expect(royaleRecipe != null && SemuJson.textAt(royaleRecipe, "reference.path").equals("crt/crt-royale.slangp") && !defaultId.equals("royale"),
+            "CRT Royale, the PS1's old default, stays one step away as psx/royale");
+    }
+}
+
+class CrtGdvSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        CrtGdvSpecChecks.playStation(contract, fixture);
+    }
+}

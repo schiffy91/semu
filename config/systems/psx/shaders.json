@@ -2,11 +2,17 @@
   "schema_version": 3,
   "enabled": true,
   "doc": {
-    "intent": "PS1 240p/480i CRT with analog softness"
+    "intent": "PS1 240p/480i on an RGB tube: Retro Crisis's GDV-NTSC PlayStation RGB look by default",
+    "variants": "The owner asked for Retro Crisis's GDV-NTSC (2026-10-04): crt-royale drew even dark bands across the white boot screen. CRT Royale stays one step away, as the Dreamcast keeps it."
   },
   "variants": [
     {
       "id": "default",
+      "label": "GDV-NTSC (Retro Crisis RGB)",
+      "screen": "assets/shaders/psx/gdv-ntsc.slangp"
+    },
+    {
+      "id": "royale",
       "label": "CRT Royale",
       "screen": "assets/shaders/psx/screen.slangp"
     },

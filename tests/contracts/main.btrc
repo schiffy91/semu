@@ -46,6 +46,7 @@ import ./spec/bezel_emit.btrc;
 import ./spec/placement.btrc;
 import ./spec/scene_fill.btrc;
 import ./spec/fields_reflections.btrc;
+import ./spec/crt_gdv.btrc;
 import ./spec/radial_choices.btrc;
 import ./spec/radial_render.btrc;
 import ./spec/players.btrc;
@@ -1000,6 +1001,7 @@ int main() {
     PlacementSpecContract.run(contract);
     SceneFillSpecContract.run(contract);
     FieldsReflectionsSpecContract.run(contract);
+    CrtGdvSpecContract.run(contract);
     RadialChoicesSpecContract.run(contract);
     RadialRenderSpecContract.run(contract);
     PlayersSpecContract.run(contract);

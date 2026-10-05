@@ -299,6 +299,51 @@
         "params": "crt-royale treats a source of 289 to 576 lines as interlaced (interlace_detect_toggle, default 1) and draws one field per frame, and every emulator hands over whole progressive frames: the picture bobbed a field line every frame. Off, the frame is drawn as the one progressive picture it is."
       }
     },
+    "assets/shaders/psx/gdv-ntsc.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-guest-advanced-ntsc.slangp",
+        "sha256": "d4e66ed1250ae9101971f5174978ae82061c1e3901397832984d523c543a8163"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "addnoised": 0.2,
+        "beam_min": 1,
+        "bloom": 0.5,
+        "deconrry": 2.5,
+        "gsl": 2,
+        "interm": 0,
+        "intres": 1,
+        "m_glow": 2,
+        "mask_bloom": 0.5,
+        "mask_gamma": 1.9,
+        "mask_zoom": -1,
+        "maskboost": 3,
+        "maskstr": -0.5,
+        "mcut": 2,
+        "noisetype": 1,
+        "ntsc_cscale": 0.5,
+        "ntsc_fields": 0,
+        "ntsc_phase": 2,
+        "ntsc_sat": 1.2,
+        "ntsc_scale": 2.5,
+        "scan_falloff": 1.5,
+        "scangamma": 5,
+        "scanline1": 5,
+        "scanline2": 10,
+        "shadowMask": -1
+      },
+      "output": {
+        "sha256": "ce7172eb6f825efe00420753cc0df6db98c0614b7c3d1826dc7d549e7dee1f51"
+      },
+      "doc": {
+        "why": "Retro Crisis GDV-NTSC, PlayStation RGB 100 (the owner's reference, https://www.youtube.com/watch?v=cyktna9FF08): guest.r's crt-guest-advanced-ntsc from the pinned libretro tree with Retro Crisis's own Steam Deck (720p) values, read from the 2024.11.15 'RC GDV-NTSC - PlayStation RGB 100' presets (GPL-3.0, github.com/RetroCrisis/Retro-Crisis-GDV-NTSC, as imported by ShaderGlass). The beam widens with brightness (beam_min 1, scanline1 5, scanline2 10, scangamma 5), so a white screen fills its line gaps the way a lit tube did instead of drawing even dark bands, and the glow, bloom and red deconvergence give the soft RGB tube.",
+        "params": "Retro Crisis's 720p Steam Deck preset turns the phosphor mask off (shadowMask -1): a mask needs about four screen pixels per triad, which 1280 columns do not have, and its 1080p and 4K presets differ from it only in the mask. intres 1 is the one line that separates his 240p and 480i presets: it draws a 480-line frame (the PS1's high-resolution modes) as 240 scanlines (round(lines/224) per line) and changes nothing at 240 lines, so one preset serves both. interm 0: guest's Interlace Mode (default 2) bobs a field per frame from 375 lines, and every emulator hands over whole progressive frames."
+      }
+    },
     "assets/shaders/nds/screen.slangp": {
       "type": "slang_wrapper",
       "reference": {
