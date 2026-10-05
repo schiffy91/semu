@@ -12,7 +12,8 @@
 #   live-switch.sh --inside OUT_DIR   # in Linux, reading OUT_DIR/cases
 #
 # SEMU_REV=<rev> builds that commit instead of this checkout's tracked files; SEMU_PS2_BIOS=DIR
-# mounts a PS2 BIOS folder; WAIT seconds before the first chord (default 120); PLACEMENT=bezel
+# mounts a PS2 BIOS folder; SEMU_BIOS=DIR mounts a firmware folder read-only as paths.bios (the PS1 BIOS for
+# Beetle PSX); SIZE=WxH sizes the screen (default 1280x800, the Deck); WAIT seconds before the first chord (default 120); PLACEMENT=bezel
 # shows a handheld's whole shell instead of the cropped integer picture; CHORDS="ctrl+shift+f ctrl+shift+r,ctrl+shift+r"
 # presses more radial chords after the menu, each with its toast and picture (a,b: twice, a second apart). Each case writes
 # OUT/<n>-<emulator>.result (actions seen, journal records, switch receipts, saved choices) and
@@ -37,9 +38,10 @@ if [ "${1:-}" != "--inside" ] && [ "${1:-}" != "--build" ]; then
     mounts+=(-v "$rom:/roms/$system/$(basename "$rom"):ro")
   done
   [ -n "${SEMU_PS2_BIOS:-}" ] && mounts+=(-v "$SEMU_PS2_BIOS:/emulation/PCSX2/config/bios:ro")
+  [ -n "${SEMU_BIOS:-}" ] && mounts+=(-v "$SEMU_BIOS:/bios:ro")
   name="semu-live-switch-$(date +%Y%m%d%H%M%S)"  # left behind exited
   echo "container $name, results in $out"
-  environment=(-e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" -e CHORDS="${CHORDS:-}" -e SETTLE="${SETTLE:-}" -e PADS="${PADS:-0}" -e BASICS="${BASICS:-1}")
+  environment=(-e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" -e CHORDS="${CHORDS:-}" -e SETTLE="${SETTLE:-}" -e PADS="${PADS:-0}" -e BASICS="${BASICS:-1}" -e SIZE="${SIZE:-1280x800}" -e FIRMWARE="${SEMU_BIOS:+/bios}")
   nixConfig="experimental-features = nix-command flakes
 filter-syscalls = false
 sandbox = false
@@ -86,7 +88,7 @@ printf "pcm.!default {\n  type null\n}\nctl.!default {\n  type hw\n  card 0\n}\n
 export SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy QT_QPA_PLATFORM=xcb ALSA_CONFIG_PATH="$out/alsa-null.conf" PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none
 unset WAYLAND_DISPLAY
 display=:92
-width=1280; height=800
+size="${SIZE:-1280x800}"; width="${size%x*}"; height="${size#*x}"
 "$xvfb/bin/Xvfb" "$display" -screen 0 ${width}x${height}x24 >"$out/xvfb.log" 2>&1 & xvfb_pid=$!
 sleep 2
 DISPLAY="$display" "$openbox/bin/openbox" --sm-disable >"$out/openbox.log" 2>&1 &  # focus for Qt emulators, as gamescope gives it
@@ -116,7 +118,7 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
   root="$(mktemp -d)"
   mkdir -p "$root/home" "$root/emulation"
   visual=""; [ -n "${PLACEMENT:-}" ] && visual=",\"visual\":{\"systems\":{\"$system\":{\"placement\":\"$PLACEMENT\"}}}"
-  settings="{\"paths\":{\"roms\":\"/roms\",\"state_root\":\"$root/state\",\"content_root\":\"$root/content\",\"emulation_root\":\"/emulation\",\"bios\":\"$root/emulation\"}$visual}"
+  settings="{\"paths\":{\"roms\":\"/roms\",\"state_root\":\"$root/state\",\"content_root\":\"$root/content\",\"emulation_root\":\"/emulation\",\"bios\":\"${FIRMWARE:-$root/emulation}\"}$visual}"
   pads=()
   if [ -n "$pad" ]; then
     names=("Steam Deck Controller" "Xbox Series X Controller" "Xbox Series X Controller" "DualSense Wireless Controller")

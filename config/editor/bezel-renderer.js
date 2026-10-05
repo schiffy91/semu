@@ -194,7 +194,7 @@ const BezelRenderer = (() => {
       if (placement === "game") multiple = Math.min(integer(float(areaHeight / native)), integer(float(areaWidth / float(native * shown))));
       if (placement === "fit") {  // fit on a room: the nearest whole step whose opening stays on screen, else fit as it was
         multiple = Math.max(integer(float(float(pictureHeight / native) + 0.5)), 1);
-        while (multiple >= 1 && !Geometry.tubeStays(screen, canvas, float(float(multiple * native) / pictureHeight), areaWidth, areaHeight)) multiple--;
+        while (multiple >= 1 && !Geometry.tubeStays(screen, area, canvas, float(float(multiple * native) / pictureHeight), areaWidth, areaHeight)) multiple--;
       }
       let steps = multiple;
       if (multiple < 1 || (placement === "game" && multiple < (fractionalBelow || 0))) {  // a system that opts in (display.scaling.game_fractional_below) fills the screen in game placement; bezel stays whole
@@ -205,7 +205,7 @@ const BezelRenderer = (() => {
       const centerX = float(canvas.x + float(float(area.x + float(area.width * 0.5)) * canvas.width));
       const centerY = float(canvas.y + float(float(float(1 - area.y) - float(area.height * 0.5)) * canvas.height));
       const anchorX = placement === "game" ? float(areaWidth * 0.5) : float(float(canvas.x + float(canvas.width * 0.5)) + float(float(float(centerX - canvas.x) - float(canvas.width * 0.5)) * grow));
-      const anchorY = placement === "game" ? float(areaHeight * 0.5) : float(float(canvas.y + float(canvas.height * 0.5)) + float(float(float(centerY - canvas.y) - float(canvas.height * 0.5)) * grow));
+      const anchorY = placement === "game" || carried ? float(areaHeight * 0.5) : float(float(canvas.y + float(canvas.height * 0.5)) + float(float(float(centerY - canvas.y) - float(canvas.height * 0.5)) * grow));  // a TV room centres its picture down the screen, its wall and table carried on past the canvas
       const placed = { x: float(anchorX - float(float(centerX - canvas.x) * grow)), y: float(anchorY - float(float(centerY - canvas.y) * grow)), width: float(canvas.width * grow), height: float(canvas.height * grow) };
       if (placement === "bezel" && shell && shell.set) {  // bezel on a device: its silhouette centred on the screen, whatever margin its plate carries
         placed.x = float(float(areaWidth * 0.5) - float(float(shell.x + float(shell.width * 0.5)) * placed.width));
@@ -215,8 +215,7 @@ const BezelRenderer = (() => {
         if (placed.width <= areaWidth) placed.x = float(placed.x + Geometry.wholePixels(float(float(float(areaWidth - placed.width) * 0.5) - placed.x)));
         if (placed.height <= areaHeight) placed.y = float(placed.y + Geometry.wholePixels(float(float(float(areaHeight - placed.height) * 0.5) - placed.y)));
       }
-      if (placement !== "game" && carried && placed.height < areaHeight) placed.y = float(placed.y + Geometry.wholePixels(float(0 - placed.y)));  // bezel or fit on a room shorter than the screen keeps its table on the bottom edge, the wall carrying on above
-      if (!carried) {  // a device's picture corner on a whole pixel, so every native pixel is k by k
+      {  // RendererPlacement.wholeCorner: the picture's corner on a whole pixel, a device's or a TV's, so every native pixel is k by k
         const left = float(float(placed.x + float(float(area.x + float(area.width * 0.5)) * placed.width)) - float(float(float(steps * native) * shown) * 0.5));
         const bottom = float(float(placed.y + float(float(float(1 - area.y) - float(area.height * 0.5)) * placed.height)) - float(float(steps * native) * 0.5));
         placed.x = float(float(placed.x + Geometry.wholePixels(left)) - left);
@@ -224,13 +223,13 @@ const BezelRenderer = (() => {
       }
       return placed;
     }
-    static tubeStays(screen, canvas, grow, areaWidth, areaHeight) {  // RendererPlacement.tubeStays: the opening on screen once the canvas grows by GROW about its centre
+    static tubeStays(screen, image, canvas, grow, areaWidth, areaHeight) {  // RendererPlacement.tubeStays: the opening on screen once the canvas grows by GROW about its centre across, its picture (IMAGE) centred down the screen as a TV room stands
       const tube = screen.tube;
       if (!tube.set) return true;
       const width = float(canvas.width * grow), height = float(canvas.height * grow);
       const left = float(float(canvas.x + float(float(canvas.width - width) * 0.5)) + float(tube.x * width));
-      const bottom = float((height < areaHeight ? 0 : float(canvas.y + float(float(canvas.height - height) * 0.5))) + float(float(float(1 - tube.y) - tube.height) * height));
-      return left >= -0.5 && bottom >= -0.5 && float(left + float(tube.width * width)) <= areaWidth + 0.5 && float(bottom + float(tube.height * height)) <= areaHeight + 0.5;
+      const top = float(float(areaHeight * 0.5) - float(float(float(image.y + float(image.height * 0.5)) - tube.y) * height));  // rows from the top, the picture centre on the screen centre
+      return left >= -0.5 && top >= -0.5 && float(left + float(tube.width * width)) <= areaWidth + 0.5 && float(top + float(tube.height * height)) <= areaHeight + 0.5;
     }
     static wholePixels(shift) {  // RendererPlacement.wholePixels: rounded half away from zero
       return shift >= 0 ? integer(float(shift + 0.5)) : -integer(float(0.5 - shift));

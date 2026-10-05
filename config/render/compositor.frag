@@ -10,7 +10,7 @@ uniform vec4 uRingIn;uniform vec4 uRingIn2;uniform vec4 uRingOut;uniform vec4 uR
  vec2 rotatedUv(vec2 q,float r){if(r<0.5)return q;if(r<1.5)return vec2(1.0-q.y,q.x);if(r<2.5)return vec2(1.0-q.x,1.0-q.y);return vec2(q.y,1.0-q.x);}
  vec2 artUv(vec2 p,vec4 r){return vec2((p.x-r.x)/r.z,1.0-(p.y-r.y)/r.w);}
  vec4 plate(sampler2D t,vec2 p,vec4 r){return textureGrad(t,artUv(p,r),vec2(1.0/r.z,0.0),vec2(0.0,-1.0/r.w));}  // explicit gradients keep the mip level right at plate edges
- vec4 roomPlate(sampler2D t,vec2 p,vec4 r){return textureGrad(t,clamp(artUv(p,r),0.0,1.0),vec2(1.0/r.z,0.0),vec2(0.0,-1.0/r.w));}  // a scene's room past its edges: the flat wall's top row carries on up, the wall and the table's level grain to either side (folding it back would put a second TV beside the first)
+ vec4 roomPlate(sampler2D t,vec2 p,vec4 r){vec2 q=artUv(p,r);if(q.y>1.0)return textureGrad(t,clamp(q,0.0,1.0),vec2(32.0/float(textureSize(t,0).x),0.0),vec2(0.0,0.0));return textureGrad(t,clamp(q,0.0,1.0),vec2(1.0/r.z,0.0),vec2(0.0,-1.0/r.w));}  // a scene's room past its edges: the flat wall's top row carries on up, the wall and the table's level grain to either side (folding it back would put a second TV beside the first); under a centred TV the table's front carries on down as its last 32 rows averaged, a level band, never a row's grain pulled into streaks
  vec2 curved(vec2 q,float k){vec2 c=q*2.0-1.0;c*=(1.0+k*dot(c,c))/(1.0+k);return c*0.5+0.5;}
  vec2 unbulge(vec2 p,vec4 r,vec2 b){if(b.x<=0.0&&b.y<=0.0)return p;vec2 h=r.zw*0.5;vec2 c=r.xy+h;vec2 u=(p-c)/h;
   float sx=1.0+b.x*max(0.0,1.0-u.y*u.y);float sy=1.0+b.y*max(0.0,1.0-u.x*u.x);return c+vec2(u.x/sx,u.y/sy)*h;}

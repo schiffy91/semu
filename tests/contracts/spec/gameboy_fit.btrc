@@ -201,7 +201,7 @@ class GameBoyFitSpecContract {
         Vector<string> missing = [];
         for wanted in ["shell: layers.length ? Environment.hole(pkg.shell, canvas)", "const across = float(areaWidth / float(shell.width * canvas.width)), down = float(areaHeight / float(shell.height * canvas.height))",
                        "if (placement === \"bezel\" && shell && shell.set) {", "placed.y = float(float(areaHeight * 0.5) - float(float(float(1 - shell.y) - float(shell.height * 0.5)) * placed.height))",
-                       "if (!carried) {  // a device's picture corner on a whole pixel", "placed.x = float(float(placed.x + Geometry.wholePixels(left)) - left)", "canvas, preview.game_fractional_below, carried, variant.shell)"] {
+                       "{  // RendererPlacement.wholeCorner: the picture's corner on a whole pixel, a device's or a TV's", "placed.x = float(float(placed.x + Geometry.wholePixels(left)) - left)", "canvas, preview.game_fractional_below, carried, variant.shell)"] {
             if (!source.contains(wanted)) { missing.push(wanted); }
         }
         contract.expect(missing.isEmpty(), "the editor preview places a device as the renderer does: its shell's step and centre, the picture on whole pixels: missing " + missing.join(" | "));

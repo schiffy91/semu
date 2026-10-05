@@ -2,13 +2,13 @@
 // and Select buttons, which live in GBC_Decal.png and which no Duimon preset names, so the package declares the
 // plate in upstream.textures and `semu bezel emit` stacks it. A TV scene shows no black bars in any placement at
 // 1280x800 or 1920x1080: its room covers the screen or carries on past its edges (its layer line, and the night
-// plate over it, end |1), and a scene shorter than the screen keeps its table on the screen's bottom edge, so the
-// room is only ever carried up and sideways. Around every other bezel (the handheld shells, the DS and 3DS shells
-// and the computed dual-screen layouts) the screen is pure black: no wood desk plate, no Duimon backdrop, no night
-// plate, no device plate carried past its canvas, and the compositor's first pass starts from black. A TV room's
-// default placement (fit) draws a whole multiple of the native lines so scanlines never beat into bands, bezel
-// placement lets a room leave 1% of its plate off screen (the NES at 2x on the Deck), and the editor's copy of all
-// of it matches the renderer's.
+// plate over it, end |1) and its TV's opening stays on screen; a TV room centres its picture down the screen (M15
+// item 7, tv_room.btrc), so the room carries on up, sideways and under its table. Around every other bezel (the
+// handheld shells, the DS and 3DS shells and the computed dual-screen layouts) the screen is pure black: no wood
+// desk plate, no Duimon backdrop, no night plate, no device plate carried past its canvas, and the compositor's
+// first pass starts from black. A TV room's default placement (fit) draws a whole multiple of the native lines so
+// scanlines never beat into bands, bezel placement lets a room leave 1% of its plate off screen (the NES at 2x on
+// the Deck), and the editor's copy of all of it matches the renderer's.
 
 import Library.FileSystem;
 import Library.JSON;
@@ -54,7 +54,7 @@ class SceneFillSpecChecks {
         int pass = Strings.find(source, "if(uPass>3.5){", 0);
         int end = pass < 0 ? -1 : Strings.find(source, "\n", pass);
         string layerPass = pass < 0 || end < 0 ? "" : source.substring(pass, end - pass);
-        contract.expect(layerPass.contains("uLayer.w>0.5") && layerPass.contains("roomPlate(") && source.contains("vec4 roomPlate(") && source.contains("clamp(artUv(p,r),0.0,1.0)"),
+        contract.expect(layerPass.contains("uLayer.w>0.5") && layerPass.contains("roomPlate(") && source.contains("vec4 roomPlate(") && source.contains("vec4 roomPlate(sampler2D t,vec2 p,vec4 r){vec2 q=artUv(p,r);") && source.contains("return textureGrad(t,clamp(q,0.0,1.0),vec2(1.0/r.z,0.0),vec2(0.0,-1.0/r.w));}"),
             "the compositor's layer pass draws a room past its rectangle, its edge rows and columns carried outward: " + layerPass.substring(0, layerPass.len() < 120 ? layerPass.len() : 120));
     }
 
@@ -98,8 +98,11 @@ class SceneFillSpecChecks {
                         struct RendererCanvasRect canvas;
                         RendererPlacement.canvas(&frame, &config, placement, fractionalBelow, shown, widths[size], heights[size], config.canvas_width, config.canvas_height, &canvas);
                         bool covers = canvas.x <= 0.5f && canvas.y <= 0.5f && canvas.x + canvas.width >= (float)widths[size] - 0.5f && canvas.y + canvas.height >= (float)heights[size] - 0.5f;
-                        bool carried = canvas.y <= 0.5f;  // the room carries on up and sideways; its table never leaves the bottom edge
-                        if (!covers && !carried) { failures.push(label + f" placement {placement} at {widths[size]}x{heights[size]}: canvas " + PlacementSpecGeometry.text(&canvas) + " (the room's table is above the bottom edge)"); }
+                        struct RendererNormalizedHole* tube = &config.screens[0].tube;  // the room carries on past every edge (|1), so only its TV's opening must stay on screen
+                        float tubeLeft = canvas.x + tube->x * canvas.width;
+                        float tubeBottom = canvas.y + (1.0f - tube->y - tube->height) * canvas.height;
+                        bool carried = tubeLeft >= -0.5f && tubeBottom >= -0.5f && tubeLeft + tube->width * canvas.width <= (float)widths[size] + 0.5f && tubeBottom + tube->height * canvas.height <= (float)heights[size] + 0.5f;
+                        if (!covers && !carried) { failures.push(label + f" placement {placement} at {widths[size]}x{heights[size]}: canvas " + PlacementSpecGeometry.text(&canvas) + " (the TV's opening leaves the screen)"); }
                         checked++;
                     }
                 }
@@ -126,12 +129,12 @@ class SceneFillSpecChecks {
         string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
         Vector<string> missing = [];
         for wanted in ["layer.id === pkg.canvas_layer && layer.id === \"background\" && layer.follow === \"viewport\" && !!canvasSized", "room: backgroundRoom }", "this.set4(\"uLayer\", layer.opacity, layer.blend, layer.lift, layer.room ? 1 : 0)",
-                       "this.scissor(layer.extent === \"cover\" || layer.room ? screen : null)", "if (placement !== \"game\" && carried && placed.height < areaHeight) placed.y = float(placed.y + Geometry.wholePixels(float(0 - placed.y)))",
+                       "this.scissor(layer.extent === \"cover\" || layer.room ? screen : null)", "const anchorY = placement === \"game\" || carried ? float(areaHeight * 0.5)",
                        "const carried = variant.layered && variant.layers.some(layer => layer.room)", "if ((preview.placement !== \"fit\" || carried) && preview.screens.length === 1",
-                       "Geometry.shellRoom(shell, canvas, areaWidth, areaHeight)) * float(1.01)", "multiple = Math.max(integer(float(float(pictureHeight / native) + 0.5)), 1)", "!Geometry.tubeStays(screen, canvas, float(float(multiple * native) / pictureHeight), areaWidth, areaHeight)"] {
+                       "Geometry.shellRoom(shell, canvas, areaWidth, areaHeight)) * float(1.01)", "multiple = Math.max(integer(float(float(pictureHeight / native) + 0.5)), 1)", "!Geometry.tubeStays(screen, area, canvas, float(float(multiple * native) / pictureHeight), areaWidth, areaHeight)"] {
             if (!source.contains(wanted)) { missing.push(wanted); }
         }
-        contract.expect(missing.isEmpty(), "the editor's copy keeps the room flag, the night plate's room, the room's scissor and uLayer.w, the 1% room tolerance, fit's nearest whole step on a room and the table on the bottom edge: missing " + missing.join(" | "));
+        contract.expect(missing.isEmpty(), "the editor's copy keeps the room flag, the night plate's room, the room's scissor and uLayer.w, the 1% room tolerance, fit's nearest whole step on a room and the room's picture centred down the screen: missing " + missing.join(" | "));
     }
 
     class void blackPass(Contract contract, Fixture fixture) {  // the first pass starts from black and paints a plate only where a package names one, in the renderer and the editor alike

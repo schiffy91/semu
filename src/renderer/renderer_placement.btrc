@@ -2,9 +2,10 @@
 // openings stay on screen, then moved to the placement's whole step (game: the largest the screen holds,
 // the shell cropped and centred where it fits; bezel: the largest that keeps the shell, its own silhouette
 // when the package declares one, up to 1% of it off screen; fit on a TV room: the nearest whole step, so a
-// scanline shader never beats into bands). A device's picture lands on whole pixels, so every native pixel
-// is k by k. Pure arithmetic over the renderer's records, no GL, so the contracts place a package exactly as
-// the compositor does.
+// scanline shader never beats into bands). A TV room's picture is centred down the screen in fit and bezel, the
+// room carried on past its edges, so a 448-line PS2 at 1x stands as centred as a 240-line PS1 at 2x. Every
+// picture lands on whole pixels, so every native pixel is k by k. Pure arithmetic over the renderer's records,
+// no GL, so the contracts place a package exactly as the compositor does.
 
 import ./renderer_abi.btrc;
 import ./renderer_config.btrc;
@@ -54,7 +55,7 @@ class RendererPlacement {
         if (placement == 0) {  // fit on a room: the nearest whole step whose opening stays on screen, else fit as it was
             multiple = (int)(pictureHeight / native + 0.5f);
             if (multiple < 1) { multiple = 1; }
-            while (multiple >= 1 && !RendererPlacement.tubeStays(variant, canvas, (float)multiple * native / pictureHeight, areaWidth, areaHeight)) { multiple--; }
+            while (multiple >= 1 && !RendererPlacement.tubeStays(variant, image, canvas, (float)multiple * native / pictureHeight, areaWidth, areaHeight)) { multiple--; }
         }
         float steps = (float)multiple;
         bool fills = placement == 1 && multiple < fractionalBelow;  // game on a system that opts in (display.scaling.game_fractional_below): a 480-line picture fills the 800-line screen instead of sitting at 1x; bezel stays whole
@@ -67,8 +68,8 @@ class RendererPlacement {
         float centerX = canvas->x + (image->x + image->width * 0.5f) * canvas->width;
         float centerY = canvas->y + (1.0f - image->y - image->height * 0.5f) * canvas->height;  // pixel rows count up from the bottom
         float anchorX = placement == 1 ? (float)areaWidth * 0.5f : canvas->x + canvas->width * 0.5f + (centerX - canvas->x - canvas->width * 0.5f) * grow;
-        float anchorY = placement == 1 ? (float)areaHeight * 0.5f : canvas->y + canvas->height * 0.5f + (centerY - canvas->y - canvas->height * 0.5f) * grow;
-        canvas->x = anchorX - (centerX - canvas->x) * grow;  // game centres the picture, bezel and fit keep the shell centred
+        float anchorY = placement == 1 || carried ? (float)areaHeight * 0.5f : canvas->y + canvas->height * 0.5f + (centerY - canvas->y - canvas->height * 0.5f) * grow;
+        canvas->x = anchorX - (centerX - canvas->x) * grow;  // game centres the picture, bezel and fit keep the shell centred; a TV room centres its picture down the screen, its wall and table carried on past the canvas (roomPlate), never a black bar
         canvas->y = anchorY - (centerY - canvas->y) * grow;
         canvas->width = canvas->width * grow;
         canvas->height = canvas->height * grow;
@@ -80,13 +81,14 @@ class RendererPlacement {
             if (canvas->width <= (float)areaWidth) { canvas->x = canvas->x + RendererPlacement.wholePixels(((float)areaWidth - canvas->width) * 0.5f - canvas->x); }
             if (canvas->height <= (float)areaHeight) { canvas->y = canvas->y + RendererPlacement.wholePixels(((float)areaHeight - canvas->height) * 0.5f - canvas->y); }
         }
-        if (placement != 1 && carried && canvas->height < (float)areaHeight) { canvas->y = canvas->y + RendererPlacement.wholePixels(0.0f - canvas->y); }  // bezel or fit on a room shorter than the screen: the table stays on the screen's bottom edge and the wall carries on above, never a band under the table
-        if (!carried) {  // a device's picture corner on a whole pixel: its rounded rectangle is then exactly the step, every native pixel k by k on any screen
-            float left = canvas->x + (image->x + image->width * 0.5f) * canvas->width - steps * native * shown * 0.5f;
-            float bottom = canvas->y + (1.0f - image->y - image->height * 0.5f) * canvas->height - steps * native * 0.5f;
-            canvas->x = canvas->x + RendererPlacement.wholePixels(left) - left;
-            canvas->y = canvas->y + RendererPlacement.wholePixels(bottom) - bottom;
-        }
+        RendererPlacement.wholeCorner(image, steps * native, shown, canvas);
+    }
+
+    class void wholeCorner(struct RendererNormalizedHole* image, float height, float shown, struct RendererCanvasRect* canvas) {  // the picture's corner on a whole pixel: a device's rounded rectangle, or a TV's picture, is then exactly the step, every native pixel k by k on any screen
+        float left = canvas->x + (image->x + image->width * 0.5f) * canvas->width - height * shown * 0.5f;
+        float bottom = canvas->y + (1.0f - image->y - image->height * 0.5f) * canvas->height - height * 0.5f;
+        canvas->x = canvas->x + RendererPlacement.wholePixels(left) - left;
+        canvas->y = canvas->y + RendererPlacement.wholePixels(bottom) - bottom;
     }
 
     class float shellRoom(struct RendererNormalizedHole* shell, struct RendererCanvasRect* canvas, int areaWidth, int areaHeight) {  // how far the contained canvas may grow before its shell meets the screen's edge; 1 when the canvas is all plate
@@ -96,14 +98,14 @@ class RendererPlacement {
         return across < down ? across : down;
     }
 
-    class bool tubeStays(struct RendererVariantConfig* variant, struct RendererCanvasRect* canvas, float grow, int areaWidth, int areaHeight) {  // the opening on screen once the canvas grows by GROW about its centre (a room shorter than the screen standing on the bottom edge)
+    class bool tubeStays(struct RendererVariantConfig* variant, struct RendererNormalizedHole* image, struct RendererCanvasRect* canvas, float grow, int areaWidth, int areaHeight) {  // the opening on screen once the canvas grows by GROW about its centre across, its picture (IMAGE) centred down the screen as a TV room stands
         struct RendererNormalizedHole* tube = &variant->screens[0].tube;
         if (tube->set == 0) { return true; }
         float width = canvas->width * grow;
         float height = canvas->height * grow;
         float left = canvas->x + (canvas->width - width) * 0.5f + tube->x * width;
-        float bottom = (height < (float)areaHeight ? 0.0f : canvas->y + (canvas->height - height) * 0.5f) + (1.0f - tube->y - tube->height) * height;
-        return left >= -0.5f && bottom >= -0.5f && left + tube->width * width <= (float)areaWidth + 0.5f && bottom + tube->height * height <= (float)areaHeight + 0.5f;
+        float top = (float)areaHeight * 0.5f - (image->y + image->height * 0.5f - tube->y) * height;  // rows from the top, the picture centre on the screen centre
+        return left >= -0.5f && top >= -0.5f && left + tube->width * width <= (float)areaWidth + 0.5f && top + tube->height * height <= (float)areaHeight + 0.5f;
     }
 
     class bool shellHidden(int placement, int surfaceCount) { return placement == 1 && surfaceCount == 2; }  // DS and 3DS screen placement: no shell, the whole-step layout over the background

@@ -46,6 +46,7 @@ import ./spec/bezel_emit.btrc;
 import ./spec/placement.btrc;
 import ./spec/scene_fill.btrc;
 import ./spec/gameboy_fit.btrc;
+import ./spec/tv_room.btrc;
 import ./spec/fields_reflections.btrc;
 import ./spec/reflection_audit.btrc;
 import ./spec/crt_gdv.btrc;
@@ -1004,6 +1005,7 @@ int main() {
     PlacementSpecContract.run(contract);
     SceneFillSpecContract.run(contract);
     GameBoyFitSpecContract.run(contract);
+    TvRoomSpecContract.run(contract);
     FieldsReflectionsSpecContract.run(contract);
     ReflectionAuditSpecContract.run(contract);
     CrtGdvSpecContract.run(contract);
