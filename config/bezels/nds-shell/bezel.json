@@ -4,7 +4,7 @@
   "label": "DS shell",
   "layout": "fixed",
   "art": "assets/bezels/nds/shell.png",
-  "background": "assets/bezels/backgrounds/desk-night.png",
+  "background": null,
   "frame": null,
   "canvas": {
     "w": 3840,
@@ -331,7 +331,7 @@
         "h": 2160
       },
       "order": 0,
-      "visible": true,
+      "visible": false,
       "follow": "viewport",
       "blend": "normal",
       "opacity": 1,

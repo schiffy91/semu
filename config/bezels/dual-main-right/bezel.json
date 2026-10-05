@@ -4,11 +4,8 @@
   "label": "Large main screen, second screen right",
   "layout": "main_right",
   "art": null,
-  "background": "assets/bezels/backgrounds/desk-night.png",
-  "frame": {
-    "width": 0.03,
-    "color": "#121212"
-  },
+  "background": null,
+  "frame": null,
   "canvas": null,
   "screens": [
     {
@@ -43,6 +40,6 @@
     }
   ],
   "doc": {
-    "layout": "computed: the main screen at the largest integer scale that leaves the second screen at least 1x beside it, the second at its own largest whole step, no taller than the main; the main is centred on its own unless centring the pair gives a larger main, then a larger second screen, then a wider frame; each screen gets a drawn frame that shrinks to the room the screens leave"
+    "layout": "computed: the main screen at the largest integer scale that leaves the second screen at least 1x beside it past the gap, the second at its own largest whole step, no taller than the main; the main is centred on its own unless centring the pair gives a larger main, then a larger second screen; plain square screens on black with nothing drawn round them, so only the gap between them takes room"
   }
 }

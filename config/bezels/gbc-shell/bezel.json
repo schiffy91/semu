@@ -4,7 +4,7 @@
   "label": "Game Boy Color",
   "layout": "fixed",
   "art": "assets/bezels/gbc/shell.png",
-  "background": "assets/bezels/backgrounds/desk-night.png",
+  "background": null,
   "frame": null,
   "canvas": {
     "w": 3440,

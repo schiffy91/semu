@@ -4,7 +4,7 @@
   "label": "Game Boy Advance · Arctic",
   "layout": "fixed",
   "art": "assets/bezels/gba/arctic.png",
-  "background": "assets/bezels/backgrounds/desk-night.png",
+  "background": null,
   "frame": null,
   "canvas": {
     "w": 4400,

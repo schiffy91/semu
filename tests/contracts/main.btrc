@@ -280,10 +280,8 @@ class RenderingContract {
         FileSystem.mkdirp(PathTools.join(assets, "share/libretro/shaders/semu/gb"));
         FileSystem.writeText(PathTools.join(assets, "share/libretro/shaders/semu/gb/screen.slangp"), "#reference x\n");
         FileSystem.mkdirp(PathTools.join(assets, "share/semu/assets/bezels/gb"));
-        FileSystem.mkdirp(PathTools.join(assets, "share/semu/assets/bezels/backgrounds"));
         FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/gb/dmg-shell.png"), "png");
         FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/gb/dmg-glass.png"), "png");
-        FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/backgrounds/desk-night.png"), "png");
         SemuSystem nes = fixture.model.system("nes");
         Vector<string> nesBare = SemuRenderEnvironment.compile(fixture.plan, nes, "retroarch", "/state/retroarch", fixture.diagnostics);
         bool artFromRepository = false;
@@ -322,7 +320,9 @@ class RenderingContract {
         contract.expect(full.contains("SEMU_RENDER_SHADERS=1") && full.contains("SEMU_RENDER_BEZELS=1"), "assets present enables shaders and bezels");
         contract.expect(full.contains("SEMU_RENDER_SHADER_PRESET=" + assets + "/share/libretro/shaders/semu/gb/screen.slangp"), "shader preset path");
         contract.expect(full.contains("SEMU_RENDER_ART=" + assets + "/share/semu/assets/bezels/gb/dmg-shell.png"), "bezel art path");
-        contract.expect(full.contains("SEMU_RENDER_BACKGROUND=" + assets + "/share/semu/assets/bezels/backgrounds/desk-night.png"), "the package background plate");
+        bool dmgPlate = false;
+        for entry in full { if (entry.startsWith("SEMU_RENDER_BACKGROUND=")) { dmgPlate = true; } }
+        contract.expect(!dmgPlate && SemuJson.textAt(SemuBezelPackage.load(fixture.plan, "gb-dmg-shell"), "background").isEmpty(), "the DMG shell names no background plate: pure black around it");
         bool screenGlass = false;
         for entry in full { if (entry.startsWith("SEMU_RENDER_SCREEN_0_GLASS=")) { screenGlass = true; } }
         contract.expect(!screenGlass, "the DMG lens is a layer, never the picture's glass texture, which would shrink the whole lens into the game");
@@ -364,18 +364,18 @@ class RenderingContract {
             if (entry.startsWith("SEMU_RENDER_LAYER_COUNT=")) { layerCount = Strings.toInt(entry.substring(24, entry.len() - 24)); }
             if (entry.startsWith("SEMU_RENDER_LAYER_") && entry.contains("/NDS.png|0,0,1,1|0|0|")) { deviceBelow = true; }
             if (entry.startsWith("SEMU_RENDER_LAYER_") && entry.contains("/NDS_Top.png|0,0,1,1|1|0|")) { topAbove = true; }
-            if (entry.startsWith("SEMU_RENDER_LAYER_") && entry.contains("/Canvas_Background.jpg|0,0,1,1|0|0|")) { coverBackground = true; }
+            if (entry.startsWith("SEMU_RENDER_LAYER_") && (entry.contains("Canvas_Background") || entry.contains("/background.jpg|"))) { coverBackground = true; }
         }
         if (layerCount > 0) {
-            contract.expect(deviceBelow && topAbove && coverBackground, "the DS layer stack reaches the compositor: the canvas-sized background and face under the screens, the top plate over them");
+            contract.expect(deviceBelow && topAbove && !coverBackground, "the DS layer stack reaches the compositor: the face under the screens, the top plate over them, and no Duimon backdrop, so black shows around the shell");
             contract.expect(dual.contains("SEMU_RENDER_CANVAS=3840,2160"), "the layer canvas is the DS face's own pixel grid");
         } else { contract.skip("layer stack", "the upstream layers resolve nowhere (no bundle layers, no bezel tree)"); }
         SemuPlan computed = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"main_right\"}}}}", diagnostics);
         Vector<string> computedEnv = SemuRenderEnvironment.compile(computed, nds, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(computedEnv.contains("SEMU_RENDER_BEZELS=1") && computedEnv.contains("SEMU_RENDER_LAYOUT=main_right") && computedEnv.contains("SEMU_RENDER_BEZEL_ID=dual-main-right"), "the computed main-right layout is an alternate that needs no plate");
-        bool frame = false;
-        for entry in computedEnv { if (entry.equals("SEMU_RENDER_FRAME=0.03,0.0705882,0.0705882,0.0705882")) { frame = true; } }  // width,r,g,b: #121212; no radius, the frame rounds concentric with the opening
-        contract.expect(frame, "computed layouts draw a frame around each screen");
+        bool dressed = false;
+        for entry in computedEnv { if (entry.startsWith("SEMU_RENDER_FRAME=") || entry.startsWith("SEMU_RENDER_BACKGROUND=")) { dressed = true; } }  // the computed layouts draw plain square screens
+        contract.expect(!dressed, "computed layouts draw plain square screens on black: no rounded frame, no background plate");
         Vector<string> rounded = [];
         for packageId in SemuModel.sortedEntries(PathTools.join(fixture.plan.configRoot, "bezels")) {
             JSONValue drawnFrame = SemuJson.get(SemuBezelPackage.load(fixture.plan, packageId), "frame");

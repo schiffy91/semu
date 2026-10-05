@@ -4,11 +4,8 @@
   "label": "Side by side",
   "layout": "side_by_side",
   "art": null,
-  "background": "assets/bezels/backgrounds/desk-night.png",
-  "frame": {
-    "width": 0.03,
-    "color": "#121212"
-  },
+  "background": null,
+  "frame": null,
   "canvas": null,
   "screens": [
     {
@@ -43,6 +40,6 @@
     }
   ],
   "doc": {
-    "layout": "computed: both screens at one uniform integer scale, the largest the screens and the gap allow, side by side; each screen gets a drawn frame that shrinks to the room the screens leave"
+    "layout": "computed: both screens at one uniform integer scale, the largest the screens and the gap allow, side by side and centred; plain square screens on black with nothing drawn round them"
   }
 }

@@ -1,6 +1,6 @@
 // Placement spec: the pictures the owner judged on the Deck (M13 items 1 and 5). The N64 TV's lip mirrors the
 // picture at the TV strength, genesis's 0.4 (it had 0.2 and a thin lip, and angrylion's black overscan columns
-// left nothing to mirror); the handhelds draw the wood desk, never Duimon's carbon plate stretched over it;
+// left nothing to mirror); every handheld and DS bezel stands on black (M15), no desk, no Duimon carbon plate;
 // game placement centres a shell that fits the screen (the PSP at 1280x800, whose screen sits above the
 // device's middle) and leaves one that does not alone, so gb, gbc and gba keep their picture centred; and the
 // whole step follows the height the emulator reports: the N64 (GLideN64 at native factor 1) at multiples of 240.
@@ -42,24 +42,39 @@ class PlacementSpecEnvironment {
         return found;
     }
 
+    class Vector<string> backdrops(Vector<string> environment) {  // what the launch draws behind the art: a background plate, a backdrop or night layer, a room carried on
+        Vector<string> found = [];
+        string plate = PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_BACKGROUND");
+        if (!plate.isEmpty()) { found.push("SEMU_RENDER_BACKGROUND=" + plate); }
+        for line in PlacementSpecEnvironment.layers(environment, "") {
+            Vector<string> fields = Strings.split(line, "|");
+            int slash = Strings.rfind(fields[0], "/");
+            string name = fields[0].substring(slash + 1, fields[0].len() - slash - 1);
+            bool carried = fields.size() == 8 && fields[7].equals("1");
+            if (name.startsWith("background.") || name.startsWith("ambient.") || fields[0].contains("/_Backgrounds/") || carried) { found.push(line); }
+        }
+        return found;
+    }
+
     class string strength(Vector<string> environment) { return Strings.split(PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_SCREEN_0_REFLECT"), ",")[0]; }
 
     class void run(Contract contract, Fixture fixture) {
         string television = PlacementSpecEnvironment.strength(PlacementSpecEnvironment.compile(fixture, "n64", ""));
         string genesis = PlacementSpecEnvironment.strength(PlacementSpecEnvironment.compile(fixture, "genesis", ""));
         contract.expect(television.equals("0.4") && television.equals(genesis), "the N64 TV lip mirrors the picture at the TV strength, genesis's 0.4: n64 " + television + ", genesis " + genesis);
-        for systemId in ["psp", "gb", "gbc", "gba"] {
+        for systemId in ["psp", "gb", "gbc", "gba", "nds", "n3ds"] {
             Vector<string> variants = [""];
             JSONValue declared = fixture.model.system(systemId).bezels.get("variants");
             for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) { variants.push(SemuJson.textAt(declared.at(index), "id")); }
             for variant in variants {
                 Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, variant);
-                Vector<string> carbon = PlacementSpecEnvironment.layers(environment, "/background.jpg");
-                bool drawn = PlacementSpecEnvironment.layers(environment, ".png").size() > 0 || !PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_ART").isEmpty();
-                contract.expect(drawn && carbon.isEmpty(), systemId + (variant.isEmpty() ? "" : ":" + variant) + " draws its shell on the wood desk, never Duimon's carbon plate: " + carbon.join(" "));
+                Vector<string> behind = PlacementSpecEnvironment.backdrops(environment);
+                bool computed = !PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_LAYOUT").equals("fixed");
+                bool drawn = computed || PlacementSpecEnvironment.layers(environment, ".png").size() > 0 || !PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_ART").isEmpty();
+                contract.expect(drawn && behind.isEmpty(), systemId + (variant.isEmpty() ? "" : ":" + variant) + " stands on pure black, never the wood desk or Duimon's carbon or vignette plate: " + behind.join(" "));
             }
         }
-        contract.expect(PlacementSpecEnvironment.layers(PlacementSpecEnvironment.compile(fixture, "nds", ""), "/background.jpg").size() == 1, "the DS keeps its canvas-sized backdrop under the opaque face, so the scan sees a background layer where one is drawn");
+        contract.expect(PlacementSpecEnvironment.backdrops(PlacementSpecEnvironment.compile(fixture, "nes", "")).size() >= 2, "a TV scene keeps its room and the night plate, so the scan sees a backdrop where one is drawn");
     }
 }
 

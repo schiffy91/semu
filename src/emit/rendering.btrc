@@ -86,7 +86,7 @@ class SemuRenderLayers {  // the package's layer stack for the compositor: file,
             bool canvasSized = SemuJson.intAt(layer.get("size"), "w", 0) == canvasWidth && SemuJson.intAt(layer.get("size"), "h", 0) == canvasHeight;
             string extent = SemuJson.textAt(layer, "follow").equals("viewport") ? (canvasSized ? "0,0,1,1" : "cover") : SemuRenderEnvironment.rect(layer.get("rect"), canvas);  // a viewport-following plate the size of the canvas is the canvas
             if (extent.isEmpty()) { diagnostics.add(packageId, "layers." + id, "the layer's rectangle does not fit the canvas"); continue; }
-            bool room = id.equals(canvasLayer) && id.equals("background") && SemuJson.textAt(layer, "follow").equals("viewport") && canvasSized;  // a scene whose canvas is its room (the Mega Bezel BackgroundImage): past the canvas the edge rows and columns carry on (the wall above, wall and table to either side), so a canvas smaller than the screen never leaves black bars; a device plate (the DS shells' DeviceImage) stays on its canvas over the desk
+            bool room = id.equals(canvasLayer) && id.equals("background") && SemuJson.textAt(layer, "follow").equals("viewport") && canvasSized;  // a scene whose canvas is its room (the Mega Bezel BackgroundImage): past the canvas the edge rows and columns carry on (the wall above, wall and table to either side), so a canvas smaller than the screen never leaves black bars; a device plate (the DS shells' DeviceImage) stays on its canvas, black around it
             string roomField = room ? "|1" : "";
             if (id.equals("background")) { backgroundExtent = extent; backgroundOrder = order; backgroundRoom = roomField; }
             string blend = SemuJson.textAt(layer, "blend");

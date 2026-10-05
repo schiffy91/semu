@@ -1,13 +1,14 @@
-// Scene fill spec: the owner's second Deck round (M14 items 2 and 3). The GBC shells draw Duimon's Start and
-// Select buttons, which live in GBC_Decal.png and which no Duimon preset names, so the package declares the plate
-// in upstream.textures and `semu bezel emit` stacks it. And no system shows black bars in any placement at 1280x800
-// or 1920x1080: a handheld or DS stands on its cover-fit desk plate, a TV scene's room covers the screen or
-// carries on past its edges (its layer line, and the night plate over it, end |1), and a scene shorter than the
-// screen keeps its table on the screen's bottom edge, so the room is only ever carried up and sideways.
-// Only a scene's room carries on (a DS device plate stays on its canvas over the desk), a TV room's default
-// placement (fit) draws a whole multiple of the native lines so scanlines never beat into bands, bezel
-// placement lets a room leave 1% of its plate off screen (the NES at 2x on the Deck), and the editor's copy
-// of all of it matches the renderer's.
+// Scene fill spec: the owner's Deck rounds (M14 items 2 and 3, M15 item 1). The GBC shells draw Duimon's Start
+// and Select buttons, which live in GBC_Decal.png and which no Duimon preset names, so the package declares the
+// plate in upstream.textures and `semu bezel emit` stacks it. A TV scene shows no black bars in any placement at
+// 1280x800 or 1920x1080: its room covers the screen or carries on past its edges (its layer line, and the night
+// plate over it, end |1), and a scene shorter than the screen keeps its table on the screen's bottom edge, so the
+// room is only ever carried up and sideways. Around every other bezel (the handheld shells, the DS and 3DS shells
+// and the computed dual-screen layouts) the screen is pure black: no wood desk plate, no Duimon backdrop, no night
+// plate, no device plate carried past its canvas, and the compositor's first pass starts from black. A TV room's
+// default placement (fit) draws a whole multiple of the native lines so scanlines never beat into bands, bezel
+// placement lets a room leave 1% of its plate off screen (the NES at 2x on the Deck), and the editor's copy of all
+// of it matches the renderer's.
 
 import Library.FileSystem;
 import Library.JSON;
@@ -63,6 +64,7 @@ class SceneFillSpecChecks {
         Vector<string> failures = [];
         int checked = 0;
         int rooms = 0;
+        int black = 0;
         for systemId in fixture.model.systemIds() {
             JSONValue screens = SemuJson.get(fixture.model.system(systemId).definition, "display.screens");
             int count = screens != null && screens.isArray() && screens.size() == 2 ? 2 : 1;
@@ -70,13 +72,18 @@ class SceneFillSpecChecks {
                 Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, variant);
                 string label = systemId + (variant.isEmpty() ? "" : ":" + variant);
                 if (!PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_BEZELS").equals("1")) { continue; }  // bezel off: pure black outside the picture, by design
-                if (!PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_BACKGROUND").isEmpty()) { checked++; continue; }  // the desk plate is cover-fit: it fills every screen
                 struct RendererVariantConfig config;
                 PlacementSpecGeometry.load(environment, &config);
-                if (config.canvas_width <= 0 || config.canvas_height <= 0) { failures.push(label + ": neither a backdrop nor a canvas"); continue; }
                 bool room = false;
                 for (int index = 0; index < config.layer_count; index++) { if (config.layers[index].room != 0) { room = true; } }
-                if (room) { rooms++; }
+                if (!room) {  // a handheld or DS shell, or a computed layout: pure black around its art
+                    Vector<string> drawn = PlacementSpecEnvironment.backdrops(environment);
+                    if (!drawn.isEmpty()) { failures.push(label + ": draws behind its art, not black: " + drawn.join(" ")); }
+                    black++;
+                    continue;
+                }
+                rooms++;
+                if (config.canvas_width <= 0 || config.canvas_height <= 0) { failures.push(label + ": a room without a canvas"); continue; }
                 struct SemuRenderFrameGl frame;
                 memset(&frame, 0, sizeof(struct SemuRenderFrameGl));
                 frame.surface_count = count;
@@ -91,17 +98,17 @@ class SceneFillSpecChecks {
                         struct RendererCanvasRect canvas;
                         RendererPlacement.canvas(&frame, &config, placement, fractionalBelow, shown, widths[size], heights[size], config.canvas_width, config.canvas_height, &canvas);
                         bool covers = canvas.x <= 0.5f && canvas.y <= 0.5f && canvas.x + canvas.width >= (float)widths[size] - 0.5f && canvas.y + canvas.height >= (float)heights[size] - 0.5f;
-                        bool carried = room && canvas.y <= 0.5f;  // the room carries on up and sideways; its table never leaves the bottom edge
-                        if (!covers && !carried) { failures.push(label + f" placement {placement} at {widths[size]}x{heights[size]}: canvas " + PlacementSpecGeometry.text(&canvas) + (room ? " (the room's table is above the bottom edge)" : " (no room carries on)")); }
+                        bool carried = canvas.y <= 0.5f;  // the room carries on up and sideways; its table never leaves the bottom edge
+                        if (!covers && !carried) { failures.push(label + f" placement {placement} at {widths[size]}x{heights[size]}: canvas " + PlacementSpecGeometry.text(&canvas) + " (the room's table is above the bottom edge)"); }
                         checked++;
                     }
                 }
             }
         }
-        contract.expect(failures.isEmpty() && checked > 0 && rooms > 0, f"no system shows black bars in fit, game or bezel at 1280x800 or 1920x1080 ({checked} pictures, {rooms} rooms): " + failures.join("; "));
+        contract.expect(failures.isEmpty() && checked > 0 && rooms >= 9 && black >= 20, f"no TV room shows black bars in fit, game or bezel at 1280x800 or 1920x1080 ({checked} pictures, {rooms} rooms), and every other bezel ({black}) stands on pure black: " + failures.join("; "));
     }
 
-    class void devices(Contract contract, Fixture fixture) {  // only a scene's room carries on: a DS or 3DS device plate stays on its canvas, so the desk shows around it, never its smeared edge rows
+    class void devices(Contract contract, Fixture fixture) {  // only a scene's room carries on: a DS or 3DS device plate stays on its canvas, so black shows around it, never its smeared edge rows
         Vector<string> found = [];
         bool plain = true;
         for systemId in ["nds", "n3ds"] {
@@ -125,6 +132,16 @@ class SceneFillSpecChecks {
             if (!source.contains(wanted)) { missing.push(wanted); }
         }
         contract.expect(missing.isEmpty(), "the editor's copy keeps the room flag, the night plate's room, the room's scissor and uLayer.w, the 1% room tolerance, fit's nearest whole step on a room and the table on the bottom edge: missing " + missing.join(" | "));
+    }
+
+    class void blackPass(Contract contract, Fixture fixture) {  // the first pass starts from black and paints a plate only where a package names one, in the renderer and the editor alike
+        string shader = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "render/compositor.frag"));
+        string editor = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
+        string page = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-editor.html"));
+        bool shaderBlack = shader.contains("if(uPass<0.5){vec3 c=vec3(0.0);if(hasBg>0.5&&inside(p,uBackgroundRect))c=plate(uBackground,p,uBackgroundRect).rgb;frag=vec4(c,1.0);return;}");
+        bool editorNamed = editor.contains("background: typeof pkg.background === \"string\" ? pkg.background : \"\"") && page.contains("if (state.current.background) files.push(");
+        contract.expect(shaderBlack, "the compositor's background pass (the editor draws the same file) is pure black unless a background plate is loaded");
+        contract.expect(editorNamed, "the editor loads a background plate only when the package names one, so its preview stands on black like the renderer");
     }
 
     class void wholeSteps(Contract contract, Fixture fixture) {  // a TV room's default placement draws a whole multiple of the native lines, so no scanline shader beats into bands
@@ -166,6 +183,7 @@ class SceneFillSpecContract {
         SceneFillSpecChecks.startSelect(contract, fixture);
         SceneFillSpecChecks.roomLines(contract, fixture);
         SceneFillSpecChecks.coverage(contract, fixture);
+        SceneFillSpecChecks.blackPass(contract, fixture);
         SceneFillSpecChecks.devices(contract, fixture);
         SceneFillSpecChecks.editor(contract, fixture);
         SceneFillSpecChecks.wholeSteps(contract, fixture);

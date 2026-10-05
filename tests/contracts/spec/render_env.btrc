@@ -157,6 +157,26 @@ class RenderEnvSpecContract {
         }
     }
 
+    class void packageOptions(Fixture fixture, Vector<string> names) {  // fields a package may name though none ships one since M15: a background plate and a drawn frame
+        SemuSystem system = fixture.model.system("nds");
+        JSONValue package = SemuBezelPackage.load(fixture.plan, "dual-main-right");
+        if (package == null || !package.isObject()) { return; }
+        FileSystem.mkdirp(PathTools.join(fixture.plan.assetRoot, "share/semu/assets/bezels/backgrounds"));
+        FileSystem.writeText(PathTools.join(fixture.plan.assetRoot, "share/semu/assets/bezels/backgrounds/plate.png"), "png");
+        package.set("background", JSONValue.makeString("assets/bezels/backgrounds/plate.png"));
+        JSONValue frame = JSONValue.makeObject();
+        frame.set("width", JSONValue.makeFloat(0.03));
+        frame.set("color", JSONValue.makeString("#121212"));
+        package.set("frame", frame);
+        SemuRenderEnvironment env = SemuRenderEnvironment();
+        SemuRenderEnvironment.variant(env, fixture.plan, system, "", package, "", "", SemuDiagnostics());
+        for entry in env.entries {
+            int equals = Strings.find(entry, "=", 0);
+            string name = equals > 0 ? entry.substring(0, equals) : entry;
+            if (!names.contains(name)) { names.push(name); }
+        }
+    }
+
     class void editorAuthored(Fixture fixture, Vector<string> names) {  // fields only the bezel editor writes today: a bulged tube
         SemuSystem system = fixture.model.system("nes");
         JSONValue package = SemuBezelPackage.load(fixture.plan, SemuRenderEnvironment.packageId(system, SemuJson.textAt(system.bezels, "default_variant")));
@@ -193,6 +213,7 @@ class RenderEnvSpecContract {
         Vector<string> emitted = [];
         RenderEnvSpecContract.emittedNames(fixture, emitted);
         RenderEnvSpecContract.editorAuthored(fixture, emitted);
+        RenderEnvSpecContract.packageOptions(fixture, emitted);
         contract.expect(read.size() > 20 && emitted.size() > 20, f"render env: the renderer reads {read.size()} names and the launch emits {emitted.size()}");
         for pattern in read {
             if (RenderEnvSpecSources.harnessKnob(pattern)) { continue; }

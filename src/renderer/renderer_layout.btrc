@@ -15,7 +15,7 @@ int SEMU_LAYOUT_STACKED = 4;
 struct RendererBesideArrangement {  // a large main with the second beside it, centred alone or as a pair
     bool centered;      // the main centred on its own, else the pair centred
     int scale;          // the main's whole step, 0 when none leaves the second 1x beside it
-    int side;           // the room beside the main for the second, its frames and the gaps
+    int side;           // the room beside the main past the gap, for the second and any frame
     int second_width;
     int second_height;
     int frame;          // the drawn frame width the screens leave room for
@@ -71,7 +71,7 @@ class RendererLayout {
         int scale = areaHeight / mainHeight;  // the screens alone choose the step; the frames take what is left
         int side = 0;
         while (scale >= 1) {
-            side = centered ? (areaWidth - scale * mainWidth) / 2 - 2 * gap : areaWidth - scale * mainWidth - 3 * gap;
+            side = centered ? (areaWidth - scale * mainWidth) / 2 - gap : areaWidth - scale * mainWidth - gap;  // only the gap between: plain screens need no end margin
             if (side >= secondWidth) { break; }
             scale--;
         }

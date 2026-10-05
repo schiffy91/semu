@@ -333,7 +333,7 @@ function thumbnail(id, image) {  // from the stored values, as the plate is draw
 function buildLayers() {
   const root = document.getElementById("layers");
   root.innerHTML = "";
-  if (isComputed()) root.innerHTML = `<div class="muted">A computed layout has no plates: the renderer lays both screens out on the screen it runs on, with the background plate behind them and a drawn frame round each.</div>`;
+  if (isComputed()) root.innerHTML = `<div class="muted">A computed layout has no plates: the renderer lays both screens out on the screen it runs on, with a background plate behind them and a frame round each only where the package names them; the dual layouts name neither, so their screens stand square on black.</div>`;
   for (const layer of layersTopFirst()) {
     const row = document.createElement("div");
     const active = state.selected && ((state.selected.kind === "layer" && state.selected.id === layer.id) || (state.selected.kind === "screen" && layer.id === CUTOUTS));
@@ -474,7 +474,7 @@ function buildComputedProps(root) {  // a computed layout's knobs: the drawn fra
   if (geometry) {  // what the renderer works out on the target screen
     const steps = geometry.lanes.map((lane, index) => { const native = state.preview.screens[index]; return `${lane.output.width}×${lane.output.height} (${Math.round(lane.output.height / native.h * 100) / 100}x)`; });
     const note = document.createElement("div"); note.className = "muted"; note.style.margin = "0 0 8px";
-    note.textContent = `On ${state.target.width}×${state.target.height}: ${steps.join(" and ")}, frame ${geometry.frame} px.`;
+    note.textContent = `On ${state.target.width}×${state.target.height}: ${steps.join(" and ")}${pkg.frame ? `, frame ${geometry.frame} px` : ""}.`;
     group.appendChild(note);
   }
   if (pkg.frame) {

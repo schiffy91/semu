@@ -4,7 +4,7 @@
   "label": "Game Boy DMG-01",
   "layout": "fixed",
   "art": "assets/bezels/gb/dmg-shell.png",
-  "background": "assets/bezels/backgrounds/desk-night.png",
+  "background": null,
   "frame": null,
   "canvas": {
     "w": 3440,

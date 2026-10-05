@@ -45,7 +45,7 @@ class LiveVariantSwitchSpec {  // the GL-free core of the renderer's live switch
         contract.expect(RendererLiveSwitch.apply(&state, &config, &live, &stale) == SEMU_RENDER_SWITCH_NONE && live.bezel == -1 && live.shader == -1, "switch: nothing requested, nothing applied");
         LiveVariantSwitchSpec.select(&state, SemuActions.bezelSelect(), 1, 1ULL);
         int applied = LiveVariantSwitchSpec.frames(&state, &config, &live, &stale);
-        contract.expect(applied == SEMU_RENDER_SWITCH_APPLIED && config.variants[0].layout == SEMU_LAYOUT_MAIN_RIGHT && live.bezel == 1 && live.shader == 0 && stale == 1, "switch: a bezel select applies section [1,0] (main_right), becomes the live choice and marks the images stale");
+        contract.expect(applied == SEMU_RENDER_SWITCH_APPLIED && config.variants[0].layout == SEMU_LAYOUT_MAIN_RIGHT && live.bezel == 1 && live.shader == 0 && stale == 0, "switch: a bezel select applies section [1,0] (main_right) and becomes the live choice; plain screens on black load no image");
         stale = 0;
         contract.expect(RendererLiveSwitch.apply(&state, &config, &live, &stale) == SEMU_RENDER_SWITCH_NONE && stale == 0 && live.bezel == 1, "switch: the next frame applies nothing again");
         LiveVariantSwitchSpec.select(&state, SemuActions.shaderSelect(), 1, 2ULL);
