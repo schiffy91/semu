@@ -117,6 +117,7 @@ class HarnessSpecStyle {  // no one- or two-letter names in the multi-disc, chec
         for name in ["paced_keys", "controller_layouts", "pad_roster", "player_set", "players_page", "relaunch", "system_reset", "game_restart", "seeds"] { result.push("src/launch/" + name + ".btrc"); }
         for name in ["players", "composed_scale", "render_choices", "esde_choice"] { result.push("src/emit/" + name + ".btrc"); }
         for name in ["src/check_outputs.btrc", "src/check_players.btrc", "src/renderer/renderer_players.btrc"] { result.push(name); }
+        result.push("tests/contracts/spec/audio.btrc");  // M15
         return result;
     }
 

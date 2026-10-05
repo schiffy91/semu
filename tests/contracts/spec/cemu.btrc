@@ -188,6 +188,10 @@ class CemuSpecContract {
         contract.contains(settings, "\t\t\t<Position>0</Position>", target + " cemu draws no notifications over the game");
         contract.contains(settings, "\t\t\t<ShaderCompiling>false</ShaderCompiling>", target + " cemu hides shader-compile notifications");
         contract.contains(settings, "\t<check_update>false</check_update>", target + " cemu never checks for updates");
+        Vector<string> audio = ["\t<Audio>", "\t\t<api>3</api>", "\t\t<delay>2</delay>", "\t\t<TVChannels>1</TVChannels>", "\t\t<PadChannels>1</PadChannels>", "\t\t<InputChannels>0</InputChannels>",
+            "\t\t<TVVolume>100</TVVolume>", "\t\t<PadVolume>0</PadVolume>", "\t\t<InputVolume>20</InputVolume>", "\t\t<TVDevice>default</TVDevice>", "\t\t<PadDevice></PadDevice>", "\t\t<InputDevice></InputDevice>", "\t</Audio>"];
+        contract.contains(settings, audio.join("\n"), target + " cemu plays the TV through Cubeb (api 3) on the default device, stereo, at unity gain; the pad and the mic stay off");
+        contract.expect(CemuSpecText.occurrences(settings, "<Audio>") == 1, target + " cemu settings carry one Audio block");
         contract.expect(fixture.diagnostics.ok(), target + " cemu profile renders cleanly: " + fixture.diagnostics.render());
     }
 

@@ -68,6 +68,7 @@ import ./spec/render_variants.btrc;
 import ./spec/visual_cycle.btrc;
 import ./spec/live_variants.btrc;
 import ./spec/mods.btrc;
+import ./spec/audio.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -1009,6 +1010,7 @@ int main() {
     PerformanceSpecContract.run(contract);
     BuildFlagsSpecContract.run(contract);
     ModsSpecContract.run(contract);
+    AudioSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);

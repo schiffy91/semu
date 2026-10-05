@@ -1,0 +1,108 @@
+// Audio spec: every emulator Semu launches plays through the session's sound server (PipeWire's
+// pulse server on the Deck), and nothing Semu writes, exports or sandboxes silences one (M15 item 6).
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+
+class AudioSpecTable {
+    // emulator | platform | rendered file | the line Semu writes so the emulator plays to the session | the backend it selects
+    class Vector<string> pinned() {
+        return [
+            "retroarch|linux|retroarch.cfg|audio_driver = \"pulse\"|PulseAudio (PipeWire's pulse server on the Deck)",
+            "retroarch|macos|retroarch.cfg|audio_driver = \"coreaudio\"|Core Audio",
+            "cemu|linux|config/Cemu/settings.xml|\t\t<api>3</api>|Cubeb (IAudioAPI::Cubeb)",
+            "cemu|linux|config/Cemu/settings.xml|\t\t<TVDevice>default</TVDevice>|Cubeb's default output device",
+            "cemu|linux|config/Cemu/settings.xml|\t\t<TVVolume>100</TVVolume>|the TV at unity gain",
+            "ryujinx|linux|config/Ryujinx/Config.json|\"audio_backend\": \"SDL2\",|SDL2 audio",
+            "ryujinx|linux|config/Ryujinx/Config.json|\"audio_volume\": 1,|unity gain",
+            "ryujinx|macos|config/Ryujinx/Config.json|\"audio_backend\": \"SDL2\",|SDL2 audio",
+            "ryujinx|macos|config/Ryujinx/Config.json|\"audio_volume\": 1,|unity gain"
+        ];
+    }
+
+    // emulator | rendered file | the audio section Semu never writes, so the pinned upstream default plays | that default, as observed on the Deck
+    class Vector<string> upstreamDefaults() {
+        return [
+            "pcsx2|config/PCSX2/inis/PCSX2.ini|[SPU2|Cubeb on the default device (Deck emulog: Creating Cubeb audio stream)",
+            "dolphin|dolphin-user/Config/Dolphin.ini|[DSP]|Cubeb (AudioCommon.cpp:95-109 at 2606a; Deck stream Dolphin Emulator)",
+            "azahar|config/azahar-emu/qt-config.ini|[Audio]|output_type 0, auto, Cubeb (Deck log: Cubeb Audio Stream Started)",
+            "melonds|config/melonDS/melonDS.toml|Audio]|SDL audio at Volume 256 (Deck stream melonDS)",
+            "flycast|config/flycast/emu.cfg|[audio]|auto, which prefers SDL2 (audiostream.cpp:22-40 at v2.7; Deck stream .flycast-wrapped)",
+            "ppsspp|config/ppsspp/PSP/SYSTEM/ppsspp.ini|[Sound]|SDL audio, GameVolume 100 (Deck stream PPSSPPSDL)"
+        ];
+    }
+
+    // what reroutes or silences a client of the session's sound server: none may come from Semu
+    class Vector<string> serverVariables() {
+        return ["PULSE_SERVER", "PULSE_SINK", "PULSE_CLIENTCONFIG", "PULSE_COOKIE", "PIPEWIRE_REMOTE", "PIPEWIRE_RUNTIME_DIR", "XDG_RUNTIME_DIR",
+            "SDL_AUDIODRIVER", "SDL_AUDIO_DRIVER", "ALSA_CONFIG_PATH", "AUDIODEV"];
+    }
+
+    class Vector<string> fields(string row) { return Strings.split(row, "|"); }
+}
+
+class AudioSpecContract {
+    class string platformOf(string target) { return target.equals("macos") ? "macos" : "linux"; }
+
+    class void pinnedContract(Contract contract, string target) {  // the lines Semu writes reach the rendered files
+        Fixture fixture = Fixture(target);
+        string platform = AudioSpecContract.platformOf(target);
+        for row in AudioSpecTable.pinned() {
+            Vector<string> field = AudioSpecTable.fields(row);
+            if (!field.get(1).equals(platform) || !fixture.model.emulator(field.get(0)).supports(platform)) { continue; }
+            string document = fixture.profile(field.get(0), field.get(2));
+            contract.contains(document, field.get(3), target + " " + field.get(0) + " plays through " + field.get(4) + " (" + field.get(2) + ")");
+        }
+        contract.expect(fixture.diagnostics.ok(), target + " audio profiles render cleanly: " + fixture.diagnostics.render());
+    }
+
+    class void defaultsContract(Contract contract, string target) {  // emulators left at their own working default
+        Fixture fixture = Fixture(target);
+        string platform = AudioSpecContract.platformOf(target);
+        for row in AudioSpecTable.upstreamDefaults() {
+            Vector<string> field = AudioSpecTable.fields(row);
+            if (!fixture.model.emulator(field.get(0)).supports(platform)) { continue; }
+            string document = fixture.profile(field.get(0), field.get(1));
+            contract.expect(!document.isEmpty(), target + " " + field.get(0) + " renders " + field.get(1));
+            contract.lacks(document, field.get(2), target + " " + field.get(0) + " keeps its default audio, " + field.get(3));
+        }
+    }
+
+    class void environmentContract(Contract contract, Fixture fixture) {  // no launch reroutes the sound server
+        for identifier in fixture.model.emulatorIds() {
+            SemuEmulator emulator = fixture.model.emulator(identifier);
+            for platform in ["linux", "macos"] {
+                JSONValue set = SemuJson.get(emulator.platform(platform), "env.set");
+                if (!set.isObject()) { continue; }
+                for name in AudioSpecTable.serverVariables() {
+                    contract.expect(!set.has(name), identifier + " on " + platform + " leaves " + name + " to the session");
+                }
+            }
+        }
+    }
+
+    class void sandboxContract(Contract contract, string project) {  // the Deck's bubblewrap launcher keeps the server reachable
+        string launcher = FileSystem.readText(PathTools.join(project, "packaging/nix/release.nix"));
+        contract.contains(launcher, "for entry in /usr /etc /home /run ", "the release launcher binds /run, which holds $XDG_RUNTIME_DIR/pulse/native and pipewire-0");
+        contract.contains(launcher, "binds=\"$binds --bind $entry $entry\"", "the release launcher binds each host directory read-write at its own path");
+        for word in ["--clearenv", "--unsetenv", "--setenv", "PULSE_", "PIPEWIRE_", "XDG_RUNTIME_DIR"] {
+            contract.lacks(launcher, word, "the release launcher passes the session's audio environment through untouched (" + word + ")");
+        }
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        for target in ["steam-deck", "linux-desktop", "macos"] {
+            AudioSpecContract.pinnedContract(contract, target);
+            AudioSpecContract.defaultsContract(contract, target);
+        }
+        AudioSpecContract.environmentContract(contract, fixture);
+        AudioSpecContract.sandboxContract(contract, fixture.project);
+    }
+}
