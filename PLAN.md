@@ -3524,7 +3524,8 @@ Update this block whenever a milestone criterion changes state.
 - M15 owner feedback, round 3 (2026-10-05): all eight items implemented (db92462 to 0f535bb, then the
   review fixes), observed on the Mac render host, in the editor (headless Chrome) and in the podman VM
   (PCSX2, Beetle PSX, Mupen64Plus, Cemu with Mario Kart 8, the DS and 3DS touch routes). On the Deck
-  (bdabd01, 2026-10-05) `tests/deck/m15-check.cases` held 13 of 13 off-screen; open: Wii U sound by ear.
+  (bdabd01, 2026-10-05) M15's "Deck acceptance" list, run off-screen by `tests/deck/m15-check.cases`, held
+  13 of 13; open: Wii U sound by ear.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,
