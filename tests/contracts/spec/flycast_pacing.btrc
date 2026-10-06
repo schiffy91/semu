@@ -1,0 +1,96 @@
+// Flycast pacing spec (M16 item 8, "super laggy at like 23fps on sonic adventure"). Flycast 5aa091fd paces the
+// emulation by its audio and, with vsync, by its swap: the emulator thread waits for the render thread, which swaps
+// every refresh / 60 times the game's own swap interval, truncated (core/wsi/sdl.cpp:86-96, 137-153). Game Mode runs
+// the Deck OLED's screen at 90 Hz, where a scene the game draws at 30 frames a second asked for 3 refreshes and took
+// 4 under gamescope: 22.5 frames per second, the game at 75% (measured off-screen at 90 Hz). Semu's patch swaps at
+// the next refresh wherever the refresh is not a whole multiple of 60 Hz and keeps Flycast's own interval at 60 and
+// 120 Hz, where its frames come evenly. The Deck harnesses run their private gamescope at the refresh Game Mode's
+// display runs, so a case sees what the owner sees, and the Deck cases measure Sonic Adventure there.
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+
+class FlycastPacingSpecChecks {
+    class string read(string project, string relative) {
+        return FileSystem.readText(PathTools.join(project, relative));
+    }
+
+    class bool before(string text, string first, string second) {  // FIRST appears, and SECOND after it
+        int at = text.indexOf(first);
+        return at >= 0 && Strings.find(text, second, at + first.len()) >= 0;
+    }
+}
+
+class FlycastPacingSpecContract {
+    class void patch(Contract contract, string project) {
+        string flake = FlycastPacingSpecChecks.read(project, "config/emulators/flycast/flake.nix");
+        string patch = FlycastPacingSpecChecks.read(project, "config/emulators/flycast/semu-swap-interval.patch");
+        contract.contains(flake, "patches = (previous.patches or [ ]) ++ [ ./semu-swap-interval.patch ];", "Flycast is built with the swap-interval patch");
+        contract.contains(patch, "+++ b/core/wsi/sdl.cpp", "the patch changes Flycast's SDL OpenGL context, the one Semu's swap hook composes in");
+        string rule = "+\tfloat multiple = settings.display.refreshRate / 60.f;\n+\tint whole = (int)std::lround(multiple);\n+\tif (whole < 1)\n+\t\treturn gameInterval;\n"
+            + "+\tif (std::fabs(multiple - (float)whole) > 0.05f)\n+\t\treturn 1;\n+\treturn whole * gameInterval;\n";
+        contract.contains(patch, rule, "a refresh that is not a whole multiple of 60 Hz (90 on the Deck OLED) swaps at the next refresh; 60 and 120 Hz keep the whole multiple times the game's interval");
+        contract.expect(FlycastPacingSpecChecks.before(patch, "-\t\t\tswapInterval = settings.display.refreshRate / 60.f;", "+\t\tswapInterval = semuSwapInterval(1);")
+            && FlycastPacingSpecChecks.before(patch, "-\t\t\tswapInterval = settings.display.refreshRate / 60.f * gameSwapInterval;", "+\t\tswapInterval = semuSwapInterval(gameSwapInterval);"),
+            "both places Flycast sets the interval use the rule: the context's first swap and every change of the game's interval");
+        contract.lacks(patch, "+\t\t\tswapInterval = settings.display.refreshRate / 60.f * gameSwapInterval;", "and no added line keeps the truncated product");
+    }
+
+    class void configuration(Contract contract) {
+        for target in ["steam-deck", "linux-desktop"] {
+            string document = Fixture(target).profile("flycast", "config/flycast/emu.cfg");
+            contract.expect(document.contains("\nrend.vsync = yes\n") && document.contains("\nrend.ThreadedRendering = yes\n") && document.contains("\nrend.DelayFrameSwapping = yes\n"),
+                target + " Flycast runs as measured: vsync on (the patch's interval), threaded rendering, and only the frames the game draws presented");
+        }
+    }
+
+    class void harness(Contract contract, string project) {
+        string probe = "$(DISPLAY=:0 xrandr --current 2>/dev/null | awk '/\\*/ { for (field = 2; field <= NF; field++) if ($field ~ /\\*/) { sub(/[*+]+$/, \"\", $field); printf \"%d\", $field + 0.5; exit } }')";
+        string check = FlycastPacingSpecChecks.read(project, "tests/deck/input-check.sh");
+        string matrix = FlycastPacingSpecChecks.read(project, "tests/deck/system-matrix.sh");
+        contract.contains(check, "refresh=\"${SEMU_CHECK_REFRESH:-" + probe + "}\"", "input-check.sh reads the refresh Game Mode's display runs, SEMU_CHECK_REFRESH overriding it");
+        contract.contains(matrix, "refresh=\"${SEMU_MATRIX_REFRESH:-" + probe + "}\"", "system-matrix.sh reads it too, SEMU_MATRIX_REFRESH overriding it");
+        contract.expect(check.contains("case \"$refresh\" in '') refresh=60 ;;") && matrix.contains("case \"$refresh\" in '') refresh=60 ;;"), "both fall back to 60 Hz when it cannot be read");
+        contract.contains(check, "-w \"$width\" -h \"$height\" -r \"$refresh\" --xwayland-count 2", "input-check.sh's private gamescope runs at that refresh");
+        contract.contains(matrix, "gamescope --backend headless -W 1280 -H 800 -w 1280 -h 800 -r \"$refresh\" --", "system-matrix.sh's too");
+        contract.contains(check, "note \"gamescope: $(pacman -Q gamescope 2>/dev/null) at ${width}x${height}, ${refresh} Hz\"", "and a case's result names the refresh it ran at");
+    }
+
+    class void cases(Contract contract, string project) {
+        string checks = FlycastPacingSpecChecks.read(project, "tests/deck/m16-check.cases");
+        Vector<string> fillers = [];
+        for (int index = 0; index < 23; index++) { fillers.push("key:shift"); }
+        string play = "dreamcast flycast - 30 start key:ctrl+shift+v " + fillers.join(" ") + " -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd";
+        contract.contains(checks, "\n" + play + "\n", "m16-check.cases plays Sonic Adventure's attract mode at the Deck's refresh (D11)");
+        contract.contains(checks, "\n# D11. Item 8 in play", "and says what its shots and rates must show");
+        contract.expect(checks.contains("HUD's TIME gains 6.00 s from one shot to the next") && checks.contains("at least 29.8 per second with the longest gap under 50 ms"),
+            "the bar: the game's 30-frame scenes at 30 per second, and the game's own clock at full speed");
+        contract.contains(checks, "the movie read 22.5 per second at 90 Hz, four refreshes a frame", "D3 names what the owner saw");
+        string docked = FlycastPacingSpecChecks.read(project, "tests/deck/m16-docked.cases");
+        contract.contains(docked, "\n# K5. Item 8 docked", "m16-docked.cases measures the Dreamcast at a 60 Hz TV");
+        contract.contains(docked, "SEMU_CHECK_REFRESH=60 SEMU_CHECK_SIZE=1920x1080 input-check.sh", "and is run at the TV's refresh");
+    }
+
+    class void plan(Contract contract, string project) {
+        string text = FlycastPacingSpecChecks.read(project, "PLAN.md");
+        int milestone = text.indexOf("### M16. ");
+        int gaps = text.indexOf("## Gap review");
+        string section = milestone > 0 && gaps > milestone ? text.substring(milestone, gaps - milestone) : "";
+        contract.contains(section, "\n  - Item 8 on the Deck (2026-10-06, ", "PLAN.md M16 records item 8's measurement on the Deck");
+        int status = text.indexOf("\n## Status\n");
+        string live = status > 0 ? text.substring(status, text.len() - status) : "";
+        contract.contains(live, "\n- M16 item 8 (Dreamcast speed): ", "the live Status block carries it");
+    }
+
+    class void run(Contract contract) {
+        string project = Fixture("steam-deck").project;
+        FlycastPacingSpecContract.patch(contract, project);
+        FlycastPacingSpecContract.configuration(contract);
+        FlycastPacingSpecContract.harness(contract, project);
+        FlycastPacingSpecContract.cases(contract, project);
+        FlycastPacingSpecContract.plan(contract, project);
+    }
+}

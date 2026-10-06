@@ -17,6 +17,7 @@
           version = "2.7";
           src = source;
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
+          patches = (previous.patches or [ ]) ++ [ ./semu-swap-interval.patch ];  # a screen that is not a whole multiple of 60 Hz swaps at the next refresh (M16 item 8)
         });
     in {
       semu = {

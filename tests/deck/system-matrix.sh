@@ -26,8 +26,12 @@
 # per VI; a Dolphin case copies Logs/render_times.txt and vblank_times.txt beside its result and
 # notes their rates (VIs per second against 59.94 or 50 is the emulation speed; presents undercount,
 # as Dolphin skips duplicate frames).
+# The private gamescope runs at the refresh rate Game Mode's own display runs (xrandr on :0, rounded: 90 on
+# the Deck OLED), as input-check.sh does; SEMU_MATRIX_REFRESH=HZ sets it, and 60 when it cannot be read.
 set -u
 cases="$1"; out="$2"
+refresh="${SEMU_MATRIX_REFRESH:-$(DISPLAY=:0 xrandr --current 2>/dev/null | awk '/\*/ { for (field = 2; field <= NF; field++) if ($field ~ /\*/) { sub(/[*+]+$/, "", $field); printf "%d", $field + 0.5; exit } }')}"
+case "$refresh" in '') refresh=60 ;; [1-9][0-9]|[1-9][0-9][0-9]) ;; *) echo "system-matrix: SEMU_MATRIX_REFRESH is whole hertz, not $refresh" >&2; exit 64 ;; esac
 roms=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs
 cli="$HOME/Applications/Semu/bin/semu-deck-cli"
 state="$HOME/.local/share/semu"  # the steam-deck target's state_root
@@ -74,14 +78,14 @@ while IFS= read -r line; do
   done
   rom="$(compgen -G "$roms/$system/$pattern" | head -1)"
   if [ -z "$rom" ]; then note "skipped: no ROM matches $system/$pattern"; continue; fi
-  note "rom: ${rom#"$roms/"}"
+  note "rom: ${rom#"$roms/"} (gamescope at 1280x800, $refresh Hz)"
   core_argument=""; [ "$core" = - ] || core_argument="--core $core"
   printf '#!/bin/sh\nexec "%s" launch %s --system %s %s %s ${SEMU_MATRIX_SETTINGS:+--settings-json "$SEMU_MATRIX_SETTINGS"} --rom "$SEMU_MATRIX_ROM"\n' "$cli" "$emulator" "$system" "$core_argument" "${SEMU_MATRIX_LAUNCH_ARGS:-}" > "$dir/inner.sh"  # SEMU_MATRIX_LAUNCH_ARGS: e.g. --project DIR for a trial config
   chmod +x "$dir/inner.sh"
 
   start=$(date +%s)
   PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy ALSA_CONFIG_PATH="$out/alsa-null.conf" SEMU_RENDER_GPU_TIME=1 SEMU_RENDER_DEBUG=1 SEMU_MATRIX_ROM="$rom" \
-    gamescope --backend headless -W 1280 -H 800 -w 1280 -h 800 -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
+    gamescope --backend headless -W 1280 -H 800 -w 1280 -h 800 -r "$refresh" -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
   headless=$!
   game=""; display=""
   for _ in $(seq 1 300); do  # every 0.2 s for 60 s: an emulator that exits within a second is still seen

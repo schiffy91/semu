@@ -20,7 +20,10 @@
 # log shows it found a new device, and the run ends. The game is captured just before the first press and a few seconds after
 # each token, so the pictures show whether the emulator acted. Quits the way Semu quits
 # (SIGTERM to semu-btrc). Everything is tracked by PID; the script itself writes only below OUT
-# (what Semu and the emulators write is under "Isolation") and removes nothing.
+# (what Semu and the emulators write is under "Isolation") and removes nothing. The private gamescope
+# runs at the refresh rate Game Mode's own display runs (xrandr on :0, rounded: 90 on the Deck OLED's
+# 89.89 Hz), so an emulator that times its swaps by the screen (Flycast, M16 item 8) sees what it sees in
+# Game Mode; SEMU_CHECK_REFRESH=HZ sets it (60 for a docked 60 Hz TV), and 60 when it cannot be read.
 #
 #   input-check.sh PAD CASES OUT
 #   input-check.sh --plan CASES      # each case's pad and injector timelines and captures; launches nothing (runs on a Mac)
@@ -154,6 +157,8 @@ for helper in inject.sh cursor-crosshair.sh; do  # copied to the Deck together, 
   [ -f "$here/$helper" ] || { echo "input-check: $here/$helper is missing; copy tests/deck/inject.sh and tests/deck/cursor-crosshair.sh beside input-check.sh" >&2; exit 64; }
 done
 pad="$1"; cases="$2"; out="$(mkdir -p "$3" && cd "$3" && pwd -P)"
+refresh="${SEMU_CHECK_REFRESH:-$(DISPLAY=:0 xrandr --current 2>/dev/null | awk '/\*/ { for (field = 2; field <= NF; field++) if ($field ~ /\*/) { sub(/[*+]+$/, "", $field); printf "%d", $field + 0.5; exit } }')}"
+case "$refresh" in '') refresh=60 ;; [1-9][0-9]|[1-9][0-9][0-9]) ;; *) echo "input-check: SEMU_CHECK_REFRESH is whole hertz, not $refresh" >&2; exit 64 ;; esac
 roms=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs
 cli="$HOME/Applications/Semu/bin/semu-deck-cli"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -261,7 +266,7 @@ while IFS= read -r line; do
     grep -q -i "HID_ID=.*000028DE:00001205" "$node/device/uevent" 2>/dev/null && cover="$cover --ro-bind /dev/null /dev/${node##*/}"
   done
   note "pad: replica of Steam's virtual pad; hidden:${cover:- nothing}"
-  note "gamescope: $(pacman -Q gamescope 2>/dev/null)"
+  note "gamescope: $(pacman -Q gamescope 2>/dev/null) at ${width}x${height}, ${refresh} Hz"
   steamlog="$HOME/.local/share/Steam/logs/controller.txt"
   logsize=$(stat -c %s "$steamlog" 2>/dev/null || echo 0)
   start_ms=$(date +%s%3N); start=$(( start_ms / 1000 ))  # the shared clock's zero
@@ -269,7 +274,7 @@ while IFS= read -r line; do
   padpid=$!
   SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1 SDL_GAMECONTROLLER_IGNORE_DEVICES=0x28de/0x1205 SteamVirtualGamepadInfo="$out/steam-virtual-gamepad-info" PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy ALSA_CONFIG_PATH="$out/alsa-null.conf" SEMU_MATRIX_ROM="$rom" \
     SEMU_RENDER_GPU_TIME=1 SEMU_RENDER_DEBUG=1 SEMU_RENDER_CAPTURE_FRAME=60 SEMU_INJECT_START_MS="$start_ms" SEMU_INJECT_EVIDENCE="$evidence" SEMU_INJECT_EVIDENCE_FROM="$from" SEMU_INJECT_SCREEN="$size" \
-    bwrap --dev-bind / / --tmpfs /tmp/.X11-unix $cover -- gamescope --backend headless -W "$width" -H "$height" -w "$width" -h "$height" --xwayland-count 2 --hide-cursor-delay 3000 -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
+    bwrap --dev-bind / / --tmpfs /tmp/.X11-unix $cover -- gamescope --backend headless -W "$width" -H "$height" -w "$width" -h "$height" -r "$refresh" --xwayland-count 2 --hide-cursor-delay 3000 -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
   headless=$!
   game=""; display=""
   for _ in $(seq 1 300); do  # every 0.2 s for 60 s: an emulator that exits within a second is still seen

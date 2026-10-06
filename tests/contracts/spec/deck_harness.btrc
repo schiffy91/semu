@@ -85,7 +85,7 @@ class DeckHarnessScripts {  // read as text: the parts of a run that only the De
         string check = FileSystem.readText(PathTools.join(fixture.project, "tests/deck/input-check.sh"));
         string injector = FileSystem.readText(PathTools.join(fixture.project, "tests/deck/inject.sh"));
         string cases = FileSystem.readText(PathTools.join(fixture.project, "tests/deck/radial-check.cases"));
-        contract.contains(check, "gamescope --backend headless -W \"$width\" -H \"$height\" -w \"$width\" -h \"$height\" --xwayland-count 2 --hide-cursor-delay 3000 --", "the private gamescope has a second Xwayland to type from and Game Mode's cursor delay");
+        contract.contains(check, "gamescope --backend headless -W \"$width\" -H \"$height\" -w \"$width\" -h \"$height\" -r \"$refresh\" --xwayland-count 2 --hide-cursor-delay 3000 --", "the private gamescope has a second Xwayland to type from, Game Mode's cursor delay and its display's refresh");
         contract.contains(check, "size=\"${SEMU_CHECK_SIZE:-1280x800}\"", "the private gamescope is the Deck's 1280x800 unless SEMU_CHECK_SIZE names a docked screen");
         contract.contains(check, "SEMU_RENDER_DEBUG=1 SEMU_RENDER_CAPTURE_FRAME=60 SEMU_INJECT_START_MS=\"$start_ms\"", "the launch logs input and writes a receipt of the drawn screens, on the shared clock");
         contract.contains(check, "jq -n --arg content \"$content\" '{paths: {content_root: $content}}'", "the run's own semu.json moves only the content root");

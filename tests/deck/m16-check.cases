@@ -220,15 +220,15 @@ gb retroarch gambatte 25 key:ctrl+shift+b -- Tetris (World) (Rev 1).zip
 gc dolphin - 30 -- Legend of Zelda, The - The Wind Waker (USA).rvz
 # D2. Item 4, the Wii (Dolphin): as D1, New Super Mario Bros. Wii's strap or title.
 wii dolphin - 30 -- New Super Mario Bros. Wii*.wbfs
-# D3. Items 8 and 9, the Dreamcast (Flycast), the owner's Sonic Adventure on its title and attract demo after 90 s,
-#     on its defaults (the TV, Sharp CRT) in the Fit state T5 left (non-integer game: T5's one Fit press from
-#     integer bezel). size: one line, 1280x800 from frame 1. rate: every line at least 59.8 per second and the
-#     longest gap under 25 ms (one and a half frames of 16.7 ms: a single dropped frame logs about 33 ms, so a
-#     34 ms bar passed a run that drops one every two seconds, the stutter item 8 is about); the composition's GPU
-#     time printed (the Deck's budget is 16.7 ms a frame for Flycast and Semu together). pitch: none with Sharp
-#     CRT (easymode declares no intres, so the renderer sets nothing); D7 measures the pitch on the gdv variant.
-#     before: the attract demo inside the TV. A rate under 59.8 here is item 8 reproduced: then run the isolation
-#     in PLAN M16 item 8 (system-matrix.cases' Sonic Adventure lines with the shader off, both off, no renderer).
+# D3. Items 8 and 9, the Dreamcast (Flycast), the owner's Sonic Adventure with no input on its defaults (the TV, Sharp
+#     CRT) in the Fit state T5 left (non-integer game): the Sega logo, then the opening movie from about 20 s. The run
+#     is at the Deck screen's own refresh (the result's gamescope line: 90 Hz on the OLED). size: one line, 1280x800
+#     from frame 1. rate (run.log, a line every two seconds): the logo at least 59.8 per second with the longest gap
+#     under 25 ms; the movie, which the game draws at 30 frames a second (Flycast shows only the frames the game
+#     draws), at least 29.8 per second with the longest gap under 50 ms (one and a half of its frames). Before the
+#     swap-interval patch the movie read 22.5 per second at 90 Hz, four refreshes a frame, with the game at 75%
+#     (item 8); the composition's GPU time printed. pitch: none with Sharp CRT (easymode declares no intres, so the
+#     renderer sets nothing); D7 measures the pitch on the gdv variant. before: the movie inside the TV.
 dreamcast flycast - 90 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
 # D4. Item 4, the PS2 (PCSX2): size: no line smaller than the last; before: Def Jam's boot at full size.
 ps2 pcsx2 - 40 -- Def Jam - Fight for NY (USA).iso
@@ -253,7 +253,9 @@ nes retroarch mesen 20 -- Super Mario Bros. 3 (USA) (Rev 1).zip
 # stays and gdv is one press away. A shot judged by eye: even scanlines, no bands, no mask grain.
 # D7. The Dreamcast (Flycast, Sonic Adventure). Earlier cases left it in non-integer game: after-1 (80/1) gdv there;
 #     after-2 (81/3) non-integer bezel; after-3 (81/0) integer game; after-4 (81/1) integer bezel. choices
-#     dreamcast {"shader_variant":"gdv","placement":"bezel"}.
+#     dreamcast {"shader_variant":"gdv","placement":"bezel"}. These shots fall in the opening movie, which the game
+#     draws at 30 frames a second, so the rate bar here is D3's for the movie (at least 29.8 per second, the longest
+#     gap under 50 ms); the GPU-time bar is the same.
 dreamcast flycast - 90 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
 # D8. The PS2 (PCSX2, Def Jam), from integer bezel (no earlier Fit press on the PS2): after-1 (80/1) gdv at integer
 #     bezel; after-2 (81/2) non-integer game; after-3 (81/3); after-4 (81/0); after-5 (81/1) integer bezel. S3 left
@@ -266,3 +268,15 @@ gc dolphin - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shif
 # D10. The Wii (Dolphin, New Super Mario Bros. Wii), in the state F1 left (integer game): after-1 (80/1) gdv at
 #     integer game; after-2 (81/1) integer bezel; after-3 (81/2) non-integer game; after-4 (81/3); after-5 (81/0).
 wii dolphin - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- New Super Mario Bros. Wii*.wbfs
+# D11. Item 8 in play, on the owner's own Dreamcast shader (CRT Royale, the owner's semu.json): Sonic Adventure at the
+#     Deck screen's own refresh (90 Hz on the OLED). D7 left the gdv variant and integer bezel, so key:ctrl+shift+v
+#     journals 80/2 (SHADER: CRT ROYALE). start at 30 s skips the opening movie to the title (after-1, at least 59.8
+#     per second with the longest gap under 25 ms), whose attract mode then plays Sonic's story scene against E-101
+#     (from about 65 s) and Speed Highway's demo (about 131 to 175 s), both drawn by the game at 30 frames a second:
+#     every line inside a scene at least 29.8 per second with the longest gap under 50 ms (a load between scenes
+#     reads lower). The game at full speed, not 75%: in the Speed Highway shots (about after-18 to after-24) the
+#     HUD's TIME gains 6.00 s from one shot to the next, 6 s apart (crop the picture's top left at 4x). key:shift is a
+#     lone Shift, which neither Semu nor Flycast binds: a filler that keeps the case running with a shot every 6 s.
+#     Before the swap-interval patch (90 Hz, 2026-10-06): the scenes at 22.5 per second and the HUD gaining 1.87 s in
+#     2.5 s. choices dreamcast {"shader_variant":"royale","placement":"bezel"}.
+dreamcast flycast - 30 start key:ctrl+shift+v key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd

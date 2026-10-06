@@ -87,6 +87,9 @@
         "rend.EmulateFramebuffer = no",
         "rend.Rotate90 = no",
         "rend.ShowFPS = no",
+        "rend.vsync = yes",
+        "rend.ThreadedRendering = yes",
+        "rend.DelayFrameSwapping = yes",
         "rend.FloatVMUs = no",
         "rend.ScreenStretching = 100",
         "rend.WideScreen = no",
@@ -127,7 +130,8 @@
     "state": "No external save path is configured. Flycast therefore stores per-game VMUs and save states in the isolated XDG_DATA_HOME/flycast tree declared by emulator.json.",
     "disc_picker": "emu.cfg [config] BoxartDisplayMode = no and FetchBoxart = no: in box-art mode the Insert Disk picker shows every disc of a game as the same cover and title, so the discs of a playlist could not be told apart. List mode shows the (Disc N).chd file names, and nothing is fetched from TheGamesDB.",
     "save_states": "Flycast cycles ten slots and wraps (cycleSaveStateSlot, core/ui/gui.cpp:518-522), shows slot + 1 (gui.cpp:1620-1624) and saves the choice to emu.cfg [config] Dreamcast.SavestateSlot; Semu pins it to 0 each launch, where its own counter starts.",
-    "keys": "Flycast 2.7 reads its options as dotted keys in [config] (upstream_keys). Until the M16 review Semu wrote [rend] and [Dreamcast] blocks Flycast never read, so OpenGL was only its default, and rend.WidescreenGameHacks = yes never applied; it is now written as no, the picture the owner has played (the widescreen cheats would draw an anamorphic 16:9 picture inside the 4:3 TV). The dead [input] enable_x11_keyboard line (only Flycast's man page names it) is gone."
+    "keys": "Flycast 2.7 reads its options as dotted keys in [config] (upstream_keys). Until the M16 review Semu wrote [rend] and [Dreamcast] blocks Flycast never read, so OpenGL was only its default, and rend.WidescreenGameHacks = yes never applied; it is now written as no, the picture the owner has played (the widescreen cheats would draw an anamorphic 16:9 picture inside the 4:3 TV). The dead [input] enable_x11_keyboard line (only Flycast's man page names it) is gone.",
+    "pacing": "rend.vsync = yes with config/emulators/flycast/semu-swap-interval.patch (M16 item 8, \"super laggy at like 23fps on sonic adventure\"). Flycast 5aa091fd paces the emulation by its audio (every push waits for room: config::LimitFPS is constexpr true, option.h:375, audiostream.cpp:59, audiobackend_sdl2.cpp:126-139) and, with vsync, by its swap: the emulator thread waits for the render thread (Renderer_if.cpp:59-109, 592-593), which presents only the frames the game draws (rend.DelayFrameSwapping, Renderer_if.cpp:243) and swaps every refresh / 60 times the game's own interval, truncated (wsi/sdl.cpp:86-96 and 137-153; the game's interval from SwapIntervalDetector, Renderer_if.cpp:297-365). Game Mode runs the Deck OLED's screen at 90 Hz (89.89 by xrandr on its display): a scene the game draws at 30 frames a second (Sonic Adventure's movies, story scenes and Speed Highway's demo) asked for 3 refreshes and took 4 under gamescope, 22.5 frames per second, and the game ran at 75% (off-screen at 90 Hz, the HUD clock gained 1.87 s in 2.5 s). The patch swaps at the next refresh wherever the refresh is not a whole multiple of 60 Hz, so the audio paces the game there; 60 and 120 Hz keep Flycast's own interval, whose frames come evenly (17 ms apart at 60 Hz, 34 ms for a 30-frame scene; with vsync off they bunched to the audio callbacks, 22 and 44 ms). rend.ThreadedRendering and rend.DelayFrameSwapping are Flycast's defaults, pinned because the measurement holds for them."
   },
   "actions": {
     "external": [

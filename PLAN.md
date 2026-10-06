@@ -2713,15 +2713,20 @@ Status: started 2026-10-06.
     with the TV and Sharp CRT, with the shader off and with both off (`system-matrix.sh` with
     SEMU_MATRIX_SETTINGS), and the 480-line consoles on `gdv`. Item 8 is not done: no M16 build has reached the
     Deck, so nothing about the 23 fps has been measured yet.
-  - Item 8 for the owner, in plain words: we do not know yet why Sonic Adventure runs at about 23 fps, and nothing
-    in this round has fixed it. Two things share the Deck's GPU each frame: Flycast drawing the game, and Semu
-    drawing the TV, the CRT shader and the reflections round it. On the Mac, Semu's part for the Dreamcast is about
-    a twelfth of a frame; scaled to the Deck's much smaller GPU it could be half of one, and with Flycast's own
-    drawing on top a frame can then take longer than the screen's 16.7 ms and wait for the next refresh, which
-    is how 60 becomes 30 or less (23 means most frames miss). The other suspects are
-    Flycast's own settings (the review found Semu's Flycast settings file wrote its renderer and widescreen keys
-    where Flycast never reads them, now fixed; they were defaults, so that alone changes no speed) and the SD card
-    (a disc read stalling a frame). The next Deck run measures each in turn.
+  - Item 8 for the owner, in plain words: answered on the Deck on 2026-10-06 (the guess first written here, Semu's
+    drawing on the GPU, was wrong). The Deck is the OLED model, and in Game Mode its screen refreshes 90 times a
+    second. Flycast times each new frame by counting screen refreshes, as many per frame as the screen's rate
+    divided by 60. Sonic Adventure draws many of its scenes at 30 frames a second (its movies, its story scenes and
+    stages such as Speed Highway), so Flycast asked for a new frame every third refresh, and under Game Mode each
+    one took the fourth: 22.5 frames a second, the "like 23fps". Flycast also waits for each frame to reach the
+    screen before it emulates on, so the whole game, its sound included, ran at three quarters of its speed: the
+    lag. A 60 Hz screen (a TV, an LCD Deck) never showed it, and every off-screen check ran at 60 Hz until this
+    round, so none caught it. Neither the Deck's power nor Semu's TV and shader were the cause: the emulator used
+    half to two thirds of one processor core, the graphics chip idled at its lowest clock, and the TV with the
+    owner's CRT Royale took 2.4 ms of each frame. Semu now builds Flycast with a small change: on a screen that is not a whole
+    multiple of 60 Hz it shows each frame at the next refresh and lets the sound keep the game's time, so the game
+    runs at full speed (a 30-frame scene at 30, a 60-frame one at 60, the game's own clock gaining a second each
+    second); at 60 and 120 Hz Flycast keeps its own timing, which was already right there.
   - Item 8's decision table: run `tests/deck/system-matrix.cases`' two Sonic Adventure lines (Flycast standalone,
     the owner's route, and the RetroArch Flycast core) four ways, as the case file's comment writes them: the
     defaults; `SEMU_MATRIX_SETTINGS='{"visual":{"crt_shaders":false}}'`; `'{"visual":{"bezels":false,
@@ -2735,6 +2740,45 @@ Status: started 2026-10-06.
     pvr.AutoSkipFrame in [config] (the keys Flycast reads, flycast_keys.btrc) and compare the RetroArch core; one
     thread at 100% (the four busiest threads): the SH4 or the PVR thread is the limit, an emulator setting again;
     the SD read rate high during the stalls: the CHD's reads.
+  - Item 8 on the Deck (2026-10-06, release a70ece76; off-screen, `tests/deck/input-check.sh` and
+    `system-matrix.sh` in a private headless gamescope at 1280x800 with the sound on SDL's dummy driver, the owner's
+    Sonic Adventure (USA) (Rev A) CHD from the SD card, the renderer's rate lines every two seconds and, beside each
+    run, Flycast's busiest threads, the GPU's load and clock and the disc reads every two seconds; the decision table
+    above was not needed past its first row):
+    - At 60 Hz, the harnesses' refresh until now: the Sega logo and the title at 60.0 per second (longest gaps about
+      17 ms); the opening movie, the attract mode's story scene (Sonic against E-101) and its Speed Highway demo at
+      30.0 (gaps mostly 34 ms), the game's own rate, since Flycast presents only the frames the game draws
+      (rend.DelayFrameSwapping); the demo's HUD clock read 17:33, 19:83 and 23:33 at 150.0, 152.5 and 156.0 s, full
+      speed. Flycast's emulator thread used about 50-70% of one core and its render thread under 15%, the GPU sat
+      at its lowest clock (200 MHz) and 0% busy in most samples, the disc read under 1.4 MB/s, and the composition took
+      1.78 ms of GPU time with Sharp CRT and 2.43 ms with CRT Royale, the owner's Dreamcast shader in
+      ~/.config/semu/semu.json: no processor, graphics, composition or SD limit.
+    - Game Mode's own display is 1280x800 at 89.89 Hz (xrandr on its :0; this Deck is the OLED model, DMI Galileo).
+      At 90 Hz (gamescope -r 90) the same run drew the 30-frame scenes at exactly 22.5 per second (gaps 45-49 ms,
+      four refreshes a frame) and the 60-frame ones at 60.2, and the HUD clock read 18:16, 20:03 and 22:66 at 180.0,
+      182.5 and 186.0 s: the game at 75%, the owner's report reproduced. `system-matrix.sh` at Game Mode's refresh,
+      on the owner's semu.json (CRT Royale): the movie at 22.5 per second.
+    - Why: Flycast 5aa091fd swaps every refresh / 60 times the game's own swap interval, truncated
+      (core/wsi/sdl.cpp:86-96 and 137-153), so 3 refreshes for a 30-frame scene at 90 Hz, and under gamescope each
+      such swap took 4; its emulator thread waits for its render thread (Renderer_if.cpp:59-109, 592-593), so the
+      game ran no faster than its frames reached the screen.
+    - Tried first, `rend.vsync = no` in a trial config tree: at 90 Hz the scenes at 30.0 and 60.2 per second and the
+      HUD clock 19:00, 21:53 and 25:03 at 150.0, 152.5 and 156.0 s (full speed), but at 60 Hz, and docked at
+      1920x1080 and 60 Hz, the frames bunched to the audio callbacks that alone paced the game then: longest gaps
+      22 ms for 60-frame scenes and 44 ms for 30-frame ones where vsync gives 17 and 34. So the fix is Flycast's
+      interval: `config/emulators/flycast/semu-swap-interval.patch` swaps at the next refresh wherever the refresh is
+      not within 5% of a whole multiple of 60 Hz (90 Hz, also 75 or 144) and keeps Flycast's own interval at 60 and
+      120 Hz; emu.cfg pins rend.vsync, rend.ThreadedRendering and rend.DelayFrameSwapping on, Flycast's defaults
+      the measurements hold for. Built in the podman VM before the release (`patching file core/wsi/sdl.cpp`, exit 0).
+    - The RetroArch Flycast core, the other route ES-DE offers, in `system-matrix.sh` at 90 Hz: about 72 composed
+      frames a second with its emulator thread busy a whole core. The harness's null ALSA device never blocks
+      RetroArch's audio sync, so the core ran on the 90 Hz vsync alone, faster than the game's own speed: no
+      measure of the owner's route, and the core was not changed.
+    - The Deck harnesses now run their private gamescope at the refresh Game Mode's display runs (xrandr on :0,
+      rounded; input-check.sh's SEMU_CHECK_REFRESH and system-matrix.sh's SEMU_MATRIX_REFRESH set it, 60 when it
+      cannot be read) and a case's result names it. Deck cases: `tests/deck/m16-check.cases` D3 (the movie, no
+      input) and D11 (the attract mode on CRT Royale, with the HUD clock), `tests/deck/m16-docked.cases` K5 (a 60 Hz
+      TV). Contract flycast_pacing.btrc.
 
 - Review round (2026-10-06, the M16 review): the reviewers' 30 findings on the five tracks, each checked by hand
   (on the Mac render host, in the source, at the pinned upstream), fixed in gated commits whose contracts fail
@@ -4215,13 +4259,20 @@ Update this block whenever a milestone criterion changes state.
   (patched); item 9's rule, Retro Crisis's GDV-NTSC on a CRT television console, holds for the 240-line consoles
   and the NES only (corrected in the review round: the 480-line four keep Sharp CRT, `gdv` one press away, so item
   9 stays open until measured), LCD on handhelds, none on HD consoles, with CRT scanlines on whole output rows at
-  every size; item 8 is open and its cause unknown. Item 4 observed on the Deck (2026-10-06,
-  `tests/deck/boot-capture.cases` before and after the releases): the owner's shrink filmed on the M15 release in
+  every size; item 8's cause is Flycast's swap interval on the OLED's 90 Hz screen (next line). Item 4 observed
+  on the Deck (2026-10-06, `tests/deck/boot-capture.cases` before and after the releases): the owner's shrink filmed on the M15 release in
   both Dolphin cases and gone from af0470d8 on; the other emulators never shrank; PCSX2's game list, Cemu's
   menu-bar window and a frame of Ryujinx's, also shown at boot, are gone too (9d52f6f: -nogui and Cemu's
   full-screen-at-boot patch; a70ece76: Ryujinx's). Open on the Deck:
   `tests/deck/m16-check.cases` (deck cases D1-D6) and the review's D7-D10 (GDV-NTSC on the 480-line four), and
   Sonic Adventure four ways (`tests/deck/system-matrix.cases`, PLAN M16 item 8's decision table).
+- M16 item 8 (Dreamcast speed): cause found on the Deck 2026-10-06. Game Mode runs the Deck OLED's screen at 90 Hz;
+  Flycast's swap interval (refresh / 60 times the game's, truncated) asked for 3 refreshes per 30-frame scene, the
+  swap took 4 under gamescope, so Sonic Adventure's 30-frame scenes drew 22.5 per second and the game ran at 75%
+  (measured off-screen at 90 Hz; full speed at 60 Hz, where every earlier check ran). Fixed by
+  `config/emulators/flycast/semu-swap-interval.patch` (the next refresh off a whole multiple of 60 Hz, Flycast's own
+  interval at 60 and 120 Hz); the Deck harnesses now run at Game Mode's refresh. Not the composition, the GPU, the
+  processor or the SD card (PLAN M16 item 8's record). Deck cases m16-check.cases D3 and D11, m16-docked.cases K5.
 - M16 items 1 and 6 (crosshair, the Wii's controller): built 2026-10-06 (51bcddb, 47c1303) and observed on the Mac
   render host and in the podman VM (RetroArch's DS and 3DS cores, standalone Azahar, Dolphin with Mario Kart Wii);
   contracts right_trackpad, standalone_cursor, controller_layouts, players, emulator_runtime, radial_render. DS and

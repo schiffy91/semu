@@ -40,5 +40,8 @@ wii dolphin - 60 120 180 -- Mario Kart Wii (USA)*.wbfs
 #      SEMU_MATRIX_LAUNCH_ARGS='--project TRIAL' with TRIAL a copy of the installed config tree whose
 #      emulators/flycast/emulator.json has platforms.linux.render_preload false and whose profile.json writes
 #      rend.ShowFPS = yes (copy with cp -r, edit with jq; the installed tree is never edited).
+# Run at Game Mode's refresh (system-matrix.sh reads it: 90 Hz on the Deck OLED), the first row found the cause on
+# 2026-10-06: the movie at 22.5 per second on Flycast's own swap interval (PLAN M16 item 8). SEMU_MATRIX_REFRESH=60 is a
+# 60 Hz screen.
 dreamcast flycast - 30 60 90 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
 dreamcast retroarch flycast 30 60 90 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd

@@ -1,0 +1,53 @@
+--- a/core/wsi/sdl.cpp
++++ b/core/wsi/sdl.cpp
+@@ -23,7 +23,24 @@
+ #include "ui/gui.h"
+ #include "sdl/sdl.h"
+ #include "cfg/option.h"
++#include <cmath>
+ 
++// Semu (M16 item 8): Flycast swaps every refresh / 60 times the game's own swap interval, truncated. On a screen
++// that is not a whole multiple of 60 Hz (the Steam Deck OLED's 90 Hz in Game Mode) a 30 fps scene asked for 3
++// refreshes and took 4 under gamescope, 22.5 frames per second, and the emulation, which waits for the swap, ran
++// at 75%. No interval holds a 60 Hz game's frames evenly there, so swap at the next refresh and let the audio pace
++// the game; a whole multiple (60, 120 Hz) keeps Flycast's own interval.
++static int semuSwapInterval(int gameInterval)
++{
++	float multiple = settings.display.refreshRate / 60.f;
++	int whole = (int)std::lround(multiple);
++	if (whole < 1)
++		return gameInterval;
++	if (std::fabs(multiple - (float)whole) > 0.05f)
++		return 1;
++	return whole * gameInterval;
++}
++
+ SDLGLGraphicsContext::SDLGLGraphicsContext(void *window, void *display)
+ 	: GLGraphicsContext(window, display)
+ {
+@@ -89,12 +106,7 @@
+ 	swapOnVSync = config::VSync;
+ 	int swapInterval = 0;
+ 	if (swapOnVSync)
+-	{
+-		if (settings.display.refreshRate > 60.f)
+-			swapInterval = settings.display.refreshRate / 60.f;
+-		else
+-			swapInterval = 1;
+-	}
++		swapInterval = semuSwapInterval(1);
+ 	SDL_GL_SetSwapInterval(swapInterval);
+ 
+ #ifdef GLES
+@@ -143,10 +155,7 @@
+ 	int swapInterval = 0;
+ 	if (swapOnVSync)
+ 	{
+-		if (settings.display.refreshRate > 60.f)
+-			swapInterval = settings.display.refreshRate / 60.f * gameSwapInterval;
+-		else
+-			swapInterval = gameSwapInterval;
++		swapInterval = semuSwapInterval(gameSwapInterval);
+ 		INFO_LOG(RENDERER, "Swap interval changed to %d", swapInterval);
+ 	}
+ 	SDL_GL_SetSwapInterval(swapInterval);

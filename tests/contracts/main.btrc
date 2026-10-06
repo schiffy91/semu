@@ -86,6 +86,7 @@ import ./spec/render_scale_wiring.btrc;
 import ./spec/fit_migration.btrc;
 import ./spec/toast_labels.btrc;
 import ./spec/flycast_keys.btrc;
+import ./spec/flycast_pacing.btrc;
 import ./spec/picture_edges.btrc;
 import ./spec/m16_review.btrc;
 
@@ -1067,6 +1068,7 @@ int main() {
     FitMigrationSpecContract.run(contract);
     ToastLabelsSpecContract.run(contract);
     FlycastKeysSpecContract.run(contract);
+    FlycastPacingSpecContract.run(contract);
     PictureEdgesSpecContract.run(contract);
     M16ReviewSpecContract.run(contract);
     ModelContract.run(contract);
