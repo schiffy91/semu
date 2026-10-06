@@ -213,6 +213,7 @@ evidence() {  # what the case left: the X key adapter, each action by source, th
          printf " surface1_content=%s\n", value["surface1_content"] }' "$dir/evidence.log" >> "$dir/result"
   grep -a -o 'semu-renderer: framebuffer [0-9]*x[0-9]* (was [0-9]*x[0-9]*) at frame [0-9]*' "$dir/run.log" | head -6 | sed 's/^semu-renderer: /size: /' >> "$dir/result"
   grep -a -o 'semu-renderer: [0-9]* frames in .* max[^m]*' "$dir/run.log" | tail -4 | sed 's/^semu-renderer: /rate: /' >> "$dir/result"  # the last eight seconds: frame rate, longest gap, CPU and GPU cost
+  grep -a -o 'semu-renderer: scanlines [0-9]* rows each, intres [0-9.]* ([0-9]* lines drawn [0-9]* tall)' "$dir/run.log" | sort -u | head -4 | sed 's/^semu-renderer: /pitch: /' >> "$dir/result"  # each CRT chain's scanline pitch
   note "choices: $(jq -c '.visual.systems // {}' "$home/semu.json" 2>/dev/null)"
   grep '^inject:' "$dir/inject.log" 2>/dev/null >> "$dir/result"
 }

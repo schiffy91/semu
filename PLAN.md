@@ -2575,6 +2575,59 @@ Status: started 2026-10-06.
   Genesis, GameCube in Dolphin, Dreamcast in Flycast) and G1 (GB, item 3). The Deck was unreachable from
   the Mac all session (ssh to 10.241.117.98 timed out), so no Deck capture was read.
 
+- Items 4, 8 and 9 (the deck track, 2026-10-06): built and observed on the Mac and in the podman VM; every Deck
+  check is open (the Deck did not answer ssh from 00:55 on: `tests/deck/m16-check.cases` D1-D6 and
+  `tests/deck/boot-capture.cases`).
+  - Item 4, why a game went from full size to a third of the screen in the top left and back, in plain words:
+    Dolphin opens its game window at a small default size (640x480) and only asks for full screen once the game
+    is running, and on Linux it draws into a separate inner window that it sizes once, from the outer window, when
+    its graphics start. Gamescope stretches the small window to fill the screen (looks right), then the full-screen
+    request makes the outer window 1280x800 while the inner one stays 640x480 in its top-left corner (a third of
+    the screen, black to the right and below) until the game draws its next frame, which a disc boot on the Deck's
+    slow SD card can delay by seconds. Sources at Dolphin 2606a: MainWindow.cpp:1266-1290 (ShowRenderWidget
+    shows the widget normal), 1234 and 422-426 (full screen requested only once the core runs),
+    GLX11Window.cpp:35-50 (the child window created at the parent's size), OGLGfx.cpp:475-485 (resized only at
+    the next present). Semu's hook composes into that inner window, so the bezel shrank with it. Fix
+    (`config/emulators/dolphin/semu-fullscreen-at-boot.patch`, X11 builds only, 1ba2de8 and 11c5b12): a game
+    booting full screen shows the window full screen before the core boots and runs the event loop until the
+    window manager has made it the screen's size (at most a second), and the deferred toggle is skipped. Built in
+    the VM (MainWindow.cpp compiles with it). Dolphin itself does not run under Rosetta in the VM (a bus error
+    with the JIT and the cached interpreter alike), so the boot is filmed on the Deck only.
+  - Tools for every Deck question here: the renderer logs, under SEMU_RENDER_DEBUG, each framebuffer size it
+    composes into ("semu-renderer: framebuffer WxH (was ...) at frame N ms=") and every two seconds the frame
+    rate, the longest gap and the game phase's CPU cost; SEMU_RENDER_GPU_TIME=1 adds its GPU time (GL_TIME_ELAPSED
+    queries read four frames later, never waited on). `tests/deck/boot-capture.sh` films a launch's first seconds
+    (a gamescope screenshot every 0.25 s, the X window tree, the size lines; --analyse marks shots SHRUNK into
+    the top left and lays them out on a sheet). input-check.sh records size, rate and scanline lines;
+    system-matrix.sh also each wait's GPU load and clock and the emulator's four busiest threads.
+  - Item 9, are we using the right shaders: no, not by one rule. In M14 the owner chose Retro Crisis's GDV-NTSC
+    for Semu's CRTs; it went to the 240-line consoles (PS1, N64, SNES, Genesis), the NES kept its NTSC composite
+    by eye, and the 480-line consoles (Dreamcast, PS2, GameCube, Wii) kept Sharp CRT (crt-easymode-halation)
+    with CRT Royale one step away, because royale's mask aliased at their 1x and 1.67x sizes on the Deck. The
+    rule now (reversible default): a console played on a CRT television defaults to Retro Crisis's GDV-NTSC
+    (guest's crt-guest-advanced-ntsc) with his Steam Deck values for its cleanest stock signal, the closest
+    published console's where he publishes none; a handheld to an LCD look; an HD console (Wii U, Switch) to
+    none. He publishes Steam Deck presets for the NES, SNES, Mega Drive, N64, PlayStation, Dreamcast and PS2
+    (ShaderGlass's import, retro-crisis/720p Steam Deck), none for the GameCube or Wii, which take his PS2 -
+    Clean (the same 480i/480p video). The NES moved to his NES - Clean (6562dd9, the NTSC 256px composite one
+    step away). The Dreamcast (Dreamcast - Clean), PS2 (PS2 - Clean), GameCube and Wii offer it one step after
+    Sharp CRT (variant `gdv`) until the Deck measures it: a 640-wide frame makes its NTSC passes 2560 px wide.
+    Renderer GPU time on the Mac render host (M1 Max), Sonic Adventure's frame at 1280x800 in the TV: no shader
+    0.80 ms, Sharp CRT 1.45, CRT Royale 2.14, GDV-NTSC 4.33 (bezel off: 0.32, 0.95 and 3.70); the NES's GDV 1.85
+    against the composite's 1.18, the Genesis's GDV 1.82. Judged by eye on the render host (Sonic Adventure, Def
+    Jam, The Wind Waker, Super Mario Bros. 3 from ES-DE's media): GDV is brighter and smoother than Sharp CRT,
+    whose dot mask grains at 1x; the PS2 values are soft, as he publishes them.
+  - Item 9, the scanlines: guest's shader draws one scanline per `intres` source lines. The renderer now sets
+    intres for each lane's size (`src/renderer/renderer_scanline_pitch.btrc`, librashader's set_param when a
+    chain is built), so every scanline spans whole output rows: one per line at a whole step, and at a
+    fractional one round(scale) rows (a 480-line picture on 800 rows: 400 scanlines of 2 rows, intres 1.2,
+    instead of 1.67-row ones that beat into bands; never a 240-line look on a 480-line picture).
+  - Item 8, Dreamcast speed: the measurement is ready and open. Sharp CRT plus the TV cost 1.45 ms of the M1
+    Max's GPU; the Deck's GPU has about a sixth of its compute, so the composition alone may take 7 to 9 ms of the
+    16.7 ms frame Flycast shares with it. Open on the Deck: Sonic Adventure's rate lines, GPU load and threads
+    with the TV and Sharp CRT, with the shader off and with both off (`system-matrix.sh` with
+    SEMU_MATRIX_SETTINGS), and the 480-line consoles on `gdv`.
+
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
 The review ran on the Mac (mbp21, aarch64-darwin, macOS 27). FRACTAL-NORTH did not resolve
@@ -3936,6 +3989,13 @@ Update this block whenever a milestone criterion changes state.
   the editor matching the renderer (MAE 0 on every variant at 1280x800, every TV at 1920x1080); contracts
   tv_cutout.btrc and render_variants.btrc. Open on the Deck: `tests/deck/m16-check.cases` T1-T5 and G1 (the
   Deck did not answer ssh this session).
+- M16 items 4, 8 and 9 (boot size, Dreamcast speed, shaders per system): built 2026-10-06 (1ba2de8, 6562dd9,
+  11c5b12) and observed on the Mac render host and in the podman VM; contracts boot_resize.btrc, crt_gdv.btrc and
+  crt_rule.btrc. Item 4's cause is Dolphin's late full-screen switch over an inner GL window sized once at start
+  (patched); item 9's rule is Retro Crisis's GDV-NTSC on every TV console (the NES moved; the 480-line four offer
+  it as `gdv` until measured), LCD on handhelds, none on HD consoles, with CRT scanlines on whole output rows at
+  every size. Open on the Deck (it did not answer ssh from 00:55): `tests/deck/m16-check.cases` (deck cases D1-D6),
+  `tests/deck/boot-capture.cases` before and after the release of 11c5b12, and Sonic Adventure's rate lines.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,

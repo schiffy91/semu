@@ -151,3 +151,37 @@ dreamcast flycast - 40 key:ctrl+shift+f -- Crazy Taxi (USA).chd
 #     shell, the picture alone on pure black; the toast never names STUDIO GRAY, and Next Bezel offers DMG and OFF
 #     only (the variants file's bezels=dmg|none). choices gb {"bezel_variant":"none"}.
 gb retroarch gambatte 25 key:ctrl+shift+b -- Tetris (World) (Rev 1).zip
+#
+# Items 4, 8 and 9 (the deck track). A case's result lists every framebuffer size the renderer composed into
+# ("size: framebuffer WxH (was ...) at frame N", the first is the boot's), its frame rate every two seconds
+# ("rate: N frames in T ms (F per second), longest gap, composing CPU ms mean and max, GPU ms mean and max", the
+# last eight seconds) and, for a CRT shader, how many rows each scanline spans ("pitch: scanlines R rows each,
+# intres D (L lines drawn H tall)"). boot-capture.sh films the same boots every 0.25 s (boot-capture.cases), and
+# its --analyse marks any shot SHRUNK into the top left.
+# Earlier cases leave their Fit and bezel choices in OUT/home/semu.json; these cases judge sizes, rates and
+# scanlines that hold in every Fit state.
+#
+# D1. Item 4, the GameCube (Dolphin, the owner's example). size: one line only, "framebuffer 1280x800 (was 0x0) at
+#     frame 1": Dolphin's render window is full screen before its core boots, so the first frame Semu composes is
+#     already the screen's size and no later frame is smaller. before: Wind Waker's boot (the Nintendo logo or
+#     its opening) inside the TV at full size, nothing drawn in a block in the top left with black to its right
+#     and below. rate: 59 to 61 per second once the game draws.
+gc dolphin - 30 -- Legend of Zelda, The - The Wind Waker (USA).rvz
+# D2. Item 4, the Wii (Dolphin): as D1, New Super Mario Bros. Wii's strap or title.
+wii dolphin - 30 -- New Super Mario Bros. Wii*.wbfs
+# D3. Items 8 and 9, the Dreamcast (Flycast), the owner's Sonic Adventure on its title and attract demo after 90 s.
+#     size: one line, 1280x800 from frame 1. rate: every line 59 to 61 per second, longest gap under 34 ms (no
+#     dropped frame), the composition's GPU time printed (the Deck's budget is 16.7 ms a frame for Flycast and
+#     Semu together). pitch, with a CRT shader: "scanlines R rows each" with R the whole number nearest the drawn
+#     height over 480 (1 at integer bezel, 2 at non-integer game). before: the attract demo inside the TV.
+dreamcast flycast - 90 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
+# D4. Item 4, the PS2 (PCSX2): size: no line smaller than the last; before: Def Jam's boot at full size.
+ps2 pcsx2 - 40 -- Def Jam - Fight for NY (USA).iso
+# D5. Item 4, the 3DS (Azahar through the Vulkan layer): size: no line smaller than the last; before: both
+#     screens in the shell, never a smaller frame in a corner.
+n3ds azahar - 40 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+# D6. Item 9, the NES on its new default, Retro Crisis's GDV-NTSC (NES - Clean). receipt shader_preset=
+#     gdv-ntsc.slangp; before: Super Mario Bros. 3's title, soft NTSC colour without the old composite dot crawl;
+#     pitch: "scanlines 2 rows each, intres 0.000 (240 lines drawn 480 tall)" at integer bezel; rate: 60 per
+#     second, the GPU time beside the SNES's and Genesis's.
+nes retroarch mesen 20 -- Super Mario Bros. 3 (USA) (Rev 1).zip

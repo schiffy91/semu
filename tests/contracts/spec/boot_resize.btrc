@@ -91,10 +91,33 @@ class BootResizeSpecContract {
         contract.expect(!usage.ok(), "--analyse without OUT is refused");
     }
 
+    class void plan(Contract contract, string project) {  // the Deck checks outlive this session: PLAN names them and the case file runs them
+        string text = BootResizeSpecChecks.read(project, "PLAN.md");
+        int milestone = text.indexOf("### M16. ");
+        int gaps = text.indexOf("## Gap review");
+        string section = milestone > 0 && gaps > milestone ? text.substring(milestone, gaps - milestone) : "";
+        contract.contains(section, "\n- Items 4, 8 and 9 (the deck track, 2026-10-06): ", "PLAN.md M16 carries the deck track's items");
+        for answer in ["  - Item 4, why a game went from full size to a third of the screen", "  - Item 9, are we using the right shaders", "  - Item 8, Dreamcast speed"] {
+            contract.contains(section, "\n" + answer, "and answers the owner's why: " + answer.trim());
+        }
+        int status = text.indexOf("\n## Status\n");
+        string live = status > 0 ? text.substring(status, text.len() - status) : "";
+        contract.contains(live, "\n- M16 items 4, 8 and 9 (boot size, Dreamcast speed, shaders per system): ", "the live Status block carries them");
+        contract.contains(live, "`tests/deck/m16-check.cases` (deck cases D1-D6)", "and says where their Deck checks are");
+        string cases = BootResizeSpecChecks.read(project, "tests/deck/m16-check.cases");
+        for line in ["gc dolphin - 30 -- Legend of Zelda, The - The Wind Waker (USA).rvz", "wii dolphin - 30 -- New Super Mario Bros. Wii*.wbfs",
+                     "dreamcast flycast - 90 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd", "nes retroarch mesen 20 -- Super Mario Bros. 3 (USA) (Rev 1).zip"] {
+            contract.contains(cases, "\n" + line + "\n", "m16-check.cases runs " + line.substring(0, line.indexOf(" --")));
+        }
+        for label in ["# D1. ", "# D2. ", "# D3. ", "# D4. ", "# D5. ", "# D6. "] { contract.contains(cases, "\n" + label, "each deck case says what its shots must show: " + label.trim()); }
+        contract.contains(BootResizeSpecChecks.read(project, "tests/deck/input-check.sh"), "sed 's/^semu-renderer: /pitch: /'", "input-check.sh records each CRT chain's scanline pitch");
+    }
+
     class void run(Contract contract) {
         string project = Fixture("steam-deck").project;
         BootResizeSpecContract.dolphin(contract, project);
         BootResizeSpecContract.renderer(contract, project);
         BootResizeSpecContract.film(contract, project);
+        BootResizeSpecContract.plan(contract, project);
     }
 }
