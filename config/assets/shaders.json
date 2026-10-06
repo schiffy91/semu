@@ -1062,6 +1062,239 @@
       "output": {
         "sha256": "9cc7a4c7e491b270fb7710833d5139cbe3ce305d43e98e3a2234e12bf3ef0471"
       }
+    },
+    "assets/shaders/dreamcast/gdv-ntsc.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-guest-advanced-ntsc.slangp",
+        "sha256": "d4e66ed1250ae9101971f5174978ae82061c1e3901397832984d523c543a8163"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "beam_min": 1,
+        "bloom": 0.2,
+        "gsl": -1,
+        "intres": 0,
+        "interm": 0,
+        "m_glow": 1,
+        "mask_bloom": 0.5,
+        "mask_gamma": 2,
+        "mask_zoom": -5,
+        "masksize": 2,
+        "maskstr": -0.5,
+        "mcut": 2,
+        "ntsc_cscale": 2.25,
+        "ntsc_fields": 1,
+        "ntsc_phase": 2,
+        "ntsc_sat": 1.1,
+        "ntsc_scale": 2.5,
+        "scan_falloff": 0.1,
+        "scangamma": 5,
+        "scanline1": 10,
+        "scanline2": 10,
+        "shadowMask": -1,
+        "slotmask": 1,
+        "slotmask1": 1,
+        "tds": 1
+      },
+      "output": {
+        "sha256": "2954e2b5615704112432d88d3ee8150418e6f2c3dc8595fd44147a516155eb2f"
+      },
+      "doc": {
+        "why": "Retro Crisis GDV-NTSC, Dreamcast - Clean (720p Steam Deck): guest.r's crt-guest-advanced-ntsc from the pinned libretro tree with Retro Crisis's own Steam Deck values for the Dreamcast (GPL-3.0, github.com/RetroCrisis/Retro-Crisis-GDV-NTSC, as imported by ShaderGlass), M16's rule for every TV console: his preset for the console's cleanest stock signal (the Dreamcast's RGB and VGA: Clean, not Dirty).",
+        "params": "His values as published, except: ntsc_fields 1 (his preset has 0): unmerged, ntsc-pass1 flips the chroma phase every frame, a 30 Hz shimmer on coloured edges; merged, both phases are averaged into one steady frame. interm 0: guest's Interlace Mode bobs a field per frame from 375 lines, and every emulator hands over whole progressive frames. intres is the static fallback only: the renderer sets it for each screen (RendererScanlinePitch) so every scanline spans whole output rows, one scanline per line at a whole step (2 rows each at 2x), round(scale) rows at a fractional one (400 scanlines of 2 rows for a 480-line picture on 800 rows), never a 240-line look on a 480-line picture. His static intres is 1.5 (320 scanlines for 480 lines, 2.25 rows each at 720p), which on the Deck's whole-step 1x would fall 1.5 rows apart and beat."
+      }
+    },
+    "assets/shaders/ps2/gdv-ntsc.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-guest-advanced-ntsc.slangp",
+        "sha256": "d4e66ed1250ae9101971f5174978ae82061c1e3901397832984d523c543a8163"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "addnoised": 0.2,
+        "beam_max": 0.5,
+        "beam_min": 1,
+        "deconrr": -2,
+        "deconrry": 2,
+        "double_slot": 4,
+        "gsl": 2,
+        "interm": 0,
+        "intres": 0,
+        "m_glow": 1,
+        "mask_gamma": 3,
+        "maskboost": 3,
+        "maskstr": -0.5,
+        "mcut": 2,
+        "noiseresd": 1,
+        "noisetype": 1,
+        "ntsc_bright": 0.7,
+        "ntsc_cscale": 2,
+        "ntsc_fields": 1,
+        "ntsc_phase": 2,
+        "ntsc_sat": 1,
+        "ntsc_scale": 2.5,
+        "scan_falloff": 2,
+        "scangamma": 5,
+        "scanline1": 5,
+        "scanline2": 10,
+        "shadowMask": -1,
+        "tds": 1
+      },
+      "output": {
+        "sha256": "dbc094de259aa43dab8128692cf26ec5a68aaf8d859e93b952df6ab1a80cc889"
+      },
+      "doc": {
+        "why": "Retro Crisis GDV-NTSC, PS2 - Clean (720p Steam Deck): guest.r's crt-guest-advanced-ntsc from the pinned libretro tree with Retro Crisis's own Steam Deck values for the PS2 (GPL-3.0, github.com/RetroCrisis/Retro-Crisis-GDV-NTSC, as imported by ShaderGlass), M16's rule for every TV console: his preset for the console's cleanest stock signal (RGB and component: Clean, which also keeps one scanline per line, intres 0).",
+        "params": "His values as published, except: ntsc_fields 1 (his preset has 0): unmerged, ntsc-pass1 flips the chroma phase every frame, a 30 Hz shimmer on coloured edges; merged, both phases are averaged into one steady frame. interm 0: guest's Interlace Mode bobs a field per frame from 375 lines, and every emulator hands over whole progressive frames. intres is the static fallback only: the renderer sets it for each screen (RendererScanlinePitch) so every scanline spans whole output rows, one scanline per line at a whole step (2 rows each at 2x), round(scale) rows at a fractional one (400 scanlines of 2 rows for a 480-line picture on 800 rows), never a 240-line look on a 480-line picture."
+      }
+    },
+    "assets/shaders/gc/gdv-ntsc.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-guest-advanced-ntsc.slangp",
+        "sha256": "d4e66ed1250ae9101971f5174978ae82061c1e3901397832984d523c543a8163"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "addnoised": 0.2,
+        "beam_max": 0.5,
+        "beam_min": 1,
+        "deconrr": -2,
+        "deconrry": 2,
+        "double_slot": 4,
+        "gsl": 2,
+        "interm": 0,
+        "intres": 0,
+        "m_glow": 1,
+        "mask_gamma": 3,
+        "maskboost": 3,
+        "maskstr": -0.5,
+        "mcut": 2,
+        "noiseresd": 1,
+        "noisetype": 1,
+        "ntsc_bright": 0.7,
+        "ntsc_cscale": 2,
+        "ntsc_fields": 1,
+        "ntsc_phase": 2,
+        "ntsc_sat": 1,
+        "ntsc_scale": 2.5,
+        "scan_falloff": 2,
+        "scangamma": 5,
+        "scanline1": 5,
+        "scanline2": 10,
+        "shadowMask": -1,
+        "tds": 1
+      },
+      "output": {
+        "sha256": "dbc094de259aa43dab8128692cf26ec5a68aaf8d859e93b952df6ab1a80cc889"
+      },
+      "doc": {
+        "why": "Retro Crisis GDV-NTSC with his PS2 - Clean Steam Deck values: he publishes no GameCube preset, so M16's rule takes the console with the same video (480i/480p over composite, S-Video and component, a 640-wide frame): the PS2's Clean preset (GPL-3.0, github.com/RetroCrisis/Retro-Crisis-GDV-NTSC, as imported by ShaderGlass).",
+        "params": "His values as published, except: ntsc_fields 1 (his preset has 0): unmerged, ntsc-pass1 flips the chroma phase every frame, a 30 Hz shimmer on coloured edges; merged, both phases are averaged into one steady frame. interm 0: guest's Interlace Mode bobs a field per frame from 375 lines, and every emulator hands over whole progressive frames. intres is the static fallback only: the renderer sets it for each screen (RendererScanlinePitch) so every scanline spans whole output rows, one scanline per line at a whole step (2 rows each at 2x), round(scale) rows at a fractional one (400 scanlines of 2 rows for a 480-line picture on 800 rows), never a 240-line look on a 480-line picture."
+      }
+    },
+    "assets/shaders/wii/gdv-ntsc.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-guest-advanced-ntsc.slangp",
+        "sha256": "d4e66ed1250ae9101971f5174978ae82061c1e3901397832984d523c543a8163"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "addnoised": 0.2,
+        "beam_max": 0.5,
+        "beam_min": 1,
+        "deconrr": -2,
+        "deconrry": 2,
+        "double_slot": 4,
+        "gsl": 2,
+        "interm": 0,
+        "intres": 0,
+        "m_glow": 1,
+        "mask_gamma": 3,
+        "maskboost": 3,
+        "maskstr": -0.5,
+        "mcut": 2,
+        "noiseresd": 1,
+        "noisetype": 1,
+        "ntsc_bright": 0.7,
+        "ntsc_cscale": 2,
+        "ntsc_fields": 1,
+        "ntsc_phase": 2,
+        "ntsc_sat": 1,
+        "ntsc_scale": 2.5,
+        "scan_falloff": 2,
+        "scangamma": 5,
+        "scanline1": 5,
+        "scanline2": 10,
+        "shadowMask": -1,
+        "tds": 1
+      },
+      "output": {
+        "sha256": "dbc094de259aa43dab8128692cf26ec5a68aaf8d859e93b952df6ab1a80cc889"
+      },
+      "doc": {
+        "why": "Retro Crisis GDV-NTSC with his PS2 - Clean Steam Deck values: he publishes no Wii preset, so M16's rule takes the console with the same video (480i/480p over composite and component, a 640-wide frame): the PS2's Clean preset (GPL-3.0, github.com/RetroCrisis/Retro-Crisis-GDV-NTSC, as imported by ShaderGlass).",
+        "params": "His values as published, except: ntsc_fields 1 (his preset has 0): unmerged, ntsc-pass1 flips the chroma phase every frame, a 30 Hz shimmer on coloured edges; merged, both phases are averaged into one steady frame. interm 0: guest's Interlace Mode bobs a field per frame from 375 lines, and every emulator hands over whole progressive frames. intres is the static fallback only: the renderer sets it for each screen (RendererScanlinePitch) so every scanline spans whole output rows, one scanline per line at a whole step (2 rows each at 2x), round(scale) rows at a fractional one (400 scanlines of 2 rows for a 480-line picture on 800 rows), never a 240-line look on a 480-line picture."
+      }
+    },
+    "assets/shaders/nes/gdv-ntsc.slangp": {
+      "type": "slang_wrapper",
+      "reference": {
+        "tree": "shaders_slang",
+        "path": "crt/crt-guest-advanced-ntsc.slangp",
+        "sha256": "d4e66ed1250ae9101971f5174978ae82061c1e3901397832984d523c543a8163"
+      },
+      "requires": [
+        "shaders_slang"
+      ],
+      "params": {
+        "beam_min": 1,
+        "cust_artifacting": 0,
+        "cust_fringing": 0,
+        "double_slot": 3,
+        "gsl": 2,
+        "interm": 0,
+        "intres": 1,
+        "m_glow": 1,
+        "mask_gamma": 1.5,
+        "mask_zoom": -2,
+        "maskboost": 3,
+        "maskstr": -0.5,
+        "mcut": 0,
+        "ntsc_cscale": 1.25,
+        "ntsc_fields": 1,
+        "ntsc_scale": 1.5,
+        "scan_falloff": 1,
+        "scangamma": 3,
+        "scanline1": 5,
+        "scanline2": 10,
+        "shadowMask": -1,
+        "slotmask": 1,
+        "slotmask1": 1,
+        "tds": 1
+      },
+      "output": {
+        "sha256": "6af792db916dc36c280fe8f8a7d4bdacdfb9f708e517f0a9535a4feb0cc99260"
+      },
+      "doc": {
+        "why": "Retro Crisis GDV-NTSC, NES - Clean (720p Steam Deck): guest.r's crt-guest-advanced-ntsc from the pinned libretro tree with Retro Crisis's own Steam Deck values for the NES (GPL-3.0, github.com/RetroCrisis/Retro-Crisis-GDV-NTSC, as imported by ShaderGlass), M16's rule for every TV console: his preset for the console's cleanest stock signal (the NES had composite only: Clean, his composite look without artifact colour and fringes; the 2026-10-04 trial of his Composite 100 was brighter, yellower and red-fringed).",
+        "params": "His values as published, except: ntsc_fields 1 (his preset has 0): unmerged, ntsc-pass1 flips the chroma phase every frame, a 30 Hz shimmer on coloured edges; merged, both phases are averaged into one steady frame. interm 0: guest's Interlace Mode bobs a field per frame from 375 lines, and every emulator hands over whole progressive frames. intres is the static fallback only: the renderer sets it for each screen (RendererScanlinePitch) so every scanline spans whole output rows, one scanline per line at a whole step (2 rows each at 2x), round(scale) rows at a fractional one (400 scanlines of 2 rows for a 480-line picture on 800 rows), never a 240-line look on a 480-line picture. His NES presets set no ntsc_phase, so guest's auto phase reads the 256-wide frame as the NES's 3-phase signal."
+      }
     }
   }
 }

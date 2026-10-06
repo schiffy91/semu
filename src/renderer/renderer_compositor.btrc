@@ -19,6 +19,7 @@ import ./renderer_placement.btrc;
 import ./renderer_dual_shell.btrc;
 import ./renderer_mirror.btrc;
 import ./renderer_scaled_lane.btrc;
+import ./renderer_scanline_pitch.btrc;
 int RGL_VERTEX_SHADER = 0x8B31;
 int RGL_FRAGMENT_SHADER = 0x8B30;
 int RGL_LINK_STATUS = 0x8B82;
@@ -830,6 +831,15 @@ class RendererShaderPasses {
         return RendererGlErrors.none(gl);
     }
 
+    class void scanlines(SemuLibrashaderOpenGLChain chain, struct RendererLaneGeometry* lane) {  // whole-pixel CRT scanlines at this lane's size (a chain is rebuilt when it changes)
+        if (lane->rotation == 90 || lane->rotation == 270) { return; }  // a turned picture's scanlines run across its own rows
+        float divider = RendererScanlinePitch.divider(lane->native_height, lane->output_height);
+        if (chain.setParameter("intres", divider) && getenv("SEMU_RENDER_DEBUG") != null) {
+            fprintf(stderr, "semu-renderer: scanlines %d rows each, intres %.3f (%d lines drawn %d tall)\n",
+                RendererScanlinePitch.rows(lane->native_height, lane->output_height), (double)divider, lane->native_height, lane->output_height);
+        }
+    }
+
     class bool render(struct RendererGlApi* gl,
                       struct RendererConfig* config,
                       struct RendererGlResources* resources,
@@ -873,6 +883,7 @@ class RendererShaderPasses {
             RendererShaderPasses.setLane(index, chain);
             snprintf(resources->lane_shader_presets[index].value, 4096,
                 "%s", preset);
+            RendererShaderPasses.scanlines(chain, lane);
         }
         unsigned int rotation = lane->rotation == 90 ? 1
             : (lane->rotation == 180 ? 2 : (lane->rotation == 270 ? 3 : 0));

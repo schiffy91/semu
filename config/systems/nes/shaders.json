@@ -2,11 +2,17 @@
   "schema_version": 3,
   "enabled": true,
   "doc": {
-    "intent": "NES composite artifacting, phosphor mask, scanlines"
+    "intent": "NES composite artifacting, phosphor mask, scanlines",
+    "default": "M16 rule (2026-10-06): a console played on a CRT television defaults to Retro Crisis's GDV-NTSC (crt-guest-advanced-ntsc) with his Steam Deck values for its cleanest stock signal, the closest published console where he publishes none, scanlines on whole output rows at every size; handhelds keep LCD looks; HD consoles draw none. The previous default, the NTSC 256px composite, stays one step away as composite."
   },
   "variants": [
     {
       "id": "default",
+      "label": "GDV-NTSC (Retro Crisis NES)",
+      "screen": "assets/shaders/nes/gdv-ntsc.slangp"
+    },
+    {
+      "id": "composite",
       "label": "NTSC composite",
       "screen": "assets/shaders/nes/screen.slangp"
     },

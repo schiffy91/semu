@@ -237,6 +237,16 @@ class SemuLibrashaderOpenGLChain {
         return SEMU_LIBRASHADER_RENDERED;
     }
 
+    // A runtime parameter of the active chain (librashader's set_param): false when the preset declares no
+    // parameter by that name, which leaves the chain as it was.
+    public bool setParameter(const char* name, float value) {
+        if ((void*)self.handle == (void*)0 || name == (const char*)0) { return false; }
+        libra_error_t result = libra_gl_filter_chain_set_param(&self.handle, name, value);
+        if ((void*)result == (void*)0) { return true; }
+        libra_error_free(&result);
+        return false;
+    }
+
     // A wrong-context call is non-destructive: the owner can restore its GL
     // context and retry. The destructor obeys the same guard.
     public bool close(unsigned long long contextGeneration) {

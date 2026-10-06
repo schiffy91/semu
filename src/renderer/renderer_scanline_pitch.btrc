@@ -1,0 +1,24 @@
+// How many source lines one CRT scanline covers on this screen, for guest's shader (crt-guest-advanced, which the
+// Retro Crisis GDV-NTSC presets are): it draws one scanline per `intres` source lines, and 0 is one per line.
+// At a whole step every scanline gets whole pixels. At a fractional one (Fit: Screen of a 480-line picture on the
+// Deck's 800 rows is 1.67x) the scanlines fall 1.67 px apart and beat into bands, so the renderer makes each
+// scanline the whole number of output rows nearest one source line: round(scale) rows, so intres is
+// round(scale) / scale, and 0 when that is one line. Computed from the picture's size on this screen, never fixed.
+#include <math.h>
+
+class RendererScanlinePitch {
+    class float divider(int nativeHeight, int outputHeight) {
+        if (nativeHeight < 1 || outputHeight < 1) { return 0.0f; }
+        float scale = (float)outputHeight / (float)nativeHeight;
+        float rows = roundf(scale);
+        if (rows < 1.0f) { rows = 1.0f; }
+        float divider = rows / scale;
+        return fabsf(divider - 1.0f) < 0.005f ? 0.0f : divider;
+    }
+
+    class int rows(int nativeHeight, int outputHeight) {  // the whole output rows each scanline spans
+        if (nativeHeight < 1 || outputHeight < 1) { return 0; }
+        float rows = roundf((float)outputHeight / (float)nativeHeight);
+        return rows < 1.0f ? 1 : (int)rows;
+    }
+}

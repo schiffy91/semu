@@ -14,6 +14,7 @@ import ../../../src/lib/json.btrc;
 import ../../../src/lib/paths.btrc;
 import ../../../src/model.btrc;
 import ./gameboy.btrc;
+import ./crt_rule.btrc;
 
 #include <stdlib.h>
 
@@ -38,6 +39,25 @@ class CrtGdvSpecChecks {
                 "m_glow=1", "mask_bloom=0.05", "mask_gamma=3.5", "mask_zoom=-1", "maskboost=3", "maskstr=-0.5", "mcut=2", "noiseresd=1",
                 "noisetype=1", "ntsc_cscale1=0.8", "ntsc_fields=1", "ntsc_phase=3", "ntsc_sat=1.2", "ntsc_scale=1.5", "ntsc_sharp=-10",
                 "scan_falloff=2", "scangamma=5", "scanline1=0", "scanline2=10", "shadowMask=-1", "tds=1", "intres=1", "interm=0"];
+            return values;
+        }
+        if (systemId.equals("dreamcast")) {  // Dreamcast - Clean; intres 0 for his 1.5, the renderer sets it per screen
+            Vector<string> values = ["beam_min=1", "bloom=0.2", "gsl=-1", "m_glow=1", "mask_bloom=0.5", "mask_gamma=2", "mask_zoom=-5", "masksize=2",
+                "maskstr=-0.5", "mcut=2", "ntsc_cscale=2.25", "ntsc_fields=1", "ntsc_phase=2", "ntsc_sat=1.1", "ntsc_scale=2.5", "scan_falloff=0.1",
+                "scangamma=5", "scanline1=10", "scanline2=10", "shadowMask=-1", "slotmask=1", "slotmask1=1", "tds=1", "intres=0", "interm=0"];
+            return values;
+        }
+        if (systemId.equals("ps2") || systemId.equals("gc") || systemId.equals("wii")) {  // PS2 - Clean; he publishes none for the GameCube or the Wii
+            Vector<string> values = ["addnoised=0.2", "beam_max=0.5", "beam_min=1", "deconrr=-2", "deconrry=2", "double_slot=4", "gsl=2", "m_glow=1",
+                "mask_gamma=3", "maskboost=3", "maskstr=-0.5", "mcut=2", "noiseresd=1", "noisetype=1", "ntsc_bright=0.7", "ntsc_cscale=2", "ntsc_fields=1",
+                "ntsc_phase=2", "ntsc_sat=1", "ntsc_scale=2.5", "scan_falloff=2", "scangamma=5", "scanline1=5", "scanline2=10", "shadowMask=-1", "tds=1",
+                "intres=0", "interm=0"];
+            return values;
+        }
+        if (systemId.equals("nes")) {  // NES - Clean: his composite look without artifact colour or fringes
+            Vector<string> values = ["beam_min=1", "cust_artifacting=0", "cust_fringing=0", "double_slot=3", "gsl=2", "m_glow=1", "mask_gamma=1.5",
+                "mask_zoom=-2", "maskboost=3", "maskstr=-0.5", "mcut=0", "ntsc_cscale=1.25", "ntsc_fields=1", "ntsc_scale=1.5", "scan_falloff=1",
+                "scangamma=3", "scanline1=5", "scanline2=10", "shadowMask=-1", "slotmask=1", "slotmask1=1", "tds=1", "intres=1", "interm=0"];
             return values;
         }
         Vector<string> values = ["GAMMA_INPUT=1.9", "addnoised=0.3", "beam_max=1.225", "beam_min=1.25", "bloom=0.5", "deconrb=-2",  // Mega Drive RGB 100
@@ -90,6 +110,22 @@ class CrtGdvSpecChecks {
             systemId + "'s previous default (" + previousPath + ") stays one step away as " + systemId + "/" + previousId);
     }
 
+    // A 480-line console offers his preset one step after its default while the Deck measures it (M16 item 9).
+    class void offered(Contract contract, Fixture fixture, JSONValue manifest, string systemId, string defaultPath) {
+        JSONValue shaders = fixture.model.system(systemId).shaders;
+        JSONValue variants = shaders.get("variants");
+        JSONValue offer = CrtGdvSpecChecks.variant(fixture, systemId, "gdv");
+        string logical = offer == null ? "" : SemuJson.textAt(offer, "screen");
+        Vector<string> failures = CrtGdvSpecChecks.mismatches(manifest, logical, CrtGdvSpecChecks.retroCrisis(systemId));
+        bool guest = SemuJson.textAt(manifest.get("assets").get(logical), "reference.path").equals("crt/crt-guest-advanced-ntsc.slangp");
+        contract.expect(guest && failures.isEmpty() && GameBoySpecFiles.wrapperHashes(fixture.scratch, manifest, logical),
+            systemId + " offers Retro Crisis's GDV-NTSC as " + systemId + "/gdv, his Steam Deck values, the wrapper pinned: " + failures.join("; "));
+        JSONValue chosen = CrtGdvSpecChecks.variant(fixture, systemId, SemuJson.textAt(shaders, "default_variant"));
+        JSONValue recipe = chosen == null ? null : manifest.get("assets").get(SemuJson.textAt(chosen, "screen"));
+        contract.expect(recipe != null && SemuJson.textAt(recipe, "reference.path").equals(defaultPath) && variants.size() >= 2
+            && SemuJson.textAt(variants.at(1), "id").equals("gdv"), systemId + "'s default stays " + defaultPath + ", with gdv one step away");
+    }
+
     class void noHumBar(Contract contract, JSONValue manifest) {  // a rolling band is the fault the owner reported, and Semu places the picture itself
         Vector<string> failures = [];
         int guests = 0;
@@ -114,6 +150,12 @@ class CrtGdvSpecContract {
         CrtGdvSpecChecks.port(contract, fixture, manifest, "n64", "hyllian", "crt/crt-hyllian.slangp");
         CrtGdvSpecChecks.port(contract, fixture, manifest, "snes", "svideo", "ntsc/ntsc-256px-svideo-scanline.slangp");
         CrtGdvSpecChecks.port(contract, fixture, manifest, "genesis", "rainbow", "presets/crt-royale-fast/crt-royale-fast-ntsc-composite-aperture-genesis-rainbow-effect.slangp");
+        CrtGdvSpecChecks.offered(contract, fixture, manifest, "dreamcast", "crt/crt-easymode-halation.slangp");
+        CrtGdvSpecChecks.offered(contract, fixture, manifest, "ps2", "crt/crt-easymode-halation.slangp");
+        CrtGdvSpecChecks.offered(contract, fixture, manifest, "gc", "crt/crt-easymode-halation.slangp");
+        CrtGdvSpecChecks.offered(contract, fixture, manifest, "wii", "crt/crt-easymode-halation.slangp");
+        CrtGdvSpecChecks.port(contract, fixture, manifest, "nes", "composite", "ntsc/ntsc-256px-composite-scanline.slangp");
         CrtGdvSpecChecks.noHumBar(contract, manifest);
+        CrtRuleSpec.run(contract, fixture, manifest);
     }
 }

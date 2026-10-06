@@ -325,9 +325,9 @@ class RenderingContract {
         for entry in nesTv { if (entry.startsWith("SEMU_RENDER_COMPOSITOR_DIR=") && entry.endsWith("/config/render")) { compositorDir = true; } }
         contract.expect(compositorDir && FileSystem.isFile(PathTools.join(fixture.project, "config/render/compositor.frag")) && FileSystem.isFile(PathTools.join(fixture.project, "config/render/compositor.vert")), "the compositor shader is data under config/render and the launch points the renderer at it");
         FileSystem.mkdirp(PathTools.join(assets, "share/libretro/shaders/semu/nes"));
-        FileSystem.writeText(PathTools.join(assets, "share/libretro/shaders/semu/nes/screen.slangp"), "#reference x\n");
+        FileSystem.writeText(PathTools.join(assets, "share/libretro/shaders/semu/nes/gdv-ntsc.slangp"), "#reference x\n");  // the default variant's screen (M16: GDV-NTSC)
         Vector<string> nesFull = SemuRenderEnvironment.compile(fixture.plan, nes, "retroarch", "/state/retroarch", fixture.diagnostics);
-        contract.expect(nesFull.contains("SEMU_RENDER_SHADERS=1") && nesFull.contains("SEMU_RENDER_SHADER_PRESET=" + assets + "/share/libretro/shaders/semu/nes/screen.slangp"), "a single-preset shader manifest selects its screen preset");
+        contract.expect(nesFull.contains("SEMU_RENDER_SHADERS=1") && nesFull.contains("SEMU_RENDER_SHADER_PRESET=" + assets + "/share/libretro/shaders/semu/nes/gdv-ntsc.slangp"), "a shader manifest selects its default variant's screen preset");
         Vector<string> full = SemuRenderEnvironment.compile(fixture.plan, gb, "retroarch", "/state/retroarch", fixture.diagnostics);
         contract.expect(full.contains("SEMU_RENDER_SHADERS=1") && full.contains("SEMU_RENDER_BEZELS=1"), "assets present enables shaders and bezels");
         contract.expect(full.contains("SEMU_RENDER_SHADER_PRESET=" + assets + "/share/libretro/shaders/semu/gb/screen.slangp"), "shader preset path");

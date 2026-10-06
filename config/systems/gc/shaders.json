@@ -3,13 +3,19 @@
   "enabled": true,
   "doc": {
     "note": "Standalone Dolphin reports game-only geometry to the shared Semu CRT pipeline; bezels.json resolves 4:3 or 16:9 art independently.",
-    "default": "480-line systems fill their tube at about 2x, where the royale slot mask aliases; easymode with halation is the default and royale the alternate"
+    "default": "480-line systems fill their tube at about 2x, where the royale slot mask aliases; easymode with halation is the default and royale the alternate",
+    "gdv": "M16 (2026-10-06): Retro Crisis's GDV-NTSC for this console is offered one step away while its Deck GPU time is measured (480-line frames make its NTSC passes 2560 px wide; 3.4 ms against easymode's 0.6 ms on the Mac render host). The default moves to it if it holds the Deck's frame."
   },
   "variants": [
     {
       "id": "default",
       "label": "Sharp CRT (easymode + halation)",
       "screen": "assets/shaders/gc/sharp.slangp"
+    },
+    {
+      "id": "gdv",
+      "label": "GDV-NTSC (Retro Crisis PS2 values)",
+      "screen": "assets/shaders/gc/gdv-ntsc.slangp"
     },
     {
       "id": "royale",

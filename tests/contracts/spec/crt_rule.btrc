@@ -1,0 +1,95 @@
+// M16's one rule for every system's default shader (the owner's item 9, "are we using the right shaders for each
+// system?"): a console played on a CRT television defaults to Retro Crisis's GDV-NTSC (guest's
+// crt-guest-advanced-ntsc) with his Steam Deck values for its cleanest stock signal; a handheld to an LCD look; an
+// HD console (Wii U, Switch) to none. Every system sits in exactly one class, so a new system has to take a side.
+// What makes the rule hold off whole steps (Fit: Screen draws a 480-line picture at 1.67x on the Deck) is the
+// renderer setting guest's intres per screen, so every scanline spans whole output rows (RendererScanlinePitch).
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/renderer/renderer_scanline_pitch.btrc;
+
+#include <math.h>
+
+class CrtRuleSpec {
+    class string defaultScreen(Fixture fixture, string systemId) {  // the default variant's screen asset, or "" without one
+        JSONValue shaders = fixture.model.system(systemId).shaders;
+        string chosen = SemuJson.textAt(shaders, "default_variant");
+        JSONValue variants = shaders.get("variants");
+        for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
+            if (SemuJson.textAt(variants.at(index), "id").equals(chosen)) { return SemuJson.textAt(variants.at(index), "screen"); }
+        }
+        return "";
+    }
+
+    class bool liquidCrystal(JSONValue recipe) {  // a wrapper of a handheld/ preset, or a pipeline with a handheld/ pass
+        if (recipe == null) { return false; }
+        if (SemuJson.textAt(recipe, "reference.path").startsWith("handheld/")) { return true; }
+        JSONValue passes = recipe.get("passes");
+        for (int index = 0; passes != null && passes.isArray() && index < passes.size(); index++) {
+            if (SemuJson.textAt(passes.at(index), "path").startsWith("handheld/")) { return true; }
+        }
+        return false;
+    }
+
+    class void classes(Contract contract, Fixture fixture, JSONValue manifest) {
+        Vector<string> television = ["nes", "snes", "genesis", "n64", "psx", "dreamcast", "ps2", "gc", "wii"];
+        Vector<string> handheld = ["gb", "gbc", "gba", "psp", "nds", "n3ds"];
+        Vector<string> high = ["switch", "wiiu"];
+        Vector<string> declared = fixture.model.systemIds();
+        int classified = 0;
+        for system in declared { if (television.contains(system) || handheld.contains(system) || high.contains(system)) { classified++; } }
+        contract.expect(classified == declared.size() && television.size() + handheld.size() + high.size() == declared.size(),
+            f"every system is a TV console, a handheld or an HD console ({classified} of {declared.size()} classified)");
+        for system in television {  // the 480-line four default to it once its Deck frame time is measured; until then they offer it as gdv
+            string screen = CrtRuleSpec.defaultScreen(fixture, system);
+            bool lines480 = system.equals("dreamcast") || system.equals("ps2") || system.equals("gc") || system.equals("wii");
+            bool guest = SemuJson.textAt(manifest.get("assets").get(screen), "reference.path").equals("crt/crt-guest-advanced-ntsc.slangp");
+            bool offered = lines480 && SemuJson.textAt(manifest.get("assets").get("assets/shaders/" + system + "/gdv-ntsc.slangp"), "reference.path").equals("crt/crt-guest-advanced-ntsc.slangp");
+            contract.expect(guest || offered, system + " (a TV console) defaults to Retro Crisis's GDV-NTSC, crt-guest-advanced-ntsc, or offers it while the Deck measures it: " + screen);
+        }
+        for system in handheld {
+            string screen = CrtRuleSpec.defaultScreen(fixture, system);
+            contract.expect(CrtRuleSpec.liquidCrystal(manifest.get("assets").get(screen)), system + " (a handheld) defaults to an LCD look: " + screen);
+        }
+        for system in high {
+            JSONValue shaders = fixture.model.system(system).shaders;
+            contract.expect(!SemuJson.boolAt(shaders, "enabled", true) && CrtRuleSpec.defaultScreen(fixture, system).isEmpty(), system + " (an HD console) draws no shader");
+        }
+    }
+
+    class bool near(float value, float expected) { return fabsf(value - expected) < 0.001f; }
+
+    class void pitch(Contract contract) {
+        contract.expect(RendererScanlinePitch.divider(480, 480) == 0.0f && RendererScanlinePitch.divider(480, 960) == 0.0f && RendererScanlinePitch.divider(240, 480) == 0.0f,
+            "at a whole step every source line is one scanline (intres 0)");
+        contract.expect(CrtRuleSpec.near(RendererScanlinePitch.divider(480, 800), 1.2f) && RendererScanlinePitch.rows(480, 800) == 2,
+            "a 480-line picture drawn 800 rows tall gets 400 scanlines of 2 rows, never 1.67-row ones");
+        contract.expect(CrtRuleSpec.near(RendererScanlinePitch.divider(448, 800), 1.12f) && CrtRuleSpec.near(RendererScanlinePitch.divider(240, 513), 0.9357f)
+            && RendererScanlinePitch.rows(240, 513) == 2, "any fractional step rounds to the nearest whole number of rows per scanline");
+        contract.expect(CrtRuleSpec.near(RendererScanlinePitch.divider(480, 600), 0.8f) && RendererScanlinePitch.rows(480, 600) == 1 && RendererScanlinePitch.divider(0, 800) == 0.0f,
+            "below 1.5x a scanline is one row, and nothing degenerate divides");
+    }
+
+    class void wiring(Contract contract, string project) {
+        string compositor = FileSystem.readText(PathTools.join(project, "src/renderer/renderer_compositor.btrc"));
+        string binding = FileSystem.readText(PathTools.join(project, "src/renderer/librashader_gl.btrc"));
+        int created = compositor.indexOf("RendererShaderPasses.setLane(index, chain);");
+        int pitched = compositor.indexOf("            RendererShaderPasses.scanlines(chain, lane);");
+        contract.expect(created > 0 && pitched > created, "every new shader chain gets its scanline pitch for its lane's size");
+        contract.contains(compositor, "if (chain.setParameter(\"intres\", divider)", "as guest's intres, which presets without it ignore");
+        contract.contains(binding, "libra_gl_filter_chain_set_param(&self.handle, name, value)", "through librashader's runtime parameters");
+    }
+
+    class void run(Contract contract, Fixture fixture, JSONValue manifest) {
+        CrtRuleSpec.classes(contract, fixture, manifest);
+        CrtRuleSpec.pitch(contract);
+        CrtRuleSpec.wiring(contract, fixture.project);
+    }
+}
