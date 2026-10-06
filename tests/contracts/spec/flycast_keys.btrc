@@ -1,0 +1,51 @@
+// Flycast keys spec (M16 item 8, the review round): Semu's emu.cfg had [rend] and [Dreamcast] blocks Flycast 2.7 never
+// reads (every option is a dotted key in [config]: option.h:107, option.cpp:68-127 at 5aa091fd), so the OpenGL pin was
+// only Flycast's default and a speed setting written there would change nothing. Every key Semu writes is one the
+// pinned Flycast declares in that section (the profile's upstream_keys, copied from the pin's source), the renderer
+// pin is [config] pvr.rend = 0, and emulator.json's graphics pins name keys the rendered file carries.
+
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+
+class FlycastKeysSpecContract {
+    class Vector<string> undeclared(string document, JSONValue sections) {  // "section key" for each line Flycast does not declare there
+        Vector<string> result = [];
+        string section = "";
+        for line in Strings.split(document, "\n") {
+            string text = line.trim();
+            if (text.isEmpty()) { continue; }
+            if (text.startsWith("[") && text.endsWith("]")) {
+                section = text.substring(1, text.len() - 2);
+                continue;
+            }
+            int equals = text.indexOf("=");
+            string key = equals > 0 ? text.substring(0, equals).trim() : text;
+            JSONValue declared = sections.get(section);
+            if (declared == null || !SemuJson.strings(declared).contains(key)) { result.push("[" + section + "] " + key); }
+        }
+        return result;
+    }
+
+    class void run(Contract contract) {
+        for target in ["steam-deck", "linux-desktop"] {
+            Fixture fixture = Fixture(target);
+            string document = fixture.profile("flycast", "config/flycast/emu.cfg");
+            JSONValue sections = SemuJson.get(fixture.model.emulator("flycast").profile, "upstream_keys.sections");
+            Vector<string> unread = FlycastKeysSpecContract.undeclared(document, sections);
+            contract.expect(!document.isEmpty() && sections != null && sections.isObject() && SemuJson.strings(sections.get("config")).size() >= 80 && unread.isEmpty(),
+                target + " every key Semu writes to Flycast's emu.cfg is one the pinned Flycast reads in that section: " + unread.join(", "));
+            contract.expect(document.contains("[config]\n") && document.contains("\npvr.rend = 0\n") && !document.contains("[rend]") && !document.contains("[Dreamcast]") && document.contains("\nrend.WidescreenGameHacks = no\n"),
+                target + " Flycast's OpenGL pin is [config] pvr.rend = 0, no section Flycast ignores, and its widescreen cheats off (the 4:3 picture the owner plays)");
+            JSONValue graphics = SemuJson.get(fixture.model.emulator("flycast").definition, "platforms.linux.graphics");
+            Vector<string> pins = [SemuJson.textAt(graphics, "key") + " = " + SemuJson.textAt(graphics, "values.opengl")];
+            JSONValue extra = graphics == null ? null : graphics.get("extra_pins");
+            for (int index = 0; extra != null && extra.isArray() && index < extra.size(); index++) { pins.push(SemuJson.textAt(extra.at(index), "key") + " = " + SemuJson.textAt(extra.at(index), "value")); }
+            Vector<string> missing = [];
+            for pin in pins { if (!document.contains("\n" + pin + "\n")) { missing.push(pin); } }
+            contract.expect(SemuJson.textAt(graphics, "section").equals("config") && pins.size() == 3 && missing.isEmpty(), target + " emulator.json's graphics pins name [config] keys the rendered emu.cfg carries: missing " + missing.join(", "));
+        }
+    }
+}

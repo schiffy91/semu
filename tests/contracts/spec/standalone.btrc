@@ -295,12 +295,12 @@ class StandaloneSpecContract {
     class void flycastProfile(Contract contract, Fixture fixture, string target) {
         string main = fixture.profile("flycast", "config/flycast/emu.cfg");
         string keyboard = fixture.profile("flycast", "config/flycast/mappings/SDL_Keyboard.cfg");
-        contract.contains(main, "RendererType = 0", target + " flycast forces OpenGL");
+        contract.contains(main, "[config]\nPerGameVmu = yes\nBoxartDisplayMode = no\nFetchBoxart = no\npvr.rend = 0\n", target + " flycast forces OpenGL where Flycast reads it ([config] pvr.rend)");
         contract.contains(main, "[window]\nfullscreen = yes", target + " flycast fullscreen");
-        contract.contains(main, "AutoLoadState = no", target + " flycast never auto-loads a state");
+        contract.contains(main, "Dreamcast.AutoLoadState = no", target + " flycast never auto-loads a state");
         // box art shows every disc of a game as one cover; list mode names each disc file
-        contract.expect(StandaloneSpecText.ordered(main, ["[config]", "BoxartDisplayMode = no", "[Dreamcast]"]), target + " flycast Insert Disk lists disc file names");
-        contract.expect(StandaloneSpecText.ordered(main, ["[config]", "FetchBoxart = no", "[Dreamcast]"]), target + " flycast fetches no box art");
+        contract.expect(StandaloneSpecText.ordered(main, ["[config]", "BoxartDisplayMode = no", "[window]"]), target + " flycast Insert Disk lists disc file names");
+        contract.expect(StandaloneSpecText.ordered(main, ["[config]", "FetchBoxart = no", "[window]"]), target + " flycast fetches no box art");
         contract.contains(keyboard, "224,22:btn_quick_save:0", target + " flycast save chord");
         contract.contains(keyboard, "224,4:btn_jump_state:0", target + " flycast load chord");
         contract.lacks(keyboard, "btn_escape", target + " flycast leaves quit to the supervisor");

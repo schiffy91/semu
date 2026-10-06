@@ -81,7 +81,7 @@ class SaveSlotDeclarations {  // each emulator's slots, as its pinned source cyc
         contract.contains(fixture.profile("dolphin", "dolphin-user/Config/Qt.ini"), "[Emulation]\nStateSlot=1\n", "dolphin starts each launch on slot 1, where Semu's counter starts");
         string ppsspp = fixture.profile("ppsspp", "config/ppsspp/PSP/SYSTEM/ppsspp.ini");
         contract.contains(ppsspp, "StateSlot = 0\nSaveStateSlotCount = 5\n", "ppsspp starts on slot 0 of 5, as Semu declares");
-        contract.contains(fixture.profile("flycast", "config/flycast/emu.cfg"), "[Dreamcast]\nAutoLoadState = no\nAutoSaveState = no\nSavestateSlot = 0\n", "flycast starts each launch on its first slot");
+        contract.contains(fixture.profile("flycast", "config/flycast/emu.cfg"), "Dreamcast.AutoLoadState = no\nDreamcast.AutoSaveState = no\nDreamcast.SavestateSlot = 0\n", "flycast starts each launch on its first slot ([config] Dreamcast.SavestateSlot, the key Flycast reads)");
         SemuLaunchPlan launch = LaunchSpecTools.retroarchPlan(fixture);
         contract.expect(launch.stateSlots == 10 && launch.firstSlot == 0 && launch.environment.contains("SEMU_MENU_SLOTS=10") && launch.environment.contains("SEMU_MENU_FIRST_SLOT=0"), "the launch carries RetroArch's slots to the supervisor and the renderer");
     }
