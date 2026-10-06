@@ -2369,7 +2369,10 @@ Status: started 2026-10-06.
     surface0_native=640x480 surface0_source=107,0,1066,800 surface0_scaled=1066x800 (Dolphin's window kept whole),
     the TV at integer bezel (640x480 at 320,160); the first Ctrl+Shift+N logged "semu: render scale 1x: 1 press(es)
     of Alt+F10 via X" and journaled 88/0/0, the second "2x: 1 press(es) of Alt+F9 via X" and 88/1/0, restarts=0,
-    the title scene animating throughout, no Dolphin text over the picture; saved gc {"render_scale":"2x"}. The
+    the title scene animating throughout, no Dolphin text over the picture; saved gc {"render_scale":"2x"}. Run
+    again with the shader off and Fit on non-integer game (1067x800), the live switch shows in Dolphin's own
+    render: the logo and the ship's stripes crisp at 2x, visibly softer after the Alt+F10 press (SCALE:
+    NATIVE, Dolphin at 1x), crisp again after the Alt+F9 press (zoomed side by side), restarts=0. The
     N64 started at 2x: receipt render_scale=2 frames_scaled=1 surface0_native=313x237 surface0_scaled=626x474.
   - The settings page: SEMU SETTINGS' per-system visuals offer RENDER SCALE (the declared scales, saved where the
     radial saves them; a launch whose emulator cannot take the choice renders at the default).
