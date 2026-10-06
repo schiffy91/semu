@@ -1,6 +1,6 @@
 #!/bin/bash
 # Controller, radial and trackpad input on the Steam Deck, off-screen: each case launches a game the
-# way ES-DE does, inside a private headless gamescope at 1280x800 with the sound cut (as
+# way ES-DE does, inside a private headless gamescope at 1280x800 (SEMU_CHECK_SIZE=1920x1080: a docked TV) with the sound cut (as
 # system-matrix.sh), while a virtual gamepad on /dev/uinput (tests/visual/virtual_pad.btrc, built
 # for x86_64-linux) presses the case's buttons and inject.sh types its radial chords and moves and
 # clicks its pointer. The pad is a replica of Steam's virtual pad (--steam-virtual-pad), and Steam's
@@ -73,6 +73,9 @@ set -u
 here="$(cd "$(dirname "$0")" && pwd -P)"
 inject="$here/inject.sh"
 gap="${SEMU_INPUT_GAP:-6}"
+size="${SEMU_CHECK_SIZE:-1280x800}"  # the headless gamescope's output: the Deck's own screen, or SEMU_CHECK_SIZE=1920x1080 for a docked TV
+case "$size" in [0-9]*x[0-9]*) ;; *) echo "input-check: SEMU_CHECK_SIZE is WIDTHxHEIGHT, not $size" >&2; exit 64 ;; esac
+width="${size%x*}"; height="${size#*x}"
 buttons="south east north west tl tr tl2 tr2 select start mode thumbl thumbr dpad_up dpad_down dpad_left dpad_right"
 
 known() { case " $buttons " in *" $1 "*) return 0 ;; esac; return 1; }
@@ -265,8 +268,8 @@ while IFS= read -r line; do
   "$pad" $replica $arguments > "$dir/pad.log" 2>&1 &  # present before the emulator starts, so no hotplug is needed
   padpid=$!
   SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1 SDL_GAMECONTROLLER_IGNORE_DEVICES=0x28de/0x1205 SteamVirtualGamepadInfo="$out/steam-virtual-gamepad-info" PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy ALSA_CONFIG_PATH="$out/alsa-null.conf" SEMU_MATRIX_ROM="$rom" \
-    SEMU_RENDER_GPU_TIME=1 SEMU_RENDER_DEBUG=1 SEMU_RENDER_CAPTURE_FRAME=60 SEMU_INJECT_START_MS="$start_ms" SEMU_INJECT_EVIDENCE="$evidence" SEMU_INJECT_EVIDENCE_FROM="$from" \
-    bwrap --dev-bind / / --tmpfs /tmp/.X11-unix $cover -- gamescope --backend headless -W 1280 -H 800 -w 1280 -h 800 --xwayland-count 2 --hide-cursor-delay 3000 -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
+    SEMU_RENDER_GPU_TIME=1 SEMU_RENDER_DEBUG=1 SEMU_RENDER_CAPTURE_FRAME=60 SEMU_INJECT_START_MS="$start_ms" SEMU_INJECT_EVIDENCE="$evidence" SEMU_INJECT_EVIDENCE_FROM="$from" SEMU_INJECT_SCREEN="$size" \
+    bwrap --dev-bind / / --tmpfs /tmp/.X11-unix $cover -- gamescope --backend headless -W "$width" -H "$height" -w "$width" -h "$height" --xwayland-count 2 --hide-cursor-delay 3000 -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
   headless=$!
   game=""; display=""
   for _ in $(seq 1 300); do  # every 0.2 s for 60 s: an emulator that exits within a second is still seen

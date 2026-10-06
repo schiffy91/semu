@@ -30,3 +30,15 @@ ps2 pcsx2 - 45 90 -- Devil May Cry 2 (USA).m3u/Devil May Cry 2 (USA).m3u
 gc dolphin - 45 90 -- Resident Evil (USA).m3u/Resident Evil (USA).m3u
 # A heavier Wii scene for speed (M13 item 4): Mario Kart Wii races its attract demo after its title idles.
 wii dolphin - 60 120 180 -- Mario Kart Wii (USA)*.wbfs
+# Sonic Adventure for speed (M16 item 8, "super laggy at like 23fps"): Flycast standalone, the owner's route, and the
+# RetroArch Flycast core beside it, each sampled at 30, 60 and 90 s (rate lines every tenth second, GPU busy and
+# clock, the four busiest threads). Run them four ways and compare (the decision table is PLAN M16 item 8):
+#   1. the defaults (the TV, Sharp CRT):        system-matrix.sh CASES OUT
+#   2. the shader off:                          SEMU_MATRIX_SETTINGS='{"visual":{"crt_shaders":false}}'
+#   3. the shader and the bezel off:            SEMU_MATRIX_SETTINGS='{"visual":{"bezels":false,"crt_shaders":false}}'
+#   4. Semu's renderer not loaded (Flycast's own picture, its FPS counter on screen in at-N.png):
+#      SEMU_MATRIX_LAUNCH_ARGS='--project TRIAL' with TRIAL a copy of the installed config tree whose
+#      emulators/flycast/emulator.json has platforms.linux.render_preload false and whose profile.json writes
+#      rend.ShowFPS = yes (copy with cp -r, edit with jq; the installed tree is never edited).
+dreamcast flycast - 30 60 90 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
+dreamcast retroarch flycast 30 60 90 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd

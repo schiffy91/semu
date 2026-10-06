@@ -14,7 +14,7 @@ semu="$root/build/semu"
 host="$root/build/render-host"
 systems=("$@")
 [ ${#systems[@]} -gt 0 ] || mapfile -t systems < <(cd "$root/config/systems" && for s in *; do jq -e '.variants | length > 0' "$s/bezels.json" >/dev/null 2>&1 && echo "$s"; done)
-work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
+work="$(mktemp -d)"  # the renders and their logs, left behind, never removed
 failures=0
 checked=0
 

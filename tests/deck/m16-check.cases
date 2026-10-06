@@ -1,7 +1,8 @@
 # M16 on the Deck, off-screen: the owner's round 4 (PLAN.md M16), with the owner's own games.
 #   input-check.sh PAD m16-check.cases OUT     (input-check.sh --plan m16-check.cases shows every timeline)
 # SYSTEM EMULATOR CORE|- FIRST TOKEN... -- ROM-GLOB; see input-check.sh. The run's choices land in
-# OUT/home/semu.json and later cases start from them, so keep the order. Numbers are at 1280x800.
+# OUT/home/semu.json and later cases start from them, so keep the order. Numbers are at 1280x800; the docked
+# 1920x1080 cases are m16-docked.cases (SEMU_CHECK_SIZE=1920x1080 input-check.sh PAD m16-docked.cases OUT).
 #
 # Items 5 and 7, Fit's four states (the placement track). key:ctrl+shift+f is the radial's Fit
 # (visual.placement.next) and key:ctrl+b its Bezel On/Off. Fit steps the four states in the owner's order,
@@ -16,8 +17,8 @@
 #     480-line frame) at 320,160, the whole TV with its stand on the table, the wall above. after-1 (81/2,
 #     FIT: NON-INTEGER GAME): the picture 1067x800 at 107,0, filling the height, the TV round it cut by the
 #     screen; its pixels even (sharp-bilinear: no doubled rows or columns on a scrolling scene). after-2 (81/3,
-#     FIT: NON-INTEGER BEZEL): the whole TV as large as the screen holds, the picture about 700x525 at
-#     290,137, the stand meeting the bottom edge. after-3 (81/0, FIT: INTEGER GAME): 640x480 at 320,160.
+#     FIT: NON-INTEGER BEZEL): the whole TV as large as the screen holds, the picture 713x535 at 283,133
+#     (283,132 from the top; the render host's lane), the stand meeting the bottom edge. after-3 (81/0, FIT: INTEGER GAME): 640x480 at 320,160.
 #     after-4 (81/1, FIT: INTEGER BEZEL (SAME)): nothing moves (1x either way on 800 rows). after-5
 #     (79/2, BEZEL: OFF): the picture alone on black, 640x480 at 320,160, the same size as with the TV
 #     (item 7: the bezel off never shrinks the picture). after-6 (81/2, FIT: NON-INTEGER GAME): 1067x800 at
@@ -28,15 +29,20 @@ wii dolphin - 60 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shi
 # F2. Item 5, a 240-line TV (Beetle PSX). before: integer bezel, 640x480 (2x) at 320,160, the whole TV and
 #     the table. after-1 (81/2, FIT: NON-INTEGER GAME): 1067x800 at 107,0, the CRT shader's scanlines even
 #     down the picture (no bands). after-2 (81/3, FIT: NON-INTEGER BEZEL): the whole TV filling the height,
-#     the picture about 700x525 at 290,137. after-3 (81/0, FIT: INTEGER GAME): 960x720 (3x) at 160,40, the TV
+#     the picture 713x535 at 283,133 (283,132 from the top). after-3 (81/0, FIT: INTEGER GAME): 960x720 (3x) at 160,40, the TV
 #     cut by the screen. after-4 (81/1, FIT: INTEGER BEZEL): 640x480 again. choices psx {"placement":"bezel"}.
 psx retroarch mednafen_psx 45 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Crash Bandicoot (USA).m3u
 # F3. Item 5, a device shell (mGBA, the GBA shell). before: integer game, 1200x800 (5x) at 40,0, the shell
 #     cut by the screen. after-1 (81/1, FIT: INTEGER BEZEL): the whole shell centred on black, the picture
-#     480x320 (2x) at 400,267. after-2 (81/2, FIT: NON-INTEGER GAME (SAME)): 5x already fills the height, so
-#     nothing moves. after-3 (81/3, FIT: NON-INTEGER BEZEL): the whole shell as large as the screen holds,
-#     the picture about 546x364 at 367,249, the LCD's pixels even. after-4 (81/0, FIT: INTEGER GAME): 5x again.
-gba retroarch mgba 30 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Advance Wars (USA) (Rev 1).zip
+#     480x320 (2x) at 400,267. after-2 (81/2, FIT: NON-INTEGER GAME): the picture grows from 480x320 in the
+#     whole shell back to 1200x800 at 40,0, the shell cut by the screen (the press left integer bezel, so it is
+#     not SAME). after-3 (81/3, FIT: NON-INTEGER BEZEL): the whole shell as large as the screen holds, the
+#     picture about 546x364 at 367,249, the LCD's pixels even. after-4 (81/0, FIT: INTEGER GAME): 5x again.
+#     after-5 (79/2, BEZEL: OFF): 1200x800 on black. after-6 (81/2, FIT: NON-INTEGER GAME (SAME)): with no
+#     bezel Fit flips integer game and non-integer game, and 5x already fills the height, so nothing moves and
+#     the toast says SAME (compared with the state the press left, integer game). after-7 (79/0, BEZEL: GAME BOY ADVANCE): the shell
+#     back round the same 1200x800. choices gba {"placement":"game_fractional"}.
+gba retroarch mgba 30 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+b key:ctrl+shift+f key:ctrl+b -- Advance Wars (USA) (Rev 1).zip
 # F4. Item 5, the DS shell (RetroArch melonDS): Fit never drops the shell. before: integer bezel, both
 #     screens 512x384 (2x) side by side in the whole Duimon shell. after-1 (81/2, FIT: NON-INTEGER GAME): both
 #     screens about 605x454, the pair spanning the screen's width, the shell cut at the sides. Each tap:
@@ -44,6 +50,17 @@ gba retroarch mgba 30 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctr
 #     put it). after-3 (81/3, FIT: NON-INTEGER BEZEL): the whole shell (up to 1% past the sides), both
 #     screens about 568x426. after-5 (81/0, FIT: INTEGER GAME): 2x again, the whole shell.
 nds retroarch melonds 40 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f -- Advance Wars - Dual Strike (USA, Australia).zip
+# F5. Item 5 through the Vulkan layer (standalone Azahar, the 3DS shell), with taps. Numbers from the render host
+#     at 1280x800 (x,y from the bottom left; top screen, then touch screen). before: integer bezel, 800x480 at
+#     50,122 and 320x240 at 933,151, the whole shell. after-1 (81/2, FIT: NON-INTEGER GAME): about 858x515 at
+#     0,142 and 324x243 at 956,181, the pair spanning the width, the shell cut at the sides. after-2 (tap): the
+#     touch screen's middle as drawn: run.log "semu-vulkan: touch X,Y -> 1 160,120" (within a pixel or two).
+#     after-3 (81/3, FIT: NON-INTEGER BEZEL): the whole shell as large as the screen holds, about 809x486 at 43,118
+#     and 306x229 at 946,156. after-4 (tap): again "-> 1 160,120". after-5 (81/0, FIT: INTEGER GAME): 800x480 and
+#     320x240 as in before. after-6 (81/1, FIT: INTEGER BEZEL (SAME)): nothing moves. No screen is cut in any
+#     shot, no Qt arrow shows, and the shell is never dropped. choices n3ds {"placement":"bezel"}. (Supersedes
+#     m15-check.cases case 12's Fit lines, written for M15's two-state Fit.)
+n3ds azahar - 50 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f key:ctrl+shift+f -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
 #
 # Item 2, the render scale (the render-scale track). key:ctrl+shift+n is the settings radial's Render Scale
 # (visual.scale.next), key:ctrl+shift+d its Restart Game and key:ctrl+m the Semu menu. Scale steps the system's
@@ -55,7 +72,8 @@ nds retroarch melonds 40 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0
 # averaged from the larger render) and as more detail with the shader off. A case judges by its shots, the
 # journal's 88 records, evidence.log's game receipts (render_scale=N frames_scaled=0|1, surface0_native and
 # surface0_scaled, the picture kept above native, 0x0 at 1x), the emulator's own config in OUT/home and the
-# rate lines (composed frames per second: full speed is the system's own rate, 60 or 59.94).
+# rate lines (composed frames per second: full speed is the system's own rate, 60 or 59.94, read as every line at
+# least 59.8 per second with the longest gap under 25 ms, so a single dropped frame fails, as in D1 and D3).
 #
 # S1. The N64 through GLideN64 (RetroArch), applied by Restart Game. before: native, receipts render_scale=1
 #     surface0_scaled=0x0. after-1 (88/1/1, SCALE 2X: RESTART TO APPLY): nothing restarted, the picture as
@@ -86,6 +104,24 @@ ps2 pcsx2 - 60 key:ctrl+shift+n key:ctrl+shift+d key:ctrl+m key:ctrl+m key:ctrl+
 #     the same size and place as in before; InternalResolution = 3; rate lines at 60 per second. choices psp
 #     {"render_scale":"3x"}.
 psp ppsspp - 45 key:ctrl+shift+n key:ctrl+shift+d key:ctrl+m key:ctrl+m -- Daxter*.iso
+# S5. The DS through RetroArch's melonDS core at 2x, the one scale that turns on another renderer (its OpenGL one,
+#     never drawn anywhere before). after-1 (88/1/1, SCALE 2X: RESTART TO APPLY). after-2 (87/1): the game boots
+#     again (restarts=1); retroarch-core-options.cfg melonds_opengl_renderer "enabled" and melonds_opengl_resolution
+#     "2x native (512x384)". after-3 (tap): both screens drawn in place, the same size as in before (F4 left
+#     integer game: 512x384 each in the whole shell), the touch screen's text smoother; touch.log "-> surface 1
+#     native" about 128,96. choices nds {"render_scale":"2x"}.
+nds retroarch melonds 40 key:ctrl+shift+n key:ctrl+shift+d tap:0.5,0.5 -- Legend of Zelda, The - Phantom Hourglass*.zip
+# S6. The 3DS on Azahar at 2x. after-1 (88/1/1, SCALE 2X: RESTART TO APPLY). after-2 (87/1): the game boots again;
+#     qt-config.ini resolution_factor=2. after-3 (tap): both screens the size and place F5 left (800x480 and
+#     320x240, integer bezel), smoother edges (Azahar's integer window shows the 2x render at 1x on 800 rows);
+#     run.log "semu-vulkan: touch X,Y -> 1 160,120". choices n3ds {"render_scale":"2x"}.
+n3ds azahar - 50 key:ctrl+shift+n key:ctrl+shift+d tap:0.5,0.5 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+# S7. Reset to Default brings the render scale back, live on Dolphin (S2 left the GameCube native). after-1
+#     (88/1/0, SCALE: 2X; run.log "render scale 2x: 1 press(es) of Alt+Prior via X"). after-2: the first Reset
+#     press journals 85/0/1 (RESET: PRESS AGAIN), the second, a second later, 79/0 80/0 81/1 88/0/0 85/1 (RESET TO
+#     DEFAULTS), with run.log "render scale 1x: 1 press(es) of Alt+Next via X", the game still running
+#     (restarts=0) and the picture native again. choices gc {} (Reset removes the system's choices).
+gc dolphin - 50 key:ctrl+shift+n key:ctrl+shift+r,ctrl+shift+r -- Legend of Zelda, The - The Wind Waker (USA).rvz
 #
 # Items 1 and 6 (the controls track). move: and tap: are the right trackpad (relative motion to a fraction of the
 # touch screen as drawn, then a click for tap:); key:ctrl+shift+c is the radial's Controller Layout; bare names are
@@ -120,6 +156,20 @@ n3ds azahar - 50 move:0.5,0.5 tap:0.5,0.5 move:0.9,0.1 -- Legend of Zelda, The -
 #    "wiimote" in OUT/home/semu.json. (In the VM, at a fraction of full speed, the GameCube pad's X+Y+Start held
 #    with the remote away logged Dolphin's own PAD - COMBO_ORIGIN three times, and the game relinked the remote.)
 wii dolphin - 90 key:ctrl+shift+c key:ctrl+shift+c south east key:ctrl+shift+c south -- Mario Kart Wii*.wbfs
+# C4. Item 1 on the Wii: one pointer, the game's own (M16's ruling: Semu draws no crosshair there, since the game's
+#    IR pointer sits about 48 px above the finger and moves about 1.34 times as far). C3 left P1 on Wii Remote. cursor-1
+#    and cursor-2 (gamescope type 3, its cursor plane included): Mario Kart Wii's own hand pointer where the IR aims,
+#    no Semu crosshair and no X arrow (Dolphin's CursorVisibility 0); so crosshair-1 and crosshair-2 read FAIL here
+#    (cursor-crosshair.sh finds no crosshair), which is this case's pass. idle-N: the hand pointer as the game keeps it.
+wii dolphin - 60 move:0.5,0.5 move:0.2,0.8 -- Mario Kart Wii*.wbfs
+# C5. Item 1 on standalone melonDS (ES-DE's melonDS (Standalone) for the DS on Linux), which Semu does not compose:
+#    no receipt, so inject.sh moves to fractions of the whole screen (its note reads "surface screen at 0,0
+#    1280x800"; 0.5,0.75 is the middle of melonDS's lower screen in its default stacked layout). cursor-1 and
+#    cursor-2: melonDS's own arrow at the pointer, no Semu crosshair (M16's ruling, reversible: the emulator's arrow
+#    stays where Semu draws no pointer, a touch screen needs a visible aim), so crosshair-1 and -2 read FAIL, this
+#    case's pass; the tap lands on the touch screen in melonDS's own picture (no Semu touch.log line). S5 left the
+#    DS at 2x, so melonDS.toml's [3D.GL] ScaleFactor = 2 (the same layout).
+nds melonds - 40 move:0.5,0.75 tap:0.5,0.75 -- Legend of Zelda, The - Phantom Hourglass*.zip
 #
 # Items 10 and 3, the TV cutout and the GB studio bezel (the picture track). key:ctrl+shift+b is the radial's
 # Next Bezel (79/<index into the system's bezel variants>). Judge the shots at 1:1 and with crops zoomed 4x
@@ -165,15 +215,20 @@ gb retroarch gambatte 25 key:ctrl+shift+b -- Tetris (World) (Rev 1).zip
 #     frame 1": Dolphin's render window is full screen before its core boots, so the first frame Semu composes is
 #     already the screen's size and no later frame is smaller. before: Wind Waker's boot (the Nintendo logo or
 #     its opening) inside the TV at full size, nothing drawn in a block in the top left with black to its right
-#     and below. rate: 59 to 61 per second once the game draws.
+#     and below. rate: once the game draws, every line at least 59.8 per second with the longest gap under 25 ms
+#     (one and a half frames: a single dropped frame at 59.94 Hz logs about 33 ms).
 gc dolphin - 30 -- Legend of Zelda, The - The Wind Waker (USA).rvz
 # D2. Item 4, the Wii (Dolphin): as D1, New Super Mario Bros. Wii's strap or title.
 wii dolphin - 30 -- New Super Mario Bros. Wii*.wbfs
-# D3. Items 8 and 9, the Dreamcast (Flycast), the owner's Sonic Adventure on its title and attract demo after 90 s.
-#     size: one line, 1280x800 from frame 1. rate: every line 59 to 61 per second, longest gap under 34 ms (no
-#     dropped frame), the composition's GPU time printed (the Deck's budget is 16.7 ms a frame for Flycast and
-#     Semu together). pitch, with a CRT shader: "scanlines R rows each" with R the whole number nearest the drawn
-#     height over 480 (1 at integer bezel, 2 at non-integer game). before: the attract demo inside the TV.
+# D3. Items 8 and 9, the Dreamcast (Flycast), the owner's Sonic Adventure on its title and attract demo after 90 s,
+#     on its defaults (the TV, Sharp CRT) in the Fit state T5 left (non-integer game: T5's one Fit press from
+#     integer bezel). size: one line, 1280x800 from frame 1. rate: every line at least 59.8 per second and the
+#     longest gap under 25 ms (one and a half frames of 16.7 ms: a single dropped frame logs about 33 ms, so a
+#     34 ms bar passed a run that drops one every two seconds, the stutter item 8 is about); the composition's GPU
+#     time printed (the Deck's budget is 16.7 ms a frame for Flycast and Semu together). pitch: none with Sharp
+#     CRT (easymode declares no intres, so the renderer sets nothing); D7 measures the pitch on the gdv variant.
+#     before: the attract demo inside the TV. A rate under 59.8 here is item 8 reproduced: then run the isolation
+#     in PLAN M16 item 8 (system-matrix.cases' Sonic Adventure lines with the shader off, both off, no renderer).
 dreamcast flycast - 90 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
 # D4. Item 4, the PS2 (PCSX2): size: no line smaller than the last; before: Def Jam's boot at full size.
 ps2 pcsx2 - 40 -- Def Jam - Fight for NY (USA).iso
@@ -185,3 +240,29 @@ n3ds azahar - 40 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
 #     pitch: "scanlines 2 rows each, intres 0.000 (240 lines drawn 480 tall)" at integer bezel; rate: 60 per
 #     second, the GPU time beside the SNES's and Genesis's.
 nes retroarch mesen 20 -- Super Mario Bros. 3 (USA) (Rev 1).zip
+#
+# Item 9, GDV-NTSC on the four 480-line consoles (the review round): their default stays Sharp CRT until these
+# measure the gdv variant (Retro Crisis's values) on the Deck. key:ctrl+shift+v is Next Shader: from the default
+# it journals 80/1 (SHADER: GDV-NTSC (DREAMCAST), (PS2) or (PS2 VALUES)); each Fit press then steps the state on,
+# so the run covers integer bezel and non-integer game. Read every rate line in run.log (one each two seconds)
+# against schedule's token times, not only the result's last four, and the pitch lines for each state: one row
+# per line at integer bezel (intres 0, 480 lines drawn 480 tall) and "scanlines 2 rows each, intres 1.200 (480
+# lines drawn 800 tall)" at non-integer game. The pass bar that moves a console's default to gdv (the same in
+# PLAN M16 item 9): in both states every rate line at least 59.8 per second with the longest gap under 25 ms,
+# and the composition's GPU time at most 4 ms mean (a quarter of the frame the emulator shares); else Sharp CRT
+# stays and gdv is one press away. A shot judged by eye: even scanlines, no bands, no mask grain.
+# D7. The Dreamcast (Flycast, Sonic Adventure). Earlier cases left it in non-integer game: after-1 (80/1) gdv there;
+#     after-2 (81/3) non-integer bezel; after-3 (81/0) integer game; after-4 (81/1) integer bezel. choices
+#     dreamcast {"shader_variant":"gdv","placement":"bezel"}.
+dreamcast flycast - 90 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
+# D8. The PS2 (PCSX2, Def Jam), from integer bezel (no earlier Fit press on the PS2): after-1 (80/1) gdv at integer
+#     bezel; after-2 (81/2) non-integer game; after-3 (81/3); after-4 (81/0); after-5 (81/1) integer bezel. S3 left
+#     the PS2 at render scale 2x (receipts render_scale=2), a stricter run than the default 1x: a pass here holds
+#     at 1x; a miss only here is rerun at 1x (Reset twice, Restart Game, then D8) before Sharp CRT is kept.
+ps2 pcsx2 - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Def Jam - Fight for NY (USA).iso
+# D9. The GameCube (Dolphin, The Wind Waker), in the state T4 left (non-integer game): after-1 (80/1) gdv there;
+#     after-2 to after-4 step on to integer bezel as D7.
+gc dolphin - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Legend of Zelda, The - The Wind Waker (USA).rvz
+# D10. The Wii (Dolphin, New Super Mario Bros. Wii), in the state F1 left (integer game): after-1 (80/1) gdv at
+#     integer game; after-2 (81/1) integer bezel; after-3 (81/2) non-integer game; after-4 (81/3); after-5 (81/0).
+wii dolphin - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- New Super Mario Bros. Wii*.wbfs

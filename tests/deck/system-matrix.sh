@@ -21,7 +21,8 @@
 #   SEMU_MATRIX_SETTINGS='{"visual":{"performance_overlay":true}}' system-matrix.sh CASES OUT
 #
 # passes that JSON as every launch's --settings-json, the highest settings overlay, so the owner's
-# semu.json is never written. With the performance overlay on, Dolphin logs one line per frame and
+# semu.json is never written. SEMU_MATRIX_LAUNCH_ARGS='--project DIR' launches from a trial copy of the
+# config tree instead (PLAN M16 item 8: Flycast with render_preload false, Semu's renderer not loaded). With the performance overlay on, Dolphin logs one line per frame and
 # per VI; a Dolphin case copies Logs/render_times.txt and vblank_times.txt beside its result and
 # notes their rates (VIs per second against 59.94 or 50 is the emulation speed; presents undercount,
 # as Dolphin skips duplicate frames).
@@ -75,7 +76,7 @@ while IFS= read -r line; do
   if [ -z "$rom" ]; then note "skipped: no ROM matches $system/$pattern"; continue; fi
   note "rom: ${rom#"$roms/"}"
   core_argument=""; [ "$core" = - ] || core_argument="--core $core"
-  printf '#!/bin/sh\nexec "%s" launch %s --system %s %s ${SEMU_MATRIX_SETTINGS:+--settings-json "$SEMU_MATRIX_SETTINGS"} --rom "$SEMU_MATRIX_ROM"\n' "$cli" "$emulator" "$system" "$core_argument" > "$dir/inner.sh"
+  printf '#!/bin/sh\nexec "%s" launch %s --system %s %s %s ${SEMU_MATRIX_SETTINGS:+--settings-json "$SEMU_MATRIX_SETTINGS"} --rom "$SEMU_MATRIX_ROM"\n' "$cli" "$emulator" "$system" "$core_argument" "${SEMU_MATRIX_LAUNCH_ARGS:-}" > "$dir/inner.sh"  # SEMU_MATRIX_LAUNCH_ARGS: e.g. --project DIR for a trial config
   chmod +x "$dir/inner.sh"
 
   start=$(date +%s)

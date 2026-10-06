@@ -84,6 +84,8 @@ nds retroarch melonds 40 tap:0.5,0.5 key:ctrl+shift+b tap:0.5,0.5 key:ctrl+shift
 #    either side. after-6 (81/-1, FIT: NO BEZEL). after-7 (79/2): second left. after-8 (79/3): Side by side,
 #    both 1x. after-9 (79/4): Stacked, both 1x. after-11 (79/5): the 3DS vertical shell, 400x240 over
 #    320x240 (both 1x) in the whole shell, centred. choices n3ds {"bezel_variant":"vertical","placement":"game"}.
+#    (M16: this case's Fit lines describe M15's two-state Fit, FIT: SCREEN SAME AS BEZEL and FIT: NO BEZEL; Fit now
+#    steps four states, and m16-check.cases F5 supersedes them with the Vulkan layer's taps in each.)
 n3ds azahar - 50 tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+b tap:0.5,0.5 key:ctrl+shift+f key:ctrl+shift+b key:ctrl+shift+b key:ctrl+shift+b tap:0.5,0.5 key:ctrl+shift+b tap:0.5,0.5 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
 # 13. Item 6, Wii U sound. Sound is cut here, so this shows only that Cemu keeps running past the game's audio
 #    init (it exits there when it has no audio device) and that the launch compiled the audio block: after

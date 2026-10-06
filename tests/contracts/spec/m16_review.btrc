@@ -1,0 +1,97 @@
+// M16 review spec (2026-10-06): the round's Deck checks, so they outlive the review that asked for them. m16-check.cases
+// measures a dropped frame (a 33 ms gap at 59.94 Hz) as one, carries the render scale's melonDS, Azahar and Reset
+// cases, Fit through the Vulkan layer with taps, the Wii's single pointer and GDV-NTSC on the four 480-line consoles
+// with its pass bar; m16-docked.cases runs the docked sizes at 1920x1080 (input-check.sh's SEMU_CHECK_SIZE);
+// system-matrix.cases runs Sonic Adventure for item 8's isolation; PLAN.md M16 records the round and its open Deck steps.
+
+import Library.FileSystem;
+import Library.Platform;
+import Library.Process;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+import ./deck_harness.btrc;
+
+class M16ReviewSpecContract {
+    class void planned(Contract contract, string script, string path, string name) {  // input-check.sh plans every case of PATH
+        ExecResult planned = DeckHarnessShell.run(script, ["--plan", path]);
+        contract.expect(planned.ok() && !planned.stdout().contains("not run"), "input-check.sh --plan " + name + " accepts every case: " + planned.stderr());
+    }
+
+    class void cases(Contract contract, string project) {
+        string script = PathTools.join(project, "tests/deck/input-check.sh");
+        string checks = PathTools.join(project, "tests/deck/m16-check.cases");
+        string docked = PathTools.join(project, "tests/deck/m16-docked.cases");
+        M16ReviewSpecContract.planned(contract, script, checks, "m16-check.cases");
+        M16ReviewSpecContract.planned(contract, script, docked, "m16-docked.cases");
+        string text = FileSystem.readText(checks);
+        for line in ["n3ds azahar - 50 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f key:ctrl+shift+f -- Legend of Zelda, The - Ocarina of Time 3D*.3ds",
+                     "nds retroarch melonds 40 key:ctrl+shift+n key:ctrl+shift+d tap:0.5,0.5 -- Legend of Zelda, The - Phantom Hourglass*.zip",
+                     "n3ds azahar - 50 key:ctrl+shift+n key:ctrl+shift+d tap:0.5,0.5 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds",
+                     "gc dolphin - 50 key:ctrl+shift+n key:ctrl+shift+r,ctrl+shift+r -- Legend of Zelda, The - The Wind Waker (USA).rvz",
+                     "wii dolphin - 60 move:0.5,0.5 move:0.2,0.8 -- Mario Kart Wii*.wbfs",
+                     "nds melonds - 40 move:0.5,0.75 tap:0.5,0.75 -- Legend of Zelda, The - Phantom Hourglass*.zip",
+                     "dreamcast flycast - 90 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd",
+                     "ps2 pcsx2 - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Def Jam - Fight for NY (USA).iso",
+                     "gc dolphin - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Legend of Zelda, The - The Wind Waker (USA).rvz",
+                     "wii dolphin - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- New Super Mario Bros. Wii*.wbfs"] {
+            contract.contains(text, "\n" + line + "\n", "m16-check.cases runs " + line.substring(0, line.indexOf(" --")));
+        }
+        for label in ["# F5. ", "# S5. ", "# S6. ", "# S7. ", "# C4. ", "# C5. ", "# D7. ", "# D8. ", "# D9. ", "# D10. "] { contract.contains(text, "\n" + label, "each review case says what its shots must show: " + label.trim()); }
+        contract.expect(text.contains("longest gap under 25 ms") && !text.contains("under 34 ms") && text.contains("at least 59.8 per second") && !text.contains("700x525"),
+            "a dropped frame fails: the rate bar is 59.8 per second and a gap under 25 ms (one and a half frames), and the TV's non-integer bezel names the picture the renderer draws");
+        contract.contains(text, "and the composition's GPU time at most 4 ms mean", "the GDV cases state the bar that moves a 480-line console's default");
+        string dockedText = FileSystem.readText(docked);
+        for start in ["psx retroarch mednafen_psx 45 key:ctrl+shift+f", "ps2 pcsx2 - 60 key:ctrl+shift+f", "nes retroarch mesen 20 key:ctrl+shift+f", "wiiu cemu - 60 key:ctrl+shift+f"] {
+            contract.contains(dockedText, "\n" + start, "m16-docked.cases runs " + start.substring(0, start.indexOf(" ")) + " at 1920x1080");
+        }
+        contract.contains(dockedText, "SEMU_CHECK_SIZE=1920x1080 input-check.sh", "and says how to run it docked");
+        string matrix = FileSystem.readText(PathTools.join(project, "tests/deck/system-matrix.cases"));
+        for line in ["dreamcast flycast - 30 60 90 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd", "dreamcast retroarch flycast 30 60 90 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd"] {
+            contract.contains(matrix, "\n" + line + "\n", "system-matrix.cases measures item 8 on " + line.substring(0, line.indexOf(" 30")));
+        }
+        contract.expect(matrix.contains("SEMU_MATRIX_SETTINGS='{\"visual\":{\"crt_shaders\":false}}'") && matrix.contains("SEMU_MATRIX_SETTINGS='{\"visual\":{\"bezels\":false,\"crt_shaders\":false}}'") && matrix.contains("SEMU_MATRIX_LAUNCH_ARGS='--project TRIAL'"),
+            "and writes down the isolation runs: the shader off, both off, and Semu's renderer not loaded");
+        contract.contains(FileSystem.readText(PathTools.join(project, "tests/deck/system-matrix.sh")), "\"$core_argument\" \"${SEMU_MATRIX_LAUNCH_ARGS:-}\"", "system-matrix.sh launches a trial config tree when asked");
+    }
+
+    class void tools(Contract contract, string project) {  // the harness and the visual tools the round's checks run on
+        string injector = FileSystem.readText(PathTools.join(project, "tests/deck/inject.sh"));
+        string check = FileSystem.readText(PathTools.join(project, "tests/deck/input-check.sh"));
+        contract.expect(injector.contains("[0-9]*x[0-9]*) echo \"0 0 ${SEMU_INJECT_SCREEN%x*} ${SEMU_INJECT_SCREEN#*x} ${SEMU_INJECT_SCREEN%x*} ${SEMU_INJECT_SCREEN#*x} screen\"; return 0 ;;")
+            && check.contains("SEMU_INJECT_EVIDENCE_FROM=\"$from\" SEMU_INJECT_SCREEN=\"$size\""),
+            "a move or tap on an emulator Semu does not compose (standalone melonDS, C5) lands at fractions of the whole screen the case's gamescope draws, docked or not, instead of being skipped");
+        string gallery = FileSystem.readText(PathTools.join(project, "tests/visual/gallery.sh"));
+        contract.expect(gallery.contains("states=\"${GALLERY_STATES:-game bezel game_fractional bezel_fractional}\"") && gallery.contains("white \"$screen\" \"$state\"")
+            && gallery.contains("canvas=\"$(grep -a -o 'bezelrect ") && gallery.contains("expected \"$package\" \"$screen\" \"$height\" \"$canvas\" \"$aspect\"") && !gallery.contains("rm -rf"),
+            "the gallery measures the flat card in each of the four Fit states on the canvas the renderer placed (never a re-derived contain or cover), and leaves its scratch behind");
+        contract.expect(gallery.contains("whole=\"\"; [ \"$count\" = 2 ] && case \"$state\" in game|bezel) whole=\"$native\" ;; esac") && gallery.contains("step = int(held * 1.01); if (step < 1) step = held >= 0.5 ? 1 : 0")
+            && gallery.contains("-bordercolor black -border 1 -trim"),
+            "and it expects a DS or 3DS shell's screen in an integer state at its own whole step centred on its rectangle (RendererDualShell.secondStep), and measures a picture that covers the whole screen (the Wii's 16:9 TV at 4K)");
+        contract.lacks(FileSystem.readText(PathTools.join(project, "tests/visual/edge-seam.sh")), "rm -rf", "edge-seam.sh leaves its scratch behind, so a track can run it under the no-deletion rule");
+    }
+
+    class void plan(Contract contract, string project) {
+        string text = FileSystem.readText(PathTools.join(project, "PLAN.md"));
+        int start = Strings.find(text, "### M16.", 0);
+        int end = start < 0 ? -1 : Strings.find(text, "\n## ", start);
+        string section = start < 0 ? "" : text.substring(start, (end < 0 ? text.len() : end) - start);
+        for needle in ["\n- Review round (2026-10-06, the M16 review): ", "  - Item 8 for the owner, in plain words: ", "  - Item 8's decision table: ",
+                       "`semu-deck-cli steam input` with Steam stopped", "`tests/deck/m16-docked.cases`", "pointer Semu draws (DS, 3DS) is a crosshair"] {
+            contract.contains(section, needle, "PLAN.md M16 records the review round");
+        }
+        int status = text.indexOf("\n## Status\n");
+        string live = status > 0 ? text.substring(status, text.len() - status) : "";
+        for needle in ["\n- M16 items 1 and 6 (crosshair, the Wii's controller): ", "\n- M16 review round (2026-10-06): ", "\n- M16 release for the Deck run: "] {
+            contract.contains(live, needle, "the live Status block carries the round");
+        }
+    }
+
+    class void run(Contract contract) {
+        string project = Environment.get("SEMU_PROJECT", FileSystem.currentDirectory());
+        M16ReviewSpecContract.cases(contract, project);
+        M16ReviewSpecContract.tools(contract, project);
+        M16ReviewSpecContract.plan(contract, project);
+    }
+}

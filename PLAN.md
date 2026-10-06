@@ -2190,7 +2190,8 @@ Status: observed on the Deck 2026-10-05 (release bdabd01), off-screen, every ite
 The owner played the M15 release (3682cb6) in Game Mode and reported (verbatim where quoted):
 
 1. **Pointer** "the mouse pointers in the systems with it should move to a crosshairs". Done when every
-   pointer Semu shows (DS, 3DS, Wii) is a crosshair, with no second cursor beside it.
+   pointer Semu draws (DS, 3DS) is a crosshair, with no second cursor beside it; the Wii keeps the game's own
+   pointer (restated in the review round: Semu never drew one there, see the ruling under items 1 and 6).
 2. **Rendering scale** "should be available through the radial / settings". Done when each system whose
    emulator can render above native offers a render-scale choice in the settings radial and the menu,
    saved per system, applied live or through Restart Game, with the picture still placed correctly.
@@ -2352,15 +2353,33 @@ Status: started 2026-10-06.
     - Defaults kept where they were one of the four: handhelds (gb, gbc, gba, psp) integer game, the DS and 3DS
       integer bezel. The TVs' fit (the nearest whole step whose opening stayed on screen) was not; the nearest
       is integer bezel, which on the Deck draws the same step for all nine TV systems (PS1, NES 2x; SNES, Genesis
-      2x of 224; N64 626x474; PS2, GameCube, Wii, Dreamcast 1x). At 1920x1080 the same except the PS2: fit drew
-      2x with the TV cut by the screen, integer bezel draws 1x with the whole TV, integer game still 2x. The global
-      default is `bezel`, and a saved `fit` reads as integer bezel.
+      2x of 224; N64 626x474; PS2, GameCube, Wii, Dreamcast 1x). At 1920x1080 twelve of the eighteen TV cells
+      draw the retired fit's step and six draw one step less (corrected in the review round; this line said only
+      the PS2): the NES on both TVs, 3x (960x720) to 2x (640x480); the speakers TV of the PS1, 3x to 2x
+      (640x480), and of the N64, 939x711 to 626x474; the PS2 on both TVs, 2x (1195x896, the TV cut) to 1x
+      (597x448). Why: the retired fit kept only the opening on screen. At its step, with the picture centred down
+      the screen (the owner's M15 ruling), the NES set's stand ends 59 px below the screen (5.5% of the set's 1076
+      rows; the black set 60 px), the speakers set's 34 px for the PS1 (3.3%) and 27 px for the N64 (2.6%), and
+      the PS2 sets are taller than the screen at 2x (1250 and 1292 rows); the PS1 and N64 sets hold 3x with 9 px
+      (0.9%) past the edge, inside the owner's 1% (worked out from each package's `shell` and picture rectangle,
+      the rule `RendererPlacement.bodyStays` applies). Decision, reversible, the review round: the TVs keep
+      integer bezel as their default at every screen size. It is the integer state whose own definition is the
+      whole TV on screen, 1% of it allowed past the edges, and a default is a state, not a size: a docked default
+      of integer game would show the set cut on a TV and whole on the Deck. Sliding a set up to hold the old step
+      would put the picture off centre (the NES about 30 px high at 1080p), the M15 item 7 complaint. Docked, one
+      Fit press from the default is non-integer game (1440x1080 for the 4:3 TVs) and integer game is three
+      presses on (the NES and the PS1 4x, 1280x960; the N64 1252x948; the PS2 2x, 1195x896, its old size).
+      Checked docked by `tests/deck/m16-docked.cases` K1-K4. The global default is `bezel`, and a saved `fit`
+      reads as integer bezel.
     - A TV's bezel is its set, never the room: the 13 Soqueroeu packages declare `shell` (the cabinet, its stand
       and, round the generic set, its speakers, measured from the art's edges against the wall and the table), so
       the bezel states keep the TV on screen round a picture centred down the screen, the room carrying on. That
       lets integer bezel show the PS1, N64, SNES and Genesis at 3x at 1080p (the whole room held them at 2x).
-    - The 3D-era opt-in is retired: a saved Fit: Screen (`game`) on wii, gc, ps2 or dreamcast now reads as integer
-      game (1x on the Deck), non-integer game (800 rows) one press on.
+    - The 3D-era opt-in is retired. A Fit: Screen saved before M16 (`game` on wii, gc, ps2 or dreamcast, or the
+      global `game` they inherited, which drew 1067x800 there) is read once as non-integer game (the review round,
+      `SemuSettingsMigration` in src/lib/settings.btrc), so the owner's Wii opens at the size it drew; the next save
+      writes the marker `visual.fit_states` with it, and a `game` saved after that is integer game. Docked, M15's
+      `game` drew 2x (1280x960) and the migrated state draws 1440x1080. Reversible: drop the two calls.
     - With no bezel to place (bezel off, the DS and 3DS layouts Semu works out, Wii U, Switch) Fit steps integer
       game and non-integer game; a computed DS layout's non-integer state is its whole-step layout grown as one to
       the screen's edge. It used to toast FIT: NO BEZEL there.
@@ -2374,14 +2393,16 @@ Status: started 2026-10-06.
       in, so no row or column doubles. A CRT shader chain renders at the lane's own size (librashader), so its
       scanlines and mask are drawn at the fractional size by the shader itself; the curved TV path keeps its
       four-tap supersampling.
-    - Kept: Steam's radial label "Fit (Bezel/Screen)" (labels are hidden; renaming it needs a Steam Input
-      republish). The M15 case files' Fit comments (FIT: BEZEL, FIT: SCREEN, FIT: NO BEZEL) predate M16.
+    - Steam's radial label is Fit (renamed in the review round from "Fit (Bezel/Screen)"; it reaches the radial
+      with the `semu-deck-cli steam input` that item 2's new slot needs anyway). The M15 case files' Fit comments
+      (FIT: BEZEL, FIT: SCREEN, FIT: NO BEZEL) predate M16; m16-check.cases F5 supersedes m15 case 12's.
   - Observed on the Mac render host, judged by eye: every system with a bezel (dreamcast, gb, gba, gbc, gc,
     genesis, n3ds, n64, nds, nes, ps2, psp, psx, snes, wii) in the four states at 1280x800 and 1920x1080, the DS and
     3DS vertical shells and computed layouts in the non-integer states, the bezel off in three states (wii, gba,
     psx, nds), Wii U in both, the speakers TVs; a no-shader zoom shows sharp-bilinear edges at 6.17x and hard edges
     at 5x. At 1280x800: PS1 integer game 960x720, integer bezel 640x480, non-integer game 1067x800, non-integer
-    bezel about 700x525; Wii 640x480, 640x480, 1067x800, about 700x525; GBA 1200x800 (5x), 480x320, 1200x800,
+    bezel 713x535 at 283,133 (corrected in the review round from "about 700x525"); Wii 640x480, 640x480, 1067x800,
+    713x535; GBA 1200x800 (5x), 480x320, 1200x800,
     about 546x364; GB 800x720, 160x144, 889x800, about 269x242; the DS shell 512x384 each in both integer states,
     about 605x454 and 568x426 in the non-integer ones. Bezel off on the Wii: 640x480 in the integer states,
     1067x800 in non-integer game. A live Fit press on the render host toasts FIT: INTEGER GAME, then FIT:
@@ -2513,7 +2534,12 @@ Status: started 2026-10-06.
     live, the PSP at 3x), each at full speed in the rate lines; the GPU load of the 2x cases in
     `tests/deck/system-matrix.sh`'s waits (lower an offered maximum where a system falls short); the melonDS
     core's OpenGL renderer at 2x through RetroArch (not drawn anywhere yet: neither the render host nor the VM ran the melonDS core above native); Azahar at 2x on a
-    title without a texture pack.
+    title without a texture pack (both written as cases S5 and S6 in the review round, Reset's live switch back as
+    S7). The radial's Render Scale slot reaches Game Mode only after the release is deployed and
+    `semu-deck-cli steam input` with Steam stopped installs the templates with the eleventh settings slot and
+    semu-scale.png (packaging/deck/install.sh prints the step; every case types the chord itself, so the cases pass
+    without it); then check by eye that the settings radial shows the zoom-in Render Scale slot between Aspect and
+    Controller Layout, and that Fit's binding reads Fit.
 - Item 3 (GB studio): done on the Mac, the Deck check open. The owner asked for the deletion, so the `studio`
   variant left `config/systems/gb/bezels.json`, and `config/bezels/gb-studio/` and its render
   `config/assets/bezels/gb/classic.png` (nothing else used it) were removed with git rm, with the render's
@@ -2617,6 +2643,17 @@ Status: started 2026-10-06.
     against the composite's 1.18, the Genesis's GDV 1.82. Judged by eye on the render host (Sonic Adventure, Def
     Jam, The Wind Waker, Super Mario Bros. 3 from ES-DE's media): GDV is brighter and smoother than Sharp CRT,
     whose dot mask grains at 1x; the PS2 values are soft, as he publishes them.
+    Corrected in the review round: that rule holds today for the 240-line consoles and the NES only. The four
+    480-line consoles still default to Sharp CRT, so the owner's own example (Dreamcast against Genesis) still
+    differs and item 9 stays open until `tests/deck/m16-check.cases` D7-D10 measure their `gdv` on the Deck; the
+    default moves where a console meets the bar (in integer bezel and non-integer game, every rate line at least
+    59.8 per second with the longest gap under 25 ms, and the composition's GPU time at most 4 ms mean), else
+    Sharp CRT stays and GDV-NTSC is one Next Shader away. The plain answer to the owner: yes, GDV-NTSC is the right
+    family for the Dreamcast too, but on the Mac its 640-wide NTSC passes cost three times Sharp CRT's GPU time,
+    and the Dreamcast is already the system reported slow, so it moves only once the Deck shows it holds 60.
+    6562dd9's title ("One shader rule for every system") overstated what it changed. The toasts now name each
+    preset whole (SHADER: SHARP CRT (EASYMODE), SHADER: GDV-NTSC (DREAMCAST)), so pressing Next Shader shows
+    which one runs.
   - Item 9, the scanlines: guest's shader draws one scanline per `intres` source lines. The renderer now sets
     intres for each lane's size (`src/renderer/renderer_scanline_pitch.btrc`, librashader's set_param when a
     chain is built), so every scanline spans whole output rows: one per line at a whole step, and at a
@@ -2626,7 +2663,134 @@ Status: started 2026-10-06.
     Max's GPU; the Deck's GPU has about a sixth of its compute, so the composition alone may take 7 to 9 ms of the
     16.7 ms frame Flycast shares with it. Open on the Deck: Sonic Adventure's rate lines, GPU load and threads
     with the TV and Sharp CRT, with the shader off and with both off (`system-matrix.sh` with
-    SEMU_MATRIX_SETTINGS), and the 480-line consoles on `gdv`.
+    SEMU_MATRIX_SETTINGS), and the 480-line consoles on `gdv`. Item 8 is not done: no M16 build has reached the
+    Deck, so nothing about the 23 fps has been measured yet.
+  - Item 8 for the owner, in plain words: we do not know yet why Sonic Adventure runs at about 23 fps, and nothing
+    in this round has fixed it. Two things share the Deck's GPU each frame: Flycast drawing the game, and Semu
+    drawing the TV, the CRT shader and the reflections round it. On the Mac, Semu's part for the Dreamcast is about
+    a twelfth of a frame; scaled to the Deck's much smaller GPU it could be half of one, and with Flycast's own
+    drawing on top a frame can then take longer than the screen's 16.7 ms and wait for the next refresh, which
+    is how 60 becomes 30 or less (23 means most frames miss). The other suspects are
+    Flycast's own settings (the review found Semu's Flycast settings file wrote its renderer and widescreen keys
+    where Flycast never reads them, now fixed; they were defaults, so that alone changes no speed) and the SD card
+    (a disc read stalling a frame). The next Deck run measures each in turn.
+  - Item 8's decision table: run `tests/deck/system-matrix.cases`' two Sonic Adventure lines (Flycast standalone,
+    the owner's route, and the RetroArch Flycast core) four ways, as the case file's comment writes them: the
+    defaults; `SEMU_MATRIX_SETTINGS='{"visual":{"crt_shaders":false}}'`; `'{"visual":{"bezels":false,
+    "crt_shaders":false}}'`; and `SEMU_MATRIX_LAUNCH_ARGS='--project TRIAL'` with a copied config tree whose
+    Flycast has render_preload false and rend.ShowFPS = yes (Semu's renderer not loaded, Flycast's own counter in
+    the shots). Then, with m16-check.cases D3 (rate lines at least 59.8 per second, longest gap under 25 ms):
+    full speed only with Semu's composition off, or GPU busy near 100% with it on: make the Dreamcast's default
+    lighter (Sharp CRT off, or a lighter TV), measured again; full speed without the renderer but not with the
+    bare renderer (both off): the hook's per-frame copy is the cost (renderer_compositor's extraction), profile it;
+    slow even without the renderer: Flycast itself, try its rend.ThreadedRendering, rend.DelayFrameSwapping and
+    pvr.AutoSkipFrame in [config] (the keys Flycast reads, flycast_keys.btrc) and compare the RetroArch core; one
+    thread at 100% (the four busiest threads): the SH4 or the PVR thread is the limit, an emulator setting again;
+    the SD read rate high during the stalls: the CHD's reads.
+
+- Review round (2026-10-06, the M16 review): the reviewers' 30 findings on the five tracks, each checked by hand
+  (on the Mac render host, in the source, at the pinned upstream), fixed in gated commits whose contracts fail
+  under mutation (each mutation on a copy of the tree, restored with cp and checked with cmp), or answered below.
+  This round was read-only on the Deck: the release, its install and the Deck runs belong to the Deck chain
+  running beside it (items 4 and 8's measurements, item 9's shader defaults and Flycast's speed settings
+  included), so every Deck check below stays open.
+  - Renderer. A 16:9 picture on a 4:3 TV (the speakers TVs, the generic sets) drew below 1x in integer bezel (the
+    Wii's 480 lines at 682x384 on the Deck), an "integer" state downsampled, identical to non-integer bezel:
+    `RendererPlacement.wholeStep` now keeps 1x with the set cut by the screen while the picture fits the screen
+    at 1x (853x480, what 3682cb6 drew), the editor's port too; only non-integer bezel shows the whole set there
+    (tv_room.btrc: 32 wide cells on the GameCube, Wii, PS2 and Dreamcast TVs at both sizes). The render scale's
+    game-phase lines had no contract: `RendererRenderScaling.apply` (a live switch, then the division back to
+    native) is one GL-free call before the crop, and `keeps`/`picture` choose the kept picture for the extraction
+    and every unshaded binding (render_scale_wiring.btrc; the reviewers' four surviving mutations, the division
+    back to native, the live switch, the kept picture's binding and the capture branch, each fail it now, the last
+    two rerun on a copy of the tree this round). Rounding: a bare picture keeps its unrounded size with its corner rounded as a bezel's whole
+    corner is, and a framed picture is fitted on the canvas with only its edges rounded (`fitInside`), so the bezel
+    off sits exactly where the bezel on does (the Genesis 896 wide at 3x, was 897; non-integer pictures at x 107
+    and 196, were 106 and 195) and the PSP shell's non-integer game covers all 1280 columns (it drew 1279, its LCD
+    surround in the last). Swept before and after on the render host (the render host of af0470d against this
+    round's, every system's every bezel variant and the bezel off, the Wii's TV on a 16:9 card too, in the four
+    states at 1280x800 and 1920x1080, shader off, 424 cells): 50 pictures moved, every one by a pixel and only
+    where the old rounding put it, and no pixel changed in any other cell; no canvas moved. The bezel-off
+    pictures (34 cells: non-integer x 106 to 107, the Game Boys' 195 to 196 and the N64's 111 to 112; integer
+    897 to 896 wide on the Genesis and SNES at 1280x800, 1196 to 1195 at 1080p, the PS2's 1194 to 1195 at
+    1080p; the N64's 939x711 from 170,44 to 171,45), which now sit exactly where the same state draws them
+    with the bezel on in every single-screen system (the PSP's integer game excepted by design: its shell is
+    centred down the screen there, so the picture sits 31 px above the bare one); the TVs' non-integer bezel
+    pictures (14 cells), one column or row nearer their unrounded size (681 to 682 wide on the speakers sets at
+    1280x800, 963 to 962 on the PS1's TV at 1080p); the PSP shells' non-integer game (2 cells, 1279 to 1280).
+    The editor matches (editor-sync.sh, the four states at both sizes). Contract: picture_edges.btrc.
+  - Settings. A Fit: Screen saved before M16 on the four 480-line consoles is read as non-integer game once (item
+    7's record above), fit_migration.btrc. Labels: every bezel, shader and output label fits its toast whole (the
+    Dreamcast's read "SHADER: SHARP CRT (EASYMODE + H"; toast_labels.btrc); Steam's Fit label is Fit; the radial,
+    menu, README, action ABI, cursor policy, shader and Azahar cursor docs name what the code does.
+  - Flycast. Semu's emu.cfg wrote `[rend]` and `[Dreamcast]` blocks Flycast 2.7 never reads (every option is a
+    dotted key in `[config]`, option.h:107 and 414, option.cpp:68-127 at 5aa091fd), so the OpenGL pin was only
+    Flycast's default and `WidescreenGameHacks = yes` never applied: now `[config] pvr.rend = 0`, `rend.*` and
+    `Dreamcast.*`, the widescreen cheats written as no (the 4:3 picture the owner plays; yes would draw an
+    anamorphic 16:9 picture in the TV), the dead `[input] enable_x11_keyboard` gone, and flycast_keys.btrc checks
+    every written key against the pin's declared options (the profile's `upstream_keys`).
+  - Dolphin's typed keys. Connect Wii Remote 3 and 4 sat on Alt+F1 and Alt+F2 (KDE Plasma's launcher and KRunner,
+    GNOME's overview and Run a Command), and GNOME also claims Alt+F5 to F8 (Next Profile) and Alt+F10 (Decrease IR),
+    so on a desktop those presses never reached Dolphin. Now Next Profile 1-4 Alt+Insert, Alt+Home, Alt+Delete,
+    Alt+End; the render scale Alt+Prior and Alt+Next (Page Up and Down); Connect 1-4 Alt+F11, Alt+F12, Alt+F9,
+    Alt+Pause (names as Dolphin's XInput2 reads them, XInput2.cpp:441-461 at c77bbaa); the chord contract refuses a
+    typed key any default KDE Plasma or GNOME shortcut claims. Game Mode intercepted none of the old ones.
+  - Tools. gallery.sh's flat-card check re-derived the retired fit's contain or cover and failed 34 cells; it now
+    reads where the renderer placed the canvas (its debug line's bezelrect) and checks the package's picture
+    rectangle on it, in each of the four Fit states (GALLERY_STATES narrows them), a DS or 3DS shell's screen in an
+    integer state at its own whole step centred on its rectangle as RendererDualShell draws it (the 3DS shell's
+    touch screen 1x, 320x240, round a 302x227 rectangle at 1280x800; 2x, 640x480, in a 907x680 one at 4K), and a
+    picture that covers the whole screen (the Wii's 16:9 TV at 4K) measured through a 1-px border. On the render
+    host at 4d1d246 with this round's tools: 272 checks at 1280x800 and 3840x2160, none failing, the worst edge
+    2 px (the first run's five failures were these two gaps in the check, not in the renderer); gallery.sh and
+    edge-seam.sh leave their scratch behind instead of an rm trap; tests/visual/reflection-audit.tsv is
+    regenerated for the four Fit states (on the render host at 4d1d246, 1280x800 and 1920x1080: 308 rows, none
+    failing; 240 cells mirror wherever a package declares one, the 64 computed-layout cells and the 4 bezel-less
+    rows none), and audit_packages.btrc now wants every variant's rows in all four at both sizes; input-check.sh takes SEMU_CHECK_SIZE (a docked 1920x1080 gamescope; inject.sh already
+    read the frame's size from the receipt) and hands the size to inject.sh, whose move and tap on an emulator Semu
+    does not compose (standalone melonDS) now land at fractions of the whole screen instead of being skipped;
+    system-matrix.sh takes SEMU_MATRIX_LAUNCH_ARGS (a trial config tree).
+  - Deck cases, `tests/deck/m16-check.cases`: F1 and F2 name the TVs' non-integer bezel as the renderer draws it;
+    F3's second press leaves integer bezel, so it grows the picture (no SAME), and a bezel-off press shows SAME; F5
+    runs Fit through the Vulkan layer (Azahar) with taps; S5 to S7 the melonDS core's OpenGL renderer at 2x, Azahar
+    at 2x and Reset's live scale back on Dolphin; C4 the Wii's single pointer; C5 standalone melonDS's own arrow
+    (no Semu crosshair, the ruling below); D1 and D3 fail a dropped frame (at
+    least 59.8 per second, longest gap under 25 ms: one missed frame at 59.94 Hz logs 33 ms, which the old 34 ms
+    bar passed) and D3 expects no pitch line on Sharp CRT; D7 to D10 measure GDV-NTSC on the four 480-line
+    consoles with the bar that moves their default. `tests/deck/m16-docked.cases` K1 to K4 run the docked sizes;
+    `tests/deck/system-matrix.cases` runs Sonic Adventure for item 8's decision table. m16_review.btrc keeps them.
+  - Answered, not changed:
+    - The docked TVs a step smaller than release 3682cb6 (the NES on both TVs, the PS1's and N64's speakers TVs,
+      the PS2 on both; item 5's record above has the sizes and the overflow): kept on integer bezel, decided per
+      the owner's four states and the 1% rule. The retired fit's step left 2.6% (the N64 speakers set) to 16%
+      (the PS2 speakers set) of the set past the screen edge, so no state of the four draws it: integer bezel is
+      the whole TV within 1%, integer game the largest whole picture (bigger still, the TV cut). Sliding the set
+      up to hold the old step would put the picture off centre, the complaint of M15 item 7. The owner can rule a
+      docked TV onto integer game; m16-docked.cases shows both.
+    - Item 1's other pointers: the Switch (Ryujinx) and Wii U (Cemu) show their emulator's own arrow while the
+      trackpad moves (Ryujinx hides it when idle, hide_cursor 1), and standalone melonDS (offered for the DS on
+      Linux, not composed by Semu) its own arrow; Semu draws no pointer there, since none of them hands Semu its
+      pointer as Azahar's touch patch does. Decision, reversible: they keep the emulator's arrow for now (a touch
+      screen needs a visible aim); a crosshair there needs the Vulkan layer to read the X pointer, or a Semu cursor
+      theme on XCURSOR_PATH, open. So: DS and 3DS a crosshair, the Wii the game's own pointer (m16-check.cases
+      C4), Switch, Wii U and standalone melonDS the emulator's arrow (C5 shows melonDS's).
+    - Docked, the render scale's offered list is the target's (visual.display 1280x800), not the live screen:
+      the 3DS and Dreamcast cores and the PSP core's 3x stay withheld on a TV. Reversible decision; reading the
+      live display at launch is the route.
+    - SemuComposedScale (a texture pack's render scale) treats the two non-integer states as the integer step
+      below and counts a TV's body as if centred: approximate for TV rooms, logged.
+    - The renderer's intres (item 9's scanline pitch) overrides the GDV wrappers' static intres 1 on every guest
+      chain, so a PS1 or N64 480-line mode now draws 480 scanlines at a whole step: a reversal of M14's ruling of
+      240 scanlines for those modes, logged in the wrappers' docs (config/assets/shaders.json); reversible by
+      dropping the renderer's set_param.
+    - No M16 build has reached the Deck: building and installing a release is the Deck chain's step, and this
+      round was read-only on the Deck.
+  - Open on the Deck, in order: build and install a release of origin/main at or after this round
+    (tests/deck/build-release.sh, deploy.sh install-delta, `semu-deck-cli prepare --target steam-deck`), then
+    `semu-deck-cli steam input` with Steam stopped; boot-capture.cases before and after; m16-check.cases (F1-F5,
+    S1-S7, C1-C5, T1-T5, G1, D1-D10); `SEMU_CHECK_SIZE=1920x1080` m16-docked.cases; system-matrix.cases' Sonic
+    Adventure lines the four ways; read-only, the owner's semu.json: a Wii saved on `game` launches in
+    non-integer game and gains `visual.fit_states` with the next save.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
@@ -3973,8 +4137,11 @@ Update this block whenever a milestone criterion changes state.
   (every bezel system in the four states at 1280x800 and 1920x1080, judged by eye) and in the editor; contract
   fit_states.btrc. Fit cycles integer game, integer bezel, non-integer game and non-integer bezel; with no bezel
   it steps the two game states, so turning the bezel off never shrinks the picture (item 7's cause: the bezel-off
-  path used a separate integer switch while the Wii's Fit: Screen filled fractionally). Open on the Deck:
-  `tests/deck/m16-check.cases` (Fit cases) F1-F4 off-screen, then by eye in Game Mode the CRT look and a
+  path used a separate integer switch while the Wii's Fit: Screen filled fractionally). The TVs keep integer bezel
+  as their default at every size (the review round's reversible decision: docked, the NES, the PS1's and N64's
+  speakers sets and the PS2 draw a step under the retired fit, whose stand ran 2.6-16% past the edge, outside
+  the owner's 1%). Open on the Deck: `tests/deck/m16-check.cases` (Fit cases) F1-F5 off-screen,
+  `SEMU_CHECK_SIZE=1920x1080` `tests/deck/m16-docked.cases` K1-K4, then by eye in Game Mode the CRT look and a
   scrolling scene at the non-integer sizes.
 - M16 item 2 (render scale): built 2026-10-06 (c83689f, 8a9a049) and observed on the Mac render host (frame and
   window producers at 1x, 2x and 3x, judged by eye) and in the podman VM (Super Mario 64 on GLideN64 and Def Jam
@@ -3982,7 +4149,9 @@ Update this block whenever a milestone criterion changes state.
   render_scale.btrc, 19 mutations killed. Scale (settings radial, menu SCALE row, SEMU SETTINGS) steps each
   system's declared scales, saved per system; Dolphin applies it live, the rest at Restart Game; the picture keeps
   its native placement. Open on the Deck: `tests/deck/m16-check.cases` S1-S4 and `radial-check.cases` case 18
-  (pictures, receipts and full-speed rate lines at 2x), then the GPU load per system.
+  (pictures, receipts and full-speed rate lines at 2x) and the review round's S5-S7, then the GPU load per system; the
+  Render Scale slot reaches the radial only after the release is deployed and `semu-deck-cli steam input` runs with
+  Steam stopped (the eleventh settings slot and semu-scale.png).
 - M16 items 3 and 10 (the GB studio bezel deleted; TV cutout: the lip stands in the room's night light with no
   lit rim, and the curved picture edge blends over one device pixel toward a mirror that no longer snaps on at
   pixel centres): done on the Mac render host, all 19 TV variants at 1280x800 and 1920x1080 in every Fit state,
@@ -3992,10 +4161,34 @@ Update this block whenever a milestone criterion changes state.
 - M16 items 4, 8 and 9 (boot size, Dreamcast speed, shaders per system): built 2026-10-06 (1ba2de8, 6562dd9,
   11c5b12) and observed on the Mac render host and in the podman VM; contracts boot_resize.btrc, crt_gdv.btrc and
   crt_rule.btrc. Item 4's cause is Dolphin's late full-screen switch over an inner GL window sized once at start
-  (patched); item 9's rule is Retro Crisis's GDV-NTSC on every TV console (the NES moved; the 480-line four offer
-  it as `gdv` until measured), LCD on handhelds, none on HD consoles, with CRT scanlines on whole output rows at
-  every size. Open on the Deck (it did not answer ssh from 00:55): `tests/deck/m16-check.cases` (deck cases D1-D6),
-  `tests/deck/boot-capture.cases` before and after the release of 11c5b12, and Sonic Adventure's rate lines.
+  (patched); item 9's rule, Retro Crisis's GDV-NTSC on a CRT television console, holds for the 240-line consoles
+  and the NES only (corrected in the review round: the 480-line four keep Sharp CRT, `gdv` one press away, so item
+  9 stays open until measured), LCD on handhelds, none on HD consoles, with CRT scanlines on whole output rows at
+  every size; item 8 is open and its cause unknown. Open on the Deck (it did not answer ssh from 00:55):
+  `tests/deck/m16-check.cases` (deck cases D1-D6) and the review's D7-D10 (GDV-NTSC on the 480-line four),
+  `tests/deck/boot-capture.cases` before and after the release, and Sonic Adventure four ways
+  (`tests/deck/system-matrix.cases`, PLAN M16 item 8's decision table).
+- M16 items 1 and 6 (crosshair, the Wii's controller): built 2026-10-06 (51bcddb, 47c1303) and observed on the Mac
+  render host and in the podman VM (RetroArch's DS and 3DS cores, standalone Azahar, Dolphin with Mario Kart Wii);
+  contracts right_trackpad, standalone_cursor, controller_layouts, players, emulator_runtime, radial_render. DS and
+  3DS show Semu's crosshair, the Wii the game's own pointer, Switch, Wii U and standalone melonDS their emulator's
+  arrow (the review round's reversible ruling); every Wii Remote layout, GameCube included, switches live through
+  Dolphin's own keys, which the review round moved off desktop shortcuts. Open on the Deck:
+  `tests/deck/m16-check.cases` C1-C5 and radial-check.cases 3, 4 and 16.
+- M16 review round (2026-10-06): 30 findings checked; fixed in ca99076 and the commits after it (integer Fit never
+  below 1x while the picture fits, the render scale's wiring contracted, pictures fitted before they are rounded,
+  a pre-M16 Fit: Screen read as it drew, whole toasts and a Fit label, Flycast's keys where Flycast reads them,
+  Dolphin's typed keys off desktop shortcuts, the gallery measuring the placed canvas in the four states, the
+  reflection audit for the four states, the Deck cases and a docked harness); answered in PLAN M16's review block
+  (docked TV sizes, other pointers, the docked render-scale list). Items 4 and 8 have no Deck observation and item
+  9 is open for the 480-line four. Observed on the Mac render host (the rounding swept over 424 cells at both
+  sizes before and after, the editor matching in the four states at both sizes, the gallery's 272 flat-card
+  checks and the reflection audit's 308 rows in the four states passing); open on the Deck: everything in the
+  block's list, `tests/deck/m16-docked.cases` with SEMU_CHECK_SIZE=1920x1080 among it.
+- M16 release for the Deck run: none installed by the review round (read-only on the Deck; the Deck chain builds
+  and installs it); build it from origin/main at or after the commit that adds this line, which carries all ten
+  items, the review's fixes and every case file named above, then run `semu-deck-cli steam input` with Steam
+  stopped.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,
@@ -4016,7 +4209,8 @@ Update this block whenever a milestone criterion changes state.
 - Implementation 2026-09-23 (Mac, commits dd2d43b..aa75831): 2601 contract checks pass
   natively and in the darwin flake check with no skips; the real renderer runs offscreen on
   the Mac (`tests/visual/render_host.btrc`); the full gallery verifies 68 of 68 fixed screens
-  within 2 px at Deck and 4K; hot reload proven; no Python in the tree. Corrections to older
+  within 2 px at Deck and 4K (true then; after M16's four Fit states its expected() re-derived the retired fit and
+  failed 34 cells until the M16 review made it read the renderer's placed canvas); hot reload proven; no Python in the tree. Corrections to older
   lines: 29 packages on disk (26 plus 3 TV alternates, no Semu CRTs); build structure is 24 flakes and the
   root flake exposes aarch64-darwin for development outputs.
 - Build structure (2026-09-19 evening): 22 flakes, one per emulator (8),

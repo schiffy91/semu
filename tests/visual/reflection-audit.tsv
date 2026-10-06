@@ -1,237 +1,313 @@
-# M15 item 8 reflection audit: tests/visual/reflection-audit.sh on the render host at 1280x800 1920x1080, revision 9529a9c (src and config as committed there; the audit script as committed with this table), 2026-10-05, test card; mirror = the picture with REFLECT minus without.
+# M15 item 8 reflection audit: tests/visual/reflection-audit.sh on the render host at 1280x800 1920x1080, revision 4d1d246c, 2026-10-06, test card; mirror = the picture with REFLECT minus without.
 # expected: mirror when the package declares one (no placement drops a DS or 3DS shell, M15 item 2); none for computed layouts. reach0/reach1: each screen's own mirror pixels over its picture's perimeter (about the band's mean width, px).
 # package: the package the renderer's debug line names, which must be the variant's own; a variant that declares an output (wii tv_wide) is drawn through the variant listing it under outputs (wii tv) on a 16:9 card, as a launch reaches it.
 # live: the path that hands the compositor its frame on the Deck; every path ends in semu_render_game_gl, which crops (N64) and extracts the reported content rect, so the mirror samples what the emulator presents there.
 system	variant	package	placement	size	declared	expected	changed_px	peak	reach0_px	reach1_px	render_host	live_path	live_evidence	verdict
-dreamcast	tv	tv-soqueroeu-dreamcast	fit	1280x800	0.4	mirror	18981	71	8.5	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
-dreamcast	tv	tv-soqueroeu-dreamcast	bezel	1280x800	0.4	mirror	18981	71	8.5	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
-dreamcast	tv	tv-soqueroeu-dreamcast	game	1280x800	0.4	mirror	27983	73	7.5	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
-dreamcast	speakers	tv-soqueroeu-generic	fit	1280x800	0.4	mirror	45312	84	20.2	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
-dreamcast	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	45312	84	20.2	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
-dreamcast	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	83842	83	22.5	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
-gb	dmg	gb-dmg-shell	fit	1280x800	0.4	mirror	2876	56	4.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gb	dmg	gb-dmg-shell	bezel	1280x800	0.4	mirror	1856	54	3.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+dreamcast	tv	tv-soqueroeu-dreamcast	game	1280x800	0.4	mirror	20554	84	9.2	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	tv	tv-soqueroeu-dreamcast	bezel	1280x800	0.4	mirror	20554	84	9.2	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	tv	tv-soqueroeu-dreamcast	game_fractional	1280x800	0.4	mirror	29831	85	8.0	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	tv	tv-soqueroeu-dreamcast	bezel_fractional	1280x800	0.4	mirror	26882	86	10.8	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	46805	91	20.9	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	46805	91	20.9	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	speakers	tv-soqueroeu-generic	game_fractional	1280x800	0.4	mirror	86229	91	23.1	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	speakers	tv-soqueroeu-generic	bezel_fractional	1280x800	0.4	mirror	52897	91	22.2	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
 gb	dmg	gb-dmg-shell	game	1280x800	0.4	mirror	52773	58	17.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gba	shell	gba-shell	fit	1280x800	0.4	mirror	10285	89	6.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gba	shell	gba-shell	bezel	1280x800	0.4	mirror	9383	90	5.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gb	dmg	gb-dmg-shell	bezel	1280x800	0.4	mirror	1856	54	3.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gb	dmg	gb-dmg-shell	game_fractional	1280x800	0.4	mirror	30400	57	9.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gb	dmg	gb-dmg-shell	bezel_fractional	1280x800	0.4	mirror	5771	57	5.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gba	shell	gba-shell	game	1280x800	0.4	mirror	21895	83	5.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gba	arctic	gba-arctic	fit	1280x800	0.4	mirror	10285	89	6.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gba	arctic	gba-arctic	bezel	1280x800	0.4	mirror	9383	90	5.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gba	shell	gba-shell	bezel	1280x800	0.4	mirror	9383	90	5.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gba	shell	gba-shell	game_fractional	1280x800	0.4	mirror	21895	83	5.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gba	shell	gba-shell	bezel_fractional	1280x800	0.4	mirror	10916	88	6.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gba	arctic	gba-arctic	game	1280x800	0.4	mirror	21895	83	5.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gbc	shell	gbc-shell	fit	1280x800	0.4	mirror	3552	94	5.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gbc	shell	gbc-shell	bezel	1280x800	0.4	mirror	2455	92	4.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gba	arctic	gba-arctic	bezel	1280x800	0.4	mirror	9383	90	5.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gba	arctic	gba-arctic	game_fractional	1280x800	0.4	mirror	21895	83	5.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gba	arctic	gba-arctic	bezel_fractional	1280x800	0.4	mirror	10916	88	6.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gbc	shell	gbc-shell	game	1280x800	0.4	mirror	62754	85	20.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gbc	berry	gbc-berry	fit	1280x800	0.4	mirror	3552	94	5.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gbc	berry	gbc-berry	bezel	1280x800	0.4	mirror	2455	92	4.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gbc	shell	gbc-shell	bezel	1280x800	0.4	mirror	2455	92	4.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gbc	shell	gbc-shell	game_fractional	1280x800	0.4	mirror	35898	86	10.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gbc	shell	gbc-shell	bezel_fractional	1280x800	0.4	mirror	7052	92	7.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gbc	berry	gbc-berry	game	1280x800	0.4	mirror	62754	85	20.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gc	tv	tv-soqueroeu-gc	fit	1280x800	0.4	mirror	30725	72	13.7	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
-gc	tv	tv-soqueroeu-gc	bezel	1280x800	0.4	mirror	30725	72	13.7	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
-gc	tv	tv-soqueroeu-gc	game	1280x800	0.4	mirror	61057	72	16.4	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
-gc	speakers	tv-soqueroeu-generic	fit	1280x800	0.4	mirror	45312	84	20.2	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
-gc	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	45312	84	20.2	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
-gc	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	83842	83	22.5	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
-genesis	tv	tv-soqueroeu-genesis	fit	1280x800	0.4	mirror	36664	90	17.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-genesis	tv	tv-soqueroeu-genesis	bezel	1280x800	0.4	mirror	36664	90	17.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-genesis	tv	tv-soqueroeu-genesis	game	1280x800	0.4	mirror	81657	90	26.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-genesis	speakers	tv-soqueroeu-generic	fit	1280x800	0.4	mirror	41045	84	19.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-genesis	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	41045	84	19.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-genesis	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	90858	84	29.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-n3ds	shell	n3ds-shell	fit	1280x800	0.4	mirror	38287	66	12.5	5.7	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	shell	n3ds-shell	bezel	1280x800	0.4	mirror	38287	66	12.5	5.7	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+gbc	berry	gbc-berry	bezel	1280x800	0.4	mirror	2455	92	4.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gbc	berry	gbc-berry	game_fractional	1280x800	0.4	mirror	35898	86	10.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gbc	berry	gbc-berry	bezel_fractional	1280x800	0.4	mirror	7052	92	7.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gc	tv	tv-soqueroeu-gc	game	1280x800	0.4	mirror	32679	86	14.6	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	tv	tv-soqueroeu-gc	bezel	1280x800	0.4	mirror	32679	86	14.6	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	tv	tv-soqueroeu-gc	game_fractional	1280x800	0.4	mirror	63981	86	17.1	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	tv	tv-soqueroeu-gc	bezel_fractional	1280x800	0.4	mirror	44624	86	17.2	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	46805	91	20.9	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	46805	91	20.9	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	speakers	tv-soqueroeu-generic	game_fractional	1280x800	0.4	mirror	86229	91	23.1	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	speakers	tv-soqueroeu-generic	bezel_fractional	1280x800	0.4	mirror	52897	91	22.2	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+genesis	tv	tv-soqueroeu-genesis	game	1280x800	0.4	mirror	83318	95	26.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	tv	tv-soqueroeu-genesis	bezel	1280x800	0.4	mirror	37743	95	18.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	tv	tv-soqueroeu-genesis	game_fractional	1280x800	0.4	mirror	67620	95	18.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	tv	tv-soqueroeu-genesis	bezel_fractional	1280x800	0.4	mirror	49232	95	20.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	93307	92	29.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	42627	92	20.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	speakers	tv-soqueroeu-generic	game_fractional	1280x800	0.4	mirror	89378	92	23.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	speakers	tv-soqueroeu-generic	bezel_fractional	1280x800	0.4	mirror	54623	92	22.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 n3ds	shell	n3ds-shell	game	1280x800	0.4	mirror	38287	66	12.5	5.7	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	main_right	dual-main-right	fit	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	main_right	dual-main-right	bezel	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	shell	n3ds-shell	bezel	1280x800	0.4	mirror	38287	66	12.5	5.7	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	shell	n3ds-shell	game_fractional	1280x800	0.4	mirror	35013	66	10.8	4.6	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	shell	n3ds-shell	bezel_fractional	1280x800	0.4	mirror	39173	66	12.6	6.2	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	main_right	dual-main-right	game	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	main_left	dual-main-left	fit	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	main_left	dual-main-left	bezel	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	main_right	dual-main-right	bezel	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	main_right	dual-main-right	game_fractional	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	main_right	dual-main-right	bezel_fractional	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	main_left	dual-main-left	game	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	side_by_side	dual-side-by-side	fit	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	side_by_side	dual-side-by-side	bezel	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	main_left	dual-main-left	bezel	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	main_left	dual-main-left	game_fractional	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	main_left	dual-main-left	bezel_fractional	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	side_by_side	dual-side-by-side	game	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	stacked	dual-stacked	fit	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	stacked	dual-stacked	bezel	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	side_by_side	dual-side-by-side	bezel	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	side_by_side	dual-side-by-side	game_fractional	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	side_by_side	dual-side-by-side	bezel_fractional	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	stacked	dual-stacked	game	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	vertical	n3ds-vertical-shell	fit	1280x800	0.4	mirror	11343	86	4.8	4.7	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	vertical	n3ds-vertical-shell	bezel	1280x800	0.4	mirror	11343	86	4.8	4.7	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	stacked	dual-stacked	bezel	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	stacked	dual-stacked	game_fractional	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	stacked	dual-stacked	bezel_fractional	1280x800	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	vertical	n3ds-vertical-shell	game	1280x800	0.4	mirror	11343	86	4.8	4.7	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n64	tv	tv-soqueroeu-n64	fit	1280x800	0.4	mirror	23698	84	10.8	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-n64	tv	tv-soqueroeu-n64	bezel	1280x800	0.4	mirror	23698	84	10.8	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-n64	tv	tv-soqueroeu-n64	game	1280x800	0.4	mirror	52570	84	15.9	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-n64	speakers	tv-soqueroeu-generic	fit	1280x800	0.4	mirror	46635	87	21.2	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-n64	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	46635	87	21.2	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-n64	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	107291	87	32.5	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-nds	shell	nds-shell	fit	1280x800	0.4	mirror	50801	74	14.0	14.3	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	shell	nds-shell	bezel	1280x800	0.4	mirror	50801	74	14.0	14.3	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+n3ds	vertical	n3ds-vertical-shell	bezel	1280x800	0.4	mirror	11343	86	4.8	4.7	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	vertical	n3ds-vertical-shell	game_fractional	1280x800	0.4	mirror	19759	70	5.0	5.8	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	vertical	n3ds-vertical-shell	bezel_fractional	1280x800	0.4	mirror	21508	73	6.5	6.8	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n64	tv	tv-soqueroeu-n64	game	1280x800	0.4	mirror	54543	94	16.5	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	tv	tv-soqueroeu-n64	bezel	1280x800	0.4	mirror	25058	93	11.4	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	tv	tv-soqueroeu-n64	game_fractional	1280x800	0.4	mirror	39414	94	10.6	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	tv	tv-soqueroeu-n64	bezel_fractional	1280x800	0.4	mirror	31121	94	12.7	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	109831	95	33.3	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	48421	94	22.0	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	speakers	tv-soqueroeu-generic	game_fractional	1280x800	0.4	mirror	94785	95	25.5	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	speakers	tv-soqueroeu-generic	bezel_fractional	1280x800	0.4	mirror	57026	94	24.0	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
 nds	shell	nds-shell	game	1280x800	0.4	mirror	50801	74	14.0	14.3	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	main_right	dual-main-right	fit	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	main_right	dual-main-right	bezel	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	shell	nds-shell	bezel	1280x800	0.4	mirror	50801	74	14.0	14.3	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	shell	nds-shell	game_fractional	1280x800	0.4	mirror	53969	75	12.7	12.8	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	shell	nds-shell	bezel_fractional	1280x800	0.4	mirror	62678	75	15.6	15.9	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	main_right	dual-main-right	game	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	main_left	dual-main-left	fit	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	main_left	dual-main-left	bezel	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	main_right	dual-main-right	bezel	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	main_right	dual-main-right	game_fractional	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	main_right	dual-main-right	bezel_fractional	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	main_left	dual-main-left	game	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	side_by_side	dual-side-by-side	fit	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	side_by_side	dual-side-by-side	bezel	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	main_left	dual-main-left	bezel	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	main_left	dual-main-left	game_fractional	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	main_left	dual-main-left	bezel_fractional	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	side_by_side	dual-side-by-side	game	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	stacked	dual-stacked	fit	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	stacked	dual-stacked	bezel	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	side_by_side	dual-side-by-side	bezel	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	side_by_side	dual-side-by-side	game_fractional	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	side_by_side	dual-side-by-side	bezel_fractional	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	stacked	dual-stacked	game	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	vertical	nds-vertical-shell	fit	1280x800	0.4	mirror	8840	84	4.9	4.9	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	vertical	nds-vertical-shell	bezel	1280x800	0.4	mirror	8840	84	4.9	4.9	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	stacked	dual-stacked	bezel	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	stacked	dual-stacked	game_fractional	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	stacked	dual-stacked	bezel_fractional	1280x800	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	vertical	nds-vertical-shell	game	1280x800	0.4	mirror	8840	84	4.9	4.9	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nes	tv	tv-soqueroeu-nes	fit	1280x800	0.4	mirror	48571	88	21.7	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nes	tv	tv-soqueroeu-nes	bezel	1280x800	0.4	mirror	48571	88	21.7	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nes	tv	tv-soqueroeu-nes	game	1280x800	0.4	mirror	108048	86	32.2	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nes	black	tv-soqueroeu-nes-black	fit	1280x800	0.4	mirror	48316	88	21.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nes	black	tv-soqueroeu-nes-black	bezel	1280x800	0.4	mirror	48316	88	21.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nes	black	tv-soqueroeu-nes-black	game	1280x800	0.4	mirror	107652	86	32.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-ps2	tv	tv-soqueroeu-ps2	fit	1280x800	0.4	mirror	32725	88	15.7	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
-ps2	tv	tv-soqueroeu-ps2	bezel	1280x800	0.4	mirror	32725	88	15.7	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
-ps2	tv	tv-soqueroeu-ps2	game	1280x800	0.4	mirror	68760	90	18.4	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
-ps2	speakers	tv-soqueroeu-generic	fit	1280x800	0.4	mirror	39658	83	19.0	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
-ps2	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	39658	83	19.0	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
-ps2	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	84266	83	22.6	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
-psp	e1000	psp-e1000	fit	1280x800	0.4	mirror	22356	81	11.3	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
-psp	e1000	psp-e1000	bezel	1280x800	0.4	mirror	13015	75	8.7	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+nds	vertical	nds-vertical-shell	bezel	1280x800	0.4	mirror	8840	84	4.9	4.9	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	vertical	nds-vertical-shell	game_fractional	1280x800	0.4	mirror	18401	74	5.7	5.8	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	vertical	nds-vertical-shell	bezel_fractional	1280x800	0.4	mirror	14740	76	5.9	6.3	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	tv	tv-soqueroeu-nes	game	1280x800	0.4	mirror	111995	97	33.3	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	tv	tv-soqueroeu-nes	bezel	1280x800	0.4	mirror	50469	97	22.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	tv	tv-soqueroeu-nes	game_fractional	1280x800	0.4	mirror	89019	97	23.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	tv	tv-soqueroeu-nes	bezel_fractional	1280x800	0.4	mirror	52389	97	22.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	black	tv-soqueroeu-nes-black	game	1280x800	0.4	mirror	111322	97	33.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	black	tv-soqueroeu-nes-black	bezel	1280x800	0.4	mirror	50300	97	22.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	black	tv-soqueroeu-nes-black	game_fractional	1280x800	0.4	mirror	89338	97	23.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	black	tv-soqueroeu-nes-black	bezel_fractional	1280x800	0.4	mirror	52067	97	22.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+ps2	tv	tv-soqueroeu-ps2	game	1280x800	0.4	mirror	33963	92	16.3	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	tv	tv-soqueroeu-ps2	bezel	1280x800	0.4	mirror	33963	92	16.3	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	tv	tv-soqueroeu-ps2	game_fractional	1280x800	0.4	mirror	70522	94	18.9	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	tv	tv-soqueroeu-ps2	bezel_fractional	1280x800	0.4	mirror	50705	94	19.9	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	41228	90	19.7	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	41228	90	19.7	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	speakers	tv-soqueroeu-generic	game_fractional	1280x800	0.4	mirror	86723	90	23.2	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	speakers	tv-soqueroeu-generic	bezel_fractional	1280x800	0.4	mirror	53210	91	22.3	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
 psp	e1000	psp-e1000	game	1280x800	0.4	mirror	53404	76	17.8	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
-psp	red	psp-red	fit	1280x800	0.4	mirror	22356	81	11.3	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
-psp	red	psp-red	bezel	1280x800	0.4	mirror	13015	75	8.7	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+psp	e1000	psp-e1000	bezel	1280x800	0.4	mirror	13015	75	8.7	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+psp	e1000	psp-e1000	game_fractional	1280x800	0.4	mirror	57500	77	14.3	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+psp	e1000	psp-e1000	bezel_fractional	1280x800	0.4	mirror	26971	80	12.6	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
 psp	red	psp-red	game	1280x800	0.4	mirror	53404	76	17.8	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
-psx	tv	tv-soqueroeu-psx	fit	1280x800	0.4	mirror	18918	80	8.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-psx	tv	tv-soqueroeu-psx	bezel	1280x800	0.4	mirror	18918	80	8.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-psx	tv	tv-soqueroeu-psx	game	1280x800	0.4	mirror	42014	81	12.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-psx	speakers	tv-soqueroeu-generic	fit	1280x800	0.4	mirror	46571	86	20.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-psx	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	46571	86	20.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-psx	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	103294	86	30.7	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-snes	tv	tv-soqueroeu-snes	fit	1280x800	0.4	mirror	31591	84	15.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-snes	tv	tv-soqueroeu-snes	bezel	1280x800	0.4	mirror	31591	84	15.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-snes	tv	tv-soqueroeu-snes	game	1280x800	0.4	mirror	69394	84	22.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-snes	purple	tv-soqueroeu-snes-purple	fit	1280x800	0.4	mirror	31209	84	14.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-snes	purple	tv-soqueroeu-snes-purple	bezel	1280x800	0.4	mirror	31209	84	14.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-snes	purple	tv-soqueroeu-snes-purple	game	1280x800	0.4	mirror	68601	83	21.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psp	red	psp-red	bezel	1280x800	0.4	mirror	13015	75	8.7	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+psp	red	psp-red	game_fractional	1280x800	0.4	mirror	57500	77	14.3	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+psp	red	psp-red	bezel_fractional	1280x800	0.4	mirror	26971	80	12.6	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+psx	tv	tv-soqueroeu-psx	game	1280x800	0.4	mirror	44193	91	13.2	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	tv	tv-soqueroeu-psx	bezel	1280x800	0.4	mirror	20143	91	9.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	tv	tv-soqueroeu-psx	game_fractional	1280x800	0.4	mirror	29390	92	7.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	tv	tv-soqueroeu-psx	bezel_fractional	1280x800	0.4	mirror	25570	91	10.2	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	105800	94	31.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	48128	94	21.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	speakers	tv-soqueroeu-generic	game_fractional	1280x800	0.4	mirror	87639	94	23.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	speakers	tv-soqueroeu-generic	bezel_fractional	1280x800	0.4	mirror	53866	93	22.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	tv	tv-soqueroeu-snes	game	1280x800	0.4	mirror	71208	92	22.7	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	tv	tv-soqueroeu-snes	bezel	1280x800	0.4	mirror	32825	92	15.7	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	tv	tv-soqueroeu-snes	game_fractional	1280x800	0.4	mirror	62308	90	16.7	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	tv	tv-soqueroeu-snes	bezel_fractional	1280x800	0.4	mirror	41764	90	17.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	purple	tv-soqueroeu-snes-purple	game	1280x800	0.4	mirror	70944	91	22.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	purple	tv-soqueroeu-snes-purple	bezel	1280x800	0.4	mirror	32685	91	15.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	purple	tv-soqueroeu-snes-purple	game_fractional	1280x800	0.4	mirror	62086	88	16.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	purple	tv-soqueroeu-snes-purple	bezel_fractional	1280x800	0.4	mirror	41508	90	17.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 switch	-	-	-	1280x800	0	none (no bezel declared)	0	0	-	-	none	ryujinx-vulkan-layer	-	ok
-wii	tv	tv-soqueroeu-wii	fit	1280x800	0.4	mirror	18325	78	8.2	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	tv	tv-soqueroeu-wii	bezel	1280x800	0.4	mirror	18325	78	8.2	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	tv	tv-soqueroeu-wii	game	1280x800	0.4	mirror	27367	78	7.3	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	tv_wide	tv-soqueroeu-wii-16x9	fit	1280x800	0.4	mirror	21464	78	8.1	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	tv_wide	tv-soqueroeu-wii-16x9	bezel	1280x800	0.4	mirror	21464	78	8.1	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	tv_wide	tv-soqueroeu-wii-16x9	game	1280x800	0.4	mirror	37771	79	9.4	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	speakers	tv-soqueroeu-generic	fit	1280x800	0.4	mirror	45312	84	20.2	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	45312	84	20.2	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	83842	83	22.5	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv	tv-soqueroeu-wii	game	1280x800	0.4	mirror	19650	87	8.8	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv	tv-soqueroeu-wii	bezel	1280x800	0.4	mirror	19650	87	8.8	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv	tv-soqueroeu-wii	game_fractional	1280x800	0.4	mirror	29004	88	7.8	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv	tv-soqueroeu-wii	bezel_fractional	1280x800	0.4	mirror	25147	89	10.1	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv_wide	tv-soqueroeu-wii-16x9	game	1280x800	0.4	mirror	22879	87	8.6	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv_wide	tv-soqueroeu-wii-16x9	bezel	1280x800	0.4	mirror	22879	87	8.6	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv_wide	tv-soqueroeu-wii-16x9	game_fractional	1280x800	0.4	mirror	39832	88	10.0	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv_wide	tv-soqueroeu-wii-16x9	bezel_fractional	1280x800	0.4	mirror	29980	90	10.0	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	46805	91	20.9	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	speakers	tv-soqueroeu-generic	bezel	1280x800	0.4	mirror	46805	91	20.9	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	speakers	tv-soqueroeu-generic	game_fractional	1280x800	0.4	mirror	86229	91	23.1	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	speakers	tv-soqueroeu-generic	bezel_fractional	1280x800	0.4	mirror	52897	91	22.2	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
 wiiu	-	-	-	1280x800	0	none (no bezel declared)	0	0	-	-	none	cemu-vulkan-layer	-	ok
-dreamcast	tv	tv-soqueroeu-dreamcast	fit	1920x1080	0.4	mirror	18981	71	8.5	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
-dreamcast	tv	tv-soqueroeu-dreamcast	bezel	1920x1080	0.4	mirror	18981	71	8.5	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
-dreamcast	tv	tv-soqueroeu-dreamcast	game	1920x1080	0.4	mirror	78872	71	17.6	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
-dreamcast	speakers	tv-soqueroeu-generic	fit	1920x1080	0.4	mirror	45312	84	20.2	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
-dreamcast	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	45312	84	20.2	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
-dreamcast	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	179083	83	40.0	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
-gb	dmg	gb-dmg-shell	fit	1920x1080	0.4	mirror	5796	56	6.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gb	dmg	gb-dmg-shell	bezel	1920x1080	0.4	mirror	8676	57	7.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+dreamcast	tv	tv-soqueroeu-dreamcast	game	1920x1080	0.4	mirror	82927	85	18.5	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	tv	tv-soqueroeu-dreamcast	bezel	1920x1080	0.4	mirror	20554	84	9.2	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	tv	tv-soqueroeu-dreamcast	game_fractional	1920x1080	0.4	mirror	54011	86	10.7	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	tv	tv-soqueroeu-dreamcast	bezel_fractional	1920x1080	0.4	mirror	47333	85	14.1	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	183935	89	41.1	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	46805	91	20.9	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	speakers	tv-soqueroeu-generic	game_fractional	1920x1080	0.4	mirror	156532	90	31.1	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
+dreamcast	speakers	tv-soqueroeu-generic	bezel_fractional	1920x1080	0.4	mirror	95962	91	29.8	-	mirror	flycast-gl-preload	same entry and compositor; Deck capture after deploy	ok
 gb	dmg	gb-dmg-shell	game	1920x1080	0.4	mirror	106263	57	25.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gba	shell	gba-shell	fit	1920x1080	0.4	mirror	23632	86	9.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gba	shell	gba-shell	bezel	1920x1080	0.4	mirror	21116	86	8.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gb	dmg	gb-dmg-shell	bezel	1920x1080	0.4	mirror	8676	57	7.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gb	dmg	gb-dmg-shell	game_fractional	1920x1080	0.4	mirror	54000	57	11.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gb	dmg	gb-dmg-shell	bezel_fractional	1920x1080	0.4	mirror	11248	57	8.2	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gba	shell	gba-shell	game	1920x1080	0.4	mirror	83566	83	17.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gba	arctic	gba-arctic	fit	1920x1080	0.4	mirror	23632	86	9.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gba	arctic	gba-arctic	bezel	1920x1080	0.4	mirror	21116	86	8.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gba	shell	gba-shell	bezel	1920x1080	0.4	mirror	21116	86	8.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gba	shell	gba-shell	game_fractional	1920x1080	0.4	mirror	41054	83	7.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gba	shell	gba-shell	bezel_fractional	1920x1080	0.4	mirror	26079	85	9.7	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gba	arctic	gba-arctic	game	1920x1080	0.4	mirror	83566	83	17.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gbc	shell	gbc-shell	fit	1920x1080	0.4	mirror	6579	92	6.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gbc	shell	gbc-shell	bezel	1920x1080	0.4	mirror	9800	93	8.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gba	arctic	gba-arctic	bezel	1920x1080	0.4	mirror	21116	86	8.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gba	arctic	gba-arctic	game_fractional	1920x1080	0.4	mirror	41054	83	7.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gba	arctic	gba-arctic	bezel_fractional	1920x1080	0.4	mirror	26079	85	9.7	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gbc	shell	gbc-shell	game	1920x1080	0.4	mirror	126040	86	29.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gbc	berry	gbc-berry	fit	1920x1080	0.4	mirror	6579	92	6.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gbc	berry	gbc-berry	bezel	1920x1080	0.4	mirror	9800	93	8.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gbc	shell	gbc-shell	bezel	1920x1080	0.4	mirror	9800	93	8.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gbc	shell	gbc-shell	game_fractional	1920x1080	0.4	mirror	65359	85	14.3	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gbc	shell	gbc-shell	bezel_fractional	1920x1080	0.4	mirror	13047	91	9.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gbc	berry	gbc-berry	game	1920x1080	0.4	mirror	126040	86	29.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gc	tv	tv-soqueroeu-gc	fit	1920x1080	0.4	mirror	30725	72	13.7	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
-gc	tv	tv-soqueroeu-gc	bezel	1920x1080	0.4	mirror	30725	72	13.7	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
-gc	tv	tv-soqueroeu-gc	game	1920x1080	0.4	mirror	125881	71	28.1	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
-gc	speakers	tv-soqueroeu-generic	fit	1920x1080	0.4	mirror	45312	84	20.2	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
-gc	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	45312	84	20.2	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
-gc	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	179083	83	40.0	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
-genesis	tv	tv-soqueroeu-genesis	fit	1920x1080	0.4	mirror	81657	90	26.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-genesis	tv	tv-soqueroeu-genesis	bezel	1920x1080	0.4	mirror	81657	90	26.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-genesis	tv	tv-soqueroeu-genesis	game	1920x1080	0.4	mirror	144650	90	34.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-genesis	speakers	tv-soqueroeu-generic	fit	1920x1080	0.4	mirror	90858	84	29.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-genesis	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	90858	84	29.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-genesis	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	161001	84	38.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-n3ds	shell	n3ds-shell	fit	1920x1080	0.4	mirror	141070	69	18.5	62.7	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	shell	n3ds-shell	bezel	1920x1080	0.4	mirror	141070	69	18.5	62.7	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+gbc	berry	gbc-berry	bezel	1920x1080	0.4	mirror	9800	93	8.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gbc	berry	gbc-berry	game_fractional	1920x1080	0.4	mirror	65359	85	14.3	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gbc	berry	gbc-berry	bezel_fractional	1920x1080	0.4	mirror	13047	91	9.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+gc	tv	tv-soqueroeu-gc	game	1920x1080	0.4	mirror	131441	85	29.3	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	tv	tv-soqueroeu-gc	bezel	1920x1080	0.4	mirror	32679	86	14.6	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	tv	tv-soqueroeu-gc	game_fractional	1920x1080	0.4	mirror	115784	86	23.0	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	tv	tv-soqueroeu-gc	bezel_fractional	1920x1080	0.4	mirror	80778	86	23.1	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	183935	89	41.1	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	46805	91	20.9	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	speakers	tv-soqueroeu-generic	game_fractional	1920x1080	0.4	mirror	156532	90	31.1	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+gc	speakers	tv-soqueroeu-generic	bezel_fractional	1920x1080	0.4	mirror	95962	91	29.8	-	mirror	dolphin-gl-preload	same entry and compositor; Deck capture after deploy	ok
+genesis	tv	tv-soqueroeu-genesis	game	1920x1080	0.4	mirror	147302	94	35.2	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	tv	tv-soqueroeu-genesis	bezel	1920x1080	0.4	mirror	83318	95	26.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	tv	tv-soqueroeu-genesis	game_fractional	1920x1080	0.4	mirror	123377	94	24.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	tv	tv-soqueroeu-genesis	bezel_fractional	1920x1080	0.4	mirror	88961	94	27.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	165061	91	39.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	93307	92	29.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	speakers	tv-soqueroeu-generic	game_fractional	1920x1080	0.4	mirror	161893	91	32.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+genesis	speakers	tv-soqueroeu-generic	bezel_fractional	1920x1080	0.4	mirror	99055	91	30.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 n3ds	shell	n3ds-shell	game	1920x1080	0.4	mirror	141070	69	18.5	62.7	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	main_right	dual-main-right	fit	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	main_right	dual-main-right	bezel	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	shell	n3ds-shell	bezel	1920x1080	0.4	mirror	141070	69	18.5	62.7	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	shell	n3ds-shell	game_fractional	1920x1080	0.4	mirror	78613	67	16.0	7.5	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	shell	n3ds-shell	bezel_fractional	1920x1080	0.4	mirror	86555	67	18.6	8.9	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	main_right	dual-main-right	game	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	main_left	dual-main-left	fit	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	main_left	dual-main-left	bezel	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	main_right	dual-main-right	bezel	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	main_right	dual-main-right	game_fractional	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	main_right	dual-main-right	bezel_fractional	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	main_left	dual-main-left	game	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	side_by_side	dual-side-by-side	fit	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	side_by_side	dual-side-by-side	bezel	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	main_left	dual-main-left	bezel	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	main_left	dual-main-left	game_fractional	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	main_left	dual-main-left	bezel_fractional	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	side_by_side	dual-side-by-side	game	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	stacked	dual-stacked	fit	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	stacked	dual-stacked	bezel	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	side_by_side	dual-side-by-side	bezel	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	side_by_side	dual-side-by-side	game_fractional	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	side_by_side	dual-side-by-side	bezel_fractional	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	stacked	dual-stacked	game	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	vertical	n3ds-vertical-shell	fit	1920x1080	0.4	mirror	46216	65	9.8	9.4	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n3ds	vertical	n3ds-vertical-shell	bezel	1920x1080	0.4	mirror	46216	65	9.8	9.4	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	stacked	dual-stacked	bezel	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	stacked	dual-stacked	game_fractional	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	stacked	dual-stacked	bezel_fractional	1920x1080	0	none	0	0	-	-	none	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
 n3ds	vertical	n3ds-vertical-shell	game	1920x1080	0.4	mirror	46216	65	9.8	9.4	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
-n64	tv	tv-soqueroeu-n64	fit	1920x1080	0.4	mirror	52570	84	15.9	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-n64	tv	tv-soqueroeu-n64	bezel	1920x1080	0.4	mirror	23698	84	10.8	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-n64	tv	tv-soqueroeu-n64	game	1920x1080	0.4	mirror	94606	85	21.5	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-n64	speakers	tv-soqueroeu-generic	fit	1920x1080	0.4	mirror	107291	87	32.5	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-n64	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	46635	87	21.2	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-n64	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	188553	87	42.9	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
-nds	shell	nds-shell	fit	1920x1080	0.4	mirror	114485	75	21.0	21.6	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	shell	nds-shell	bezel	1920x1080	0.4	mirror	114485	75	21.0	21.6	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+n3ds	vertical	n3ds-vertical-shell	bezel	1920x1080	0.4	mirror	46216	65	9.8	9.4	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	vertical	n3ds-vertical-shell	game_fractional	1920x1080	0.4	mirror	37039	65	7.3	7.6	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n3ds	vertical	n3ds-vertical-shell	bezel_fractional	1920x1080	0.4	mirror	46692	65	9.5	9.8	mirror	azahar-vulkan-layer	same entry and compositor; Deck capture after deploy	ok
+n64	tv	tv-soqueroeu-n64	game	1920x1080	0.4	mirror	97900	94	22.2	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	tv	tv-soqueroeu-n64	bezel	1920x1080	0.4	mirror	54543	94	16.5	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	tv	tv-soqueroeu-n64	game_fractional	1920x1080	0.4	mirror	72149	94	14.4	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	tv	tv-soqueroeu-n64	bezel_fractional	1920x1080	0.4	mirror	55456	94	16.8	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	193239	95	43.9	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	48421	94	22.0	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	speakers	tv-soqueroeu-generic	game_fractional	1920x1080	0.4	mirror	173272	95	34.6	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
+n64	speakers	tv-soqueroeu-generic	bezel_fractional	1920x1080	0.4	mirror	102789	95	32.1	-	mirror	retroarch-gl-tap	VM SM64 real core: native 313x237 after the crop, lip tinted by the picture (was 7 black columns)	ok
 nds	shell	nds-shell	game	1920x1080	0.4	mirror	114485	75	21.0	21.6	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	main_right	dual-main-right	fit	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	main_right	dual-main-right	bezel	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	shell	nds-shell	bezel	1920x1080	0.4	mirror	114485	75	21.0	21.6	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	shell	nds-shell	game_fractional	1920x1080	0.4	mirror	124191	75	19.3	19.8	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	shell	nds-shell	bezel_fractional	1920x1080	0.4	mirror	139621	75	23.2	23.6	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	main_right	dual-main-right	game	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	main_left	dual-main-left	fit	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	main_left	dual-main-left	bezel	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	main_right	dual-main-right	bezel	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	main_right	dual-main-right	game_fractional	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	main_right	dual-main-right	bezel_fractional	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	main_left	dual-main-left	game	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	side_by_side	dual-side-by-side	fit	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	side_by_side	dual-side-by-side	bezel	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	main_left	dual-main-left	bezel	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	main_left	dual-main-left	game_fractional	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	main_left	dual-main-left	bezel_fractional	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	side_by_side	dual-side-by-side	game	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	stacked	dual-stacked	fit	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	stacked	dual-stacked	bezel	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	side_by_side	dual-side-by-side	bezel	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	side_by_side	dual-side-by-side	game_fractional	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	side_by_side	dual-side-by-side	bezel_fractional	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	stacked	dual-stacked	game	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	vertical	nds-vertical-shell	fit	1920x1080	0.4	mirror	34155	74	9.3	9.7	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nds	vertical	nds-vertical-shell	bezel	1920x1080	0.4	mirror	34155	74	9.3	9.7	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	stacked	dual-stacked	bezel	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	stacked	dual-stacked	game_fractional	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	stacked	dual-stacked	bezel_fractional	1920x1080	0	none	0	0	-	-	none	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 nds	vertical	nds-vertical-shell	game	1920x1080	0.4	mirror	34155	74	9.3	9.7	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nes	tv	tv-soqueroeu-nes	fit	1920x1080	0.4	mirror	108048	86	32.2	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nes	tv	tv-soqueroeu-nes	bezel	1920x1080	0.4	mirror	48571	88	21.7	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nes	tv	tv-soqueroeu-nes	game	1920x1080	0.4	mirror	193543	86	43.2	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nes	black	tv-soqueroeu-nes-black	fit	1920x1080	0.4	mirror	107652	86	32.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nes	black	tv-soqueroeu-nes-black	bezel	1920x1080	0.4	mirror	48316	88	21.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-nes	black	tv-soqueroeu-nes-black	game	1920x1080	0.4	mirror	192912	86	43.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-ps2	tv	tv-soqueroeu-ps2	fit	1920x1080	0.4	mirror	129886	89	31.1	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
-ps2	tv	tv-soqueroeu-ps2	bezel	1920x1080	0.4	mirror	32725	88	15.7	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
-ps2	tv	tv-soqueroeu-ps2	game	1920x1080	0.4	mirror	129886	89	31.1	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
-ps2	speakers	tv-soqueroeu-generic	fit	1920x1080	0.4	mirror	157074	83	37.6	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
-ps2	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	39658	83	19.0	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
-ps2	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	157074	83	37.6	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
-psp	e1000	psp-e1000	fit	1920x1080	0.4	mirror	52426	77	17.6	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
-psp	e1000	psp-e1000	bezel	1920x1080	0.4	mirror	53404	76	17.8	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+nds	vertical	nds-vertical-shell	bezel	1920x1080	0.4	mirror	34155	74	9.3	9.7	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	vertical	nds-vertical-shell	game_fractional	1920x1080	0.4	mirror	34701	74	8.0	8.0	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nds	vertical	nds-vertical-shell	bezel_fractional	1920x1080	0.4	mirror	35423	74	9.5	10.1	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	tv	tv-soqueroeu-nes	game	1920x1080	0.4	mirror	199627	96	44.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	tv	tv-soqueroeu-nes	bezel	1920x1080	0.4	mirror	50469	97	22.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	tv	tv-soqueroeu-nes	game_fractional	1920x1080	0.4	mirror	162729	96	32.3	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	tv	tv-soqueroeu-nes	bezel_fractional	1920x1080	0.4	mirror	95349	97	30.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	black	tv-soqueroeu-nes-black	game	1920x1080	0.4	mirror	198583	96	44.3	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	black	tv-soqueroeu-nes-black	bezel	1920x1080	0.4	mirror	50300	97	22.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	black	tv-soqueroeu-nes-black	game_fractional	1920x1080	0.4	mirror	163113	96	32.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+nes	black	tv-soqueroeu-nes-black	bezel_fractional	1920x1080	0.4	mirror	94639	97	30.7	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+ps2	tv	tv-soqueroeu-ps2	game	1920x1080	0.4	mirror	132724	93	31.7	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	tv	tv-soqueroeu-ps2	bezel	1920x1080	0.4	mirror	33963	92	16.3	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	tv	tv-soqueroeu-ps2	game_fractional	1920x1080	0.4	mirror	129108	94	25.6	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	tv	tv-soqueroeu-ps2	bezel_fractional	1920x1080	0.4	mirror	91392	93	26.5	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	161457	90	38.6	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	41228	90	19.7	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	speakers	tv-soqueroeu-generic	game_fractional	1920x1080	0.4	mirror	157392	91	31.2	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
+ps2	speakers	tv-soqueroeu-generic	bezel_fractional	1920x1080	0.4	mirror	96409	90	29.9	-	mirror	pcsx2-gl-preload	Deck capture 2026-10-04: dark picture, dark mirror (expected)	ok
 psp	e1000	psp-e1000	game	1920x1080	0.4	mirror	120259	77	26.7	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
-psp	red	psp-red	fit	1920x1080	0.4	mirror	52426	77	17.6	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
-psp	red	psp-red	bezel	1920x1080	0.4	mirror	53404	76	17.8	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+psp	e1000	psp-e1000	bezel	1920x1080	0.4	mirror	53404	76	17.8	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+psp	e1000	psp-e1000	game_fractional	1920x1080	0.4	mirror	14014	76	2.3	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+psp	e1000	psp-e1000	bezel_fractional	1920x1080	0.4	mirror	60279	77	18.8	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
 psp	red	psp-red	game	1920x1080	0.4	mirror	120259	77	26.7	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
-psx	tv	tv-soqueroeu-psx	fit	1920x1080	0.4	mirror	42014	81	12.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-psx	tv	tv-soqueroeu-psx	bezel	1920x1080	0.4	mirror	18918	80	8.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-psx	tv	tv-soqueroeu-psx	game	1920x1080	0.4	mirror	75935	82	16.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-psx	speakers	tv-soqueroeu-generic	fit	1920x1080	0.4	mirror	103294	86	30.7	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-psx	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	46571	86	20.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-psx	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	181752	87	40.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-snes	tv	tv-soqueroeu-snes	fit	1920x1080	0.4	mirror	69394	84	22.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-snes	tv	tv-soqueroeu-snes	bezel	1920x1080	0.4	mirror	31591	84	15.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-snes	tv	tv-soqueroeu-snes	game	1920x1080	0.4	mirror	123981	82	29.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-snes	purple	tv-soqueroeu-snes-purple	fit	1920x1080	0.4	mirror	68601	83	21.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-snes	purple	tv-soqueroeu-snes-purple	bezel	1920x1080	0.4	mirror	31209	84	14.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-snes	purple	tv-soqueroeu-snes-purple	game	1920x1080	0.4	mirror	122824	81	29.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psp	red	psp-red	bezel	1920x1080	0.4	mirror	53404	76	17.8	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+psp	red	psp-red	game_fractional	1920x1080	0.4	mirror	14014	76	2.3	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+psp	red	psp-red	bezel_fractional	1920x1080	0.4	mirror	60279	77	18.8	-	mirror	ppsspp-gl-preload	Deck capture 2026-10-04: lip tinted green by the picture	ok
+psx	tv	tv-soqueroeu-psx	game	1920x1080	0.4	mirror	79008	91	17.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	tv	tv-soqueroeu-psx	bezel	1920x1080	0.4	mirror	44193	91	13.2	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	tv	tv-soqueroeu-psx	game_fractional	1920x1080	0.4	mirror	53541	91	10.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	tv	tv-soqueroeu-psx	bezel_fractional	1920x1080	0.4	mirror	44844	91	13.3	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	186356	94	41.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	48128	94	21.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	speakers	tv-soqueroeu-generic	game_fractional	1920x1080	0.4	mirror	158998	94	31.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+psx	speakers	tv-soqueroeu-generic	bezel_fractional	1920x1080	0.4	mirror	97671	94	30.3	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	tv	tv-soqueroeu-snes	game	1920x1080	0.4	mirror	127518	89	30.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	tv	tv-soqueroeu-snes	bezel	1920x1080	0.4	mirror	71208	92	22.7	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	tv	tv-soqueroeu-snes	game_fractional	1920x1080	0.4	mirror	113275	88	22.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	tv	tv-soqueroeu-snes	bezel_fractional	1920x1080	0.4	mirror	74089	92	23.3	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	purple	tv-soqueroeu-snes-purple	game	1920x1080	0.4	mirror	126809	88	30.3	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	purple	tv-soqueroeu-snes-purple	bezel	1920x1080	0.4	mirror	70944	91	22.6	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	purple	tv-soqueroeu-snes-purple	game_fractional	1920x1080	0.4	mirror	112815	87	22.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
+snes	purple	tv-soqueroeu-snes-purple	bezel_fractional	1920x1080	0.4	mirror	73785	91	23.2	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 switch	-	-	-	1920x1080	0	none (no bezel declared)	0	0	-	-	none	ryujinx-vulkan-layer	-	ok
-wii	tv	tv-soqueroeu-wii	fit	1920x1080	0.4	mirror	18325	78	8.2	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	tv	tv-soqueroeu-wii	bezel	1920x1080	0.4	mirror	18325	78	8.2	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	tv	tv-soqueroeu-wii	game	1920x1080	0.4	mirror	74914	77	16.7	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	tv_wide	tv-soqueroeu-wii-16x9	fit	1920x1080	0.4	mirror	21464	78	8.1	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	tv_wide	tv-soqueroeu-wii-16x9	bezel	1920x1080	0.4	mirror	21464	78	8.1	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	tv_wide	tv-soqueroeu-wii-16x9	game	1920x1080	0.4	mirror	88322	79	16.6	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	speakers	tv-soqueroeu-generic	fit	1920x1080	0.4	mirror	45312	84	20.2	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	45312	84	20.2	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
-wii	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	179083	83	40.0	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv	tv-soqueroeu-wii	game	1920x1080	0.4	mirror	77886	87	17.4	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv	tv-soqueroeu-wii	bezel	1920x1080	0.4	mirror	19650	87	8.8	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv	tv-soqueroeu-wii	game_fractional	1920x1080	0.4	mirror	52911	88	10.5	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv	tv-soqueroeu-wii	bezel_fractional	1920x1080	0.4	mirror	43568	88	12.9	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv_wide	tv-soqueroeu-wii-16x9	game	1920x1080	0.4	mirror	91634	87	17.2	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv_wide	tv-soqueroeu-wii-16x9	bezel	1920x1080	0.4	mirror	22879	87	8.6	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv_wide	tv-soqueroeu-wii-16x9	game_fractional	1920x1080	0.4	mirror	28956	88	4.8	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	tv_wide	tv-soqueroeu-wii-16x9	bezel_fractional	1920x1080	0.4	mirror	52059	88	12.9	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	183935	89	41.1	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	speakers	tv-soqueroeu-generic	bezel	1920x1080	0.4	mirror	46805	91	20.9	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	speakers	tv-soqueroeu-generic	game_fractional	1920x1080	0.4	mirror	156532	90	31.1	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
+wii	speakers	tv-soqueroeu-generic	bezel_fractional	1920x1080	0.4	mirror	95962	91	29.8	-	mirror	dolphin-gl-preload	Deck capture 2026-10-04: white picture mirrored bright on the lip	ok
 wiiu	-	-	-	1920x1080	0	none (no bezel declared)	0	0	-	-	none	cemu-vulkan-layer	-	ok

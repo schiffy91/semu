@@ -30,7 +30,10 @@
 # byte SEMU_INJECT_EVIDENCE_FROM on (this launch's receipts, a bezel switch's included), N the
 # emulator's SEMU_RENDER_TOUCH_SURFACE_INDEX (on Wii, with no touch screen, the IR's
 # SEMU_RENDER_POINTER_SURFACE_INDEX); the rectangle counts framebuffer pixels from the bottom
-# left, and the framebuffer is taken to be the game's window. SEMU_INJECT_ON=game types into the
+# left, and the framebuffer is taken to be the game's window. An emulator Semu does not compose
+# (standalone melonDS: no process of the case carries SEMU_RENDER_STATE_DIR) has no receipt, so its
+# fractions are of the whole screen, SEMU_INJECT_SCREEN (WxH, input-check.sh's gamescope size), the
+# note's surface "screen"; without it the token is skipped as before. SEMU_INJECT_ON=game types into the
 # game's own display instead, under the same rule. The rectangle is read a second before a move
 # or tap is due (the emulator found with one grep over every process's environment), so the
 # pointer moves on time; each note names the token's step and when it moved, pressed and released
@@ -160,7 +163,12 @@ touch_rect() {  # prints "LEFT TOP WIDTH HEIGHT FRAME_W FRAME_H SURFACE" for the
   local file environment="" index state line
   file="$(emulator_environ)"
   [ -n "$file" ] && environment="$({ tr '\0' '\n' < "$file"; } 2>/dev/null)"
-  [ -n "$environment" ] || { echo "no emulator of this case is running"; return 1; }
+  if [ -z "$environment" ]; then  # no emulator of this case carries a render state: one Semu does not compose (standalone melonDS), so the fractions are of the whole screen
+    case "${SEMU_INJECT_SCREEN:-}" in
+      [0-9]*x[0-9]*) echo "0 0 ${SEMU_INJECT_SCREEN%x*} ${SEMU_INJECT_SCREEN#*x} ${SEMU_INJECT_SCREEN%x*} ${SEMU_INJECT_SCREEN#*x} screen"; return 0 ;;
+    esac
+    echo "no emulator of this case is running"; return 1
+  fi
   index="$(printf '%s\n' "$environment" | sed -n 's/^SEMU_RENDER_TOUCH_SURFACE_INDEX=//p')"
   [ -n "$index" ] || index="$(printf '%s\n' "$environment" | sed -n 's/^SEMU_RENDER_POINTER_SURFACE_INDEX=//p')"  # Wii: the screen the IR aims at
   state="$(printf '%s\n' "$environment" | sed -n 's/^SEMU_RENDER_STATE_DIR=//p')"

@@ -63,9 +63,9 @@ On the Mac the real renderer runs offscreen (`tests/visual/render_host.btrc`, CG
 `semu render-env` and the bundle's data (`nix build .#asset-root`):
 
 ```sh
-tests/visual/render.sh out 1280x800 gb gba:arctic nes:black:sharp nds:none:none   # system[:bezel[:shader]]
+tests/visual/render.sh out 1280x800 gb gba:arctic nes:black:sharp psx:tv::bezel_fractional   # system[:bezel[:shader[:fit]]]
 tests/visual/gallery.sh --quick out/gallery   # every variant at Deck size
-tests/visual/gallery.sh out/gallery           # Deck and 4K, flat-card placement verified within 2 px
+tests/visual/gallery.sh out/gallery           # Deck and 4K, flat-card placement within 2 px in the four Fit states
 tests/visual/hot-reload.sh                     # a compositor edit mid-game changes nothing but the program
 ```
 
@@ -155,7 +155,8 @@ without a rebuild:
 semu settings put visual.systems.gbc.bezel_variant berry
 semu settings put visual.systems.gb.shader_variant pocket
 semu settings put visual.bezels false
-semu settings get visual.systems.psx.placement
+semu settings get visual.systems.psx.placement   # Fit: game, bezel, game_fractional or bezel_fractional
+semu settings put visual.systems.n64.render_scale 2x   # a scale the system offers, applied at Restart Game
 ```
 
 Settings precedence:

@@ -4,7 +4,8 @@
 // variant that lists it under "outputs", on that output's picture, which the renderer answers with the _B keys.
 // tests/visual/editor-sync.sh and tests/visual/reflection-audit.sh render it that way and fail a cell whose drawn
 // package (the renderer's debug line) is not the variant's own; the committed reflection-audit.tsv names the package
-// drawn on every row, every declared variant has its rows, and each row's package must be its variant's.
+// drawn on every row, every declared variant has its rows in the four Fit states (M16) at both sizes, and each row's
+// package must be its variant's.
 
 import Library.FileSystem;
 import Library.JSON;
@@ -61,24 +62,27 @@ class AuditPackagesSpecContract {
             int systemColumn = AuditPackagesSpecContract.column(header, "system");
             int variantColumn = AuditPackagesSpecContract.column(header, "variant");
             int packageColumn = AuditPackagesSpecContract.column(header, "package");
-            if (systemColumn < 0 || variantColumn < 0 || packageColumn < 0 || fields.size() != header.size()) { wrong.push("malformed row: " + line); continue; }
+            int placementColumn = AuditPackagesSpecContract.column(header, "placement");
+            if (systemColumn < 0 || variantColumn < 0 || packageColumn < 0 || placementColumn < 0 || fields.size() != header.size()) { wrong.push("malformed row: " + line); continue; }
             if (fields.get(variantColumn).equals("-")) { continue; }
             string own = AuditPackagesSpecContract.declared(fixture, fields.get(systemColumn), fields.get(variantColumn));
             if (!fields.get(packageColumn).equals(own)) { wrong.push(f"{fields.get(systemColumn)}:{fields.get(variantColumn)} drew {fields.get(packageColumn)}, declares {own}"); }
-            seen.push(fields.get(systemColumn) + ":" + fields.get(variantColumn));
+            seen.push(fields.get(systemColumn) + ":" + fields.get(variantColumn) + ":" + fields.get(placementColumn));
         }
         Vector<string> absent = [];
         for systemId in fixture.model.systemIds() {
             JSONValue variants = fixture.model.system(systemId).bezels.get("variants");
             for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
-                string cell = systemId + ":" + SemuJson.textAt(variants.at(index), "id");
-                int rows = 0;
-                for name in seen { if (name.equals(cell)) { rows++; } }
-                if (rows < 6) { absent.push(f"{cell} ({rows} of 6 rows)"); }
+                for state in ["game", "bezel", "game_fractional", "bezel_fractional"] {  // the four Fit states (M16 item 5), each at both sizes
+                    string cell = systemId + ":" + SemuJson.textAt(variants.at(index), "id") + ":" + state;
+                    int rows = 0;
+                    for name in seen { if (name.equals(cell)) { rows++; } }
+                    if (rows < 2) { absent.push(f"{cell} ({rows} of 2 rows)"); }
+                }
             }
         }
-        contract.expect(!header.isEmpty() && wrong.isEmpty() && absent.isEmpty() && seen.size() >= 200,
-            f"tests/visual/reflection-audit.tsv names the package drawn on each of its {seen.size()} bezel rows, each the variant's own, with every declared variant in all three placements at both sizes: " + wrong.join(" | ") + (absent.isEmpty() ? "" : " | absent " + absent.join(", ")));
+        contract.expect(!header.isEmpty() && wrong.isEmpty() && absent.isEmpty() && seen.size() >= 280,
+            f"tests/visual/reflection-audit.tsv names the package drawn on each of its {seen.size()} bezel rows, each the variant's own, with every declared variant in the four Fit states at both sizes: " + wrong.join(" | ") + (absent.isEmpty() ? "" : " | absent " + absent.join(", ")));
     }
 
     class void run(Contract contract) {

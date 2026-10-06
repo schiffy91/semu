@@ -1,0 +1,28 @@
+# M16 docked at a 1920x1080 TV, off-screen: the Fit states where the Deck's own screen cannot show a difference.
+#   SEMU_CHECK_SIZE=1920x1080 input-check.sh PAD m16-docked.cases OUT     (--plan accepts it too)
+# The same format and evidence as m16-check.cases (a fresh OUT starts every system on its defaults); x,y are from the
+# bottom left of 1920x1080, as surface0_content reads. The render scale's offered list stays the target's
+# (visual.display 1280x800, a reversible decision in PLAN M16), so these cases press no Scale.
+#
+# K1. The PS1 TV (Beetle PSX, Crash Bandicoot). before: integer bezel, the picture 960x720 (3x) at 480,180 with the
+#     whole TV on screen (3682cb6's fit drew the same). after-1 (81/2, FIT: NON-INTEGER GAME): 1440x1080 at 240,0.
+#     after-2 (81/3, FIT: NON-INTEGER BEZEL): the whole TV as large as the screen holds. after-3 (81/0, FIT:
+#     INTEGER GAME): 1280x960 (4x) at 320,60, the TV cut. after-4 (81/1): 960x720 again.
+psx retroarch mednafen_psx 45 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Crash Bandicoot (USA).m3u
+# K2. The PS2 (PCSX2, Def Jam): docked, integer bezel draws 1x, 597x448 at 661,316 with the whole TV, a quarter of the
+#     area 3682cb6's fit drew (2x with the TV cut). after-1 (81/2): 1440x1080 at 240,0. after-2 (81/3): the whole TV
+#     as large as the screen holds. after-3 (81/0, FIT: INTEGER GAME): 1195x896 (2x) at 363,92, the old docked size,
+#     the TV cut by the screen. after-4 (81/1): 1x again. The owner rules whether a docked PS2 should start on
+#     integer game (PLAN M16, item 5's docked sizes).
+ps2 pcsx2 - 60 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Def Jam - Fight for NY (USA).iso
+# K3. The NES TV (Mesen, Super Mario Bros. 3): integer bezel draws 2x, 640x480 at 640,300 with the whole TV; 3682cb6's
+#     fit drew 3x (960x720) with the stand 59 px past the bottom, 5.5% of the 1076-row set, past the owner's 1% (a
+#     picture centred down the screen leaves the set no room at 3x). after-1 (81/2): 1440x1080 at 240,0. after-3
+#     (81/0, FIT: INTEGER GAME): 1280x960 (4x) at 320,60. The same holds for the black NES TV and the speakers TVs of
+#     the PS1 (2x, 640x480; 3x left 3.3% past) and N64 (626x474 against 939x711; 2.6% past).
+nes retroarch mesen 20 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Super Mario Bros. 3 (USA) (Rev 1).zip
+# K4. The Wii U (Cemu, Mario Kart 8), no bezel: Fit flips integer game and non-integer game. before: 1280x720 at
+#     320,180 on black (1x of the game's 720 lines). after-1 (81/1, FIT: NON-INTEGER GAME; with no bezel the Fit
+#     list is integer game and non-integer game): 1920x1080 at 0,0. On the Deck's 800 rows both states are
+#     1280x720, so only a docked screen shows the difference.
+wiiu cemu - 60 key:ctrl+shift+f -- MARIO KART 8 (US).wua
