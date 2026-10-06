@@ -1,0 +1,16 @@
+--- a/src/Ryujinx/UI/Windows/MainWindow.axaml.cs
++++ b/src/Ryujinx/UI/Windows/MainWindow.axaml.cs
+@@ -103,6 +103,13 @@
+ 
+             SetWindowSizePosition();
+ 
++            // Semu: a game launched full screen from the command line opens the window full screen. Opened at its saved
++            // size with the menu bar, it went full screen only once the game began loading (ShowLoading, line 253).
++            if (_deferLoad && _startFullscreen && ViewModel.WindowState is not WindowState.FullScreen)
++            {
++                ViewModel.ToggleFullscreen();
++            }
++
+             if (Program.PreviewerDetached)
+             {
+                 InputManager = new InputManager(new AvaloniaKeyboardDriver(this), new SDL2GamepadDriver());

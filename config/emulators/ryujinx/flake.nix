@@ -17,6 +17,8 @@
           version = "1.3.3";
           src = source // { tag = "1.3.3"; };  # the recipe reads the release tag from it
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
+        } // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          patches = (previous.patches or [ ]) ++ [ ./semu-fullscreen-at-boot.patch ];  # a --fullscreen launch opens full screen, never the menu-bar window
         });
     in {
       semu = {

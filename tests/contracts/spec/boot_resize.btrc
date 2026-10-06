@@ -65,6 +65,20 @@ class BootResizeSpecContract {
         JSONValue cemu = SemuJson.readFile(PathTools.join(project, "config/emulators/cemu/emulator.json"));
         Vector<string> cemuArguments = SemuJson.strings(SemuJson.get(cemu, "platforms.linux.args"));
         contract.expect(cemuArguments.contains("-f") && cemuArguments.contains("-g"), "Linux launches Cemu with -f and -g, the two the patch keys on");
+        BootResizeSpecContract.ryujinx(contract, project);
+    }
+
+    class void ryujinx(Contract contract, string project) {  // a frame of the 1278x776 window with its menu bar before full screen (1 of 4 films)
+        string flake = BootResizeSpecChecks.read(project, "config/emulators/ryujinx/flake.nix");
+        string patch = BootResizeSpecChecks.read(project, "config/emulators/ryujinx/semu-fullscreen-at-boot.patch");
+        contract.expect(BootResizeSpecChecks.before(flake, "} // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {", "patches = (previous.patches or [ ]) ++ [ ./semu-fullscreen-at-boot.patch ];"),
+            "Ryujinx's Linux build carries the full-screen-at-boot patch, its macOS build none");
+        contract.contains(patch, "+++ b/src/Ryujinx/UI/Windows/MainWindow.axaml.cs", "the patch changes Ryujinx's main window");
+        contract.expect(BootResizeSpecChecks.before(patch, " SetWindowSizePosition();", "+            if (_deferLoad && _startFullscreen && ViewModel.WindowState is not WindowState.FullScreen)")
+            && BootResizeSpecChecks.before(patch, "+            if (_deferLoad && _startFullscreen && ViewModel.WindowState is not WindowState.FullScreen)", "+                ViewModel.ToggleFullscreen();"),
+            "a game launched with --fullscreen opens Ryujinx's window full screen in its constructor, after the saved size is applied");
+        JSONValue emulator = SemuJson.readFile(PathTools.join(project, "config/emulators/ryujinx/emulator.json"));
+        contract.expect(SemuJson.strings(SemuJson.get(emulator, "platforms.linux.args")).contains("--fullscreen"), "Linux launches Ryujinx with --fullscreen, the flag the patch keys on");
     }
 
     class void renderer(Contract contract, string project) {
