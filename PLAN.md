@@ -2217,7 +2217,7 @@ The owner played the M15 release (3682cb6) in Game Mode and reported (verbatim w
 
 Status: started 2026-10-06.
 - Items 1 and 6 (controls track): built and contract-proven on the Mac, observed on the Mac render host and in the
-  podman VM (RetroArch DS and 3DS, standalone Azahar, Dolphin with Mario Kart Wii); the Deck checks are cases 1-3 of
+  podman VM (RetroArch DS and 3DS, standalone Azahar, Dolphin with Mario Kart Wii); the Deck checks are cases C1-C3 of
   `tests/deck/m16-check.cases` and the updated radial-check cases 3, 4 and 16.
   - Item 1, the pointer. Why it was an arrow: M13 drew a 12x19 arrow because the trackpad mouse needed something to aim
     with; nobody had asked for a shape. Now `renderer_cursor.btrc` draws a 15x15 crosshair: four white arms one cell
@@ -2306,7 +2306,10 @@ Status: started 2026-10-06.
     GameCube running and the remote away, the GameCube pad's X+Y+Start held from the replica logged
     "PAD - COMBO_ORIGIN" three times (SI_DeviceGCController.cpp:270), the line only the game's own polling of that
     pad writes. The game ran at about an eighth of full speed there, so the title's response to a single press is
-    left to the Deck (case 3).
+    left to the Deck (case C3). A tenth run on the pushed tree (51bcddb, Connect on Alt+F11) repeated all of it:
+    "then Alt+F11 to unlink it" and "to link it", 83/2/0, 83/3/0, 83/0/0, three COMBO_ORIGIN lines between the
+    GameCube switch and the switch back, the relink accepted the same second, restarts=0, and GFX.ini still
+    InternalResolution = 1 with no render-scale action (the Connect key fires nothing of item 2's).
     Contracts: controller_layouts (the profile key, then the link key a whole gap after its release; GameCube live with
     83 reserved 0; choosing it again leaves the link alone; Wii Remote links it back; a game booted on GameCube; a
     boot-only layout still waits; Reset relinks with Alt+F12 for player 2), players (stored profiles for all four
