@@ -2217,6 +2217,72 @@ The owner played the M15 release (3682cb6) in Game Mode and reported (verbatim w
 
 Status: started 2026-10-06.
 
+- Items 5 and 7, Fit's four states and the Wii's sizes (the placement track, 2026-10-06): built and observed
+  on the Mac render host and in the editor; the Deck is open (`tests/deck/m16-check.cases`, cases F1-F4).
+  - Item 7, why bezel + Fit: Screen was larger than no bezel on the Wii: two rules sized the same picture.
+    With the bezel on, Fit: Screen was the one placement M13 let go fractional on the 480-line systems
+    (`display.scaling.game_fractional_below: 2` on wii, gc, ps2 and dreamcast), so the Wii's 480 lines filled the
+    Deck's 800 rows (1.67x). With the bezel off the compositor ignored Fit and used a separate setting, INTEGER
+    SCALING (ONE SCREEN, NO BEZEL), on by default, which put the same picture at its largest whole step: 1x,
+    640x480. Now one rule decides: with no bezel the picture takes the Fit state's whole step or not, so turning
+    the bezel off never shrinks it (integer bezel 1x stays 1x; non-integer game's 800 rows stay 800 rows). The
+    opt-in and the separate switch are gone. Checked the same way on every system (fit_states.btrc: the eleven
+    single-screen bezel systems at both sizes; the bezel-off picture is never smaller than the bezelled one in the
+    same state), and Wii U and Switch, which have no bezel, now have Fit too: 720 or 1080 rows docked.
+  - Item 5, decisions as reversible defaults (the owner unattended):
+    - The states, in the owner's order and words: integer game (`game`, the picture at the largest whole step the
+      screen holds, the bezel round it cut by the screen), integer bezel (`bezel`, the whole bezel on screen, 1% of
+      it allowed past the edges, the picture at the largest whole step that allows it), non-integer game
+      (`game_fractional`, the picture as large as the screen holds at its aspect) and non-integer bezel
+      (`bezel_fractional`, the whole bezel as large as the screen holds, the same 1%, so it is never smaller than
+      integer bezel). Journal code 81 carries the index into the variants file's four placements in that order;
+      the toasts read FIT: INTEGER GAME, FIT: INTEGER BEZEL, FIT: NON-INTEGER GAME, FIT: NON-INTEGER BEZEL, and a
+      press that moves nothing adds (SAME), e.g. FIT: INTEGER BEZEL (SAME): the renderer compares with the state the
+      press left (the old notice compared with Fit: Bezel only; 31 characters leave no room for both names). The
+      menu's FIT row and the radial's Fit slot step them; the settings page's PLACEMENT became FIT with the four.
+    - Defaults kept where they were one of the four: handhelds (gb, gbc, gba, psp) integer game, the DS and 3DS
+      integer bezel. The TVs' fit (the nearest whole step whose opening stayed on screen) was not; the nearest
+      is integer bezel, which on the Deck draws the same step for all nine TV systems (PS1, NES 2x; SNES, Genesis
+      2x of 224; N64 626x474; PS2, GameCube, Wii, Dreamcast 1x). At 1920x1080 the same except the PS2: fit drew
+      2x with the TV cut by the screen, integer bezel draws 1x with the whole TV, integer game still 2x. The global
+      default is `bezel`, and a saved `fit` reads as integer bezel.
+    - A TV's bezel is its set, never the room: the 13 Soqueroeu packages declare `shell` (the cabinet, its stand
+      and, round the generic set, its speakers, measured from the art's edges against the wall and the table), so
+      the bezel states keep the TV on screen round a picture centred down the screen, the room carrying on. That
+      lets integer bezel show the PS1, N64, SNES and Genesis at 3x at 1080p (the whole room held them at 2x).
+    - The 3D-era opt-in is retired: a saved Fit: Screen (`game`) on wii, gc, ps2 or dreamcast now reads as integer
+      game (1x on the Deck), non-integer game (800 rows) one press on.
+    - With no bezel to place (bezel off, the DS and 3DS layouts Semu works out, Wii U, Switch) Fit steps integer
+      game and non-integer game; a computed DS layout's non-integer state is its whole-step layout grown as one to
+      the screen's edge. It used to toast FIT: NO BEZEL there.
+    - The DS and 3DS shells keep Fit never dropping the shell: their non-integer states scale the whole shell
+      (non-integer bezel: the whole shell as large as the screen holds; non-integer game: both screens at the
+      shell's spacing as large as it holds, the shell round them cut by the screen), each screen filling its
+      picture rectangle. Taps follow (the touch maps read the drawn lanes).
+    - Sampling: a flat lane at 1x and above is sampled sharp-bilinear (`sharpPicture` in compositor.frag, which the
+      editor draws too): at a whole step every screen pixel is its texel, exactly as before; at a fractional step
+      each source pixel stays flat over the screen pixels inside it and blends only across the one its edge falls
+      in, so no row or column doubles. A CRT shader chain renders at the lane's own size (librashader), so its
+      scanlines and mask are drawn at the fractional size by the shader itself; the curved TV path keeps its
+      four-tap supersampling.
+    - Kept: Steam's radial label "Fit (Bezel/Screen)" (labels are hidden; renaming it needs a Steam Input
+      republish). The M15 case files' Fit comments (FIT: BEZEL, FIT: SCREEN, FIT: NO BEZEL) predate M16.
+  - Observed on the Mac render host, judged by eye: every system with a bezel (dreamcast, gb, gba, gbc, gc,
+    genesis, n3ds, n64, nds, nes, ps2, psp, psx, snes, wii) in the four states at 1280x800 and 1920x1080, the DS and
+    3DS vertical shells and computed layouts in the non-integer states, the bezel off in three states (wii, gba,
+    psx, nds), Wii U in both, the speakers TVs; a no-shader zoom shows sharp-bilinear edges at 6.17x and hard edges
+    at 5x. At 1280x800: PS1 integer game 960x720, integer bezel 640x480, non-integer game 1067x800, non-integer
+    bezel about 700x525; Wii 640x480, 640x480, 1067x800, about 700x525; GBA 1200x800 (5x), 480x320, 1200x800,
+    about 546x364; GB 800x720, 160x144, 889x800, about 269x242; the DS shell 512x384 each in both integer states,
+    about 605x454 and 568x426 in the non-integer ones. Bezel off on the Wii: 640x480 in the integer states,
+    1067x800 in non-integer game. A live Fit press on the render host toasts FIT: INTEGER GAME, then FIT:
+    INTEGER GAME (SAME) on the PS2 at 1280x800 (1x either way), and FIT: NON-INTEGER GAME on the PS1; the CRT
+    shaders (the Wii's crt at 1.67x, GDV-NTSC at 3.33x) show no bands at the fractional sizes.
+  - The editor matches the renderer (`tests/visual/editor-sync.sh --card test --placement STATE`): every variant
+    of psx, ps2, wii, gb, gba, psp, nds, n3ds, n64 and genesis in each of the four states at 1280x800, and
+    non-integer bezel at 1920x1080 for psx, wii, gba and nds: framing within 1 px and MAE 0 in every cell,
+    the computed DS layouts included.
+
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
 The review ran on the Mac (mbp21, aarch64-darwin, macOS 27). FRACTAL-NORTH did not resolve
@@ -3558,6 +3624,13 @@ Update this block whenever a milestone criterion changes state.
   (PCSX2, Beetle PSX, Mupen64Plus, Cemu with Mario Kart 8, the DS and 3DS touch routes). On the Deck
   (bdabd01, 2026-10-05) M15's "Deck acceptance" list, run off-screen by `tests/deck/m15-check.cases`, held
   13 of 13; open: Wii U sound by ear.
+- M16 items 5 and 7 (Fit's four states, the Wii's sizes): built 2026-10-06 and observed on the Mac render host
+  (every bezel system in the four states at 1280x800 and 1920x1080, judged by eye) and in the editor; contract
+  fit_states.btrc. Fit cycles integer game, integer bezel, non-integer game and non-integer bezel; with no bezel
+  it steps the two game states, so turning the bezel off never shrinks the picture (item 7's cause: the bezel-off
+  path used a separate integer switch while the Wii's Fit: Screen filled fractionally). Open on the Deck:
+  `tests/deck/m16-check.cases` (Fit cases) F1-F4 off-screen, then by eye in Game Mode the CRT look and a
+  scrolling scene at the non-integer sizes.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,

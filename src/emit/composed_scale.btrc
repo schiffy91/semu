@@ -67,7 +67,7 @@ class SemuComposedScale {
         double shellHeight = shell.size() == 4 ? shell[3] * canvas[1] : canvas[1];
         int bezel = 0;
         while (bezel < 64 && shellWidth * (double)(bezel + 1) * native[1] / main[3] <= areaWidth * 1.01 && shellHeight * (double)(bezel + 1) * native[1] / main[3] <= areaHeight * 1.01) { bezel++; }
-        if (!placement.equals("game")) { return bezel; }
+        if (!placement.startsWith("game")) { return bezel; }  // the bezel states keep the whole shell; the fractional ones floor to the step below
         for (int step = (int)(areaHeight / native[1]); step > bezel; step--) {
             double gain = (double)step * native[1] / main[3];
             double held = fmin(other[2] * gain / second[0], other[3] * gain / second[1]);
@@ -95,8 +95,8 @@ class SemuComposedScale {
         double width = picture[2] * canvas[0] * scale;
         double height = picture[3] * canvas[1] * scale;
         if (width / height > shown) { width = height * shown; } else { height = width / shown; }
-        if (count == 1 && placement.equals("game")) { return SemuComposedScale.whole(fmin(areaHeight / native[1], areaWidth / (native[1] * shown))); }  // game: the largest step the screen holds
-        if (count == 1 && placement.equals("bezel")) { return SemuComposedScale.whole(height * SemuComposedScale.shellRoom(environment, canvas, scale, areaWidth, areaHeight) * 1.01 / native[1]); }  // one screen in bezel: the renderer's step, its shell on screen within 1%; two screens stay contained
+        if (count == 1 && placement.startsWith("game")) { return SemuComposedScale.whole(fmin(areaHeight / native[1], areaWidth / (native[1] * shown))); }  // game: the largest step the screen holds
+        if (count == 1 && placement.startsWith("bezel")) { return SemuComposedScale.whole(height * SemuComposedScale.shellRoom(environment, canvas, scale, areaWidth, areaHeight) * 1.01 / native[1]); }  // one screen in bezel: the renderer's step, its shell on screen within 1%; two screens stay contained
         return SemuComposedScale.whole(height / native[1]);
     }
 

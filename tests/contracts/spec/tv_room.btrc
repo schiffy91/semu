@@ -8,7 +8,9 @@
 // whole pixels. The editor's copy of the arithmetic matches the renderer's. Below the table's front the 38ed18a band
 // (the last 32 rows averaged) showed coarse vertical streaks, each column one value all the way down; the wood there now
 // carries on as the plate's own last rows mirrored with the depth, falling into the dark but never to black, and the
-// sides carry on from past the art's bevelled table ends.
+// sides carry on from past the art's bevelled table ends. M16 item 5: the four Fit states replace fit; integer bezel, the
+// TVs' default, keeps the TV's body (the package's shell, never the room) on screen within 1%, the picture centred down the
+// screen, which on the Deck is the step fit drew for all nine TV systems.
 
 import Library.FileSystem;
 import Library.JSON;
@@ -32,42 +34,56 @@ class TvRoomSpecChecks {
         return PlacementSpecGeometry.withinHalf(picture->x * 2.0f + picture->width, areaWidth) && PlacementSpecGeometry.withinHalf(picture->y * 2.0f + picture->height, areaHeight);
     }
 
-    class void live(Contract contract, Fixture fixture) {  // the frames PCSX2 and Beetle PSX hand over, in fit, the TVs' default
+    class void live(Contract contract, Fixture fixture) {  // the frames PCSX2 and Beetle PSX hand over, in integer bezel, the TVs' default (the retired fit drew the same on the Deck)
         int widths[2] = {1280, 1920};
         int heights[2] = {800, 1080};
-        int consoleSteps[2] = {1, 2};
+        int consoleSteps[2] = {1, 1};
         int originalSteps[2] = {2, 3};
         for (int size = 0; size < 2; size++) {
             struct RendererCanvasRect canvas;
             struct RendererCanvasRect console;
             struct RendererCanvasRect original;
-            PlacementSpecGeometry.place(fixture, "ps2", 639, 448, 0, widths[size], heights[size], &canvas, &console);
-            PlacementSpecGeometry.place(fixture, "psx", 320, 240, 0, widths[size], heights[size], &canvas, &original);
+            PlacementSpecGeometry.place(fixture, "ps2", 639, 448, SEMU_PLACEMENT_BEZEL, widths[size], heights[size], &canvas, &console);
+            PlacementSpecGeometry.place(fixture, "psx", 320, 240, SEMU_PLACEMENT_BEZEL, widths[size], heights[size], &canvas, &original);
             float apart = (console.y * 2.0f + console.height) - (original.y * 2.0f + original.height);
             contract.expect(PlacementSpecGeometry.near(console.height, (float)(consoleSteps[size] * 448)) && TvRoomSpecChecks.middle(&console, widths[size], heights[size]) && TvRoomSpecChecks.onGrid(&console),
-                f"PS2 639x448 (PCSX2's frame) at {widths[size]}x{heights[size]} in fit: {consoleSteps[size]}x, {consoleSteps[size] * 448} lines, centred on the screen on whole pixels: " + PlacementSpecGeometry.text(&console));
+                f"PS2 639x448 (PCSX2's frame) at {widths[size]}x{heights[size]} in integer bezel: {consoleSteps[size]}x, {consoleSteps[size] * 448} lines, centred on the screen on whole pixels: " + PlacementSpecGeometry.text(&console));
             contract.expect(PlacementSpecGeometry.near(original.height, (float)(originalSteps[size] * 240)) && TvRoomSpecChecks.middle(&original, widths[size], heights[size]) && TvRoomSpecChecks.onGrid(&original),
-                f"PS1 320x240 at {widths[size]}x{heights[size]} in fit: {originalSteps[size]}x, {originalSteps[size] * 240} lines, centred on the screen on whole pixels: " + PlacementSpecGeometry.text(&original));
+                f"PS1 320x240 at {widths[size]}x{heights[size]} in integer bezel: {originalSteps[size]}x, {originalSteps[size] * 240} lines, centred on the screen on whole pixels: " + PlacementSpecGeometry.text(&original));
             contract.expect(apart <= 2.0f && apart >= -2.0f, f"at {widths[size]}x{heights[size]} the PS2's picture stands where the PS1's does, its middle within a pixel of it: PS2 " + PlacementSpecGeometry.text(&console) + ", PS1 " + PlacementSpecGeometry.text(&original));
         }
     }
 
-    class void opening(Contract contract, Fixture fixture) {  // fit's step test follows the centred picture: a TV taller than the screen keeps its opening if the opening, centred with the picture, fits
+    class void body(Contract contract, Fixture fixture) {  // the bezel states keep a TV's body on screen round a picture centred down the screen, 1% of it allowed past the edges; the room behind it carries on and never counts
         struct RendererVariantConfig variant;
-        PlacementSpecGeometry.load(PlacementSpecEnvironment.compile(fixture, "ps2", ""), &variant);
+        PlacementSpecGeometry.load(PlacementSpecEnvironment.compile(fixture, "psx", ""), &variant);
         struct RendererCanvasRect canvas;
-        canvas.x = -71.111f;  // the 16:9 room covering 1280x800, as coverKeepingTubes leaves it
+        canvas.x = 0.0f;  // the 16:9 room covering 1920x1080, as coverKeepingTubes leaves it
         canvas.y = 0.0f;
-        canvas.width = 1422.222f;
-        canvas.height = 800.0f;
+        canvas.width = 1920.0f;
+        canvas.height = 1080.0f;
         struct RendererNormalizedHole* image = &variant.screens[0].image;
-        bool tallerStays = RendererPlacement.tubeStays(&variant, image, &canvas, 1.4f, 1280, 800);  // the opening 764 px tall, centred with the picture; a canvas grown about its own middle would put its top 29 px above the screen
-        bool tallestLeaves = !RendererPlacement.tubeStays(&variant, image, &canvas, 1.5f, 1280, 800);  // the opening 819 px tall: no anchor keeps it
-        contract.expect(variant.screens[0].tube.set != 0 && image->set != 0 && tallerStays && tallestLeaves,
-            "fit keeps a room's step while its opening, centred with the picture down the screen, stays on screen (1.4x the covered PS2 room at 1280x800 stays, 1.5x leaves)");
+        float grow = 720.0f / (image->height * 1080.0f);  // 3x of 240 lines
+        bool allowed = RendererPlacement.bodyStays(&variant.canvas_shell, image, &canvas, grow, 1920, 1080, 0.01f);
+        bool exact = RendererPlacement.bodyStays(&variant.canvas_shell, image, &canvas, grow, 1920, 1080, 0.0f);
+        bool larger = RendererPlacement.bodyStays(&variant.canvas_shell, image, &canvas, 960.0f / (image->height * 1080.0f), 1920, 1080, 0.01f);
+        contract.expect(variant.canvas_shell.set != 0 && image->set != 0 && allowed && !exact && !larger,
+            "the PS1's TV at 3x on 1920x1080 keeps its body on screen within the 1% allowance (its stand a few pixels past the bottom edge, so not with none), and 4x leaves it");
+        Vector<string> bare = [];
+        for packageId in FileSystem.listDir(PathTools.join(fixture.plan.configRoot, "bezels")) {
+            if (!packageId.startsWith("tv-")) { continue; }
+            JSONValue package = SemuJson.readFile(PathTools.join(fixture.plan.configRoot, "bezels/" + packageId + "/bezel.json"));
+            JSONValue shell = package.get("shell");
+            JSONValue tube = SemuJson.get(package, "screens.0.tube");
+            bool around = shell != null && shell.isObject() && tube != null && SemuJson.intAt(shell, "x", 0) < SemuJson.intAt(tube, "x", 0) && SemuJson.intAt(shell, "y", 0) < SemuJson.intAt(tube, "y", 0)
+                && SemuJson.intAt(shell, "x", 0) + SemuJson.intAt(shell, "w", 0) > SemuJson.intAt(tube, "x", 0) + SemuJson.intAt(tube, "w", 0) && SemuJson.intAt(shell, "y", 0) + SemuJson.intAt(shell, "h", 0) > SemuJson.intAt(tube, "y", 0) + SemuJson.intAt(tube, "h", 0)
+                && SemuJson.intAt(shell, "x", 0) + SemuJson.intAt(shell, "w", 0) <= SemuJson.intAt(package, "canvas.w", 0) && SemuJson.intAt(shell, "y", 0) + SemuJson.intAt(shell, "h", 0) <= SemuJson.intAt(package, "canvas.h", 0);
+            if (!around) { bare.push(packageId); }
+        }
+        contract.expect(bare.isEmpty(), "every TV package declares its body (shell) round its opening and inside its canvas, so the bezel states keep the set on screen and never the room: " + bare.join(" "));
     }
 
-    class void rooms(Contract contract, Fixture fixture) {  // every TV room and variant, in fit, game and bezel at both sizes: the picture centred down the screen on whole pixels, fit and bezel at whole steps
+    class void rooms(Contract contract, Fixture fixture) {  // every TV room and variant, in the four Fit states at both sizes: the picture centred on whole pixels, the integer states at whole steps, the TV whole in the bezel states, non-integer never smaller than integer
         int widths[2] = {1280, 1920};
         int heights[2] = {800, 1080};
         Vector<string> failures = [];
@@ -84,20 +100,39 @@ class TvRoomSpecChecks {
                 Vector<string> room = PlacementSpecEnvironment.layers(PlacementSpecEnvironment.compile(fixture, systemId, variant), "/background.png");
                 if (room.isEmpty() || !room[0].endsWith("|1") || lines < 1) { continue; }
                 string label = systemId + (variant.isEmpty() ? "" : ":" + variant);
-                for (int placement = 0; placement <= 2; placement++) {
-                    for (int size = 0; size < 2; size++) {
+                for (int size = 0; size < 2; size++) {
+                    float heightsSeen[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+                    for (int placement = SEMU_PLACEMENT_GAME; placement <= SEMU_PLACEMENT_BEZEL_FRACTIONAL; placement++) {
                         struct RendererCanvasRect canvas;
                         struct RendererCanvasRect picture;
                         PlacementSpecGeometry.placeVariant(fixture, systemId, variant, nativeWidth, nativeHeight, placement, widths[size], heights[size], &canvas, &picture);
+                        heightsSeen[placement] = picture.height;
                         int steps = PlacementSpecGeometry.rounded(picture.height) / lines;
-                        bool whole = placement == 1 || (steps >= 1 && PlacementSpecGeometry.near(picture.height, (float)(steps * lines)));
-                        if (!whole || !TvRoomSpecChecks.middle(&picture, widths[size], heights[size]) || !TvRoomSpecChecks.onGrid(&picture)) { failures.push(label + f" placement {placement} at {widths[size]}x{heights[size]}: " + PlacementSpecGeometry.text(&picture) + f" for {lines} lines"); }
+                        bool whole = !RendererConfiguration.wholeSteps(placement) || (steps >= 1 && PlacementSpecGeometry.near(picture.height, (float)(steps * lines)));
+                        bool fills = placement != SEMU_PLACEMENT_GAME_FRACTIONAL || PlacementSpecGeometry.near(picture.height, (float)heights[size]) || PlacementSpecGeometry.near(picture.width, (float)widths[size]);
+                        bool onScreen = RendererConfiguration.pictureFirst(placement) || TvRoomSpecChecks.bodyOnScreen(fixture, systemId, variant, &canvas, widths[size], heights[size]);
+                        if (!whole || !fills || !onScreen || !TvRoomSpecChecks.middle(&picture, widths[size], heights[size]) || !TvRoomSpecChecks.onGrid(&picture)) { failures.push(label + f" placement {placement} at {widths[size]}x{heights[size]}: " + PlacementSpecGeometry.text(&picture) + f" for {lines} lines"); }
                         pictures++;
                     }
+                    if (heightsSeen[SEMU_PLACEMENT_GAME_FRACTIONAL] < heightsSeen[SEMU_PLACEMENT_GAME] - 0.5f || heightsSeen[SEMU_PLACEMENT_BEZEL_FRACTIONAL] < heightsSeen[SEMU_PLACEMENT_BEZEL] - 0.5f) { failures.push(label + f" at {widths[size]}x{heights[size]}: a non-integer state smaller than its integer one"); }
                 }
             }
         }
-        contract.expect(failures.isEmpty() && pictures >= 100, f"every TV room centres its picture on the screen on whole pixels in fit, game and bezel at 1280x800 and 1920x1080, fit and bezel at whole steps ({pictures} pictures): " + failures.join("; "));
+        contract.expect(failures.isEmpty() && pictures >= 200, f"every TV room centres its picture on the screen on whole pixels in all four Fit states at 1280x800 and 1920x1080, the integer ones at whole steps, the bezel ones with the TV on screen, non-integer game filling the screen and never smaller ({pictures} pictures): " + failures.join("; "));
+    }
+
+    class bool bodyOnScreen(Fixture fixture, string systemId, string variant, struct RendererCanvasRect* canvas, int areaWidth, int areaHeight) {  // the TV's body (its shell) on screen, 1% of it allowed past the edges
+        struct RendererVariantConfig config;
+        PlacementSpecGeometry.load(PlacementSpecEnvironment.compile(fixture, systemId, variant), &config);
+        struct RendererNormalizedHole* body = &config.canvas_shell;
+        if (body->set == 0) { return false; }
+        float left = canvas->x + body->x * canvas->width;
+        float right = left + body->width * canvas->width;
+        float bottom = canvas->y + (1.0f - body->y - body->height) * canvas->height;
+        float top = bottom + body->height * canvas->height;
+        float overAcross = (left < 0.0f ? -left : 0.0f) + (right > (float)areaWidth ? right - (float)areaWidth : 0.0f);
+        float overDown = (bottom < 0.0f ? -bottom : 0.0f) + (top > (float)areaHeight ? top - (float)areaHeight : 0.0f);
+        return overAcross <= 0.01f * body->width * canvas->width + 1.0f && overDown <= 0.01f * body->height * canvas->height + 1.0f;
     }
 
     class void band(Contract contract, Fixture fixture) {  // under a centred TV the wood below the table's front carries on as a surface: rows that change with depth, never one row's grain pulled into streaks
@@ -116,13 +151,13 @@ class TvRoomSpecChecks {
     class void editor(Contract contract, Fixture fixture) {  // the editor preview places a room exactly as the renderer does
         string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
         Vector<string> missing = [];
-        for wanted in ["const anchorY = placement === \"game\" || carried ? float(areaHeight * 0.5)", "static tubeStays(screen, image, canvas, grow, areaWidth, areaHeight) {",
-                       "const top = float(float(areaHeight * 0.5) - float(float(float(image.y + float(image.height * 0.5)) - tube.y) * height));",
+        for wanted in ["const anchorY = game || carried ? float(areaHeight * 0.5)", "static bodyStays(body, image, canvas, grow, areaWidth, areaHeight, slack) {", "if (!game && !carried && shell && shell.set) {", "if (game && !carried) {",
+                       "const top = float(float(areaHeight * 0.5) - float(float(float(image.y + float(image.height * 0.5)) - body.y) * height)), bottom = float(top + float(body.height * height));",
                        "{  // RendererPlacement.wholeCorner: the picture's corner on a whole pixel, a device's or a TV's"] {
             if (!source.contains(wanted)) { missing.push(wanted); }
         }
         contract.expect(missing.isEmpty() && !source.contains("placed.y = float(placed.y + Geometry.wholePixels(float(0 - placed.y)))") && !source.contains("if (!carried) {  // a device"),
-            "the editor's copy centres a room's picture down the screen, tests its opening the same way, lands every picture on whole pixels and no longer stands the table on the bottom edge: missing " + missing.join(" | "));
+            "the editor's copy centres a room's picture down the screen, tests its body the same way, lands every picture on whole pixels and no longer stands the table on the bottom edge: missing " + missing.join(" | "));
     }
 }
 
@@ -131,7 +166,7 @@ class TvRoomSpecContract {
         Fixture fixture = Fixture("steam-deck");
         RenderEnvSpecAssets.packages(fixture.plan.assetRoot, fixture.plan.configRoot);  // every layer file exists, so the stacks are the packages' own
         TvRoomSpecChecks.live(contract, fixture);
-        TvRoomSpecChecks.opening(contract, fixture);
+        TvRoomSpecChecks.body(contract, fixture);
         TvRoomSpecChecks.rooms(contract, fixture);
         TvRoomSpecChecks.band(contract, fixture);
         TvRoomSpecChecks.editor(contract, fixture);

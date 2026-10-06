@@ -176,7 +176,8 @@ const BezelRenderer = (() => {
       const across = float(areaWidth / float(shell.width * canvas.width)), down = float(areaHeight / float(shell.height * canvas.height));
       return across < down ? across : down;
     }
-    static integerPlacement(nativeHeight, screen, placement, aspect, areaWidth, areaHeight, canvas, fractionalBelow, carried, shell) {  // the picture at a whole multiple of its native height; FRACTIONAL_BELOW: a 3D-era system's opt-in for game; CARRIED: a room that carries on past its edges (RendererPlacement.carried); SHELL: the device's silhouette
+    static carried(variant) { return !!(variant.layered && variant.layers.some(layer => layer.room)); }  // RendererPlacement.carried: a room that carries on past its edges
+    static place(nativeHeight, screen, placement, aspect, areaWidth, areaHeight, canvas, variant) {  // RendererPlacement.place: the picture at the Fit state's size (game, bezel, game_fractional, bezel_fractional), the canvas round it
       let area = screen.image;
       if (!area.set) {
         const tubeWidth = float(screen.tube.width * canvas.width), tubeHeight = float(screen.tube.height * canvas.height);
@@ -190,28 +191,22 @@ const BezelRenderer = (() => {
       if (float(pictureWidth / pictureHeight) > shown) pictureWidth = float(pictureHeight * shown); else pictureHeight = float(pictureWidth / shown);
       const native = float(nativeHeight);
       if (native < 1 || pictureHeight < 1) return canvas;
-      let multiple = integer(float(float(float(pictureHeight * Geometry.shellRoom(shell, canvas, areaWidth, areaHeight)) * float(1.01)) / native));  // bezel: the largest step that keeps the whole shell (its silhouette, never the transparent margin), up to 1% of it off screen
-      if (placement === "game") multiple = Math.min(integer(float(areaHeight / native)), integer(float(areaWidth / float(native * shown))));
-      if (placement === "fit") {  // fit on a room: the nearest whole step whose opening stays on screen, else fit as it was
-        multiple = Math.max(integer(float(float(pictureHeight / native) + 0.5)), 1);
-        while (multiple >= 1 && !Geometry.tubeStays(screen, area, canvas, float(float(multiple * native) / pictureHeight), areaWidth, areaHeight)) multiple--;
-      }
-      let steps = multiple;
-      if (multiple < 1 || (placement === "game" && multiple < (fractionalBelow || 0))) {  // a system that opts in (display.scaling.game_fractional_below) fills the screen in game placement; bezel stays whole
-        const down = float(areaHeight / native), across = float(areaWidth / float(native * shown));
-        steps = placement === "game" ? (down < across ? down : across) : float(pictureHeight / native);
-      }
+      const carried = Geometry.carried(variant), game = placement === "game" || placement === "game_fractional", whole = placement !== "game_fractional" && placement !== "bezel_fractional", shell = variant.shell;
+      const down = float(areaHeight / native), across = float(areaWidth / float(native * shown));
+      let most = down < across ? down : across;  // game: the largest the screen holds
+      if (!game) most = float(float(pictureHeight * Geometry.room(variant, area, canvas, areaWidth, areaHeight, float(0.01))) / native);  // bezel: the whole bezel on screen, 1% of it allowed past the edges, whole step or not
+      const steps = whole && most >= 1 ? float(integer(most)) : most;  // the non-integer states as they are; an integer state larger than the screen at 1x falls back to them
       const grow = float(float(steps * native) / pictureHeight);
       const centerX = float(canvas.x + float(float(area.x + float(area.width * 0.5)) * canvas.width));
       const centerY = float(canvas.y + float(float(float(1 - area.y) - float(area.height * 0.5)) * canvas.height));
-      const anchorX = placement === "game" ? float(areaWidth * 0.5) : float(float(canvas.x + float(canvas.width * 0.5)) + float(float(float(centerX - canvas.x) - float(canvas.width * 0.5)) * grow));
-      const anchorY = placement === "game" || carried ? float(areaHeight * 0.5) : float(float(canvas.y + float(canvas.height * 0.5)) + float(float(float(centerY - canvas.y) - float(canvas.height * 0.5)) * grow));  // a TV room centres its picture down the screen, its wall and table carried on past the canvas
+      const anchorX = game ? float(areaWidth * 0.5) : float(float(canvas.x + float(canvas.width * 0.5)) + float(float(float(centerX - canvas.x) - float(canvas.width * 0.5)) * grow));
+      const anchorY = game || carried ? float(areaHeight * 0.5) : float(float(canvas.y + float(canvas.height * 0.5)) + float(float(float(centerY - canvas.y) - float(canvas.height * 0.5)) * grow));  // a TV room centres its picture down the screen, its wall and table carried on past the canvas
       const placed = { x: float(anchorX - float(float(centerX - canvas.x) * grow)), y: float(anchorY - float(float(centerY - canvas.y) * grow)), width: float(canvas.width * grow), height: float(canvas.height * grow) };
-      if (placement === "bezel" && shell && shell.set) {  // bezel on a device: its silhouette centred on the screen, whatever margin its plate carries
+      if (!game && !carried && shell && shell.set) {  // bezel on a device: its silhouette centred on the screen, whatever margin its plate carries
         placed.x = float(float(areaWidth * 0.5) - float(float(shell.x + float(shell.width * 0.5)) * placed.width));
         placed.y = float(float(areaHeight * 0.5) - float(float(float(1 - shell.y) - float(shell.height * 0.5)) * placed.height));
       }
-      if (placement === "game") {  // on an axis the whole shell fits, the shell is centred so the backdrop shows evenly; a whole-pixel shift keeps the picture on the grid
+      if (game && !carried) {  // on an axis a device's whole shell fits, the shell is centred so the backdrop shows evenly; a whole-pixel shift keeps the picture on the grid; a TV room keeps its picture centred
         if (placed.width <= areaWidth) placed.x = float(placed.x + Geometry.wholePixels(float(float(float(areaWidth - placed.width) * 0.5) - placed.x)));
         if (placed.height <= areaHeight) placed.y = float(placed.y + Geometry.wholePixels(float(float(float(areaHeight - placed.height) * 0.5) - placed.y)));
       }
@@ -223,13 +218,22 @@ const BezelRenderer = (() => {
       }
       return placed;
     }
-    static tubeStays(screen, image, canvas, grow, areaWidth, areaHeight) {  // RendererPlacement.tubeStays: the opening on screen once the canvas grows by GROW about its centre across, its picture (IMAGE) centred down the screen as a TV room stands
-      const tube = screen.tube;
-      if (!tube.set) return true;
+    static room(variant, image, canvas, areaWidth, areaHeight, slack) {  // RendererPlacement.room: how far the contained canvas may grow keeping its bezel on screen, SLACK of it allowed past the edges
+      const shell = variant.shell;
+      if (!Geometry.carried(variant) || !shell || !shell.set) return float(Geometry.shellRoom(shell, canvas, areaWidth, areaHeight) * float(1 + slack));
+      let low = 0, high = 64;
+      for (let pass = 0; pass < 40; pass++) {  // a TV's body round a picture centred down the screen: the largest growth it stays on screen for
+        const middle = float(float(low + high) * 0.5);
+        if (Geometry.bodyStays(shell, image, canvas, middle, areaWidth, areaHeight, slack)) low = middle; else high = middle;
+      }
+      return low;
+    }
+    static bodyStays(body, image, canvas, grow, areaWidth, areaHeight, slack) {  // RendererPlacement.bodyStays: the TV's body on screen, the canvas centred across and its picture centred down the screen
       const width = float(canvas.width * grow), height = float(canvas.height * grow);
-      const left = float(float(canvas.x + float(float(canvas.width - width) * 0.5)) + float(tube.x * width));
-      const top = float(float(areaHeight * 0.5) - float(float(float(image.y + float(image.height * 0.5)) - tube.y) * height));  // rows from the top, the picture centre on the screen centre
-      return left >= -0.5 && top >= -0.5 && float(left + float(tube.width * width)) <= areaWidth + 0.5 && float(top + float(tube.height * height)) <= areaHeight + 0.5;
+      const left = float(float(canvas.x + float(canvas.width * 0.5)) + float(float(body.x - 0.5) * width)), right = float(left + float(body.width * width));
+      const top = float(float(areaHeight * 0.5) - float(float(float(image.y + float(image.height * 0.5)) - body.y) * height)), bottom = float(top + float(body.height * height));
+      const overAcross = float((left < 0 ? -left : 0) + (right > areaWidth ? float(right - areaWidth) : 0)), overDown = float((top < 0 ? -top : 0) + (bottom > areaHeight ? float(bottom - areaHeight) : 0));
+      return overAcross <= float(float(float(slack * body.width) * width) + 0.5) && overDown <= float(float(float(slack * body.height) * height) + 0.5);
     }
     static wholePixels(shift) {  // RendererPlacement.wholePixels: rounded half away from zero
       return shift >= 0 ? integer(float(shift + 0.5)) : -integer(float(0.5 - shift));
@@ -302,29 +306,41 @@ const BezelRenderer = (() => {
       if (!main || !second) return null;
       const silhouette = variant.shell && variant.shell.set ? variant.shell : null;  // the device's own bounds, else its whole canvas
       const shell = silhouette ? [float(silhouette.x * sourceWidth), float(silhouette.y * sourceHeight), float(silhouette.width * sourceWidth), float(silhouette.height * sourceHeight)] : [0, 0, sourceWidth, sourceHeight];
-      let bezel = 0;
-      while (bezel < 64) {
-        const gain = Geometry.dualGain(main, bezel + 1);
-        if (float(shell[2] * gain) > float(areaWidth * float(1.01)) || float(shell[3] * gain) > float(areaHeight * float(1.01))) break;
-        bezel++;
-      }
-      if (bezel < 1) return null;
-      let step = bezel, screen = false;
-      if (preview.placement === "game") {
-        for (let candidate = integer(areaHeight / main.nativeHeight); candidate > bezel; candidate--) {
-          const box = Geometry.dualBounds(main, second, candidate);
-          if (float(box[2] - box[0]) <= float(areaWidth + float(0.01)) && float(box[3] - box[1]) <= float(areaHeight + float(0.01))) { step = candidate; screen = true; break; }
+      let step = 0, other = 0, gain = 0, left = 0, top = 0;
+      if (preview.placement === "game_fractional" || preview.placement === "bezel_fractional") {  // RendererDualShell.scaled: the whole shell, or both screens at its spacing, as large as the display holds
+        let box = [shell[0], shell[1], float(shell[0] + shell[2]), float(shell[1] + shell[3])];
+        if (preview.placement === "game_fractional") box = [main.x < second.x ? main.x : second.x, main.y < second.y ? main.y : second.y,
+          float(main.x + main.width) > float(second.x + second.width) ? float(main.x + main.width) : float(second.x + second.width), float(main.y + main.height) > float(second.y + second.height) ? float(main.y + main.height) : float(second.y + second.height)];
+        if (box[2] <= box[0] || box[3] <= box[1]) return null;
+        const slack = preview.placement === "game_fractional" ? 1 : float(1.01), across = float(float(areaWidth * slack) / float(box[2] - box[0])), down = float(float(areaHeight * slack) / float(box[3] - box[1]));  // the shell may leave 1% of itself, the screens never
+        gain = across < down ? across : down;
+        left = float(float(areaWidth * 0.5) - float(float(float(box[0] + box[2]) * 0.5) * gain)); top = float(float(areaHeight * 0.5) - float(float(float(box[1] + box[3]) * 0.5) * gain));
+      } else {
+        let bezel = 0;
+        while (bezel < 64) {
+          const grown = Geometry.dualGain(main, bezel + 1);
+          if (float(shell[2] * grown) > float(areaWidth * float(1.01)) || float(shell[3] * grown) > float(areaHeight * float(1.01))) break;
+          bezel++;
         }
+        if (bezel < 1) return null;
+        let screen = false;
+        step = bezel;
+        if (preview.placement === "game") {
+          for (let candidate = integer(areaHeight / main.nativeHeight); candidate > bezel; candidate--) {
+            const box = Geometry.dualBounds(main, second, candidate);
+            if (float(box[2] - box[0]) <= float(areaWidth + float(0.01)) && float(box[3] - box[1]) <= float(areaHeight + float(0.01))) { step = candidate; screen = true; break; }
+          }
+        }
+        gain = Geometry.dualGain(main, step); other = Geometry.dualSecondStep(second, gain);
+        left = float(float(areaWidth * 0.5) - float(float(shell[0] + float(shell[2] * 0.5)) * gain)); top = float(float(areaHeight * 0.5) - float(float(shell[1] + float(shell[3] * 0.5)) * gain));
+        if (screen) {
+          const box = Geometry.dualBounds(main, second, step);
+          left = float(float(float(areaWidth - float(box[2] - box[0])) * 0.5) - box[0]); top = float(float(float(areaHeight - float(box[3] - box[1])) * 0.5) - box[1]);
+        }
+        const mainLeft = Geometry.dualSpan(main, step, gain, true)[0], mainTop = Geometry.dualSpan(main, step, gain, false)[0];
+        left = float(float(left + Geometry.dualWhole(float(left + mainLeft))) - float(left + mainLeft));
+        top = float(float(top + Geometry.dualWhole(float(top + mainTop))) - float(top + mainTop));
       }
-      const gain = Geometry.dualGain(main, step), other = Geometry.dualSecondStep(second, gain);
-      let left = float(float(areaWidth * 0.5) - float(float(shell[0] + float(shell[2] * 0.5)) * gain)), top = float(float(areaHeight * 0.5) - float(float(shell[1] + float(shell[3] * 0.5)) * gain));
-      if (screen) {
-        const box = Geometry.dualBounds(main, second, step);
-        left = float(float(float(areaWidth - float(box[2] - box[0])) * 0.5) - box[0]); top = float(float(float(areaHeight - float(box[3] - box[1])) * 0.5) - box[1]);
-      }
-      const mainLeft = Geometry.dualSpan(main, step, gain, true)[0], mainTop = Geometry.dualSpan(main, step, gain, false)[0];
-      left = float(float(left + Geometry.dualWhole(float(left + mainLeft))) - float(left + mainLeft));
-      top = float(float(top + Geometry.dualWhole(float(top + mainTop))) - float(top + mainTop));
       const width = float(sourceWidth * gain), height = float(sourceHeight * gain), canvas = { x: left, y: float(float(areaHeight - top) - height), width, height };
       const lane = (picture, laneStep, screenConfig) => {
         const across = Geometry.dualSpan(picture, laneStep, gain, true), down = Geometry.dualSpan(picture, laneStep, gain, false);
@@ -339,11 +355,10 @@ const BezelRenderer = (() => {
       let canvas = CompositionContract.contain(areaWidth, areaHeight, variant.canvasWidth, variant.canvasHeight);
       if (variant.layered && variant.canvasCover) canvas = Geometry.coverKeepingTubes(variant, preview.screens.length, areaWidth, areaHeight, canvas);
       const first = variant.screens[0];
-      const carried = variant.layered && variant.layers.some(layer => layer.room);  // RendererPlacement.carried: fit on a TV room snaps to a whole step too
-      const dual = variant.layout === "fixed" ? Geometry.dualShell(variant, preview, areaWidth, areaHeight) : null;  // DS and 3DS shells: whole steps in every Fit state, the shell always drawn
+      const dual = variant.layout === "fixed" ? Geometry.dualShell(variant, preview, areaWidth, areaHeight) : null;  // DS and 3DS shells: the shell always drawn, whole steps or the whole shell scaled
       if (dual) return dual.canvas;
-      if ((preview.placement !== "fit" || carried) && preview.screens.length === 1 && first && (first.image.set || first.tube.set)) {
-        canvas = Geometry.integerPlacement(preview.screens[0].h, first, preview.placement, Geometry.singleAspect(preview), areaWidth, areaHeight, canvas, preview.game_fractional_below, carried, variant.shell);
+      if (preview.screens.length === 1 && first && (first.image.set || first.tube.set)) {
+        canvas = Geometry.place(preview.screens[0].h, first, preview.placement, Geometry.singleAspect(preview), areaWidth, areaHeight, canvas, variant);
       }
       return canvas;
     }

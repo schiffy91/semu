@@ -1,7 +1,7 @@
 // Radial v2 spec, the renderer's and the launcher's side: a placement select changes the geometry
 // after the toast's two frames and survives a context reset; slot -1 and the prompts show their
-// toasts; bezel placement is always whole, screen placement fills only where a 3D-era system opts in
-// (the DS and 3DS shells stay whole in every placement: dual_fit.btrc); the Wii's 16:9 output is its own
+// toasts; the integer Fit states are whole steps and non-integer game fills, the bezel off following the same state
+// (the DS and 3DS shells: dual_fit.btrc); the Wii's 16:9 output is its own
 // environment, bezel and Dolphin arguments; chords never collide.
 
 #include <stdlib.h>
@@ -43,14 +43,15 @@ class RadialRenderLive {  // records 81, 82 and 85 as the post-UI phase and the 
         struct RendererPostUiState post;
         memset(&post, 0, sizeof(struct RendererPostUiState));
         RendererMenuModel.initialize(&post);
-        contract.expect(post.catalog.placement_count == 3 && post.catalog.output_count == 2 && post.placement_shown == 2 && post.output_shown == 0 && post.scale_shown == 0 && post.item_count == 11, "the renderer reads wii's three placements, two outputs and two render scales, starting on fit, 4:3 and native, eleven menu rows");
+        contract.expect(post.catalog.placement_count == 4 && post.catalog.output_count == 2 && post.placement_shown == 1 && post.output_shown == 0 && post.scale_shown == 0 && post.item_count == 11, "the renderer reads wii's four Fit states, two outputs and two render scales, starting on integer bezel, 4:3 and native, eleven menu rows");
         long long now = RendererClock.milliseconds();
         struct SemuActionRecord record;
         LiveVariantTools.fill(&record, SemuActions.placementSelect(), 0, now, 1ULL);
         RendererMenuModel.apply(&post, &record, now);
-        contract.expect(post.placement_request == 0 && post.apply_countdown == 2 && post.placement_shown == 0 && strcmp(post.toast, "FIT: BEZEL") == 0, "an 81 record asks for the bezel placement after two frames and toasts FIT: BEZEL");
+        contract.expect(post.placement_request == 0 && post.apply_countdown == 2 && post.placement_shown == 0 && strcmp(post.toast, "FIT: INTEGER GAME") == 0, "an 81 record asks for integer game after two frames and toasts FIT: INTEGER GAME");
         struct RendererConfig config;
         memset(&config, 0, sizeof(struct RendererConfig));
+        config.placement = SEMU_PLACEMENT_BEZEL;  // the launch's own state, integer bezel
         struct RendererLiveChoice live;
         RendererLiveSwitch.reset(&live);
         int bezel = -1;
@@ -59,11 +60,11 @@ class RadialRenderLive {  // records 81, 82 and 85 as the post-UI phase and the 
         int early = RendererLiveSwitch.applyPlacement(&post, &config, &live);
         bool secondFrame = RendererVariantRequests.due(&post, live.bezel, live.shader, &bezel, &shader);
         int applied = RendererLiveSwitch.applyPlacement(&post, &config, &live);
-        contract.expect(!firstFrame && early == SEMU_RENDER_SWITCH_NONE && !secondFrame && applied == SEMU_RENDER_SWITCH_APPLIED && config.placement == 2 && live.placement == 2 && post.placement_request == -1, "the placement applies on the second frame, sets config.placement to bezel (2) and reloads nothing");
-        config.placement = 0;  // a new context loads the launch's fit again
+        contract.expect(!firstFrame && early == SEMU_RENDER_SWITCH_NONE && !secondFrame && applied == SEMU_RENDER_SWITCH_APPLIED && config.placement == SEMU_PLACEMENT_GAME && live.placement == SEMU_PLACEMENT_GAME && live.placement_before == SEMU_PLACEMENT_BEZEL && post.placement_request == -1, "the placement applies on the second frame, sets config.placement to integer game, remembers the integer bezel it left (the SAME notice) and reloads nothing");
+        config.placement = SEMU_PLACEMENT_BEZEL;  // a new context loads the launch's integer bezel again
         RendererLiveSwitch.reapply(&config, &live);
-        contract.expect(config.placement == 2, "a context reset starts on the live placement");
-        contract.expect(strcmp(RendererMenuRaster.rowValue(&post, 6), "BEZEL") == 0 && strcmp(RendererMenuRaster.rowValue(&post, 7), "4:3") == 0 && strcmp(RendererMenuRaster.rowValue(&post, 8), "NATIVE") == 0 && RendererMenuRaster.height(&post) == 72 + 11 * 43 + 52, "the FIT row reads BEZEL, the ASPECT row 4:3, the SCALE row NATIVE, and the eleven-row menu draws taller than eight rows");
+        contract.expect(config.placement == SEMU_PLACEMENT_GAME, "a context reset starts on the live placement");
+        contract.expect(strcmp(RendererMenuRaster.rowValue(&post, 6), "INTEGER GAME") == 0 && strcmp(RendererMenuRaster.rowValue(&post, 7), "4:3") == 0 && strcmp(RendererMenuRaster.rowValue(&post, 8), "NATIVE") == 0 && RendererMenuRaster.height(&post) == 72 + 11 * 43 + 52, "the FIT row reads INTEGER GAME, the ASPECT row 4:3, the SCALE row NATIVE, and the eleven-row menu draws taller than eight rows");
         LiveVariantTools.fill(&record, SemuActions.outputSelect(), 1, now, 2ULL);
         record.reserved = 1;
         RendererMenuModel.apply(&post, &record, now);
@@ -95,28 +96,43 @@ class RadialRenderLive {  // records 81, 82 and 85 as the post-UI phase and the 
     }
 }
 
-class RadialRenderGeometry {  // whole steps for the bezel, the 3D-era opt-in for the screen
+class RadialRenderGeometry {  // the 3D-era opt-in is gone: integer game is a whole step everywhere, non-integer game fills, and with the bezel off the picture follows the same Fit state
     class void run(Contract contract, Fixture fixture) {
         struct RendererCanvasRect canvas;
         struct RendererCanvasRect picture;
         for systemId in ["wii", "gc", "ps2", "dreamcast"] {
-            PlacementSpecGeometry.place(fixture, systemId, 640, 480, 1, 1280, 800, &canvas, &picture);
+            PlacementSpecGeometry.place(fixture, systemId, 640, 480, SEMU_PLACEMENT_GAME, 1280, 800, &canvas, &picture);
             int game = PlacementSpecGeometry.rounded(picture.height);
-            PlacementSpecGeometry.place(fixture, systemId, 640, 480, 2, 1280, 800, &canvas, &picture);
+            PlacementSpecGeometry.place(fixture, systemId, 640, 480, SEMU_PLACEMENT_GAME_FRACTIONAL, 1280, 800, &canvas, &picture);
+            int filled = PlacementSpecGeometry.rounded(picture.height);
+            PlacementSpecGeometry.place(fixture, systemId, 640, 480, SEMU_PLACEMENT_BEZEL, 1280, 800, &canvas, &picture);
             int bezel = PlacementSpecGeometry.rounded(picture.height);
-            contract.expect(game == 800 && bezel == 480, systemId + " at 1280x800: the screen placement fills the 800 lines (it opts in below a 2x step), the bezel placement stays at 1x: " + Strings.fromInt(game) + ", " + Strings.fromInt(bezel));
+            struct RendererPixelRect area;
+            area.x = 0;
+            area.y = 0;
+            area.width = 1280;
+            area.height = 800;
+            struct RendererPixelRect whole;
+            struct RendererPixelRect stretched;
+            RendererCompositionContract.fit(&area, 640, 480, 0, 4.0f / 3.0f, RendererConfiguration.wholeSteps(SEMU_PLACEMENT_GAME) ? 1 : 0, &whole);  // the bezel off, as RendererGeometry.resolve places one screen
+            RendererCompositionContract.fit(&area, 640, 480, 0, 4.0f / 3.0f, RendererConfiguration.wholeSteps(SEMU_PLACEMENT_GAME_FRACTIONAL) ? 1 : 0, &stretched);
+            contract.expect(game == 480 && filled == 800 && bezel == 480 && whole.height == game && stretched.height == filled, systemId + " at 1280x800: integer game and integer bezel 1x (480 lines), non-integer game the 800 lines, and with the bezel off the same Fit state draws the same size (480 and 800), never smaller: " + Strings.fromInt(game) + ", " + Strings.fromInt(filled) + ", " + Strings.fromInt(bezel) + ", off " + Strings.fromInt(whole.height) + " and " + Strings.fromInt(stretched.height));
         }
         int widths[2] = {1280, 1920};
         int heights[2] = {800, 1080};
         for (int size = 0; size < 2; size++) {
-            PlacementSpecGeometry.place(fixture, "snes", 256, 224, 1, widths[size], heights[size], &canvas, &picture);
+            PlacementSpecGeometry.place(fixture, "snes", 256, 224, SEMU_PLACEMENT_GAME, widths[size], heights[size], &canvas, &picture);
             bool snes = PlacementSpecGeometry.rounded(picture.height) % 224 == 0;
-            PlacementSpecGeometry.place(fixture, "gb", 160, 144, 2, widths[size], heights[size], &canvas, &picture);
+            PlacementSpecGeometry.place(fixture, "gb", 160, 144, SEMU_PLACEMENT_BEZEL, widths[size], heights[size], &canvas, &picture);
             bool gameBoy = PlacementSpecGeometry.rounded(picture.height) % 144 == 0;
-            PlacementSpecGeometry.place(fixture, "psp", 480, 272, 2, widths[size], heights[size], &canvas, &picture);
+            PlacementSpecGeometry.place(fixture, "psp", 480, 272, SEMU_PLACEMENT_BEZEL, widths[size], heights[size], &canvas, &picture);
             bool psp = PlacementSpecGeometry.rounded(picture.height) % 272 == 0;
-            contract.expect(snes && gameBoy && psp, f"at {widths[size]}x{heights[size]} snes's screen placement and the Game Boy's and PSP's bezel placement stay on whole steps: no system that did not opt in goes fractional");
+            contract.expect(snes && gameBoy && psp, f"at {widths[size]}x{heights[size]} snes's integer game and the Game Boy's and PSP's integer bezel stay on whole steps");
         }
+        string compositor = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_compositor.btrc"));
+        string resolve = compositor.substring(Strings.find(compositor, "class bool resolve(", 0), 6000);
+        contract.expect(resolve.contains("bool whole = RendererConfiguration.wholeSteps(config->placement);") && resolve.contains("singleAspect, whole ? 1 : 0, &geometry->lanes[0]);") && resolve.contains("config->dual_screen_gap, !whole);") && !compositor.contains("integer_scaling"),
+            "with no bezel to place the compositor takes whole steps or not from the Fit state (one screen and the DS layouts alike), never from a separate integer switch (M16 item 7)");
     }
 }
 

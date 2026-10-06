@@ -80,6 +80,7 @@ import ./spec/ps2_picture.btrc;
 import ./spec/m15_deck.btrc;
 import ./spec/render_scale.btrc;
 import ./spec/boot_resize.btrc;
+import ./spec/fit_states.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -113,7 +114,7 @@ class SettingsLadderContract {
         contract.expect(SemuJson.textAt(plan.settings, "ui.theme").equals("linear-es-de"), "semu.json overrides defaults");
         contract.expect(SemuJson.boolAt(plan.settings, "visual.bezels", false), "overrides beat semu.json");
         contract.expect(SemuJson.intAt(plan.settings, "ui.display_index", 0) == 2, "--settings-json beats everything");
-        contract.expect(SemuJson.boolAt(plan.settings, "visual.integer_scaling", false), "untouched defaults survive");
+        contract.expect(SemuJson.boolAt(plan.settings, "visual.crt_shaders", false) && SemuJson.textAt(plan.settings, "visual.placement").equals("bezel"), "untouched defaults survive");
     }
 }
 
@@ -706,9 +707,9 @@ class RenderResolutionContract {  // the upscaling 3D cores render at the system
         contract.contains(RenderResolutionContract.options(desktop, RenderResolutionContract.scaled("dreamcast", "2x"), "flycast", "dreamcast"), "reicast_internal_resolution = \"1280x960\"", "the Flycast core at 2x on a screen that holds 960 lines");
         contract.contains(RenderResolutionContract.options(deck, RenderResolutionContract.scaled("dreamcast", "2x"), "flycast", "dreamcast"), "reicast_internal_resolution = \"640x480\"", "and native on the Deck's 800");
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuPlan fitted = SemuResolver.plan(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"systems\":{\"gb\":{\"placement\":\"fit\"}}}}", diagnostics);
-        contract.expect(SemuRenderEnvironment.compile(deck.plan, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=game") && SemuRenderEnvironment.compile(deck.plan, deck.model.system("nes"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=fit"), "handhelds default to an integer picture, TVs fit");
-        contract.expect(SemuRenderEnvironment.compile(fitted, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=fit"), "a per-system setting overrides the system's default placement");
+        SemuPlan fitted = SemuResolver.plan(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"systems\":{\"gb\":{\"placement\":\"bezel_fractional\"},\"nes\":{\"placement\":\"fit\"}}}}", diagnostics);
+        contract.expect(SemuRenderEnvironment.compile(deck.plan, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=game") && SemuRenderEnvironment.compile(deck.plan, deck.model.system("nes"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=bezel"), "handhelds default to integer game, TVs to integer bezel");
+        contract.expect(SemuRenderEnvironment.compile(fitted, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=bezel_fractional") && SemuRenderEnvironment.compile(fitted, deck.model.system("nes"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=bezel"), "a per-system Fit state overrides the system's default, and a saved fit (retired) reads as integer bezel");
     }
 }
 
@@ -853,10 +854,16 @@ class SettingsUiContract {  // the document ES-DE's SEMU SETTINGS menu validates
             for (int page = 0; page < pages.size(); page++) { SettingsUiContract.page(contract, pages.at(page), keys, placed); }
         }
         contract.expect(keys.contains("visual.bezels") && keys.contains("visual.systems.gb.bezel_variant") && keys.contains("ui.theme"), "settings ui exposes bezels, the gb variant and the theme");
-        string integerLabel = "";
+        string fitLabel = "";
+        string fitChoices = "";
+        bool integerSwitch = false;
         JSONValue visuals = sections.at(0).get("fields");
-        for (int index = 0; index < visuals.size(); index++) { if (SemuJson.textAt(visuals.at(index), "key").equals("visual.integer_scaling")) { integerLabel = SemuJson.textAt(visuals.at(index), "label"); } }
-        contract.expect(integerLabel.equals("INTEGER SCALING (ONE SCREEN, NO BEZEL)"), "the integer switch says what it governs: a bezel follows PLACEMENT and the DS/3DS layouts are always whole steps; label " + integerLabel);
+        for (int index = 0; index < visuals.size(); index++) {
+            if (SemuJson.textAt(visuals.at(index), "key").equals("visual.placement")) { fitLabel = SemuJson.textAt(visuals.at(index), "label"); fitChoices = visuals.at(index).get("choices").stringify(); }
+            if (SemuJson.textAt(visuals.at(index), "key").equals("visual.integer_scaling")) { integerSwitch = true; }
+        }
+        contract.expect(fitLabel.equals("FIT (UNLESS A SYSTEM CHOOSES)") && fitChoices.equals("[\"game\",\"bezel\",\"game_fractional\",\"bezel_fractional\"]") && !integerSwitch,
+            "the settings offer Fit's four states as the radial cycles them, and no separate integer switch: with the bezel off the Fit state's whole step or not decides (M16 item 7); label " + fitLabel + ", choices " + fitChoices);
         contract.expect(placed.size() == document.get("commands").size() && placed.contains("reset-settings"), "every declared command is placed exactly once");
         JSONValue manifest = SemuSettingsUi.manifest("/nix/store/x-semu/bin/semu");
         contract.expect(manifest.size() == 2 && manifest.get("entry").size() == 5 && manifest.get("entry").get("actions").size() == 3, "manifest has the exact member counts ES-DE checks");
@@ -1047,6 +1054,7 @@ int main() {
     M15DeckSpecContract.run(contract);
     RenderScaleSpecContract.run(contract);
     BootResizeSpecContract.run(contract);
+    FitStatesSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);

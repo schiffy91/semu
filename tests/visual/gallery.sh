@@ -24,7 +24,7 @@ verdicts=""
 
 environment() {  # SYSTEM VARIANT [SHADER]: the launcher's render environment for that choice
   "$semu" render-env --system "$1" --project "$root/config" --asset-root "$assets" \
-    --settings-json "{\"visual\":{\"systems\":{\"$1\":{\"bezel_variant\":\"$2\"${3:+,\"shader_variant\":\"$3\",\"placement\":\"fit\"}}}}}"  # a measuring render checks the package geometry, so fit
+    --settings-json "{\"visual\":{\"systems\":{\"$1\":{\"bezel_variant\":\"$2\"${3:+,\"shader_variant\":\"$3\",\"placement\":\"bezel_fractional\"}}}}}"  # a measuring render checks the package geometry, so the whole bezel as large as it goes (non-integer bezel, the old fit's contain)
 }
 
 placement_only() {  # ENV-LINE: a screen's look without curvature, vignette, bloom or reflection, its shape, radius, fit and inset kept

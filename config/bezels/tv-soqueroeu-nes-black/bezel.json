@@ -130,7 +130,8 @@
     }
   ],
   "doc": {
-    "scene": "Soqueroeu's black-edition NES television, lit for late night"
+    "scene": "Soqueroeu's black-edition NES television, lit for late night",
+    "shell": "the television's body on the canvas (cabinet, stand and, beside the generic set, its speakers), measured from the art's edges against the wall and the table: Fit's bezel states keep it on screen, the room behind it carries on"
   },
   "upstream": {
     "kind": "scene",
@@ -144,6 +145,12 @@
   "canvas": {
     "w": 3840,
     "h": 2160
+  },
+  "shell": {
+    "x": 868,
+    "y": 60,
+    "w": 2104,
+    "h": 1928
   },
   "canvas_layer": "background",
   "layers": [

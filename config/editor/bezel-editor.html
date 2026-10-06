@@ -160,12 +160,12 @@ state.target = CAPTURE ? { width: CAPTURE.width, height: CAPTURE.height } : (() 
 function previewsOf(pkg) {  // the systems that show this package, else one made from its own screens (native height 240 at their aspect)
   if (pkg.previews && pkg.previews.length) return pkg.previews;
   const screens = (pkg.screens || []).map(screen => ({ id: screen.id, h: 240, w: Math.round(240 * (screen.aspect || 4 / 3)) }));
-  return [{ system: "", variant: "", label: "no system binds it", screens: screens.length ? screens : [{ id: "main", w: 320, h: 240 }], aspect: { w: 0, h: 0 }, presentation: 0, placement: "fit", gap: 0, frame_width: 0, shader: null }];
+  return [{ system: "", variant: "", label: "no system binds it", screens: screens.length ? screens : [{ id: "main", w: 320, h: 240 }], aspect: { w: 0, h: 0 }, presentation: 0, placement: "bezel", gap: 0, frame_width: 0, shader: null }];
 }
 function choosePreview(wanted) {  // ?preview=system:variant, else the one already chosen for this system, else the first
   const previews = previewsOf(state.current), key = preview => `${preview.system}:${preview.variant}`;
   state.preview = previews.find(preview => key(preview) === wanted) || previews.find(preview => state.preview && preview.system === state.preview.system) || previews[0];
-  if (["fit", "game", "bezel"].includes(pageQuery.get("placement"))) state.preview = { ...state.preview, placement: pageQuery.get("placement") };  // ?placement= overrides the system's, as a setting would
+  if (["game", "bezel", "game_fractional", "bezel_fractional"].includes(pageQuery.get("placement"))) state.preview = { ...state.preview, placement: pageQuery.get("placement") };  // ?placement= overrides the system's Fit state, as a setting would
   const select = document.getElementById("preview");
   select.innerHTML = previews.map(preview => `<option value="${key(preview)}">${preview.label}</option>`).join("");
   select.value = key(state.preview);
@@ -182,7 +182,7 @@ const geometryCache = new Map();
 function computedGeometry() {  // RendererLayout.computed on the target screen, asked of the editor server (the renderer's own code); null until it answers
   const variant = previewVariant(), frame = variant.frame;
   const query = new URLSearchParams({ layout: variant.layout, width: state.target.width, height: state.target.height, native: state.preview.screens.map(native => `${native.w}x${native.h}`).join(","),
-    frame: frame.set ? frame.width : 0, gap: state.gap === undefined ? (state.preview.gap || 0) : state.gap }).toString();
+    frame: frame.set ? frame.width : 0, gap: state.gap === undefined ? (state.preview.gap || 0) : state.gap, placement: state.preview.placement }).toString();  // a non-integer Fit state grows the layout to the screen
   if (geometryCache.has(query)) return geometryCache.get(query);
   geometryCache.set(query, null);
   fetch(`/api/geometry?${query}`).then(response => response.json()).then(result => { geometryCache.set(query, result.lanes ? result : null); if (result.error) status("layout: " + result.error); compositeKey = ""; if (isComputed()) buildProps(); draw(); }, error => status("layout: " + error));

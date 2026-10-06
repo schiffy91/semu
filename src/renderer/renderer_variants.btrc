@@ -37,7 +37,7 @@ struct RendererVariantCatalog {  // the header: what each kind offers, in the su
     int current_scale;  // -1 with nothing to choose, or a file written before scales
     char bezel_labels[10 * 32];
     char shader_labels[10 * 32];
-    char placement_ids[10 * 32];  // bezel, game or fit: what RendererConfiguration.placementCode reads
+    char placement_ids[10 * 32];  // game, bezel, game_fractional, bezel_fractional: what RendererConfiguration.placementCode reads
     char placement_labels[10 * 32];
     char output_labels[10 * 32];
     char scale_ids[10 * 32];  // 1x, 2x, 3x: the factor RendererRenderScaling reads

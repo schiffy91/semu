@@ -1,11 +1,11 @@
-// Dual fit spec (M15 item 2, "on DS vertical shell, if i hit fit screen, the bezel disappears"): Fit never drops a
-// DS or 3DS shell and every state is at whole steps. For each system's shell and vertical shell, in bezel, screen
-// and fit placement at the Deck's 1280x800, 1080p, 4K and 4:3: the shell is drawn round both screens, each screen
-// is a whole multiple of its native size and on the display, bezel keeps the whole shell (1% may leave it) at the
-// largest step that does, screen is the bezel's picture unless both screens fit a larger step at the shell's
-// spacing (4K only), and the steps the owner sees are pinned. The compositor places two-screen shells through
-// RendererDualShell and never hides one; a Fit that moves nothing toasts FIT: SCREEN SAME AS BEZEL; on the computed
-// layouts Fit journals 81/-1.
+// Dual fit spec (M15 item 2, "on DS vertical shell, if i hit fit screen, the bezel disappears"; M16 item 5, Fit's four
+// states): Fit never drops a DS or 3DS shell. For each system's shell and vertical shell at the Deck's 1280x800, 1080p,
+// 4K and 4:3: in the two integer states the shell is drawn round both screens, each screen is a whole multiple of its
+// native size and on the display, integer bezel keeps the whole shell (1% may leave it) at the largest step that does,
+// integer game is the bezel's picture unless both screens fit a larger step at the shell's spacing (4K only), and the
+// steps the owner sees are pinned (the two non-integer states: fit_states.btrc). The compositor places two-screen
+// shells through RendererDualShell and never hides one; a Fit press that moves nothing toasts FIT: INTEGER GAME
+// (SAME); on the computed layouts Fit steps the two game states.
 
 #include <stdlib.h>
 #include <string.h>
@@ -81,29 +81,29 @@ class DualFitSpecGeometry {
         return f"top {geometry->lanes[0].output_x},{geometry->lanes[0].output_y} {geometry->lanes[0].output_width}x{geometry->lanes[0].output_height}, bottom {geometry->lanes[1].output_x},{geometry->lanes[1].output_y} {geometry->lanes[1].output_width}x{geometry->lanes[1].output_height}, shell " + PlacementSpecGeometry.text(canvas);
     }
 
-    class void check(Contract contract, Fixture fixture, string systemId, string variantId, int areaWidth, int areaHeight, bool strict) {  // bezel, screen and fit at one size; STRICT: no fractional fallback (the Deck, 1080p, 4K)
+    class void check(Contract contract, Fixture fixture, string systemId, string variantId, int areaWidth, int areaHeight, bool strict) {  // the two integer states at one size; STRICT: no fractional fallback (the Deck, 1080p, 4K)
         struct RendererCanvasRect bezelCanvas;
         struct RendererCompositionGeometry bezel;
-        bool placed = DualFitSpecGeometry.place(fixture, systemId, variantId, 2, areaWidth, areaHeight, &bezelCanvas, &bezel);
+        bool placed = DualFitSpecGeometry.place(fixture, systemId, variantId, SEMU_PLACEMENT_BEZEL, areaWidth, areaHeight, &bezelCanvas, &bezel);
         string label = systemId + ":" + variantId + f" at {areaWidth}x{areaHeight}";
         int bezelStep = DualFitSpecGeometry.step(&bezel.lanes[0]);
         float grown = bezelStep < 1 ? 0.0f : (float)(bezelStep + 1) / (float)bezelStep;
         bool whole = bezelCanvas.width <= (float)areaWidth * 1.01f + 0.5f && bezelCanvas.height <= (float)areaHeight * 1.01f + 0.5f;
         bool largest = bezelCanvas.width * grown > (float)areaWidth * 1.01f || bezelCanvas.height * grown > (float)areaHeight * 1.01f;
         contract.expect(placed && whole && largest && DualFitSpecGeometry.balanced(bezelCanvas.x, bezelCanvas.x + bezelCanvas.width, areaWidth) && DualFitSpecGeometry.balanced(bezelCanvas.y, bezelCanvas.y + bezelCanvas.height, areaHeight),
-            label + ", bezel: the whole shell on the display at the largest step that keeps it (1% may leave it), centred: " + DualFitSpecGeometry.text(&bezel, &bezelCanvas));
-        for (int placement = 0; placement < 3; placement++) {
+            label + ", integer bezel: the whole shell on the display at the largest step that keeps it (1% may leave it), centred: " + DualFitSpecGeometry.text(&bezel, &bezelCanvas));
+        for (int placement = SEMU_PLACEMENT_GAME; placement <= SEMU_PLACEMENT_BEZEL; placement++) {
             struct RendererCanvasRect canvas;
             struct RendererCompositionGeometry geometry;
             bool drawn = DualFitSpecGeometry.place(fixture, systemId, variantId, placement, areaWidth, areaHeight, &canvas, &geometry);
-            string name = placement == 1 ? "screen" : (placement == 2 ? "bezel" : "fit");
+            string name = placement == SEMU_PLACEMENT_GAME ? "integer game" : "integer bezel";
             string shown = label + ", " + name + ": " + DualFitSpecGeometry.text(&geometry, &canvas);
             contract.expect(drawn && canvas.width > 0.0f && DualFitSpecGeometry.within(&geometry.lanes[0], &canvas) && DualFitSpecGeometry.within(&geometry.lanes[1], &canvas), shown + ": the shell is drawn round both screens, never dropped");
             bool fallback = !strict && DualFitSpecGeometry.step(&geometry.lanes[1]) == 0 && geometry.lanes[1].output_width < geometry.lanes[1].native_width && geometry.lanes[1].output_height < geometry.lanes[1].native_height;  // a touch window under half of 1x, filled
             contract.expect(DualFitSpecGeometry.step(&geometry.lanes[0]) >= 1 && (DualFitSpecGeometry.step(&geometry.lanes[1]) >= 1 || fallback), shown + (strict ? ": both screens at whole multiples of their native size" : ": whole multiples, or a second screen under half of 1x filling its window (the fractional fallback)"));
             contract.expect(DualFitSpecGeometry.inside(&geometry.lanes[0], areaWidth, areaHeight) && DualFitSpecGeometry.inside(&geometry.lanes[1], areaWidth, areaHeight) && DualFitSpecGeometry.held(&geometry.lanes[0]) && DualFitSpecGeometry.held(&geometry.lanes[1]), shown + ": both screens on the display, no pixel masked by their openings");
             bool larger = DualFitSpecGeometry.step(&geometry.lanes[0]) > bezelStep;
-            if (placement != 1 || !larger) { contract.expect(DualFitSpecGeometry.identical(&geometry, &canvas, &bezel, &bezelCanvas), shown + ": the bezel's picture, so Fit never jumps where the screen cannot be larger"); }
+            if (placement != SEMU_PLACEMENT_GAME || !larger) { contract.expect(DualFitSpecGeometry.identical(&geometry, &canvas, &bezel, &bezelCanvas), shown + ": the bezel's picture, so Fit never jumps where the screen cannot be larger"); }
             else { contract.expect(DualFitSpecGeometry.pairCentred(&geometry, areaWidth, areaHeight), shown + ": a larger step than the bezel's, the two screens centred as a pair"); }
         }
     }
@@ -113,7 +113,7 @@ class DualFitSpecGeometry {
         Vector<string> size = Strings.split(fields[2], "x");
         struct RendererCanvasRect canvas;
         struct RendererCompositionGeometry geometry;
-        DualFitSpecGeometry.place(fixture, fields[0], fields[1], fields[3].equals("screen") ? 1 : 2, Strings.toInt(size[0]), Strings.toInt(size[1]), &canvas, &geometry);
+        DualFitSpecGeometry.place(fixture, fields[0], fields[1], fields[3].equals("game") ? SEMU_PLACEMENT_GAME : SEMU_PLACEMENT_BEZEL, Strings.toInt(size[0]), Strings.toInt(size[1]), &canvas, &geometry);
         int top = DualFitSpecGeometry.step(&geometry.lanes[0]);
         int bottom = DualFitSpecGeometry.step(&geometry.lanes[1]);
         contract.expect(top == Strings.toInt(fields[4]) && bottom == Strings.toInt(fields[5]), row + f": top {top}x, bottom {bottom}x (" + DualFitSpecGeometry.text(&geometry, &canvas) + ")");
@@ -129,7 +129,7 @@ class DualFitSpecGeometry {
         }
         for row in ["nds/shell/1280x800/bezel/2/2", "nds/shell/1920x1080/bezel/3/3", "nds/vertical/1280x800/bezel/1/1", "nds/vertical/1920x1080/bezel/2/2",
                     "n3ds/shell/1280x800/bezel/2/1", "n3ds/shell/1920x1080/bezel/3/1", "n3ds/vertical/1280x800/bezel/1/1", "n3ds/vertical/1920x1080/bezel/2/2",
-                    "nds/shell/1280x800/screen/2/2", "nds/vertical/1280x800/screen/1/1", "n3ds/shell/1280x800/screen/2/1", "nds/shell/3840x2160/bezel/6/6", "nds/shell/3840x2160/screen/7/7", "n3ds/shell/1024x768/bezel/1/0"] {
+                    "nds/shell/1280x800/game/2/2", "nds/vertical/1280x800/game/1/1", "n3ds/shell/1280x800/game/2/1", "nds/shell/3840x2160/bezel/6/6", "nds/shell/3840x2160/game/7/7", "n3ds/shell/1024x768/bezel/1/0"] {
             DualFitSpecGeometry.pinned(contract, fixture, row);
         }
     }
@@ -155,7 +155,7 @@ class DualFitSpecWiring {  // the compositor's two-screen shells and the interna
     }
 }
 
-class DualFitSpecNotice {  // FIT: SCREEN SAME AS BEZEL once the geometry shows Fit: Bezel's picture; 81/-1 on the computed layouts
+class DualFitSpecNotice {  // FIT: INTEGER GAME (SAME) once the geometry shows the state the press left; with no art Fit steps the two game states
     class void select(struct RendererPostUiState* post, int slot, unsigned long long sequence, long long now) {  // the radial's Fit select, as the menu model takes it
         struct SemuActionRecord record;
         LiveVariantTools.fill(&record, SemuActions.placementSelect(), slot, now, sequence);
@@ -186,70 +186,70 @@ class DualFitSpecNotice {  // FIT: SCREEN SAME AS BEZEL once the geometry shows 
         memset(&post, 0, sizeof(struct RendererPostUiState));
         RendererMenuModel.initialize(&post);
         long long now = RendererClock.milliseconds();
-        DualFitSpecNotice.select(&post, 1, 1ULL, now);
-        bool plain = strcmp(post.toast, "FIT: SCREEN") == 0 && post.placement_noticed == 1;
+        DualFitSpecNotice.select(&post, 0, 1ULL, now);  // integer game, from the DS's default integer bezel
+        bool plain = strcmp(post.toast, "FIT: INTEGER GAME") == 0 && post.placement_noticed == 1;
         struct RendererCanvasRect canvas;
-        struct RendererCompositionGeometry bezel;
+        struct RendererCompositionGeometry before;
         struct RendererCompositionGeometry after;
-        DualFitSpecGeometry.place(fixture, "nds", "vertical", 2, 1280, 800, &canvas, &bezel);
-        bezel.bezel_x = canvas.x;
-        bezel.bezel_width = canvas.width;
-        DualFitSpecGeometry.place(fixture, "nds", "vertical", 1, 1280, 800, &canvas, &after);
+        DualFitSpecGeometry.place(fixture, "nds", "vertical", SEMU_PLACEMENT_BEZEL, 1280, 800, &canvas, &before);
+        before.bezel_x = canvas.x;
+        before.bezel_width = canvas.width;
+        DualFitSpecGeometry.place(fixture, "nds", "vertical", SEMU_PLACEMENT_GAME, 1280, 800, &canvas, &after);
         after.bezel_x = canvas.x;
         after.bezel_width = canvas.width;
         struct RendererLiveChoice live;
         RendererLiveSwitch.reset(&live);
         RendererPlacementNotice.remember(&live);
-        RendererPlacementNotice.after(&post, &live, &after, &bezel, 1, now);
-        contract.expect(plain && strcmp(post.toast, "FIT: SCREEN SAME AS BEZEL") == 0 && post.placement_noticed == 0 && live.placement_compare == 0, "Fit to the screen on the DS vertical shell at 1280x800 draws Fit: Bezel's picture, so FIT: SCREEN becomes FIT: SCREEN SAME AS BEZEL");
-        DualFitSpecNotice.select(&post, 1, 2ULL, now);
+        RendererPlacementNotice.after(&post, &live, &after, &before, now);
+        contract.expect(plain && strcmp(post.toast, "FIT: INTEGER GAME (SAME)") == 0 && post.placement_noticed == 0 && live.placement_compare == 0, "integer game on the DS vertical shell at 1280x800 draws integer bezel's picture, so FIT: INTEGER GAME becomes FIT: INTEGER GAME (SAME)");
+        DualFitSpecNotice.select(&post, 0, 2ULL, now);
         after.lanes[0].output_x = after.lanes[0].output_x + 1;
         RendererPlacementNotice.remember(&live);
-        RendererPlacementNotice.after(&post, &live, &after, &bezel, 1, now);
-        contract.expect(strcmp(post.toast, "FIT: SCREEN") == 0, "a Fit that moves a screen off Fit: Bezel's keeps its plain toast");
+        RendererPlacementNotice.after(&post, &live, &after, &before, now);
+        contract.expect(strcmp(post.toast, "FIT: INTEGER GAME") == 0, "a Fit press that moves a screen keeps its plain toast");
         LiveVariantTools.clear();
     }
 
-    class void television(Contract contract, Fixture fixture) {  // compared with Fit: Bezel, never with the frame before: the PS2 at 1080p is 2x in Fit and Fit: Screen, 1x in Fit: Bezel
-        struct RendererCompositionGeometry fit;
+    class void television(Contract contract, Fixture fixture) {  // compared with the state the press left: the PS2 is 1x in both integer states on the Deck, 2x and 1x at 1080p
         struct RendererCompositionGeometry game;
         struct RendererCompositionGeometry bezel;
-        struct RendererCompositionGeometry deckFit;
+        struct RendererCompositionGeometry deckGame;
         struct RendererCompositionGeometry deckBezel;
-        DualFitSpecNotice.room(&fit, fixture, 0, 1920, 1080);  // before the menu's environment: placing a variant sets and clears the launch's variables
-        DualFitSpecNotice.room(&game, fixture, 1, 1920, 1080);
-        DualFitSpecNotice.room(&bezel, fixture, 2, 1920, 1080);
-        DualFitSpecNotice.room(&deckFit, fixture, 0, 1280, 800);
-        DualFitSpecNotice.room(&deckBezel, fixture, 2, 1280, 800);
-        bool premise = RendererPlacementNotice.same(&fit, &game) && !RendererPlacementNotice.same(&fit, &bezel) && game.lanes[0].output_height == 896 && bezel.lanes[0].output_height == 448;
-        bool deckPremise = RendererPlacementNotice.same(&deckBezel, &deckFit) && deckFit.lanes[0].output_height == 448;
+        struct RendererCompositionGeometry deckFill;
+        DualFitSpecNotice.room(&game, fixture, SEMU_PLACEMENT_GAME, 1920, 1080);  // before the menu's environment: placing a variant sets and clears the launch's variables
+        DualFitSpecNotice.room(&bezel, fixture, SEMU_PLACEMENT_BEZEL, 1920, 1080);
+        DualFitSpecNotice.room(&deckGame, fixture, SEMU_PLACEMENT_GAME, 1280, 800);
+        DualFitSpecNotice.room(&deckBezel, fixture, SEMU_PLACEMENT_BEZEL, 1280, 800);
+        DualFitSpecNotice.room(&deckFill, fixture, SEMU_PLACEMENT_GAME_FRACTIONAL, 1280, 800);
+        bool premise = !RendererPlacementNotice.same(&bezel, &game) && game.lanes[0].output_height == 896 && bezel.lanes[0].output_height == 448;
+        bool deckPremise = RendererPlacementNotice.same(&deckBezel, &deckGame) && deckGame.lanes[0].output_height == 448 && deckFill.lanes[0].output_height == 800;
         string state = PathTools.join(fixture.scratch, "dual-fit/ps2");
         SemuRenderVariantSet set = SemuRenderVariants.write(fixture.plan, fixture.model.system("ps2"), "pcsx2", state);
         LiveVariantTools.environment(fixture, state, set.token);
-        setenv("SEMU_RENDER_SYSTEM_ID", "ps2", 1);  // the catalog answers for the system it was written for (placements bezel|game|fit)
+        setenv("SEMU_RENDER_SYSTEM_ID", "ps2", 1);  // the catalog answers for the system it was written for (game|bezel|game_fractional|bezel_fractional)
         struct RendererPostUiState post;
         memset(&post, 0, sizeof(struct RendererPostUiState));
         RendererMenuModel.initialize(&post);
         long long now = RendererClock.milliseconds();
         struct RendererLiveChoice live;
         RendererLiveSwitch.reset(&live);
-        DualFitSpecNotice.select(&post, 2, 10ULL, now);  // game to fit, the radial's wrap: the frame before was Fit: Screen's, the same picture
+        DualFitSpecNotice.select(&post, 0, 10ULL, now);  // integer bezel to integer game at 1080p: 1x to 2x
         RendererPlacementNotice.remember(&live);
-        RendererPlacementNotice.after(&post, &live, &fit, &bezel, 0, now);
-        bool fitPlain = strcmp(post.toast, "FIT: FIT") == 0;
-        DualFitSpecNotice.select(&post, 1, 11ULL, now);  // fit to game, the menu row's left step
+        RendererPlacementNotice.after(&post, &live, &game, &bezel, now);
+        bool moved = strcmp(post.toast, "FIT: INTEGER GAME") == 0;
+        DualFitSpecNotice.select(&post, 0, 11ULL, now);  // the same press on the Deck: 1x either way
         RendererPlacementNotice.remember(&live);
-        RendererPlacementNotice.after(&post, &live, &game, &bezel, 1, now);
-        bool screenPlain = strcmp(post.toast, "FIT: SCREEN") == 0;
-        contract.expect(premise && fitPlain && screenPlain, "ps2:tv at 1920x1080: Fit and Fit: Screen are both 2x (896 lines) and Fit: Bezel 1x, so switching between Fit and Fit: Screen keeps the plain toasts, never SAME AS BEZEL" + (premise ? "" : "; the premise (fit = game 2x, bezel 1x) no longer holds") + (fitPlain ? "" : "; the switch to Fit claimed SAME AS BEZEL") + (screenPlain ? "" : "; the switch to Fit: Screen claimed SAME AS BEZEL"));
-        DualFitSpecNotice.select(&post, 2, 12ULL, now);  // on the Deck the PS2's Fit is Fit: Bezel's 1x TV
+        RendererPlacementNotice.after(&post, &live, &deckGame, &deckBezel, now);
+        bool same = strcmp(post.toast, "FIT: INTEGER GAME (SAME)") == 0;
+        DualFitSpecNotice.select(&post, 2, 12ULL, now);  // integer game to non-integer game on the Deck: 448 lines to 800
         RendererPlacementNotice.remember(&live);
-        RendererPlacementNotice.after(&post, &live, &deckFit, &deckBezel, 0, now);
-        contract.expect(deckPremise && strcmp(post.toast, "FIT: SAME AS BEZEL") == 0, "ps2:tv at 1280x800: Fit draws Fit: Bezel's 1x TV and says FIT: SAME AS BEZEL, never FIT: FIT SAME AS BEZEL" + (deckPremise ? "" : "; the premise (fit = bezel at 1x) no longer holds"));
+        RendererPlacementNotice.after(&post, &live, &deckFill, &deckGame, now);
+        bool filled = strcmp(post.toast, "FIT: NON-INTEGER GAME") == 0;
+        contract.expect(premise && deckPremise && moved && same && filled, "ps2:tv: integer bezel to integer game toasts FIT: INTEGER GAME at 1920x1080 (1x to 2x) and FIT: INTEGER GAME (SAME) on the Deck (1x both), and on to FIT: NON-INTEGER GAME (800 lines)" + (premise && deckPremise ? "" : "; the premise (1080p game 2x, bezel 1x; the Deck both 1x, non-integer 800) no longer holds") + (moved ? "" : "; the 1080p press claimed SAME") + (same ? "" : "; the Deck press missed SAME") + (filled ? "" : "; the non-integer press claimed SAME"));
         LiveVariantTools.clear();
     }
 
-    class void wiring(Contract contract, Fixture fixture) {  // every live path's frame compares with Fit: Bezel's own geometry
+    class void wiring(Contract contract, Fixture fixture) {  // every live path's frame compares with the geometry of the state the press left
         string library = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/libsemurenderer.btrc"));
         int game = Strings.find(library, "status = RendererCompositor.game(&SemuRenderer.gl,", 0);
         int notice = Strings.find(library, "SemuRendererLiveVariants.notice(frame);", 0);
@@ -257,20 +257,25 @@ class DualFitSpecNotice {  // FIT: SCREEN SAME AS BEZEL once the geometry shows 
         string applied = library.substring(Strings.find(library, "class void apply() {  // in the game phase", 0), 1200);
         contract.contains(applied, "RendererPlacementNotice.remember(&SemuRenderer.live);", "an applied placement select arms the notice");
         string noticed = library.substring(Strings.find(library, "class void notice(struct SemuRenderFrameGl* frame) {", 0), 1400);
-        contract.contains(noticed, "SemuRenderer.config.placement = 2;", "the notice resolves the same frame as Fit: Bezel");
-        contract.contains(noticed, "placed = RendererGeometry.resolve(frame, &SemuRenderer.config, &SemuRenderer.resources, &bezel);", "with the compositor's own geometry");
-        contract.contains(noticed, "RendererPlacementNotice.after(&SemuRenderer.post_ui, &SemuRenderer.live, resolved ? &SemuRenderer.geometry : null, placed ? &bezel : null, placement, RendererClock.milliseconds());", "and compares the drawn geometry with it");
+        contract.contains(noticed, "SemuRenderer.config.placement = SemuRenderer.live.placement_before;", "the notice resolves the same frame in the state the press left");
+        contract.contains(noticed, "placed = RendererGeometry.resolve(frame, &SemuRenderer.config, &SemuRenderer.resources, &before);", "with the compositor's own geometry");
+        contract.contains(noticed, "RendererPlacementNotice.after(&SemuRenderer.post_ui, &SemuRenderer.live, resolved ? &SemuRenderer.geometry : null, placed ? &before : null, RendererClock.milliseconds());", "and compares the drawn geometry with it");
+        string live = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_live_switch.btrc"));
+        contract.contains(live.substring(Strings.find(live, "class int applyPlacement(", 0), 900), "live->placement_before = config->placement;", "applying a placement remembers the state it leaves");
     }
 
-    class void computed(Contract contract, Fixture fixture) {  // the large-main, side-by-side and stacked layouts have no art: nothing for Fit to place
+    class void computed(Contract contract, Fixture fixture) {  // the large-main, side-by-side and stacked layouts have no art: Fit steps whole steps or not, the two game states
         for variantId in ["main_right", "main_left", "side_by_side", "stacked"] {
             SemuLaunchPlan launch = RadialBed.launch(fixture, "nds", "fit-" + variantId, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"" + variantId + "\"}}}}", "Mario.nds");
             SemuActionExecutor.execute(launch, "visual.placement.next", SEMU_SOURCE_X11);
-            contract.expect(RadialBed.record(launch, 0, SemuActions.placementSelect(), -1, 0) && SemuJson.get(RadialBed.saved(launch), "visual.systems.nds.placement").isNull() && launch.variants.placement.index == 0, "nds:" + variantId + ": Fit journals 81/-1 (FIT: NO BEZEL), keeps the placement and saves none");
+            bool fractional = RadialBed.record(launch, 0, SemuActions.placementSelect(), 2, 0) && SemuJson.textAt(RadialBed.saved(launch), "visual.systems.nds.placement").equals("game_fractional");
+            SemuActionExecutor.execute(launch, "visual.placement.next", SEMU_SOURCE_X11);
+            bool integer = RadialBed.record(launch, 1, SemuActions.placementSelect(), 0, 0) && SemuJson.textAt(RadialBed.saved(launch), "visual.systems.nds.placement").equals("game");
+            contract.expect(fractional && integer, "nds:" + variantId + ": Fit steps from integer bezel to non-integer game (81/2) and back to integer game (81/0), saving each");
         }
         SemuLaunchPlan shell = RadialBed.launch(fixture, "nds", "fit-vertical", "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"vertical\"}}}}", "Mario.nds");
         SemuActionExecutor.execute(shell, "visual.placement.next", SEMU_SOURCE_X11);
-        contract.expect(RadialBed.record(shell, 0, SemuActions.placementSelect(), 1, 0), "nds:vertical, a shell: Fit journals the screen placement (81/1)");
+        contract.expect(RadialBed.record(shell, 0, SemuActions.placementSelect(), 2, 0), "nds:vertical, a shell: Fit steps from integer bezel to non-integer game (81/2), the next of the four states");
         memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
     }
 }

@@ -99,7 +99,7 @@ class RendererStateFiles {
             fprintf(file,
                 " selected_variant=%d integer_policy=%s aspect_policy=%s shader_preset=",
                 config->active_variant + 1,
-                config->integer_scaling != 0 ? "integer" : "fractional",
+                RendererConfiguration.wholeSteps(config->placement) ? "integer" : "fractional",
                 frame != null && frame->presentation_aspect > 0.01f
                     ? "live" : (config->display_aspect > 0.01f
                         ? "configured" : "native"));

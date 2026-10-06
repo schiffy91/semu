@@ -7,6 +7,7 @@ import ../model.btrc;
 import ../resolve.btrc;
 import ../bezel/preset.btrc;
 import ./render_scale.btrc;
+import ./fit_states.btrc;
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -103,7 +104,7 @@ class SemuRenderLayers {  // the package's layer stack for the compositor: file,
         if (lines.size() == 0) { return; }
         if (lines.size() > 8) { diagnostics.add(packageId, "layers", f"{lines.size()} drawable layers, the compositor holds 8"); return; }
         env.set("SEMU_RENDER_CANVAS" + suffix, f"{SemuRenderEnvironment.numberOr(canvas, "w", "0")},{SemuRenderEnvironment.numberOr(canvas, "h", "0")}");
-        string shell = SemuRenderEnvironment.rect(package.get("shell"), canvas);  // the device's silhouette (its plates' alpha bounds): bezel placement keeps it on screen, never the transparent margin
+        string shell = SemuRenderEnvironment.rect(package.get("shell"), canvas);  // a device's silhouette (its plates' alpha bounds) or a TV's body: the bezel states keep it on screen, never the transparent margin or the room
         if (!shell.isEmpty()) { env.set("SEMU_RENDER_CANVAS_SHELL" + suffix, shell); }
         for (int index = 0; index < layers.size(); index++) {  // a scene whose canvas is the room fills the screen; a device keeps its whole silhouette
             if (SemuJson.textAt(layers.at(index), "id").equals(canvasLayer) && SemuJson.textAt(layers.at(index), "follow").equals("viewport")) { env.set("SEMU_RENDER_CANVAS_FIT" + suffix, "cover"); }
@@ -525,13 +526,7 @@ class SemuRenderEnvironment {
         env.set("SEMU_RENDER_COMPOSITOR_DIR", PathTools.join(plan.configRoot, "render"));  // the compositor GLSL is data: config/render/compositor.{vert,frag}
         env.set("SEMU_RENDER_SHADERS", shaderPath.isEmpty() ? "0" : "1");
         env.set("SEMU_RENDER_BEZELS", bezels ? "1" : "0");
-        env.set("SEMU_RENDER_INTEGER_SCALE", SemuJson.boolAt(settings, "visual.integer_scaling", true) ? "1" : "0");  // one screen without a fixed bezel; DS/3DS always integer
-        string placement = SemuJson.textAt(settings, "visual.systems." + system.id + ".placement");
-        if (placement.isEmpty()) { placement = SemuJson.textAt(system.bezels, "placement"); }  // the system's own default, e.g. game for handhelds
-        if (placement.isEmpty()) { placement = SemuJson.textAt(settings, "visual.placement"); }
-        env.set("SEMU_RENDER_PLACEMENT", placement.equals("game") || placement.equals("bezel") ? placement : "fit");  // integer picture: shell cropped, or shell whole
-        int fractionalBelow = SemuJson.intAt(system.definition, "display.scaling.game_fractional_below", 0);  // a 3D-era system opts in: screen placement fills the screen when its whole step would be smaller
-        if (fractionalBelow > 1) { env.set("SEMU_RENDER_GAME_FRACTIONAL_BELOW", Strings.fromInt(fractionalBelow)); }
+        env.set("SEMU_RENDER_PLACEMENT", SemuFitStates.current(settings, system));  // the Fit state; with the bezel off its whole step or not still decides the picture
         JSONValue display = system.definition.get("display");
         string outputId = SemuRenderEnvironment.outputId(plan, system);
         JSONValue aspect = outputId.isEmpty() ? display : SemuRenderEnvironment.output(system, outputId);  // the game's output decides the picture's shape

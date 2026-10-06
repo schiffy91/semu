@@ -3,7 +3,7 @@
 # production is build/render-host fed by `semu render-env` with the shader off, the editor is `semu bezel edit` in its
 # capture mode (?capture=WxH, headless Chrome), both drawing the same card. Each pair becomes
 # OUT_DIR/<system>-<variant>-{editor,production,diff,side}.png, a row of OUT_DIR/metrics.tsv and OUT_DIR/index.html.
-# usage: editor-sync.sh [--card white|black|test] [--placement fit|game|bezel] [--size WxH] OUT_DIR [system[:variant]...]
+# usage: editor-sync.sh [--card white|black|test] [--placement game|bezel|game_fractional|bezel_fractional] [--size WxH] OUT_DIR [system[:variant]...]
 # --card test draws the editor's test card on both sides (RENDER_HOST_CARD=editor). --placement overrides the system's.
 # Exits with the number of failing cells: a render or capture that failed, framing more than 1 px apart, or any pixel
 # whose largest channel differs by more than 10 % (the editor must show what the renderer draws).
@@ -30,7 +30,7 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
-[ $# -ge 1 ] || { echo "usage: $0 [--card white|black|test] [--placement fit|game|bezel] [--size WxH] OUT_DIR [system[:variant]...]" >&2; exit 64; }
+[ $# -ge 1 ] || { echo "usage: $0 [--card white|black|test] [--placement game|bezel|game_fractional|bezel_fractional] [--size WxH] OUT_DIR [system[:variant]...]" >&2; exit 64; }
 case "$card" in white|black|test) ;; *) echo "editor-sync: --card is white, black or test" >&2; exit 64 ;; esac
 out="$1"; shift
 width="${size%x*}"; height="${size#*x}"

@@ -313,10 +313,10 @@ class BezelPreview {  // what the launcher gives the renderer when a system show
         aspect.set("h", JSONValue.makeInt(SemuJson.intAt(definition, "display.aspect.h", 0)));
         preview.set("aspect", aspect);
         preview.set("presentation", JSONValue.makeFloat(BezelPreview.outputAspect(definition, SemuJson.textAt(variant, "output"))));  // a variant drawn for a second output (the Wii's 16:9 TV) shows that picture, as gallery.sh renders it
-        string placement = SemuJson.textAt(bezels, "placement");  // the system's own default, else the setting
+        string placement = SemuJson.textAt(bezels, "placement");  // the system's own default Fit state, else the setting's, as SemuFitStates.fallback reads them
         if (placement.isEmpty()) { placement = SemuJson.textAt(settings, "visual.placement"); }
-        preview.set("placement", JSONValue.makeString(placement.equals("game") || placement.equals("bezel") ? placement : "fit"));
-        preview.set("game_fractional_below", JSONValue.makeInt(SemuJson.intAt(definition, "display.scaling.game_fractional_below", 0)));  // SEMU_RENDER_GAME_FRACTIONAL_BELOW
+        bool known = placement.equals("game") || placement.equals("bezel") || placement.equals("game_fractional") || placement.equals("bezel_fractional");
+        preview.set("placement", JSONValue.makeString(known ? placement : "bezel"));  // the retired fit is integer bezel
         preview.set("gap", JSONValue.makeFloat(BezelNumber.of(SemuJson.get(settings, "visual.dual_screen_gap"))));  // SEMU_RENDER_DUAL_GAP, a fraction of the width
         preview.set("frame_width", JSONValue.makeFloat(BezelNumber.of(SemuJson.get(settings, "visual.frame_width"))));  // a drawn frame's width when its package names none
         preview.set("shader", BezelPreview.shader(shaders, settings));
@@ -369,7 +369,7 @@ class BezelComputedLayout {  // the computed DS/3DS layouts by the renderer's ow
         return value;
     }
 
-    class JSONValue lanes(Map<string, string> query) {  // ?layout=&width=&height=&native=WxH,WxH&frame=&gap=: each lane and the drawn frame, bottom-up as GL counts rows
+    class JSONValue lanes(Map<string, string> query) {  // ?layout=&width=&height=&native=WxH,WxH&frame=&gap=&placement=: each lane and the drawn frame, bottom-up as GL counts rows
         int layout = BezelComputedLayout.code(query.getOrDefault("layout", ""));
         int areaWidth = Strings.toInt(query.getOrDefault("width", "0"));
         int areaHeight = Strings.toInt(query.getOrDefault("height", "0"));
@@ -389,7 +389,8 @@ class BezelComputedLayout {  // the computed DS/3DS layouts by the renderer's ow
         }
         int frameWidth = frameFraction > 0.0f ? (int)(frameFraction * (float)areaHeight + 0.5f) : 0;  // RendererGeometry.resolve: the frame, then the room the screens leave it
         int frame = frameWidth;
-        int drawn = RendererLayout.computed(&geometry, layout, areaWidth, areaHeight, frameWidth, gapFraction);
+        bool fractional = query.getOrDefault("placement", "").endsWith("_fractional");  // a non-integer Fit state: the layout grown as one to the screen
+        int drawn = RendererLayout.computedAt(&geometry, layout, areaWidth, areaHeight, frameWidth, gapFraction, fractional);
         if (frameWidth > 0) { frame = drawn; }
         JSONValue lanes = JSONValue.makeArray();
         for (int index = 0; index < 2; index++) {

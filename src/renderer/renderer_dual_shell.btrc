@@ -1,13 +1,15 @@
-// Two screens in a fixed shell (the DS and 3DS shells), placed at whole steps whatever Fit says, and Fit never
-// drops the shell. Bezel (and fit): the largest step of the main screen at which the whole shell (its declared
-// silhouette, else its canvas) stays on the display, up to 1% of it past an edge (the owner's bezel rule). Screen:
+// Two screens in a fixed shell (the DS and 3DS shells), and Fit never drops the shell. The two integer Fit states
+// place them at whole steps. Bezel: the largest step of the main screen at which the whole shell (its declared
+// silhouette, else its canvas) stays on the display, up to 1% of it past an edge (the owner's bezel rule). Game:
 // the largest step at which both screens, at the shell's own spacing, stay on the display, the shell drawn round
 // them at that scale and cropped by the display's edges; when that step is no larger than the bezel's, the
 // bezel's picture, so the toggle never jumps. The second screen takes the largest whole step its own picture
 // rectangle holds at that scale (1% grace for a calibration a pixel short), below 1x the nearest: Duimon's 3DS face
 // draws the touch window at 0.94x of 1x on the Deck, so the touch screen shows at 1x over the window's edge (its opening and lip carried out with it), every
 // pixel whole; under half of 1x (a 4:3 display) it fills its window, the fractional fallback. Pure arithmetic, no
-// GL, so the contracts and the editor place a shell exactly as the compositor does.
+// GL, so the contracts and the editor place a shell exactly as the compositor does. The two non-integer states scale
+// the whole shell: bezel as large as the display holds, game with both screens as large as it holds; each screen
+// then fills its picture rectangle (M16 item 5).
 
 import ./renderer_abi.btrc;
 import ./renderer_config.btrc;
@@ -118,11 +120,33 @@ class RendererDualShell {
         return 0;
     }
 
+    class bool scaled(struct RendererDualPicture* main, struct RendererDualPicture* second, int placement, float* shell, int areaWidth, int areaHeight, struct RendererDualPlan* plan) {  // the non-integer states: the whole shell as large as the display holds, or both screens (at the shell's spacing) as large as it holds, the shell round them; each screen fills its picture rectangle
+        float box[4] = {shell[0], shell[1], shell[0] + shell[2], shell[1] + shell[3]};  // left, top, right, bottom in canvas pixels
+        if (placement == SEMU_PLACEMENT_GAME_FRACTIONAL) {
+            box[0] = main->x < second->x ? main->x : second->x;
+            box[1] = main->y < second->y ? main->y : second->y;
+            box[2] = main->x + main->width > second->x + second->width ? main->x + main->width : second->x + second->width;
+            box[3] = main->y + main->height > second->y + second->height ? main->y + main->height : second->y + second->height;
+        }
+        if (box[2] <= box[0] || box[3] <= box[1]) { return false; }
+        float slack = placement == SEMU_PLACEMENT_GAME_FRACTIONAL ? 1.0f : 1.01f;  // the shell, as in integer bezel, may leave 1% of itself past the edges; the screens never
+        float across = (float)areaWidth * slack / (box[2] - box[0]);
+        float down = (float)areaHeight * slack / (box[3] - box[1]);
+        plan->gain = across < down ? across : down;
+        plan->main_step = 0;  // RendererDualShell.span and lane: step 0 is the rectangle itself at the gain
+        plan->second_step = 0;
+        plan->bezel_step = RendererDualShell.bezelStep(main, shell, areaWidth, areaHeight);
+        plan->left = (float)areaWidth * 0.5f - (box[0] + box[2]) * 0.5f * plan->gain;
+        plan->top = (float)areaHeight * 0.5f - (box[1] + box[3]) * 0.5f * plan->gain;
+        return true;
+    }
+
     class bool plan(struct RendererDualPicture* main, struct RendererDualPicture* second, int placement, float* shell, int areaWidth, int areaHeight, struct RendererDualPlan* plan) {  // SHELL: the device in canvas pixels, left, top, width, height; false when it does not fit at 1x: the caller contains the canvas as before
+        if (!RendererConfiguration.wholeSteps(placement)) { return RendererDualShell.scaled(main, second, placement, shell, areaWidth, areaHeight, plan); }
         plan->bezel_step = RendererDualShell.bezelStep(main, shell, areaWidth, areaHeight);
         if (plan->bezel_step < 1) { return false; }
         plan->main_step = plan->bezel_step;
-        int larger = placement == 1 ? RendererDualShell.screenStep(main, second, areaWidth, areaHeight) : 0;  // screen; bezel and fit keep the whole shell
+        int larger = placement == SEMU_PLACEMENT_GAME ? RendererDualShell.screenStep(main, second, areaWidth, areaHeight) : 0;  // game; bezel keeps the whole shell
         bool screen = larger > plan->bezel_step;
         if (screen) { plan->main_step = larger; }
         plan->gain = RendererDualShell.gain(main, plan->main_step);

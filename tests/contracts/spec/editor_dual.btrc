@@ -64,14 +64,16 @@ class EditorDualSpecContract {
         string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
         string canvasOn = EditorDualSpecContract.method(source, "static canvasOn(variant, preview, areaWidth, areaHeight) {", 1400);
         string lanes = EditorDualSpecContract.method(source, "static lanes(variant, preview, canvas, target) {", 1400);
-        string shell = EditorDualSpecContract.method(source, "static dualShell(variant, preview, areaWidth, areaHeight) {", 4600);
+        string shell = EditorDualSpecContract.method(source, "static dualShell(variant, preview, areaWidth, areaHeight) {", 7400);
         string uniforms = EditorDualSpecContract.method(source, "laneUniforms(screen, lane, canvas, framed, index) {", 1400);
         Vector<string> missing = [];
         EditorDualSpecContract.need(missing, canvasOn, "const dual = variant.layout === \"fixed\" ? Geometry.dualShell(variant, preview, areaWidth, areaHeight) : null;");
         EditorDualSpecContract.need(missing, canvasOn, "if (dual) return dual.canvas;");
         EditorDualSpecContract.need(missing, lanes, "const dual = target && variant.layout === \"fixed\" ? Geometry.dualShell(variant, preview, target.width, target.height) : null;");
         EditorDualSpecContract.need(missing, lanes, "return dual.lanes.map((lane, index) => ({ tube: on(lane.tube), output: on(lane.output), native: preview.screens[index] }));");
-        EditorDualSpecContract.need(missing, shell, "if (float(shell[2] * gain) > float(areaWidth * float(1.01)) || float(shell[3] * gain) > float(areaHeight * float(1.01))) break;");
+        EditorDualSpecContract.need(missing, shell, "if (float(shell[2] * grown) > float(areaWidth * float(1.01)) || float(shell[3] * grown) > float(areaHeight * float(1.01))) break;");
+        EditorDualSpecContract.need(missing, shell, "if (preview.placement === \"game_fractional\" || preview.placement === \"bezel_fractional\") {");
+        EditorDualSpecContract.need(missing, shell, "const slack = preview.placement === \"game_fractional\" ? 1 : float(1.01), across = float(float(areaWidth * slack) / float(box[2] - box[0])), down = float(float(areaHeight * slack) / float(box[3] - box[1]));");
         EditorDualSpecContract.need(missing, shell, "if (preview.placement === \"game\") {");
         EditorDualSpecContract.need(missing, shell, "Geometry.carry(opening, Geometry.picture(canvas, screenConfig), output)");
         EditorDualSpecContract.need(missing, shell, "return { canvas, lanes: [lane(main, step, variant.screens[0]), lane(second, other, variant.screens[1])] };");
@@ -79,7 +81,7 @@ class EditorDualSpecContract {
         EditorDualSpecContract.need(missing, source, "return held >= 0.5 ? 1 : 0;");
         EditorDualSpecContract.need(missing, uniforms, "inner = Geometry.carry(inner, picture, lane.output); outer = Geometry.carry(outer, picture, lane.output);");
         contract.expect(!canvasOn.isEmpty() && !lanes.isEmpty() && !shell.isEmpty() && !uniforms.isEmpty() && missing.isEmpty(),
-            "the editor frames a DS or 3DS shell through its port of RendererDualShell (the canvas, both lanes, the whole-shell step, the screen step, the second screen's step and the carried opening and lip), so its preview matches the renderer: missing " + missing.join(" | "));
+            "the editor frames a DS or 3DS shell through its port of RendererDualShell (the canvas, both lanes, the whole-shell step, the game step, the second screen's step, the two non-integer states' gain and the carried opening and lip), so its preview matches the renderer: missing " + missing.join(" | "));
         EditorDualSpecContract.carry(contract, fixture, source);
     }
 

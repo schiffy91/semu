@@ -51,7 +51,7 @@ class GameBoyFitScreen {  // one package placed on one screen, as RendererGeomet
         frame.surfaces[0].native_width = nativeWidth;
         frame.surfaces[0].native_height = nativeHeight;
         struct RendererCanvasRect canvas;
-        RendererPlacement.canvas(&frame, &variant, placement, 0, shown, areaWidth, areaHeight, variant.canvas_width, variant.canvas_height, &canvas);
+        RendererPlacement.canvas(&frame, &variant, placement, shown, areaWidth, areaHeight, variant.canvas_width, variant.canvas_height, &canvas);
         struct RendererScreenConfig* screen = &variant.screens[0];
         struct RendererPixelRect tube;
         RendererCompositionContract.aperture(&canvas, screen->tube.x, screen->tube.y, screen->tube.width, screen->tube.height, &tube);
@@ -204,8 +204,8 @@ class GameBoyFitSpecContract {
         string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
         Vector<string> missing = [];
         for wanted in ["shell: layers.length ? Environment.hole(pkg.shell, canvas)", "const across = float(areaWidth / float(shell.width * canvas.width)), down = float(areaHeight / float(shell.height * canvas.height))",
-                       "if (placement === \"bezel\" && shell && shell.set) {", "placed.y = float(float(areaHeight * 0.5) - float(float(float(1 - shell.y) - float(shell.height * 0.5)) * placed.height))",
-                       "{  // RendererPlacement.wholeCorner: the picture's corner on a whole pixel, a device's or a TV's", "placed.x = float(float(placed.x + Geometry.wholePixels(left)) - left)", "canvas, preview.game_fractional_below, carried, variant.shell)"] {
+                       "if (!game && !carried && shell && shell.set) {", "placed.y = float(float(areaHeight * 0.5) - float(float(float(1 - shell.y) - float(shell.height * 0.5)) * placed.height))",
+                       "{  // RendererPlacement.wholeCorner: the picture's corner on a whole pixel, a device's or a TV's", "placed.x = float(float(placed.x + Geometry.wholePixels(left)) - left)", "Geometry.singleAspect(preview), areaWidth, areaHeight, canvas, variant);"] {
             if (!source.contains(wanted)) { missing.push(wanted); }
         }
         contract.expect(missing.isEmpty(), "the editor preview places a device as the renderer does: its shell's step and centre, the picture on whole pixels: missing " + missing.join(" | "));

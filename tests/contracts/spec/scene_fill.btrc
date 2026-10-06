@@ -92,11 +92,10 @@ class SceneFillSpecChecks {
                     frame.surfaces[index].native_height = SemuJson.intAt(screens.at(index), "native.h", 0);
                 }
                 float shown = PlacementSpecGeometry.aspect(environment, frame.surfaces[0].native_width, frame.surfaces[0].native_height);
-                int fractionalBelow = atoi(PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_GAME_FRACTIONAL_BELOW"));
-                for (int placement = 0; placement <= 2; placement++) {
+                for (int placement = SEMU_PLACEMENT_GAME; placement <= SEMU_PLACEMENT_BEZEL_FRACTIONAL; placement++) {  // the four Fit states
                     for (int size = 0; size < 2; size++) {
                         struct RendererCanvasRect canvas;
-                        RendererPlacement.canvas(&frame, &config, placement, fractionalBelow, shown, widths[size], heights[size], config.canvas_width, config.canvas_height, &canvas);
+                        RendererPlacement.canvas(&frame, &config, placement, shown, widths[size], heights[size], config.canvas_width, config.canvas_height, &canvas);
                         bool covers = canvas.x <= 0.5f && canvas.y <= 0.5f && canvas.x + canvas.width >= (float)widths[size] - 0.5f && canvas.y + canvas.height >= (float)heights[size] - 0.5f;
                         struct RendererNormalizedHole* tube = &config.screens[0].tube;  // the room carries on past every edge (|1), so only its TV's opening must stay on screen
                         float tubeLeft = canvas.x + tube->x * canvas.width;
@@ -129,12 +128,12 @@ class SceneFillSpecChecks {
         string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
         Vector<string> missing = [];
         for wanted in ["layer.id === pkg.canvas_layer && layer.id === \"background\" && layer.follow === \"viewport\" && !!canvasSized", "room: backgroundRoom }", "this.set4(\"uLayer\", layer.opacity, layer.blend, layer.lift, layer.room ? 1 : 0)",
-                       "this.scissor(layer.extent === \"cover\" || layer.room ? screen : null)", "const anchorY = placement === \"game\" || carried ? float(areaHeight * 0.5)",
-                       "const carried = variant.layered && variant.layers.some(layer => layer.room)", "if ((preview.placement !== \"fit\" || carried) && preview.screens.length === 1",
-                       "Geometry.shellRoom(shell, canvas, areaWidth, areaHeight)) * float(1.01)", "multiple = Math.max(integer(float(float(pictureHeight / native) + 0.5)), 1)", "!Geometry.tubeStays(screen, area, canvas, float(float(multiple * native) / pictureHeight), areaWidth, areaHeight)"] {
+                       "this.scissor(layer.extent === \"cover\" || layer.room ? screen : null)", "const anchorY = game || carried ? float(areaHeight * 0.5)",
+                       "static carried(variant) { return !!(variant.layered && variant.layers.some(layer => layer.room)); }", "if (preview.screens.length === 1 && first && (first.image.set || first.tube.set)) {",
+                       "Geometry.shellRoom(shell, canvas, areaWidth, areaHeight) * float(1 + slack))", "if (Geometry.bodyStays(shell, image, canvas, middle, areaWidth, areaHeight, slack)) low = middle; else high = middle;"] {
             if (!source.contains(wanted)) { missing.push(wanted); }
         }
-        contract.expect(missing.isEmpty(), "the editor's copy keeps the room flag, the night plate's room, the room's scissor and uLayer.w, the 1% room tolerance, fit's nearest whole step on a room and the room's picture centred down the screen: missing " + missing.join(" | "));
+        contract.expect(missing.isEmpty(), "the editor's copy keeps the room flag, the night plate's room, the room's scissor and uLayer.w, the 1% tolerance, the TV body kept on screen in the bezel states and the room's picture centred down the screen: missing " + missing.join(" | "));
     }
 
     class void blackPass(Contract contract, Fixture fixture) {  // the first pass starts from black and paints a plate only where a package names one, in the renderer and the editor alike

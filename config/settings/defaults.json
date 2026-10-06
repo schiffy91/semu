@@ -13,19 +13,14 @@
   "visual": {
     "crt_shaders": true,
     "bezels": true,
-    "integer_scaling": true,
     "dual_screen_gap": 0.015625,
     "frame_width": 0.03,
     "display": {
       "width": 3840,
       "height": 2160
     },
-    "placement": "fit",
-    "performance_overlay": false,
-    "placements": [
-      "bezel",
-      "game"
-    ]
+    "placement": "bezel",
+    "performance_overlay": false
   },
   "ui": {
     "theme": "slate-es-de",

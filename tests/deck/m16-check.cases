@@ -1,0 +1,46 @@
+# M16 on the Deck, off-screen: the owner's round 4 (PLAN.md M16), with the owner's own games.
+#   input-check.sh PAD m16-check.cases OUT     (input-check.sh --plan m16-check.cases shows every timeline)
+# SYSTEM EMULATOR CORE|- FIRST TOKEN... -- ROM-GLOB; see input-check.sh. The run's choices land in
+# OUT/home/semu.json and later cases start from them, so keep the order. Numbers are at 1280x800.
+#
+# Items 5 and 7, Fit's four states (the placement track). key:ctrl+shift+f is the radial's Fit
+# (visual.placement.next) and key:ctrl+b its Bezel On/Off. Fit steps the four states in the owner's order,
+# integer game (81/0), integer bezel (81/1), non-integer game (81/2), non-integer bezel (81/3), from the one a
+# system starts on: a TV, the DS and the 3DS start on integer bezel (the retired fit drew the same step), a
+# handheld on integer game. With the bezel off Fit steps only integer game and non-integer game. The toast
+# reads FIT: <STATE> two frames before the picture moves, then FIT: <STATE> (SAME) when nothing moved. A case
+# judges by its shots (before.png, after-N-*.png), the journal's 81 records and evidence.log's
+# surface0_content (x,y,width,height from the bottom left).
+#
+# F1. Items 5 and 7, the Wii (Dolphin, the 4:3 TV). before: integer bezel, the picture 640x480 (1x of a
+#     480-line frame) at 320,160, the whole TV with its stand on the table, the wall above. after-1 (81/2,
+#     FIT: NON-INTEGER GAME): the picture 1067x800 at 107,0, filling the height, the TV round it cut by the
+#     screen; its pixels even (sharp-bilinear: no doubled rows or columns on a scrolling scene). after-2 (81/3,
+#     FIT: NON-INTEGER BEZEL): the whole TV as large as the screen holds, the picture about 700x525 at
+#     290,137, the stand meeting the bottom edge. after-3 (81/0, FIT: INTEGER GAME): 640x480 at 320,160.
+#     after-4 (81/1, FIT: INTEGER BEZEL (SAME)): nothing moves (1x either way on 800 rows). after-5
+#     (79/2, BEZEL: OFF): the picture alone on black, 640x480 at 320,160, the same size as with the TV
+#     (item 7: the bezel off never shrinks the picture). after-6 (81/2, FIT: NON-INTEGER GAME): 1067x800 at
+#     107,0 on black, the same size as non-integer game with the TV. after-7 (81/0, FIT: INTEGER GAME):
+#     640x480 again, the two game states only. after-8 (79/0, BEZEL: LIVING ROOM CRT): the TV back round the
+#     1x picture. choices wii {"bezel_variant":"tv","placement":"game"}.
+wii dolphin - 60 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+b key:ctrl+shift+f key:ctrl+shift+f key:ctrl+b -- New Super Mario Bros. Wii*.wbfs
+# F2. Item 5, a 240-line TV (Beetle PSX). before: integer bezel, 640x480 (2x) at 320,160, the whole TV and
+#     the table. after-1 (81/2, FIT: NON-INTEGER GAME): 1067x800 at 107,0, the CRT shader's scanlines even
+#     down the picture (no bands). after-2 (81/3, FIT: NON-INTEGER BEZEL): the whole TV filling the height,
+#     the picture about 700x525 at 290,137. after-3 (81/0, FIT: INTEGER GAME): 960x720 (3x) at 160,40, the TV
+#     cut by the screen. after-4 (81/1, FIT: INTEGER BEZEL): 640x480 again. choices psx {"placement":"bezel"}.
+psx retroarch mednafen_psx 45 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Crash Bandicoot (USA).m3u
+# F3. Item 5, a device shell (mGBA, the GBA shell). before: integer game, 1200x800 (5x) at 40,0, the shell
+#     cut by the screen. after-1 (81/1, FIT: INTEGER BEZEL): the whole shell centred on black, the picture
+#     480x320 (2x) at 400,267. after-2 (81/2, FIT: NON-INTEGER GAME (SAME)): 5x already fills the height, so
+#     nothing moves. after-3 (81/3, FIT: NON-INTEGER BEZEL): the whole shell as large as the screen holds,
+#     the picture about 546x364 at 367,249, the LCD's pixels even. after-4 (81/0, FIT: INTEGER GAME): 5x again.
+gba retroarch mgba 30 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Advance Wars (USA) (Rev 1).zip
+# F4. Item 5, the DS shell (RetroArch melonDS): Fit never drops the shell. before: integer bezel, both
+#     screens 512x384 (2x) side by side in the whole Duimon shell. after-1 (81/2, FIT: NON-INTEGER GAME): both
+#     screens about 605x454, the pair spanning the screen's width, the shell cut at the sides. Each tap:
+#     touch.log "-> surface 1 native" about 128,96 (the middle of the touch screen as drawn, wherever Fit
+#     put it). after-3 (81/3, FIT: NON-INTEGER BEZEL): the whole shell (up to 1% past the sides), both
+#     screens about 568x426. after-5 (81/0, FIT: INTEGER GAME): 2x again, the whole shell.
+nds retroarch melonds 40 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f -- Advance Wars - Dual Strike (USA, Australia).zip

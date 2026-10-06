@@ -251,7 +251,7 @@ class GameBoySpecInput {
 
 class GameBoySpecMatrix {
     class string overlay(string shader, string bezel, bool integer) {
-        return "{\"visual\":{\"integer_scaling\":" + (integer ? "true" : "false") + ",\"systems\":{\"gb\":{\"shader_variant\":\"" + shader + "\",\"bezel_variant\":\"" + bezel + "\"}}}}";
+        return "{\"visual\":{\"systems\":{\"gb\":{\"placement\":\"" + (integer ? "game" : "game_fractional") + "\",\"shader_variant\":\"" + shader + "\",\"bezel_variant\":\"" + bezel + "\"}}}}";  // Fit's integer or non-integer game
     }
 
     class string entry(Vector<string> environment, string name) {
@@ -284,7 +284,7 @@ class GameBoySpecMatrix {
                     string glass = GameBoySpecMatrix.entry(environment, "SEMU_RENDER_SCREEN_0_GLASS");
                     bool glassMatches = glass.len() == 0;
                     contract.expect(glassMatches, cell + ": no package draws its lens over the picture");
-                    contract.expect(GameBoySpecMatrix.entry(environment, "SEMU_RENDER_INTEGER_SCALE").equals(integer ? "1" : "0"), cell + ": integer scaling follows the setting");
+                    contract.expect(GameBoySpecMatrix.entry(environment, "SEMU_RENDER_PLACEMENT").equals(integer ? "game" : "game_fractional") && GameBoySpecMatrix.entry(environment, "SEMU_RENDER_INTEGER_SCALE").isEmpty(), cell + ": whole steps or not follow the Fit state, bezel or none, never a separate integer switch");
                     contract.expect(environment.contains("SEMU_RENDER_SURFACE_0_NATIVE=160x144") && environment.contains("SEMU_RENDER_ASPECT=10:9"), cell + ": the surface stays 160x144 at 10:9");
                     seen.push(environment.join("\n"));
                 }

@@ -44,9 +44,7 @@ struct RendererConfig {
     int loaded;
     int shaders_enabled;
     int bezels_enabled;
-    int integer_scaling;  // one screen without a fixed bezel; two screens always integer
-    int placement;  // SEMU_RENDER_PLACEMENT: 0 fit, 1 game (integer, shell cropped), 2 bezel (integer, shell whole)
-    int game_fractional_below;  // SEMU_RENDER_GAME_FRACTIONAL_BELOW: a 3D-era system's game placement fills the screen below this whole step; 0 never
+    int placement;  // SEMU_RENDER_PLACEMENT, a SEMU_PLACEMENT_* Fit state; with no bezel only whole or not counts
     int active_variant;
     float display_aspect;
     float frames_per_second;
@@ -59,11 +57,23 @@ struct RendererConfig {
     struct RendererVariantConfig variants[4];  // A and B are emitted; C and D stay undeclared
 };
 
+int SEMU_PLACEMENT_GAME = 1;  // integer game: the picture at the largest whole step, the bezel round it cropped by the display
+int SEMU_PLACEMENT_BEZEL = 2;  // integer bezel: the whole bezel on screen (1% may leave it), the picture at the largest whole step that allows it
+int SEMU_PLACEMENT_GAME_FRACTIONAL = 3;  // non-integer game: the picture as large as the display allows at its aspect
+int SEMU_PLACEMENT_BEZEL_FRACTIONAL = 4;  // non-integer bezel: the whole bezel as large as the display allows, the picture in its opening
+
 class RendererConfiguration {
-    class int placementCode(char* value) {  // fit 0, game 1, bezel 2: SEMU_RENDER_PLACEMENT and the variants file's placement ids
-        if (value == null) { return 0; }
-        return strcmp(value, "game") == 0 ? 1 : (strcmp(value, "bezel") == 0 ? 2 : 0);
+    class int placementCode(char* value) {  // SEMU_RENDER_PLACEMENT and the variants file's placement ids; anything else (the retired fit) is integer bezel
+        if (value == null) { return SEMU_PLACEMENT_BEZEL; }
+        if (strcmp(value, "game") == 0) { return SEMU_PLACEMENT_GAME; }
+        if (strcmp(value, "game_fractional") == 0) { return SEMU_PLACEMENT_GAME_FRACTIONAL; }
+        if (strcmp(value, "bezel_fractional") == 0) { return SEMU_PLACEMENT_BEZEL_FRACTIONAL; }
+        return SEMU_PLACEMENT_BEZEL;
     }
+
+    class bool wholeSteps(int placement) { return placement != SEMU_PLACEMENT_GAME_FRACTIONAL && placement != SEMU_PLACEMENT_BEZEL_FRACTIONAL; }  // the integer states: every native pixel k by k
+
+    class bool pictureFirst(int placement) { return placement == SEMU_PLACEMENT_GAME || placement == SEMU_PLACEMENT_GAME_FRACTIONAL; }  // the game states: the picture sized by the display, the bezel round it
 
     class void reloadVariants(struct RendererConfig* config, struct RendererVariantOverlay* overlay) {  // A and B from one section; C and D stay undeclared
         if (config == null || overlay == null) { return; }
@@ -218,12 +228,8 @@ class RendererConfiguration {
         if (value != null && value[0] == '0') { config->shaders_enabled = 0; }
         value = getenv("SEMU_RENDER_BEZELS");
         if (value != null && value[0] == '0') { config->bezels_enabled = 0; }
-        value = getenv("SEMU_RENDER_INTEGER_SCALE");
-        if (value != null && value[0] == '1') { config->integer_scaling = 1; }
         value = getenv("SEMU_RENDER_PLACEMENT");
         config->placement = RendererConfiguration.placementCode(value);
-        value = getenv("SEMU_RENDER_GAME_FRACTIONAL_BELOW");
-        config->game_fractional_below = value == null ? 0 : atoi(value);
         value = getenv("SEMU_RENDER_ASPECT");
         if (value != null) {
             float width = 0.0f;

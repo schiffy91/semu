@@ -32,7 +32,7 @@ if [ -n "${CELLS:-}" ]; then read -r -a cells <<<"$CELLS"; else
     variants="$(jq -r '.variants[].id' "$root/config/systems/$system/bezels.json" 2>/dev/null || true)"
     [ -n "$variants" ] || { cells+=("$system:-:-"); continue; }  # no bezel declared (switch, wiiu)
     for variant in $variants; do
-      for placement in fit bezel game; do cells+=("$system:$variant:$placement"); done
+      for placement in game bezel game_fractional bezel_fractional; do cells+=("$system:$variant:$placement"); done  # the four Fit states
     done
   done
 fi

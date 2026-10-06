@@ -306,6 +306,7 @@ class RendererGeometry {
         struct RendererVariantConfig* variant = RendererConfiguration.active(config);
         float singleAspect = frame->presentation_aspect > 0.01f ? frame->presentation_aspect : config->display_aspect;
         bool bezel = config->bezels_enabled != 0;
+        bool whole = RendererConfiguration.wholeSteps(config->placement);  // with no bezel the Fit state still says whole steps or not, so turning the bezel off never shrinks the picture
         bool fixed = variant->layout == SEMU_LAYOUT_FIXED;
         bool layered = variant->layer_count > 0 && variant->canvas_width > 0;
         if (bezel && fixed) {
@@ -326,8 +327,8 @@ class RendererGeometry {
             struct RendererCanvasRect canvas;
             int sourceWidth = layered ? variant->canvas_width : resources->art_width[variantIndex];
             int sourceHeight = layered ? variant->canvas_height : resources->art_height[variantIndex];
-            bool dual = frame->surface_count == 2 && RendererDualShell.place(variant, geometry, config->placement, sourceWidth, sourceHeight, areaWidth, areaHeight, &canvas);  // DS and 3DS shells: both screens whole in every Fit state, the shell always drawn
-            if (!dual) { RendererPlacement.canvas(frame, variant, config->placement, config->game_fractional_below, singleAspect, areaWidth, areaHeight, sourceWidth, sourceHeight, &canvas); }  // contained, covered, then at the placement's whole step
+            bool dual = frame->surface_count == 2 && RendererDualShell.place(variant, geometry, config->placement, sourceWidth, sourceHeight, areaWidth, areaHeight, &canvas);  // DS and 3DS shells: the shell always drawn, both screens at whole steps or, in the non-integer states, the whole shell scaled
+            if (!dual) { RendererPlacement.canvas(frame, variant, config->placement, singleAspect, areaWidth, areaHeight, sourceWidth, sourceHeight, &canvas); }  // contained, covered, then sized by the Fit state
             geometry->bezel_x = canvas.x;
             geometry->bezel_y = canvas.y;
             geometry->bezel_width = canvas.width;
@@ -351,18 +352,18 @@ class RendererGeometry {
         if (frame->surface_count == 1) {
             RendererGeometry.fit(0, 0, areaWidth, areaHeight,
                 geometry->lanes[0].native_width, geometry->lanes[0].native_height,
-                singleAspect, config->integer_scaling, &geometry->lanes[0]);
+                singleAspect, whole ? 1 : 0, &geometry->lanes[0]);
             if (bezel && variant->frame_set != 0) {  // a computed single screen keeps room for its drawn frame
                 RendererGeometry.fit(frameWidth, frameWidth, areaWidth - 2 * frameWidth, areaHeight - 2 * frameWidth,
                     geometry->lanes[0].native_width, geometry->lanes[0].native_height,
-                    singleAspect, config->integer_scaling, &geometry->lanes[0]);
+                    singleAspect, whole ? 1 : 0, &geometry->lanes[0]);
             }
             RendererLayout.tubeFromOutput(&geometry->lanes[0]);
             return true;
         }
         int layout = bezel ? variant->layout : (variant->layout == SEMU_LAYOUT_FIXED ? SEMU_LAYOUT_STACKED : variant->layout);
         if (layout == SEMU_LAYOUT_FIXED) { layout = SEMU_LAYOUT_STACKED; }
-        int drawn = RendererLayout.computed(geometry, layout, areaWidth, areaHeight, bezel ? frameWidth : 0, config->dual_screen_gap);  // whole steps whatever integer_scaling says
+        int drawn = RendererLayout.computedAt(geometry, layout, areaWidth, areaHeight, bezel ? frameWidth : 0, config->dual_screen_gap, !whole);  // whole steps, or in the non-integer Fit states the same layout as large as the display holds
         if (bezel && frameWidth > 0) { geometry->frame_width = (float)drawn; }  // the frame shrinks to the room the screens leave
         return true;
     }

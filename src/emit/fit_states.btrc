@@ -1,0 +1,33 @@
+// The four Fit states the radial's Fit, the menu's FIT row and the settings cycle (M16 item 5, the owner's
+// "integer-game, integer-bezel, non-integer-game, non-integer-bezel"), as SEMU_RENDER_PLACEMENT, the variants
+// file and semu.json name them. Integer stays the default. The retired fit (a TV room's nearest whole step whose
+// opening stayed on screen) reads as integer bezel: on the Deck it drew the same step for all nine TV systems.
+// With no bezel to place (bezel off, a DS layout Semu works out, a system without art) only whole steps or not
+// count, so Fit cycles the two game states there and the picture never shrinks when the bezel goes.
+
+import Library.JSON;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../model.btrc;
+
+class SemuFitStates {
+    class Vector<string> all() { return ["game", "bezel", "game_fractional", "bezel_fractional"]; }  // the cycle order
+
+    class Vector<string> pictureOnly() { return ["game", "game_fractional"]; }  // what Fit cycles with no bezel to place
+
+    class string of(string value) { return SemuFitStates.all().contains(value) ? value : "bezel"; }  // the retired fit, and anything unknown, is integer bezel
+
+    class bool whole(string state) { return !state.endsWith("_fractional"); }
+
+    class string fallback(JSONValue settings, SemuSystem system) {  // the system's own default (game for handhelds, bezel for the DS and 3DS), else the global one
+        string value = SemuJson.textAt(system.bezels, "placement");
+        return SemuFitStates.of(value.isEmpty() ? SemuJson.textAt(settings, "visual.placement") : value);
+    }
+
+    class string current(JSONValue settings, SemuSystem system) {  // this system's saved state, else its default
+        string value = SemuJson.textAt(settings, "visual.systems." + system.id + ".placement");
+        return value.isEmpty() ? SemuFitStates.fallback(settings, system) : SemuFitStates.of(value);
+    }
+
+    class string pictureStep(string state) { return SemuFitStates.whole(state) ? "game_fractional" : "game"; }  // Fit with no bezel: whole steps or not, so integer bezel steps on to non-integer game
+}

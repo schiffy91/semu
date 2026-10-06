@@ -203,6 +203,46 @@ class RendererLayout {
         return width;
     }
 
+    class int computedAt(struct RendererCompositionGeometry* geometry, int layout, int areaWidth, int areaHeight,
+                         int frame, float gapFraction, bool fractional) {  // FRACTIONAL: a non-integer Fit state, the whole-step layout grown as one to the largest the display holds
+        int drawn = RendererLayout.computed(geometry, layout, areaWidth, areaHeight, frame, gapFraction);
+        return fractional ? RendererLayout.grown(geometry, areaWidth, areaHeight, drawn) : drawn;
+    }
+
+    class int grown(struct RendererCompositionGeometry* geometry, int areaWidth, int areaHeight, int frame) {  // every screen, its frame and the gaps scaled about the group's centre until the group meets the display's edge; the frame width then drawn
+        int count = geometry->lane_count < 2 ? geometry->lane_count : 2;
+        if (count < 1) { return frame; }
+        float left = 1.0e9f;
+        float bottom = 1.0e9f;
+        float right = -1.0e9f;
+        float top = -1.0e9f;
+        for (int index = 0; index < count; index++) {
+            struct RendererLaneGeometry* lane = &geometry->lanes[index];
+            if ((float)(lane->output_x - frame) < left) { left = (float)(lane->output_x - frame); }
+            if ((float)(lane->output_y - frame) < bottom) { bottom = (float)(lane->output_y - frame); }
+            if ((float)(lane->output_x + lane->output_width + frame) > right) { right = (float)(lane->output_x + lane->output_width + frame); }
+            if ((float)(lane->output_y + lane->output_height + frame) > top) { top = (float)(lane->output_y + lane->output_height + frame); }
+        }
+        if (right <= left || top <= bottom) { return frame; }
+        float across = (float)areaWidth / (right - left);
+        float down = (float)areaHeight / (top - bottom);
+        float scale = across < down ? across : down;
+        if (scale <= 1.0f) { return frame; }  // already as large as the display holds
+        float middleX = (left + right) * 0.5f;
+        float middleY = (bottom + top) * 0.5f;
+        for (int index = 0; index < count; index++) {
+            struct RendererLaneGeometry* lane = &geometry->lanes[index];
+            float leftEdge = (float)areaWidth * 0.5f + ((float)lane->output_x - middleX) * scale;
+            float bottomEdge = (float)areaHeight * 0.5f + ((float)lane->output_y - middleY) * scale;
+            float rightEdge = (float)areaWidth * 0.5f + ((float)(lane->output_x + lane->output_width) - middleX) * scale;
+            float topEdge = (float)areaHeight * 0.5f + ((float)(lane->output_y + lane->output_height) - middleY) * scale;
+            int column = (int)(leftEdge + 0.5f);
+            int row = (int)(bottomEdge + 0.5f);
+            RendererLayout.exact(lane, column, row, (int)(rightEdge + 0.5f) - column, (int)(topEdge + 0.5f) - row);  // each edge rounded, so the screens keep their shapes and their spacing
+        }
+        return (int)((float)frame * scale);
+    }
+
     class int computed(struct RendererCompositionGeometry* geometry, int layout, int areaWidth, int areaHeight,
                        int frame, float gapFraction) {  // the frame width the layout left room for, at most frame
         int gap = (int)(gapFraction * (float)areaWidth + 0.5f);  // visual.dual_screen_gap, a fraction of the width

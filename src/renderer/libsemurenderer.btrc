@@ -138,18 +138,18 @@ class SemuRendererLiveVariants {  // a select from the journal: its section repl
         SemuRenderer.switch_images_ms = 0LL;
     }
 
-    class void notice(struct SemuRenderFrameGl* frame) {  // once a placement's geometry resolves: the same frame placed as Fit: Bezel, what the toast compares it with
+    class void notice(struct SemuRenderFrameGl* frame) {  // once a placement's geometry resolves: the same frame placed in the state the press left, what the toast compares it with
         bool resolved = SemuRenderer.geometry.lane_count > 0;
         int placement = SemuRenderer.config.placement;
-        struct RendererCompositionGeometry bezel;
-        memset(&bezel, 0, sizeof(struct RendererCompositionGeometry));
+        struct RendererCompositionGeometry before;
+        memset(&before, 0, sizeof(struct RendererCompositionGeometry));
         bool placed = false;
-        if (SemuRenderer.live.placement_compare != 0 && resolved && placement != 2) {
-            SemuRenderer.config.placement = 2;
-            placed = RendererGeometry.resolve(frame, &SemuRenderer.config, &SemuRenderer.resources, &bezel);
+        if (SemuRenderer.live.placement_compare != 0 && resolved && placement != SemuRenderer.live.placement_before) {
+            SemuRenderer.config.placement = SemuRenderer.live.placement_before;
+            placed = RendererGeometry.resolve(frame, &SemuRenderer.config, &SemuRenderer.resources, &before);
             SemuRenderer.config.placement = placement;
         }
-        RendererPlacementNotice.after(&SemuRenderer.post_ui, &SemuRenderer.live, resolved ? &SemuRenderer.geometry : null, placed ? &bezel : null, placement, RendererClock.milliseconds());
+        RendererPlacementNotice.after(&SemuRenderer.post_ui, &SemuRenderer.live, resolved ? &SemuRenderer.geometry : null, placed ? &before : null, RendererClock.milliseconds());
     }
 
     class void reapply() {  // a freshly loaded config (a new context) starts on the live choice

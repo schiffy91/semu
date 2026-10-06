@@ -1,5 +1,5 @@
-// The choices beside the bezel and the shader: where the picture sits (placement, the Fit toggle
-// between the whole bezel and the whole-step screen), which output the game draws (Aspect, 4:3 or
+// The choices beside the bezel and the shader: where the picture sits (placement, Fit's four states, whole
+// steps or not, picture or bezel first, SemuFitStates), which output the game draws (Aspect, 4:3 or
 // 16:9 where a system declares two) and the render scale its emulator draws at (Scale, 1x native,
 // 2x, 3x). Each is an ordered list of ids with toast-safe labels, the index the launch starts on and
 // the one Reset to Default selects; the variants file carries them.
@@ -11,6 +11,7 @@ import ../model.btrc;
 import ../resolve.btrc;
 import ./rendering.btrc;
 import ./render_scale.btrc;
+import ./fit_states.btrc;
 
 #include <stdlib.h>
 
@@ -20,7 +21,7 @@ class SemuVariantChoice {  // one kind's ordered ids, their labels and the live 
     public Vector<string> labels;
     public int index;
     public int lastReal;  // the last choice that was not none, for the On/Off switches
-    public int cycled;  // how many leading ids the toggle steps through: a default outside them (placement fit) follows them
+    public int cycled;  // how many leading ids the toggle steps through
     public int defaultIndex;  // what Reset to Default selects, -1 with nothing to choose
     public int launched;  // the index the game booted on: an output it draws from boot changes only at Restart Game
 
@@ -73,19 +74,7 @@ class SemuRenderLabels {
 }
 
 class SemuRenderChoices {
-    class string placementOf(string value) { return value.equals("game") || value.equals("bezel") ? value : "fit"; }  // as SEMU_RENDER_PLACEMENT reads it
-
-    class string placementDefault(SemuPlan plan, SemuSystem system) {  // the system's own default (game for handhelds), else the global one
-        string value = SemuJson.textAt(system.bezels, "placement");
-        return SemuRenderChoices.placementOf(value.isEmpty() ? SemuJson.textAt(plan.settings, "visual.placement") : value);
-    }
-
-    class string placementCurrent(SemuPlan plan, SemuSystem system) {
-        string value = SemuJson.textAt(plan.settings, "visual.systems." + system.id + ".placement");
-        return value.isEmpty() ? SemuRenderChoices.placementDefault(plan, system) : SemuRenderChoices.placementOf(value);
-    }
-
-    class string placementLabel(SemuPlan plan, string placement) {  // input.json's visual.placement.next choices: SCREEN for game
+    class string placementLabel(SemuPlan plan, string placement) {  // input.json's visual.placement.next choices: INTEGER GAME for game
         JSONValue actions = plan.input == null ? null : plan.input.definition.get("actions");
         JSONValue action = actions != null && actions.isObject() && actions.has("visual.placement.next") ? actions.get("visual.placement.next") : null;
         string label = SemuJson.textAt(action, "choices." + placement);
@@ -98,17 +87,17 @@ class SemuRenderChoices {
         choice.labels.push(SemuRenderChoices.placementLabel(plan, placement));
     }
 
-    class SemuVariantChoice placement(SemuPlan plan, SemuSystem system, bool bezels) {  // the toggle's placements, then the default and the current one when outside it; none without a bezel to place
+    class SemuVariantChoice placement(SemuPlan plan, SemuSystem system, bool bezels) {  // the four Fit states in cycle order; with no bezel to place the two game states, whole steps or not
         SemuVariantChoice result = SemuVariantChoice("placement");
-        if (!bezels) { return result; }
-        Vector<string> domain = system.bezels.has("placements") ? SemuJson.strings(system.bezels.get("placements")) : SemuJson.strings(SemuJson.get(plan.settings, "visual.placements"));
-        for placement in domain { SemuRenderChoices.pushOnce(result, plan, SemuRenderChoices.placementOf(placement)); }
+        Vector<string> domain = bezels ? SemuFitStates.all() : SemuFitStates.pictureOnly();
+        for placement in domain { SemuRenderChoices.pushOnce(result, plan, placement); }
         result.cycled = result.ids.size();
-        if (result.cycled < 1) { return SemuVariantChoice("placement"); }
-        string fallback = SemuRenderChoices.placementDefault(plan, system);
-        string current = SemuRenderChoices.placementCurrent(plan, system);
-        SemuRenderChoices.pushOnce(result, plan, fallback);
-        SemuRenderChoices.pushOnce(result, plan, current);
+        string fallback = SemuFitStates.fallback(plan.settings, system);
+        string current = SemuFitStates.current(plan.settings, system);
+        if (!bezels) {  // the integer states read as integer game, the others as non-integer game
+            fallback = SemuFitStates.whole(fallback) ? "game" : "game_fractional";
+            current = SemuFitStates.whole(current) ? "game" : "game_fractional";
+        }
         result.index = result.ids.indexOf(current);
         result.defaultIndex = result.ids.indexOf(fallback);
         result.lastReal = result.index;

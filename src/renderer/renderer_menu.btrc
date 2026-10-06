@@ -64,7 +64,7 @@ struct RendererPostUiState {
     char toast[48];
     long long toast_until_ms;  // 0 with no toast
     int toast_pending;  // a LOADING toast waits for its shader chain to build
-    int placement_noticed;  // a fresh Fit toast is up: FIT: SCREEN SAME AS BEZEL replaces it once the geometry shows nothing moved
+    int placement_noticed;  // a fresh Fit toast is up: FIT: INTEGER BEZEL (SAME) replaces it once the geometry shows nothing moved
     char toasts[2048];  // SEMU_MENU_TOASTS, the input.json templates
     struct RendererVariantCatalog catalog;
     unsigned long long last_sequence;

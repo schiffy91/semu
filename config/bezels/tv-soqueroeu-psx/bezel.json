@@ -10,6 +10,12 @@
     "w": 3840,
     "h": 2160
   },
+  "shell": {
+    "x": 666,
+    "y": 93,
+    "w": 2508,
+    "h": 1924
+  },
   "screens": [
     {
       "id": "main",
@@ -135,7 +141,8 @@
   ],
   "doc": {
     "scene": "Soqueroeu TV background with the manufacturer's badge, lit for late night by the Duimon ambient plate at build time",
-    "tube": "the measured phosphor opening; the game sits inside at the system aspect and the rest of the tube stays dark glass"
+    "tube": "the measured phosphor opening; the game sits inside at the system aspect and the rest of the tube stays dark glass",
+    "shell": "the television's body on the canvas (cabinet, stand and, beside the generic set, its speakers), measured from the art's edges against the wall and the table: Fit's bezel states keep it on screen, the room behind it carries on"
   },
   "upstream": {
     "kind": "scene",

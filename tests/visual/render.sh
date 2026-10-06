@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The real renderer on this Mac, no emulator: tests/visual/render.sh OUT_DIR WIDTHxHEIGHT CELL...
-# A cell is system[:bezel_variant[:shader_variant]], one picture, or a live switch
-# system:bezel:shader>bezel:shader[@placement] (either side's parts may be empty: the launch's own; @game
-# or @bezel journals a Fit select, code 81; RENDER_HOST_SELECT=CODE,SLOT[,RESERVED];... adds any record), three pictures:
+# A cell is system[:bezel_variant[:shader_variant[:placement]]] (placement: the saved Fit state), one picture, or a live switch
+# system:bezel:shader>bezel:shader[@placement] (either side's parts may be empty: the launch's own; @game,
+# @bezel, @game_fractional or @bezel_fractional journals a Fit select, code 81; RENDER_HOST_SELECT=CODE,SLOT[,RESERVED];... adds any record), three pictures:
 # -before, -toast (two frames after the supervisor's selects) and -after (eight more).
 # Each cell is `semu render-env --variants-file` against the bundle's data (build/asset-root: plates, presets,
 # layers) fed to build/render-host, its state in a fresh scratch directory. RENDER_HOST_ASPECT=1.7778 for 16:9 titles.
@@ -35,11 +35,11 @@ index() {  # VARIANTS_FILE KEY ID: ID's position in the header's KEY list, or th
 }
 
 for cell in "$@"; do
-  IFS=: read -r system bezel shader <<<"${cell%%>*}"
+  IFS=: read -r system bezel shader fit <<<"${cell%%>*}"
   switching=""; [ "$cell" != "${cell#*>}" ] && switching="${cell#*>}"
-  fields="${bezel:+\"bezel_variant\":\"$bezel\",}${shader:+\"shader_variant\":\"$shader\",}${RENDER_HOST_SCALE:+\"render_scale\":\"$RENDER_HOST_SCALE\",}"  # RENDER_HOST_SCALE=2x: the system's render scale
+  fields="${bezel:+\"bezel_variant\":\"$bezel\",}${shader:+\"shader_variant\":\"$shader\",}${fit:+\"placement\":\"$fit\",}${RENDER_HOST_SCALE:+\"render_scale\":\"$RENDER_HOST_SCALE\",}"  # a fourth field is the saved Fit state the launch starts in; RENDER_HOST_SCALE=2x: the system's render scale
   settings="{\"visual\":{\"systems\":{\"$system\":{${fields%,}}}}}"
-  name="$system${bezel:+-$bezel}${shader:+-$shader}${RENDER_HOST_SCALE:+-$RENDER_HOST_SCALE}${RENDER_HOST_PRODUCER:+-$RENDER_HOST_PRODUCER}"
+  name="$system${bezel:+-$bezel}${shader:+-$shader}${fit:+-$fit}${RENDER_HOST_SCALE:+-$RENDER_HOST_SCALE}${RENDER_HOST_PRODUCER:+-$RENDER_HOST_PRODUCER}"
   state="$(mktemp -d "$scratch/state.XXXXXX")"
   [ -z "${RENDER_HOST_PLAYERS:-}" ] || printf "%s\n" "${RENDER_HOST_PLAYERS//|/$'\n'}" > "$state/semu-render-players.txt"
   pictures=("$name")

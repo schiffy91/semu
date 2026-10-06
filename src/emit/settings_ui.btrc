@@ -9,6 +9,7 @@ import ../lib/paths.btrc;
 import ../model.btrc;
 import ../resolve.btrc;
 import ./rendering.btrc;
+import ./fit_states.btrc;
 
 class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU SETTINGS
     class string protocol() { return "semu-settings-v2"; }
@@ -92,8 +93,7 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         JSONValue fields = JSONValue.makeArray();
         if (bezels.size() >= 2) {
             fields.push(SemuSettingsUi.choice(settings, "visual.systems." + system.id + ".bezel_variant", "BEZEL", bezels, SemuRenderEnvironment.chosenId(settings, system, system.bezels, "bezel", "visual.bezels")));  // unset: what the launch draws, the global switch deciding
-            string placement = SemuJson.textAt(system.bezels, "placement");
-            fields.push(SemuSettingsUi.choice(settings, "visual.systems." + system.id + ".placement", "PLACEMENT", ["fit", "game", "bezel"], placement.isEmpty() ? SemuJson.textAt(settings, "visual.placement") : placement));
+            fields.push(SemuSettingsUi.choice(settings, "visual.systems." + system.id + ".placement", "FIT", SemuFitStates.all(), SemuFitStates.fallback(settings, system)));  // the four Fit states, as the radial cycles them
         }
         if (shaders.size() >= 2) {
             fields.push(SemuSettingsUi.choice(settings, "visual.systems." + system.id + ".shader_variant", "SHADER", shaders, SemuRenderEnvironment.chosenId(settings, system, system.shaders, "shader", "visual.crt_shaders")));
@@ -127,8 +127,7 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         JSONValue visuals = JSONValue.makeArray();
         visuals.push(SemuSettingsUi.boolean(settings, "visual.crt_shaders", "CRT SHADERS (UNLESS A SYSTEM CHOOSES)", true));  // only the default: a system's own SHADER wins
         visuals.push(SemuSettingsUi.boolean(settings, "visual.bezels", "BEZELS (UNLESS A SYSTEM CHOOSES)", true));
-        visuals.push(SemuSettingsUi.boolean(settings, "visual.integer_scaling", "INTEGER SCALING (ONE SCREEN, NO BEZEL)", true));  // a bezel follows PLACEMENT; DS and 3DS always whole steps
-        visuals.push(SemuSettingsUi.choice(settings, "visual.placement", "PLACEMENT", ["fit", "game", "bezel"], "fit"));  // fit the shell, or an integer picture
+        visuals.push(SemuSettingsUi.choice(settings, "visual.placement", "FIT (UNLESS A SYSTEM CHOOSES)", SemuFitStates.all(), "bezel"));  // integer or not, picture or whole bezel first; with the bezel off its integer half still holds
         visuals.push(SemuSettingsUi.boolean(settings, "visual.performance_overlay", "SPEED OVERLAY AND FRAME LOG", false));  // each emulator profile that binds it shows its speed and logs frame times
         JSONValue systems = JSONValue.makeArray();
         for systemId in plan.systems {

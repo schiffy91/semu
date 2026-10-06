@@ -12,7 +12,7 @@ class RendererVariantKeys {
     class string bezelLabelsKey() { return "bezel_labels"; }  // toast-safe upper-case labels in the same order
     class string shadersKey() { return "shaders"; }
     class string shaderLabelsKey() { return "shader_labels"; }
-    class string placementsKey() { return "placements"; }  // bezel, game, then a default outside the toggle (fit)
+    class string placementsKey() { return "placements"; }  // the Fit states in cycle order: game, bezel, game_fractional, bezel_fractional
     class string placementLabelsKey() { return "placement_labels"; }
     class string outputsKey() { return "outputs"; }  // the system's outputs, e.g. standard and widescreen; empty with one
     class string outputLabelsKey() { return "output_labels"; }

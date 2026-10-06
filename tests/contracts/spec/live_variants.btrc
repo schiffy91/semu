@@ -149,7 +149,7 @@ class LiveVariantMenuSpec {  // the journal's selects and states as the post-UI 
         struct RendererPostUiState state;
         memset(&state, 0, sizeof(struct RendererPostUiState));
         RendererMenuModel.initialize(&state);
-        contract.expect(state.catalog.loaded == 1 && state.bezel_shown == 0 && state.shader_shown == 0 && state.bezel_request == -1 && state.shader_request == -1 && state.placement_request == -1 && state.placement_shown == 0 && state.output_shown == -1 && state.item_count == 14, "live: the post-UI state starts on the launch's choices with nothing requested");
+        contract.expect(state.catalog.loaded == 1 && state.bezel_shown == 0 && state.shader_shown == 0 && state.bezel_request == -1 && state.shader_request == -1 && state.placement_request == -1 && state.placement_shown == 1 && state.output_shown == -1 && state.item_count == 14, "live: the post-UI state starts on the launch's choices (the DS on integer bezel, the second Fit state) with nothing requested");
         long long now = RendererClock.milliseconds();
         struct SemuActionRecord bezel;
         LiveVariantTools.fill(&bezel, SemuActions.bezelSelect(), 1, now, 1ULL);

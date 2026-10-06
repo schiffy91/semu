@@ -142,9 +142,7 @@ class PlacementSpecGeometry {
         frame.presentation_aspect = PlacementSpecGeometry.aspect(environment, nativeWidth, nativeHeight);
         RendererSurfaceCropping.apply(&frame, crops, frame.presentation_aspect);  // what the renderer does before it places: the picture only, its pixels square
         float shown = frame.presentation_aspect;
-        int fractionalBelow = 0;  // SEMU_RENDER_GAME_FRACTIONAL_BELOW, as RendererConfiguration reads it
-        for entry in environment { if (entry.startsWith("SEMU_RENDER_GAME_FRACTIONAL_BELOW=")) { fractionalBelow = atoi(entry.substring(34, entry.len() - 34)); } }
-        RendererPlacement.canvas(&frame, &variant, placement, fractionalBelow, shown, areaWidth, areaHeight, variant.canvas_width, variant.canvas_height, canvas);
+        RendererPlacement.canvas(&frame, &variant, placement, shown, areaWidth, areaHeight, variant.canvas_width, variant.canvas_height, canvas);
         struct RendererNormalizedHole* image = &variant.screens[0].image;
         float width = image->width * canvas->width;
         float height = image->height * canvas->height;

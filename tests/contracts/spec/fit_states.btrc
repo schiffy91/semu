@@ -1,0 +1,265 @@
+// Fit states spec (M16 items 5 and 7): "fit should cycle between integer-game, integer-bezel, non-integer-game,
+// non-integer-bezel" and "with wii, why is bezel + fit screen larger than no bezel?". The four states are named once
+// (SemuFitStates, RendererConfiguration.placementCode) and the retired fit reads as integer bezel. On every system
+// with a single-screen bezel, at 1280x800 and 1920x1080: the integer states are whole steps, integer game the
+// largest the screen holds, non-integer game fills the screen, no non-integer state is smaller than its integer one
+// and no bezel state larger than its game state; with the bezel off the picture takes the same state's whole step or
+// not, so it never shrinks (the Wii's 480 lines: 1x in both integer states, 800 rows in non-integer game, bezel or
+// none). The toasts name the states in the owner's words and fit the renderer's 31 characters; the compositor
+// samples a fractional picture sharp-bilinear; the Deck checks are a case file input-check.sh plans and PLAN.md names.
+
+#include <stdlib.h>
+#include <string.h>
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Process;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/emit/fit_states.btrc;
+import ../../../src/emit/render_choices.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+import ../../../src/renderer/renderer_config.btrc;
+import ../../../src/renderer/renderer_placement.btrc;
+import ./deck_harness.btrc;
+import ./dual_fit.btrc;
+import ./placement.btrc;
+import ./render_env.btrc;
+
+class FitStatesSpecNames {
+    class void run(Contract contract, Fixture fixture) {
+        contract.expect(SemuFitStates.all().join("|").equals("game|bezel|game_fractional|bezel_fractional") && SemuFitStates.pictureOnly().join("|").equals("game|game_fractional"), "Fit cycles the owner's order: integer game, integer bezel, non-integer game, non-integer bezel; with no bezel to place the two game states");
+        contract.expect(SemuFitStates.of("fit").equals("bezel") && SemuFitStates.of("").equals("bezel") && SemuFitStates.of("bezel_fractional").equals("bezel_fractional") && SemuFitStates.of("screen").equals("bezel"), "the retired fit, and anything unknown, reads as integer bezel");
+        contract.expect(SemuFitStates.pictureStep("game").equals("game_fractional") && SemuFitStates.pictureStep("bezel").equals("game_fractional") && SemuFitStates.pictureStep("game_fractional").equals("game") && SemuFitStates.pictureStep("bezel_fractional").equals("game"), "with no bezel Fit flips whole steps or not: an integer state to non-integer game, a non-integer one to integer game");
+        char* names[6] = {"game", "bezel", "game_fractional", "bezel_fractional", "fit", "nonsense"};
+        int codes[6] = {SEMU_PLACEMENT_GAME, SEMU_PLACEMENT_BEZEL, SEMU_PLACEMENT_GAME_FRACTIONAL, SEMU_PLACEMENT_BEZEL_FRACTIONAL, SEMU_PLACEMENT_BEZEL, SEMU_PLACEMENT_BEZEL};
+        bool coded = RendererConfiguration.placementCode(null) == SEMU_PLACEMENT_BEZEL;
+        for (int index = 0; index < 6; index++) { coded = coded && RendererConfiguration.placementCode(names[index]) == codes[index]; }
+        bool whole = RendererConfiguration.wholeSteps(SEMU_PLACEMENT_GAME) && RendererConfiguration.wholeSteps(SEMU_PLACEMENT_BEZEL) && !RendererConfiguration.wholeSteps(SEMU_PLACEMENT_GAME_FRACTIONAL) && !RendererConfiguration.wholeSteps(SEMU_PLACEMENT_BEZEL_FRACTIONAL);
+        bool first = RendererConfiguration.pictureFirst(SEMU_PLACEMENT_GAME) && RendererConfiguration.pictureFirst(SEMU_PLACEMENT_GAME_FRACTIONAL) && !RendererConfiguration.pictureFirst(SEMU_PLACEMENT_BEZEL) && !RendererConfiguration.pictureFirst(SEMU_PLACEMENT_BEZEL_FRACTIONAL);
+        contract.expect(coded && whole && first, "the renderer reads the four ids (fit and anything unknown as integer bezel) and knows which are whole steps and which put the picture first");
+        JSONValue fit = SemuJson.get(fixture.plan.input.definition, "actions").get("visual.placement.next");
+        Vector<string> labels = [];
+        bool fitting = true;
+        for state in SemuFitStates.all() {
+            string label = SemuRenderChoices.placementLabel(fixture.plan, state);
+            labels.push(label);
+            string same = SemuJson.textAt(fit, "same_toast").replace("{label}", label);
+            if (same.len() > 31 || !same.equals(SemuRenderLabels.toastSafe(same, 31))) { fitting = false; }
+        }
+        contract.expect(labels.join("|").equals("INTEGER GAME|INTEGER BEZEL|NON-INTEGER GAME|NON-INTEGER BEZEL") && SemuJson.textAt(fit, "toast").equals("FIT: {label}") && SemuJson.textAt(fit, "same_toast").equals("FIT: {label} (SAME)") && !fit.has("same_fit_toast") && fitting,
+            "the toasts name each state in the owner's words, FIT: INTEGER GAME and so on, and a press that moves nothing adds (SAME), every toast inside the renderer's 31 characters: " + labels.join("|"));
+        contract.expect(SemuJson.textAt(fixture.plan.settings, "visual.placement").equals("bezel") && !SemuJson.get(fixture.plan.settings, "visual").has("integer_scaling") && !SemuJson.get(fixture.plan.settings, "visual").has("placements"), "the global default is integer bezel, and the separate integer switch and the two-state toggle list are gone");
+    }
+}
+
+class FitStatesSpecGeometry {  // every single-screen bezel in the four states, and the same picture with the bezel off
+    class int lines(Fixture fixture, string systemId) {  // the picture's native height less its declared crop, as the renderer places it
+        JSONValue screen = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0");
+        return SemuJson.intAt(screen, "native.h", 0) - SemuJson.intAt(screen, "crop.top", 0) - SemuJson.intAt(screen, "crop.bottom", 0);
+    }
+
+    class bool whole(float height, int lines) {
+        int steps = PlacementSpecGeometry.rounded(height) / lines;
+        return steps >= 1 && PlacementSpecGeometry.near(height, (float)(steps * lines));
+    }
+
+    class int off(float aspect, int lines, int placement, int areaWidth, int areaHeight) {  // the picture's height with the bezel off, as RendererGeometry.resolve places one screen in that Fit state
+        struct RendererPixelRect area;
+        area.x = 0;
+        area.y = 0;
+        area.width = areaWidth;
+        area.height = areaHeight;
+        struct RendererPixelRect output;
+        RendererCompositionContract.fit(&area, (int)((float)lines * aspect + 0.5f), lines, 0, aspect, RendererConfiguration.wholeSteps(placement) ? 1 : 0, &output);
+        return output.height;
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        int widths[2] = {1280, 1920};
+        int heights[2] = {800, 1080};
+        Vector<string> failures = [];
+        int systems = 0;
+        for systemId in fixture.model.systemIds() {
+            JSONValue screens = SemuJson.get(fixture.model.system(systemId).definition, "display.screens");
+            JSONValue declared = fixture.model.system(systemId).bezels.get("variants");
+            if (screens == null || !screens.isArray() || screens.size() != 1 || declared == null || !declared.isArray() || declared.size() < 1) { continue; }
+            int nativeWidth = SemuJson.intAt(screens.at(0), "native.w", 0);
+            int nativeHeight = SemuJson.intAt(screens.at(0), "native.h", 0);
+            int lines = FitStatesSpecGeometry.lines(fixture, systemId);
+            systems++;
+            for (int size = 0; size < 2; size++) {
+                float shown[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+                float across[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+                for (int placement = SEMU_PLACEMENT_GAME; placement <= SEMU_PLACEMENT_BEZEL_FRACTIONAL; placement++) {
+                    struct RendererCanvasRect canvas;
+                    struct RendererCanvasRect picture;
+                    PlacementSpecGeometry.place(fixture, systemId, nativeWidth, nativeHeight, placement, widths[size], heights[size], &canvas, &picture);
+                    shown[placement] = picture.height;
+                    across[placement] = picture.width;
+                    int bare = FitStatesSpecGeometry.off(picture.width / picture.height, lines, placement, widths[size], heights[size]);
+                    if ((float)bare < picture.height - 1.0f) { failures.push(systemId + f" state {placement} at {widths[size]}x{heights[size]}: {bare} lines with the bezel off against " + PlacementSpecGeometry.text(&picture) + " with it"); }
+                }
+                string where = systemId + f" at {widths[size]}x{heights[size]}";
+                bool integers = FitStatesSpecGeometry.whole(shown[SEMU_PLACEMENT_GAME], lines) && FitStatesSpecGeometry.whole(shown[SEMU_PLACEMENT_BEZEL], lines);
+                float step = shown[SEMU_PLACEMENT_GAME] + (float)lines;
+                bool largest = step > (float)heights[size] + 0.5f || step * across[SEMU_PLACEMENT_GAME] / shown[SEMU_PLACEMENT_GAME] > (float)widths[size] + 0.5f;
+                bool fills = PlacementSpecGeometry.near(shown[SEMU_PLACEMENT_GAME_FRACTIONAL], (float)heights[size]) || across[SEMU_PLACEMENT_GAME_FRACTIONAL] >= (float)widths[size] - 1.0f;
+                bool ordered = shown[SEMU_PLACEMENT_GAME_FRACTIONAL] >= shown[SEMU_PLACEMENT_GAME] - 0.5f && shown[SEMU_PLACEMENT_BEZEL_FRACTIONAL] >= shown[SEMU_PLACEMENT_BEZEL] - 0.5f
+                    && shown[SEMU_PLACEMENT_GAME] >= shown[SEMU_PLACEMENT_BEZEL] - 0.5f && shown[SEMU_PLACEMENT_GAME_FRACTIONAL] >= shown[SEMU_PLACEMENT_BEZEL_FRACTIONAL] - 0.5f;
+                if (!integers) { failures.push(where + f": the integer states are not whole steps of {lines} ({shown[SEMU_PLACEMENT_GAME]}, {shown[SEMU_PLACEMENT_BEZEL]})"); }
+                if (!largest) { failures.push(where + f": integer game {shown[SEMU_PLACEMENT_GAME]} is not the largest whole step the screen holds"); }
+                if (!fills) { failures.push(where + f": non-integer game {across[SEMU_PLACEMENT_GAME_FRACTIONAL]}x{shown[SEMU_PLACEMENT_GAME_FRACTIONAL]} does not fill the screen"); }
+                if (!ordered) { failures.push(where + f": the states out of order (game {shown[SEMU_PLACEMENT_GAME]}, bezel {shown[SEMU_PLACEMENT_BEZEL]}, non-integer game {shown[SEMU_PLACEMENT_GAME_FRACTIONAL]}, non-integer bezel {shown[SEMU_PLACEMENT_BEZEL_FRACTIONAL]})"); }
+            }
+        }
+        contract.expect(systems >= 11 && failures.isEmpty(), f"on every single-screen bezel ({systems} systems) at 1280x800 and 1920x1080 the integer states are whole steps, integer game the largest the screen holds, non-integer game fills the screen, non-integer never smaller than integer nor bezel larger than game, and the bezel off never shrinks the picture: " + failures.join("; "));
+        struct RendererCanvasRect canvas;
+        struct RendererCanvasRect picture;
+        PlacementSpecGeometry.place(fixture, "wii", 640, 480, SEMU_PLACEMENT_GAME_FRACTIONAL, 1280, 800, &canvas, &picture);
+        int filled = PlacementSpecGeometry.rounded(picture.height);
+        PlacementSpecGeometry.place(fixture, "wii", 640, 480, SEMU_PLACEMENT_BEZEL, 1280, 800, &canvas, &picture);
+        int kept = PlacementSpecGeometry.rounded(picture.height);
+        int wholeOff = FitStatesSpecGeometry.off(4.0f / 3.0f, 480, SEMU_PLACEMENT_BEZEL, 1280, 800);
+        int filledOff = FitStatesSpecGeometry.off(4.0f / 3.0f, 480, SEMU_PLACEMENT_GAME_FRACTIONAL, 1280, 800);
+        contract.expect(filled == 800 && kept == 480 && wholeOff == 480 && filledOff == 800, f"item 7, the Wii on the Deck: non-integer game draws {filled} rows with the bezel and {filledOff} without, integer bezel {kept} and {wholeOff}: turning the bezel off keeps the state's size");
+        int wiiu = FitStatesSpecGeometry.off(16.0f / 9.0f, 720, SEMU_PLACEMENT_GAME, 1920, 1080);
+        int wiiuFilled = FitStatesSpecGeometry.off(16.0f / 9.0f, 720, SEMU_PLACEMENT_GAME_FRACTIONAL, 1920, 1080);
+        contract.expect(wiiu == 720 && wiiuFilled == 1080, f"a system with no bezel (Wii U, Switch: 1280x720) docked at 1920x1080: integer game {wiiu} rows, non-integer game {wiiuFilled}");
+    }
+}
+
+class FitStatesSpecDual {  // the DS and 3DS: the two non-integer states scale the whole shell, and a computed layout grows as one
+    class void scaled(Contract contract, Fixture fixture, string systemId, string variantId, int areaWidth, int areaHeight, struct RendererCompositionGeometry* integer) {  // the two non-integer states scale the whole shell: never dropped, both screens filling their rectangles, never smaller than integer bezel
+        string label = systemId + ":" + variantId + f" at {areaWidth}x{areaHeight}";
+        for (int placement = SEMU_PLACEMENT_GAME_FRACTIONAL; placement <= SEMU_PLACEMENT_BEZEL_FRACTIONAL; placement++) {
+            struct RendererCanvasRect canvas;
+            struct RendererCompositionGeometry geometry;
+            bool drawn = DualFitSpecGeometry.place(fixture, systemId, variantId, placement, areaWidth, areaHeight, &canvas, &geometry);
+            bool game = placement == SEMU_PLACEMENT_GAME_FRACTIONAL;
+            string shown = label + (game ? ", non-integer game: " : ", non-integer bezel: ") + DualFitSpecGeometry.text(&geometry, &canvas);
+            struct RendererLaneGeometry* main = &geometry.lanes[0];
+            struct RendererLaneGeometry* second = &geometry.lanes[1];
+            float mainScale = (float)main->output_height / (float)main->native_height;
+            bool shaped = FitStatesSpecDual.close((float)main->output_width / (float)main->output_height, (float)main->native_width / (float)main->native_height, 0.01f);
+            bool kept = drawn && canvas.width > 0.0f && DualFitSpecGeometry.within(main, &canvas) && DualFitSpecGeometry.within(second, &canvas) && DualFitSpecGeometry.held(main) && DualFitSpecGeometry.held(second);
+            bool onDisplay = DualFitSpecGeometry.inside(main, areaWidth, areaHeight) && DualFitSpecGeometry.inside(second, areaWidth, areaHeight);
+            float left = (float)(main->output_x < second->output_x ? main->output_x : second->output_x);
+            float right = (float)(main->output_x + main->output_width > second->output_x + second->output_width ? main->output_x + main->output_width : second->output_x + second->output_width);
+            float bottom = (float)(main->output_y < second->output_y ? main->output_y : second->output_y);
+            float top = (float)(main->output_y + main->output_height > second->output_y + second->output_height ? main->output_y + main->output_height : second->output_y + second->output_height);
+            bool pairReaches = right - left >= (float)areaWidth - 2.0f || top - bottom >= (float)areaHeight - 2.0f;
+            bool shellReaches = FitStatesSpecDual.shellReaches(fixture, systemId, variantId, &canvas, areaWidth, areaHeight);
+            bool reaches = false;
+            if (game) { reaches = pairReaches; } else { reaches = shellReaches; }
+            bool notSmaller = mainScale >= (float)DualFitSpecGeometry.step(&integer->lanes[0]) - 0.01f;
+            contract.expect(kept && onDisplay && shaped && reaches && notSmaller, shown + ": the shell drawn round both screens, both on the display and unmasked, the main screen at its own shape, " + (game ? "the pair" : "the shell") + f" as large as the display holds, never smaller than integer bezel (main {mainScale}x)");
+        }
+    }
+
+    class bool close(float value, float wanted, float tolerance) { return value - wanted <= tolerance && wanted - value <= tolerance; }
+
+    class bool shellReaches(Fixture fixture, string systemId, string variantId, struct RendererCanvasRect* canvas, int areaWidth, int areaHeight) {  // the device's declared silhouette meets the display's edge on one axis (within the 1% it may leave)
+        struct RendererVariantConfig variant;
+        PlacementSpecGeometry.load(PlacementSpecEnvironment.compile(fixture, systemId, variantId), &variant);
+        float width = variant.canvas_shell.set != 0 ? variant.canvas_shell.width * canvas->width : canvas->width;  // the silhouette, else the whole canvas
+        float height = variant.canvas_shell.set != 0 ? variant.canvas_shell.height * canvas->height : canvas->height;
+        return (width >= (float)areaWidth - 1.0f && width <= (float)areaWidth * 1.01f + 1.0f) || (height >= (float)areaHeight - 1.0f && height <= (float)areaHeight * 1.01f + 1.0f);
+    }
+
+    class void layouts(Contract contract) {  // RendererLayout.computedAt: a non-integer state grows the whole-step layout as one until it meets the display's edge
+        int layouts[4] = {SEMU_LAYOUT_MAIN_RIGHT, SEMU_LAYOUT_MAIN_LEFT, SEMU_LAYOUT_SIDE_BY_SIDE, SEMU_LAYOUT_STACKED};
+        int widths[2] = {1280, 1920};
+        int heights[2] = {800, 1080};
+        Vector<string> failures = [];
+        for (int size = 0; size < 2; size++) {
+            for (int index = 0; index < 4; index++) {
+                struct RendererCompositionGeometry whole;
+                struct RendererCompositionGeometry grown;
+                memset(&whole, 0, sizeof(struct RendererCompositionGeometry));
+                whole.lane_count = 2;
+                whole.lanes[0].native_width = 256;
+                whole.lanes[0].native_height = 192;
+                whole.lanes[1].native_width = 256;
+                whole.lanes[1].native_height = 192;
+                memcpy(&grown, &whole, sizeof(struct RendererCompositionGeometry));
+                RendererLayout.computedAt(&whole, layouts[index], widths[size], heights[size], 0, 0.015625f, false);
+                RendererLayout.computedAt(&grown, layouts[index], widths[size], heights[size], 0, 0.015625f, true);
+                float ratio = (float)grown.lanes[0].output_height / (float)whole.lanes[0].output_height;
+                float other = (float)grown.lanes[1].output_height / (float)whole.lanes[1].output_height;
+                int left = grown.lanes[0].output_x < grown.lanes[1].output_x ? grown.lanes[0].output_x : grown.lanes[1].output_x;
+                int right = grown.lanes[0].output_x + grown.lanes[0].output_width > grown.lanes[1].output_x + grown.lanes[1].output_width ? grown.lanes[0].output_x + grown.lanes[0].output_width : grown.lanes[1].output_x + grown.lanes[1].output_width;
+                int bottom = grown.lanes[0].output_y < grown.lanes[1].output_y ? grown.lanes[0].output_y : grown.lanes[1].output_y;
+                int top = grown.lanes[0].output_y + grown.lanes[0].output_height > grown.lanes[1].output_y + grown.lanes[1].output_height ? grown.lanes[0].output_y + grown.lanes[0].output_height : grown.lanes[1].output_y + grown.lanes[1].output_height;
+                bool reaches = right - left >= widths[size] - 2 || top - bottom >= heights[size] - 2;
+                bool inside = left >= 0 && bottom >= 0 && right <= widths[size] && top <= heights[size];
+                if (ratio < 1.0f || !FitStatesSpecDual.close(ratio, other, 0.02f) || !reaches || !inside) { failures.push(f"layout {layouts[index]} at {widths[size]}x{heights[size]}: grown {ratio}x and {other}x, group {left},{bottom} to {right},{top}"); }
+            }
+        }
+        contract.expect(failures.isEmpty(), "each computed DS layout in a non-integer state is its whole-step layout grown as one (both screens by the same factor, never smaller) until the group meets the display's edge, all on screen: " + failures.join("; "));
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        int widths[4] = {1280, 1920, 3840, 1024};
+        int heights[4] = {800, 1080, 2160, 768};
+        for systemId in ["nds", "n3ds"] {
+            for variantId in ["shell", "vertical"] {
+                for (int size = 0; size < 4; size++) {
+                    struct RendererCanvasRect canvas;
+                    struct RendererCompositionGeometry integer;
+                    DualFitSpecGeometry.place(fixture, systemId, variantId, SEMU_PLACEMENT_BEZEL, widths[size], heights[size], &canvas, &integer);
+                    FitStatesSpecDual.scaled(contract, fixture, systemId, variantId, widths[size], heights[size], &integer);
+                }
+            }
+        }
+        FitStatesSpecDual.layouts(contract);
+    }
+}
+
+class FitStatesSpecShader {  // a fractional picture sampled sharp-bilinear, a whole step left exactly as point sampling draws it
+    class void run(Contract contract, Fixture fixture) {
+        string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "render/compositor.frag"));
+        int start = Strings.find(source, "vec3 sharpPicture(", 0);
+        string body = start < 0 ? "" : source.substring(start, Strings.find(source, "\n vec3 bentPicture(", start) - start);
+        contract.expect(body.contains("vec2 scale=max(span/size,vec2(1.0));") && body.contains("vec2 band=0.5-0.5/scale;vec2 g=cell+(d-clamp(d,-band,band))*scale;") && body.contains("texelFetch(t,a,0)"),
+            "sharpPicture keeps each source pixel flat over the screen pixels wholly inside it and blends only the one its edge falls in (band 0.5-0.5/scale): at a whole step the clamp never bites and every pixel is its texel");
+        contract.contains(source, "c=fx.x>0.0?bentPicture(t,p,tube,rect,fx,rot,lod):(lod>0.0?textureLod(t,q,lod).rgb:sharpPicture(t,q,rect,rot));", "a flat lane at 1x and above takes sharpPicture, so a non-integer Fit state never doubles some rows and not others; below 1x the mips average as before");
+    }
+}
+
+class FitStatesSpecDeck {  // the Deck checks: a case file input-check.sh plans, and PLAN.md's M16 Status naming it
+    class void run(Contract contract, Fixture fixture) {
+        string script = PathTools.join(fixture.project, "tests/deck/input-check.sh");
+        string path = PathTools.join(fixture.project, "tests/deck/m16-check.cases");
+        string text = FileSystem.readText(path);
+        ExecResult planned = DeckHarnessShell.run(script, ["--plan", path]);
+        contract.expect(planned.ok(), "input-check.sh --plan m16-check.cases succeeds: " + planned.stderr());
+        contract.lacks(planned.stdout(), "not run", "no M16 case is malformed");
+        for line in ["wii dolphin - 60 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+b key:ctrl+shift+f key:ctrl+shift+f key:ctrl+b -- New Super Mario Bros. Wii*.wbfs",
+                     "psx retroarch mednafen_psx 45 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Crash Bandicoot (USA).m3u",
+                     "gba retroarch mgba 30 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Advance Wars (USA) (Rev 1).zip",
+                     "nds retroarch melonds 40 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f -- Advance Wars - Dual Strike (USA, Australia).zip"] {
+            contract.contains(text, "\n" + line + "\n", "m16-check.cases runs Fit's four states: " + line.substring(0, line.indexOf(" ")));
+        }
+        string plan = FileSystem.readText(PathTools.join(fixture.project, "PLAN.md"));
+        int status = plan.indexOf("\n## Status\n");
+        string live = status > 0 ? plan.substring(status, plan.len() - status) : "";
+        contract.contains(live, "\n- M16 items 5 and 7 (Fit's four states, the Wii's sizes): ", "the live Status block carries M16's Fit items");
+        contract.contains(live, "`tests/deck/m16-check.cases` (Fit cases)", "and says where their Deck checks are");
+    }
+}
+
+class FitStatesSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        RenderEnvSpecAssets.packages(fixture.plan.assetRoot, fixture.plan.configRoot);
+        FitStatesSpecNames.run(contract, fixture);
+        FitStatesSpecGeometry.run(contract, fixture);
+        FitStatesSpecDual.run(contract, fixture);
+        FitStatesSpecShader.run(contract, fixture);
+        FitStatesSpecDeck.run(contract, fixture);
+    }
+}
