@@ -6,6 +6,7 @@ import Library.Strings;
 import Library.Vector;
 import ./lib/json.btrc;
 import ./lib/paths.btrc;
+import ./lib/settings.btrc;
 import ./model.btrc;
 
 class SemuTokens {
@@ -128,7 +129,7 @@ class SemuResolver {
         plan.semuHome = SemuPaths.expandHome(semuHome.isEmpty() ? Environment.get("SEMU_HOME", "${home}/.config/semu") : semuHome);
         plan.assetRoot = assetRoot.isEmpty() ? Environment.get("SEMU_ASSET_ROOT", "") : assetRoot;
         JSONValue settings = SemuJson.merge(model.defaults, SemuResolver.targetSettings(model, target, diagnostics));
-        settings = SemuJson.merge(settings, SemuResolver.readOptional(PathTools.join(plan.semuHome, "semu.json"), diagnostics));
+        settings = SemuJson.merge(settings, SemuSettingsMigration.fitStates(SemuResolver.readOptional(PathTools.join(plan.semuHome, "semu.json"), diagnostics)));  // a file saved before M16 reads its Fit choices as they drew
         settings = SemuJson.merge(settings, SemuResolver.overrides(plan.semuHome, diagnostics));
         if (!settingsJson.isEmpty()) {
             JSONValue extra = JSONValue.parse(settingsJson);

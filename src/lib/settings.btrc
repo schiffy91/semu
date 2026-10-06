@@ -39,9 +39,9 @@ class SemuSettingsStore {  // $SEMU_HOME/semu.json: the one user-owned settings 
         return current != null && !current.isError() && current.isObject();
     }
 
-    class JSONValue current(string semuHome) {  // the file's object, or an empty one when there is none
+    class JSONValue current(string semuHome) {  // the file's object, or an empty one when there is none, brought to M16's Fit states so every save writes them (SemuSettingsMigration)
         string file = PathTools.join(semuHome, "semu.json");
-        return FileSystem.isFile(file) ? SemuJson.readFile(file) : JSONValue.makeObject();
+        return SemuSettingsMigration.fitStates(FileSystem.isFile(file) ? SemuJson.readFile(file) : JSONValue.makeObject());
     }
 
     class bool put(string semuHome, string path, JSONValue value) {  // false, file untouched, when semu.json is malformed
@@ -63,5 +63,33 @@ class SemuSettingsStore {  // $SEMU_HOME/semu.json: the one user-owned settings 
         if (!FileSystem.isFile(PathTools.join(semuHome, "semu.json"))) { return true; }
         JSONValue updated = SemuSettingsStore.withoutPath(SemuSettingsStore.current(semuHome), path, 0);
         return SemuPaths.writeOwned(semuHome, PathTools.join(semuHome, "semu.json"), updated.stringifyPretty(2) + "\n");
+    }
+}
+
+// A semu.json saved before M16's four Fit states (the review round of M16 item 7). Until M16 the four 480-line consoles
+// (wii, gc, ps2 and dreamcast) carried display.scaling.game_fractional_below: 2, so a saved Fit: Screen ("game"), or
+// the global placement "game" they inherited, filled the Deck's 800 rows (1067x800); M16 reads "game" as integer game,
+// 1x there, a third smaller than what the owner chose. Once, a file without the marker visual.fit_states takes those
+// systems' "game" as non-integer game and gains the marker with its next save (every save goes through
+// SemuSettingsStore.current), so a "game" saved under M16 stays integer game. Docked at 1920x1080 the old "game" drew
+// 2x (1280x960), the migrated state 1440x1080. Reversible: drop the two calls (SemuSettingsStore.current, SemuResolver.plan).
+class SemuSettingsMigration {
+    class Vector<string> fractionalGame() { return ["wii", "gc", "ps2", "dreamcast"]; }  // the systems that carried game_fractional_below until M16 (a frozen fact of the old builds, not a setting)
+
+    class int fitStatesMarker() { return 4; }
+
+    class JSONValue fitStates(JSONValue settings) {  // SETTINGS with the old Fit: Screen read as non-integer game and the marker set; anything else as it is
+        if (settings == null || settings.isError() || !settings.isObject()) { return settings; }
+        JSONValue visual = settings.get("visual");
+        if (visual != null && visual.isObject() && visual.has("fit_states")) { return settings; }
+        JSONValue result = settings;
+        bool inherited = SemuJson.textAt(settings, "visual.placement").equals("game");
+        for system in SemuSettingsMigration.fractionalGame() {
+            string saved = SemuJson.textAt(settings, "visual.systems." + system + ".placement");
+            if (saved.equals("game") || (saved.isEmpty() && inherited)) {
+                result = SemuSettingsStore.withPath(result, ["visual", "systems", system, "placement"], 0, JSONValue.makeString("game_fractional"));
+            }
+        }
+        return SemuSettingsStore.withPath(result, ["visual", "fit_states"], 0, JSONValue.makeInt(SemuSettingsMigration.fitStatesMarker()));
     }
 }

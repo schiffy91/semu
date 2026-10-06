@@ -1,0 +1,65 @@
+// Fit migration spec (M16 item 7, the review round): "with wii, why is bezel + fit screen larger than no bezel?" The
+// owner reported it on bezel plus Fit: Screen, which M15 saved as placement "game" and drew at 1067x800 on the Wii,
+// GameCube, PS2 and Dreamcast (game_fractional_below, retired in M16). M16 reads "game" as integer game (640x480 on
+// the Deck), so a semu.json saved before M16 reads those systems' "game" (saved, or the global one they inherited)
+// as non-integer game, once: the next save writes the marker visual.fit_states and the migrated choices, and a "game"
+// saved after that is integer game. Other systems' "game" was always a whole step and stays one.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/lib/settings.btrc;
+import ../../../src/emit/fit_states.btrc;
+
+class FitMigrationSpecTools {
+    class string home(Fixture fixture, string name, string content) {  // a semu home holding CONTENT as semu.json ("" for none)
+        string home = PathTools.join(fixture.scratch, "fit-migration/" + name);
+        FileSystem.mkdirp(home);
+        if (!content.isEmpty()) { FileSystem.writeText(PathTools.join(home, "semu.json"), content); }
+        return home;
+    }
+
+    class string states(Fixture fixture, string home) {  // each system's Fit state as a launch resolves it: "wii=...,gc=...,ps2=...,dreamcast=...,psx=...,n64=..."
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuPlan plan = SemuResolver.plan(fixture.model, "steam-deck", home, fixture.plan.assetRoot, "", diagnostics);
+        Vector<string> parts = [];
+        for system in ["wii", "gc", "ps2", "dreamcast", "psx", "n64"] { parts.push(system + "=" + SemuFitStates.current(plan.settings, fixture.model.system(system))); }
+        return parts.join(",");
+    }
+}
+
+class FitMigrationSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        string saved = FitMigrationSpecTools.home(fixture, "saved", "{\"visual\":{\"systems\":{\"wii\":{\"placement\":\"game\",\"bezel_variant\":\"tv\"},\"gc\":{\"placement\":\"bezel\"},\"psx\":{\"placement\":\"game\"}}}}");
+        string launched = FitMigrationSpecTools.states(fixture, saved);
+        contract.expect(launched.equals("wii=game_fractional,gc=bezel,ps2=bezel,dreamcast=bezel,psx=game,n64=bezel"),
+            "a semu.json from before M16: the Wii's saved Fit: Screen launches in non-integer game (1067x800 on the Deck, as it drew), other saved states and other systems' game as they are: " + launched);
+        string global = FitMigrationSpecTools.home(fixture, "global", "{\"visual\":{\"placement\":\"game\"}}");
+        launched = FitMigrationSpecTools.states(fixture, global);
+        contract.expect(launched.equals("wii=game_fractional,gc=game_fractional,ps2=game_fractional,dreamcast=game_fractional,psx=game,n64=game"),
+            "the global placement game the four inherited migrates for them only: " + launched);
+        string marked = FitMigrationSpecTools.home(fixture, "marked", "{\"visual\":{\"fit_states\":4,\"systems\":{\"wii\":{\"placement\":\"game\"}}}}");
+        launched = FitMigrationSpecTools.states(fixture, marked);
+        contract.expect(launched.startsWith("wii=game,"), "with the marker a saved game is integer game: " + launched);
+        bool wrote = SemuSettingsStore.put(saved, "visual.systems.n64.render_scale", JSONValue.makeString("2x"));
+        JSONValue file = SemuJson.readFile(PathTools.join(saved, "semu.json"));
+        contract.expect(wrote && SemuJson.intAt(file, "visual.fit_states", 0) == 4 && SemuJson.textAt(file, "visual.systems.wii.placement").equals("game_fractional")
+            && SemuJson.textAt(file, "visual.systems.wii.bezel_variant").equals("tv") && SemuJson.textAt(file, "visual.systems.n64.render_scale").equals("2x"),
+            "the first save writes the migrated choice and the marker beside the saved value, the rest of the file kept: " + file.stringify());
+        SemuSettingsStore.put(saved, "visual.systems.wii.placement", JSONValue.makeString("game"));
+        launched = FitMigrationSpecTools.states(fixture, saved);
+        contract.expect(launched.startsWith("wii=game,"), "integer game chosen after the migration stays integer game: " + launched);
+        string fresh = FitMigrationSpecTools.home(fixture, "fresh", "");
+        SemuSettingsStore.put(fresh, "visual.systems.gc.placement", JSONValue.makeString("game"));
+        file = SemuJson.readFile(PathTools.join(fresh, "semu.json"));
+        launched = FitMigrationSpecTools.states(fixture, fresh);
+        contract.expect(SemuJson.intAt(file, "visual.fit_states", 0) == 4 && launched.contains("gc=game,"), "a first save into no file writes the marker, so the GameCube's integer game is never migrated: " + launched);
+        JSONValue untouched = SemuSettingsMigration.fitStates(JSONValue.makeNull());
+        contract.expect(untouched != null && untouched.isNull(), "no semu.json stays no settings");
+    }
+}

@@ -83,6 +83,7 @@ import ./spec/boot_resize.btrc;
 import ./spec/fit_states.btrc;
 import ./spec/tv_cutout.btrc;
 import ./spec/render_scale_wiring.btrc;
+import ./spec/fit_migration.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -1059,6 +1060,7 @@ int main() {
     FitStatesSpecContract.run(contract);
     TvCutoutSpecContract.run(contract);
     RenderScaleWiringSpecContract.run(contract);
+    FitMigrationSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);
