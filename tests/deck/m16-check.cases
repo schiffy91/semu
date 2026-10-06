@@ -44,3 +44,45 @@ gba retroarch mgba 30 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctr
 #     put it). after-3 (81/3, FIT: NON-INTEGER BEZEL): the whole shell (up to 1% past the sides), both
 #     screens about 568x426. after-5 (81/0, FIT: INTEGER GAME): 2x again, the whole shell.
 nds retroarch melonds 40 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f -- Advance Wars - Dual Strike (USA, Australia).zip
+#
+# Item 2, the render scale (the render-scale track). key:ctrl+shift+n is the settings radial's Render Scale
+# (visual.scale.next), key:ctrl+shift+d its Restart Game and key:ctrl+m the Semu menu. Scale steps the system's
+# declared render scales (journal 88/<index>/<reserved>: reserved 1 while the choice waits for Restart Game, 0
+# once the emulator draws at it) and saves visual.systems.<id>.render_scale; Restart Game (87/1, RESTARTING
+# GAME) relaunches once (restarts=1), and the menu opened after it reads the SCALE row's new value. The
+# placement counts native pixels, so the TV and the picture keep their size and place at every scale; a higher
+# scale shows as smoother edges and steadier textures under the CRT shader (which still reads native lines,
+# averaged from the larger render) and as more detail with the shader off. A case judges by its shots, the
+# journal's 88 records, evidence.log's game receipts (render_scale=N frames_scaled=0|1, surface0_native and
+# surface0_scaled, the picture kept above native, 0x0 at 1x), the emulator's own config in OUT/home and the
+# rate lines (composed frames per second: full speed is the system's own rate, 60 or 59.94).
+#
+# S1. The N64 through GLideN64 (RetroArch), applied by Restart Game. before: native, receipts render_scale=1
+#     surface0_scaled=0x0. after-1 (88/1/1, SCALE 2X: RESTART TO APPLY): nothing restarted, the picture as
+#     before. after-2 (87/1): the game boots again (restarts=1). after-3 (1): the menu's SCALE row reads 2X.
+#     after-4 (5): the picture the same size and place as in before, the logo's edges smoother; receipts
+#     render_scale=2 frames_scaled=1 surface0_native=313x237 surface0_scaled=626x474;
+#     retroarch-core-options.cfg mupen64plus-43screensize "640x480" and mupen64plus-EnableNativeResFactor "2";
+#     rate lines at 60 per second. choices n64 {"render_scale":"2x"}.
+n64 retroarch mupen64plus_next 40 key:ctrl+shift+n key:ctrl+shift+d key:ctrl+m key:ctrl+m -- Super Mario 64 (USA).zip
+# S2. The GameCube on Dolphin, live. before: native, receipts surface0_native=640x480 surface0_scaled=0x0.
+#     after-1 (88/1/0, SCALE: 2X): the game keeps running (restarts=0) and its picture turns sharper in place;
+#     the launch log reads "semu: render scale 2x: 1 press(es) of Alt+F9 via X"; no Dolphin text over the
+#     picture (its Internal Resolution: 2x stays hidden); receipts render_scale=2 surface0_scaled=1067x800;
+#     rate lines at 59.94 per second. after-2 (88/0/0, SCALE: NATIVE): back to native live with one press of
+#     Alt+F10. choices gc {"render_scale":"1x"}.
+gc dolphin - 50 key:ctrl+shift+n key:ctrl+shift+n -- Legend of Zelda, The - The Wind Waker (USA).rvz
+# S3. The PS2 on PCSX2, applied by Restart Game. after-1 (88/1/1, SCALE 2X: RESTART TO APPLY). after-2 (87/1):
+#     the game boots again. after-3 (1) and after-5 (1): the menu's SCALE row reads 2X. after-4 and after-6:
+#     once the game draws, the TV and the picture the size and place they had in before (within 1 px: PCSX2's
+#     own rectangle at 2x is rounded without a whole step); receipts render_scale=2 frames_scaled=1,
+#     surface0_native=512x448 (Devil May Cry's GS texels halved back) and surface0_scaled=914x800 (PCSX2 fits a
+#     2x picture past 800 rows to the window); PCSX2.ini upscale_multiplier = 2; no PCSX2 text over the
+#     picture; rate lines at 59.94 per second. choices ps2 {"render_scale":"2x"}.
+ps2 pcsx2 - 60 key:ctrl+shift+n key:ctrl+shift+d key:ctrl+m key:ctrl+m key:ctrl+m key:ctrl+m -- Devil May Cry (USA).iso
+# S4. The PSP on PPSSPP: 2x is now the default (ppsspp.ini InternalResolution = 2; it was 0, the window's own
+#     size, about 3x). before: the PSP shell and its picture as in M15. after-1 (88/2/1, SCALE 3X: RESTART TO
+#     APPLY). after-2 (87/1): the game boots again. after-3 (1): the SCALE row reads 3X. after-4: the picture
+#     the same size and place as in before; InternalResolution = 3; rate lines at 60 per second. choices psp
+#     {"render_scale":"3x"}.
+psp ppsspp - 45 key:ctrl+shift+n key:ctrl+shift+d key:ctrl+m key:ctrl+m -- Daxter*.iso

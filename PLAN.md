@@ -2282,6 +2282,111 @@ Status: started 2026-10-06.
     of psx, ps2, wii, gb, gba, psp, nds, n3ds, n64 and genesis in each of the four states at 1280x800, and
     non-integer bezel at 1920x1080 for psx, wii, gba and nds: framing within 1 px and MAE 0 in every cell,
     the computed DS layouts included.
+- Item 2, the render scale (the render-scale track, 2026-10-06): built and observed on the Mac render host and in
+  the podman VM (RetroArch's GLideN64, PCSX2, Dolphin); the Deck is open (`tests/deck/m16-check.cases`, cases
+  S1-S4, and `tests/deck/radial-check.cases` case 18). c83689f, the live Dolphin switch 8a9a049.
+  - What it is: each system whose emulator renders above native declares the scales the Deck affords
+    (`display.render_scale.choices` and `.default` in system.json, its cost in `.doc`); each emulator declares how
+    it takes one (`platforms.<os>.render_scale`, RetroArch per core in `retroarch.render_scale` beside core options
+    of kind `render_scale`). The settings radial's Render Scale slot (Ctrl+Shift+N, Lucide `zoom-in` icon) and the
+    menu's SCALE row (shown where two or more scales are offered) step it, toast SCALE: 2X, save it per system as
+    `visual.systems.<id>.render_scale` ("2x") and journal 88 (the index, reserved 1 while it waits). Reset to
+    Default brings the default back; Restart Game applies a waiting scale. The menu now holds fourteen rows (the
+    Wii's every value row with SCALE).
+  - Where it goes: GLideN64 `mupen64plus-43screensize` (native size times the scale) and
+    `EnableNativeResFactor`; Beetle PSX `beetle_psx_internal_resolution` (`1x(native)`, `2x`); the Flycast core
+    `reicast_internal_resolution`; the PPSSPP core `ppsspp_internal_resolution`; melonDS's core switches to its
+    OpenGL renderer above 1x with `melonds_opengl_resolution` (the 2D stays native); DeSmuME
+    `desmume_internal_resolution`; the Citra core `citra_resolution_factor` `2x`, the Azahar core `2`. Standalones:
+    Dolphin GFX.ini `InternalResolution` (the EFB scale), PCSX2 `upscale_multiplier`, PPSSPP `InternalResolution`,
+    Flycast `rend.Resolution` (lines: 480 times the scale), Azahar qt-config `resolution_factor` (a title with a
+    texture pack keeps its own per-title factor), melonDS `ScaleFactor`. Ryujinx: the Switch offers 1x only (the
+    Deck runs it at its limit at 1x, the game's own handheld 720p), `res_scale` stays 1. Cemu: no render scale;
+    its resolution comes only from per-game graphic packs, which Semu does not ship, so the Wii U offers none.
+    Beetle PSX HW: Semu runs Beetle PSX's software core (`mednafen_psx`), whose software renderer upscales on the
+    CPU (2x offered, 4x would be sixteen times the rasterising); the HW core is not built.
+  - Live or Restart Game: Dolphin switches live. Its Hotkeys.ini binds Internal Resolution/Increase IR and
+    Decrease IR (HotkeyScheduler.cpp:386-398 at c77bbaa0) to Alt+F9 and Alt+F10, and a press types the steps
+    between the running scale and the chosen one, paced (40 ms held, 40 ms apart, for Dolphin's 5 ms poll); 88
+    then carries reserved 0 and nothing waits. Dolphin.ini now sets OnScreenDisplayMessages = False, so Dolphin's
+    own "Internal Resolution: 2x" (and its other OSD messages, the layout ones included) never draw over the
+    composed picture, as PCSX2's do not; Semu's toasts announce them. Every other emulator reads its scale at
+    boot: RetroArch has no command that sets a core option while running (its network commands cover states,
+    shaders and the menu), PPSSPP, Flycast, Azahar and melonDS have no resolution hotkey, and PCSX2's Increase and
+    Decrease Upscale Multiplier hotkeys would change the GS texel size its render hook reports one frame before
+    the journal reaches the renderer, a frame drawn at the wrong size; so they say RESTART TO APPLY.
+  - The renderer keeps placing by the native size. SEMU_RENDER_SCALE carries the scale and
+    SEMU_RENDER_SURFACE_SCALED=1 marks a producer that reports the scaled picture's own size (RetroArch's single
+    screen, whose tap reports the core's frame; PCSX2's hook, which reports GS texels): the renderer divides that
+    size back to the game's before the crop and anything else counts pixels (renderer_render_scale.btrc). Above
+    native the lane keeps the picture as the emulator drew it at up to the scale times native
+    (renderer_scaled_lane.btrc, with its mips); the native picture is made from its last mip still at least native
+    (2x and 4x exact, a 2x2 box average per level), so every shader reads native lines averaged from the larger
+    render, never a single sample of it. Decision, reversible: all shaders read native (the CRT and LCD presets
+    draw scanlines, masks and cells per game pixel), so under a shader a higher scale shows as smoother edges and
+    steadier textures (supersampling); with the shader off the game pass draws the kept picture itself: exact where
+    the screen draws it at its own size, bilinear larger, trilinear smaller, sharp-bilinear in the non-integer Fit
+    states, never point-sampled shimmer, and the reflections mirror it from its own pixels. The receipts and the
+    debug line name `render_scale`, `frames_scaled`, `surface0_native` and `surface0_scaled`.
+  - Offered scales and the Deck's GPU (estimated, not measured: the Deck was off): an emulator's fill grows with
+    the square of the scale, so 2x is four times the pixels of 1x and 3x nine times. The maxima follow the Deck's
+    RDNA2 GPU (8 CUs, 1.6 TFLOPS) and the community's settled Deck settings for each emulator: GameCube, Wii and
+    PS2 2x (1280x1056 and 1280x896, already past the Deck's 800 lines and about 1080p; 3x is past the GPU in most
+    games), Dreamcast 2x (960 lines), 3DS 2x (800x480 top screen), PS1 2x (CPU, see above), N64 3x (GLideN64 is
+    light), PSP 3x (1440x816), DS 3x (melonDS GL). RetroArch draws a frame at whole steps of its own size, so a
+    scale whose frame does not fit the target's screen is never offered (`fit: display`): on the Deck the 3DS and
+    Dreamcast cores and the PSP core's 3x drop out, the standalones keep theirs. Semu's own cost was measured on
+    the render host (RENDER_HOST_GPU_TIME, 70 frames): N64 with GDV-NTSC 2.94 ms at 1x, 3.03 ms at 2x, 2.96 ms at
+    3x; no shader 0.75, 0.29, 0.44 ms; GameCube 1.31 ms at 1x, 1.45 ms at 2x: no measurable cost.
+  - Decisions as reversible defaults (the owner unattended): every default stays native (the M14 N64 frame, the
+    M15 PCSX2 texel picture) except the PSP at 2x, the size its libretro path drew on the Deck before (PPSSPP
+    standalone used 0, its window's size, about 3x, read back down to native anyway); the global
+    `visual.render_resolution` (the libretro cores' display-sized whole step) is gone, the per-system scale replaces
+    it; saved scales the target cannot offer fall back to the default; chords Ctrl+Shift+N (I is a PCSX2 keyboard
+    alternate), Alt+F9 and Alt+F10.
+  - Observed, the Mac render host (judged by eye, a 2560x1920 card of thin lines and a sunburst, frame producers
+    drawing it at the scale and reporting that size, window producers drawing it at the scale and presenting it
+    letterboxed): N64 at 1280x800, the TV at integer bezel, the same 626x474 picture at 1x, 2x and 3x (native
+    313x237, kept 626x474 and 939x711): at 1x the lines break into dashes and the sunburst steps, at 2x and 3x
+    they run whole; with GDV-NTSC the 3x lines are whole too, the scanlines unchanged; in non-integer game
+    (3.37x) the 1x picture shows sharp-bilinear blocks, the 3x one smooth edges. GameCube (Dolphin window
+    1067x800) and PS2 (PCSX2 at 2x: 1067x800 fitted at 800 rows, 1280x896 texel-exact at 1080p) the same: the TV
+    unchanged (640x480 and 597x448 pictures), the edges smooth at 2x. The editor still matches the renderer
+    (`editor-sync.sh --card test`, every variant of psp, n64, gc, ps2, n3ds, psx, dreamcast, wii and nds: framing
+    within 1 px, MAE 0).
+  - Observed in the podman VM (Xvfb 1280x800, llvmpipe, the owner's games through `semu launch`,
+    `tests/integration/live-switch.sh` with SCALE and the Scale and Restart Game chords): Super Mario 64 on
+    GLideN64 started native (debug line native 313x237, kept 0x0, source 939x711: RetroArch's 3x viewport);
+    Ctrl+Shift+N toasted SCALE 2X: RESTART TO APPLY and saved n64 {"render_scale":"2x"}; Ctrl+Shift+D restarted
+    once (restarts=1), and the relaunched core options read 43screensize "640x480", EnableNativeResFactor "2"; the
+    renderer then read native 313x237, kept 626x474 from a 626x474 source, the TV in the same place (out 327,163
+    626x474, tube 311,150 658x500 before and after); the logo's edges are visibly smoother under GDV-NTSC (zoomed
+    side by side). Def Jam on PCSX2 the same way: native 639x448, then after the restart upscale_multiplier = 2,
+    native 639x448 (1278x896 texels halved), kept 1068x749 from PCSX2's 1068x800 rectangle; the TV one pixel
+    wider (598 against 597 px of 448 rows, PCSX2's own rectangle rounded without a whole step), the licence text
+    clean under the CRT shader.
+    The Wind Waker on Dolphin, started at 2x: the receipt reads render_scale=2 frames_scaled=0
+    surface0_native=640x480 surface0_source=107,0,1066,800 surface0_scaled=1066x800 (Dolphin's window kept whole),
+    the TV at integer bezel (640x480 at 320,160); the first Ctrl+Shift+N logged "semu: render scale 1x: 1 press(es)
+    of Alt+F10 via X" and journaled 88/0/0, the second "2x: 1 press(es) of Alt+F9 via X" and 88/1/0, restarts=0,
+    the title scene animating throughout, no Dolphin text over the picture; saved gc {"render_scale":"2x"}. The
+    N64 started at 2x: receipt render_scale=2 frames_scaled=1 surface0_native=313x237 surface0_scaled=626x474.
+  - The settings page: SEMU SETTINGS' per-system visuals offer RENDER SCALE (the declared scales, saved where the
+    radial saves them; a launch whose emulator cannot take the choice renders at the default).
+  - Contracts: `tests/contracts/spec/render_scale.btrc` (the declared lists, what each emulator takes on the Deck,
+    the renderer's environment, each emulator's key at a scale, the supervisor's restart and live paths with the
+    typed presses, the renderer's division, crop order, kept size and mip, the SCALE row and toasts, the settings
+    page), the libretro options in main.btrc's RenderResolutionContract, the variants file's scales, the
+    fourteen-row menu, the Steam settings ring's eleventh slot; 19 mutations, each killed (no fit filter, no
+    division, nothing kept, Restart Game blind to the scale, the binding, the environment, the core options, the
+    renderer's live scale, Reset, the header, the radial slot, the pending flag, the data, the mip level, the live
+    typing, Dolphin's bindings, the direction, the OSD switch, the settings field).
+  - Open on the Deck (`tests/deck/m16-check.cases` S1-S4, `tests/deck/radial-check.cases` case 18): the four
+    cases' pictures, receipts and rate lines (the N64 at 2x and the PS2 at 2x after Restart Game, the GameCube
+    live, the PSP at 3x), each at full speed in the rate lines; the GPU load of the 2x cases in
+    `tests/deck/system-matrix.sh`'s waits (lower an offered maximum where a system falls short); the melonDS
+    core's OpenGL renderer at 2x through RetroArch (not drawn anywhere yet: neither the render host nor the VM ran the melonDS core above native); Azahar at 2x on a
+    title without a texture pack.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
@@ -3631,6 +3736,13 @@ Update this block whenever a milestone criterion changes state.
   path used a separate integer switch while the Wii's Fit: Screen filled fractionally). Open on the Deck:
   `tests/deck/m16-check.cases` (Fit cases) F1-F4 off-screen, then by eye in Game Mode the CRT look and a
   scrolling scene at the non-integer sizes.
+- M16 item 2 (render scale): built 2026-10-06 (c83689f, 8a9a049) and observed on the Mac render host (frame and
+  window producers at 1x, 2x and 3x, judged by eye) and in the podman VM (Super Mario 64 on GLideN64 and Def Jam
+  on PCSX2 at 2x through Scale and Restart Game, The Wind Waker switched live on Dolphin); contract
+  render_scale.btrc, 19 mutations killed. Scale (settings radial, menu SCALE row, SEMU SETTINGS) steps each
+  system's declared scales, saved per system; Dolphin applies it live, the rest at Restart Game; the picture keeps
+  its native placement. Open on the Deck: `tests/deck/m16-check.cases` S1-S4 and `radial-check.cases` case 18
+  (pictures, receipts and full-speed rate lines at 2x), then the GPU load per system.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,

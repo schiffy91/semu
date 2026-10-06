@@ -10,6 +10,7 @@ import ../model.btrc;
 import ../resolve.btrc;
 import ./rendering.btrc;
 import ./fit_states.btrc;
+import ./render_scale.btrc;
 
 class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU SETTINGS
     class string protocol() { return "semu-settings-v2"; }
@@ -84,6 +85,16 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         return result;
     }
 
+    class Vector<string> renderScales(SemuSystem system) {  // the system's declared render scales as the settings save them: 1x, 2x
+        Vector<string> result = [];
+        JSONValue declared = SemuJson.get(system.definition, "display.render_scale.choices");
+        for (int index = 0; declared.isArray() && index < declared.size(); index++) {
+            JSONValue entry = declared.at(index);
+            if (entry.isInt() && entry.asInt() >= 1) { result.push(SemuRenderScale.id(entry.asInt())); }
+        }
+        return result;
+    }
+
     class JSONValue systemPage(JSONValue settings, SemuSystem system) {  // null when the system has nothing to choose
         Vector<string> shaders = SemuSettingsUi.variantIds(system.shaders);
         Vector<string> bezels = SemuSettingsUi.variantIds(system.bezels);
@@ -97,6 +108,10 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         }
         if (shaders.size() >= 2) {
             fields.push(SemuSettingsUi.choice(settings, "visual.systems." + system.id + ".shader_variant", "SHADER", shaders, SemuRenderEnvironment.chosenId(settings, system, system.shaders, "shader", "visual.crt_shaders")));
+        }
+        Vector<string> scales = SemuSettingsUi.renderScales(system);
+        if (scales.size() >= 2) {  // as the radial's Render Scale saves it; a launch whose emulator cannot take the choice renders at the default
+            fields.push(SemuSettingsUi.choice(settings, SemuRenderScale.settingKey(system.id), "RENDER SCALE", scales, SemuRenderScale.id(SemuRenderScale.defaultScale(system))));
         }
         return SemuSettingsUi.page(system.id.replace("_", "-"), SemuSettingsUi.upper(system.name), fields);
     }

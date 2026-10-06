@@ -20,6 +20,7 @@ import ../../../src/emit/profiles.btrc;
 import ../../../src/emit/rendering.btrc;
 import ../../../src/emit/render_scale.btrc;
 import ../../../src/emit/render_variants.btrc;
+import ../../../src/emit/settings_ui.btrc;
 import ../../../src/launch/plan.btrc;
 import ../../../src/launch/actions.btrc;
 import ../../../src/launch/supervisor.btrc;
@@ -291,6 +292,24 @@ class RenderScaleSpecMenu {  // the renderer's SCALE row and toasts from 88 reco
     }
 }
 
+class RenderScaleSpecSettingsPage {  // SEMU SETTINGS' per-system page offers the system's declared scales, saved where the radial saves them
+    class string field(JSONValue page, string key) {  // FIELD's value and choices as "value:choice,choice"; "" when the page lacks it
+        JSONValue fields = page == null ? null : page.get("fields");
+        for (int index = 0; fields != null && fields.isArray() && index < fields.size(); index++) {
+            JSONValue entry = fields.at(index);
+            if (SemuJson.textAt(entry, "key").equals(key)) { return SemuJson.textAt(entry, "value") + ":" + SemuJson.strings(entry.get("choices")).join(","); }
+        }
+        return "";
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        JSONValue settings = fixture.plan.settings;
+        contract.expect(RenderScaleSpecSettingsPage.field(SemuSettingsUi.systemPage(settings, fixture.model.system("n64")), "visual.systems.n64.render_scale").equals("1x:1x,2x,3x"), "the N64 page's RENDER SCALE offers 1x, 2x and 3x, native by default");
+        contract.expect(RenderScaleSpecSettingsPage.field(SemuSettingsUi.systemPage(settings, fixture.model.system("psp")), "visual.systems.psp.render_scale").equals("2x:1x,2x,3x"), "the PSP page starts on its default 2x");
+        contract.expect(RenderScaleSpecSettingsPage.field(SemuSettingsUi.systemPage(settings, fixture.model.system("gb")), "visual.systems.gb.render_scale").isEmpty(), "a system without scales has no RENDER SCALE field");
+    }
+}
+
 class RenderScaleSpecContract {
     class void run(Contract contract) {
         Fixture fixture = Fixture("steam-deck");
@@ -301,5 +320,6 @@ class RenderScaleSpecContract {
         RenderScaleSpecSupervisor.run(contract, fixture);
         RenderScaleSpecArithmetic.run(contract);
         RenderScaleSpecMenu.run(contract, fixture);
+        RenderScaleSpecSettingsPage.run(contract, fixture);
     }
 }
