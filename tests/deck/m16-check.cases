@@ -301,7 +301,8 @@ dreamcast flycast - 30 start key:ctrl+shift+v key:shift key:shift key:shift key:
 #     story scene at 30 frames a second from about 48 s (its bar: at least 29.8 per second, gaps under 50 ms).
 dreamcast flycast - 30 start key:ctrl+shift+r,ctrl+shift+r key:shift key:shift key:shift key:shift key:ctrl+shift+f key:shift key:shift key:shift key:shift key:ctrl+shift+v key:shift key:shift key:shift key:shift -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
 # D13. The PS2 (Def Jam): S3 left it at render scale 2x, so Restart Game (87/1) follows Reset and the game boots again
-#     at 1x (receipts render_scale=1) on GDV-NTSC at integer bezel; the bar holds once it draws.
+#     at 1x (receipts render_scale=1) on GDV-NTSC at integer bezel; the bar holds once it draws. Run in a fresh home
+#     (already 1x) nothing waits, so the press journals 87/0 and the game keeps running.
 ps2 pcsx2 - 40 key:ctrl+shift+r,ctrl+shift+r key:ctrl+shift+d key:shift key:shift key:shift key:shift key:shift key:shift key:ctrl+shift+f key:shift key:shift key:shift key:shift key:ctrl+shift+v key:shift key:shift key:shift key:shift -- Def Jam - Fight for NY (USA).iso
 # D14. The GameCube (The Wind Waker): the title at 30 frames a second, its attract scenes after it.
 gc dolphin - 40 key:ctrl+shift+r,ctrl+shift+r key:shift key:shift key:shift key:shift key:ctrl+shift+f key:shift key:shift key:shift key:shift key:ctrl+shift+v key:shift key:shift key:shift key:shift -- Legend of Zelda, The - The Wind Waker (USA).rvz

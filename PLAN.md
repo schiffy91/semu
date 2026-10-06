@@ -2716,14 +2716,18 @@ Status: started 2026-10-06.
     the same times; beside each run, gpu_busy_percent read ten times a second, the GPU clock and the APU's socket power
     (amdgpu power1_average). Means over each case's rate lines after its first 10 s, Sharp CRT then GDV-NTSC:
     - Integer bezel (the TVs' default; the picture 1x, 640x480, Def Jam 597x448), 1280x800: the composition's GPU
-      time 1.70-1.80 ms against 5.44-5.83 ms; GPU load 10-18% against 24-41%. The frame rates the same line for line:
+      time 1.70-1.80 ms against 5.44-5.84 ms; GPU load 10-18% against 23-44%; socket power 4.1-9.1 W against
+      4.6-10.1 W. The frame rates the same line for line:
       Sonic's title at 60.2 per second (22 ms gaps: 60 frames on a 90 Hz screen), its attract scenes at 30.0; The Wind
       Waker's title at 30.0; Def Jam at 59.9 (16.9 ms gaps); Mario Kart Wii's attract race at 59.6-59.7, both missing
       the same 6 of 56 lines, at its track changes. A first run on a fresh release compiles Dolphin's shaders: the
       first Mario Kart Wii run (Sharp CRT) missed 41 of 55 lines, its rerun 6.
     - Non-integer game (1067x800; City Folk's 16:9 picture 1280x720), 1280x800: 2.81-3.00 ms against 7.25-7.84 ms;
-      load 15-26% against 30-57%; with GDV-NTSC the socket power 4.8-10.7 W. The same rates and the same missed lines
+      load 15-27% against 30-57%; socket power 3.9-9.6 W against 4.8-10.7 W. The same rates and the same missed lines
       (scene loads: 8 of 48 on both for Sonic, 3 of 41 on both for The Wind Waker, none for Def Jam).
+    - Docked, integer bezel (the same 1x pictures with the whole TV), 1920x1080 at 60 Hz: 2.35-2.47 ms against
+      6.12-6.56 ms; load 11-21% against 25-46%; socket power 3.8-8.8 W against 4.9-10.3 W; the same rates (Mario
+      Kart Wii 6 and 7 of 56 lines at track changes).
     - Docked, non-integer game (1440x1080; City Folk 1920x1080), 1920x1080 at 60 Hz: 4.86-5.81 ms against
       9.95-11.96 ms; load 20-46% against 37-77%; socket power 4.2-10.6 W against 4.9-12.3 W (peak 14.7 W, City Folk
       with GDV-NTSC, under the APU's 15 W limit). The same rates; the missed lines fall at the same scene loads (one
@@ -2735,8 +2739,8 @@ Status: started 2026-10-06.
       measured at the clock the GPU chose, and the Deck runs its GPU at the slowest clock that keeps up (200-1040 MHz
       here), so the time grows as the clock drops without a frame coming late. The bar is now what the owner sees:
       the frame rates Sharp CRT gets in the same scenes, with the GPU never the limit (its load well under 100% and
-      its clock under the top). Reversible decision; the cost is battery, 0.7-1.7 W more socket power docked in
-      non-integer game while a 480-line game runs.
+      its clock under the top). Reversible decision; the cost is battery: 0.1-1.7 W more socket power while a
+      480-line game runs (about 1 W in most cases, against 4-12 W in all).
     - Moved (reversible default): the Dreamcast, PS2, GameCube and Wii default to GDV-NTSC (variant `default`,
       Dreamcast - Clean; PS2 - Clean on the other three), so every console played on a CRT television follows the one
       rule; Sharp CRT is one press of Next Shader away (`sharp`), CRT Royale the press after, then off. The ids are the
@@ -2754,6 +2758,20 @@ Status: started 2026-10-06.
     - Deck cases: `tests/deck/m16-check.cases` D7-D10 now start on GDV-NTSC, step the Fit states and end one press away
       on Sharp CRT (80/1); D12-D15 compare the two in one run each (Reset to Defaults, four shots at integer bezel,
       four in non-integer game, four on Sharp CRT); D3's pitch line and K5's defaults name GDV-NTSC.
+    - After, on release 37211798 (4770562e, installed 2026-10-06 with `deploy.sh install-delta` and `prepare`, no game
+      running; Steam's templates unchanged, so no `steam input`): D12-D15 in a fresh home at 90 Hz. Each launch's
+      receipt reads shader_preset=gdv-ntsc.slangp with no saved choice, and Next Shader's switch receipt
+      sharp.slangp (shader_index 1, reload 16-45 ms), journals 85/0/1 79/0 80/0 81/1 85/1 81/2 80/1 (the PS2's 87/0
+      between: nothing waited in a fresh home). GDV-NTSC 5.3-5.9 ms at integer bezel and 7.2-7.6 ms in non-integer
+      game, Sharp CRT 2.8 ms; the rates held through every window (Sonic's title 60.2 per second with 22 ms gaps and
+      its story scene 30.0-30.3; The Wind Waker 30.0; Def Jam 59.9 with 16.9-17.1 ms gaps; Mario Kart Wii 59.9 with
+      17.0-17.5 ms gaps through its attract race), one longer gap at each Fit or shader press (the chain rebuilt,
+      98-125 ms). Pitch: "scanlines 1 rows each, intres 0.000 (480 lines drawn 480 tall)" at integer bezel and "2 rows
+      each, intres 1.200 (480 lines drawn 800 tall)" in non-integer game (Def Jam: 448 lines, 1.120). By eye: the TV
+      round the 1x picture on its wall and table at integer bezel, the bright GDV-NTSC picture filling the height in
+      non-integer game, and Sharp CRT's sharper, grained picture after the press. The owner's semu.json, read on the
+      Deck after the install: the PS2 (saved `default`) and the GameCube (no choice) now launch on GDV-NTSC, the
+      Dreamcast and Wii on their saved CRT Royale.
   - Item 9 for the owner, in plain words: no, they were not all on the right shader, and now they are. Since M14 the
     consoles that drew 240 lines (NES, SNES, Genesis, N64, PlayStation) used Retro Crisis's GDV-NTSC, the look the
     owner picked. The four that draw 480 lines (Dreamcast, PS2, GameCube, Wii) stayed on Sharp CRT, with CRT Royale as
@@ -4352,13 +4370,15 @@ Update this block whenever a milestone criterion changes state.
 - M16 item 9 (shaders per system): done 2026-10-06, measured on the Deck off-screen (release 6c40e186, Game Mode's
   90 Hz at 1280x800 and docked at 1920x1080 and 60 Hz, render scale 1x, each shader in its own home on the same
   scenes): GDV-NTSC holds the frame rates Sharp CRT holds on the Dreamcast, PS2, GameCube and Wii in integer bezel
-  and non-integer game, its composition 5.4-5.8 ms of GPU time at integer bezel, 7.3-7.8 in non-integer game and
-  10.0-12.0 docked (Sharp CRT 1.7-1.8, 2.8-3.0 and 4.9-5.8) with the GPU clock never past 1040 of its 1600 MHz. So
+  and non-integer game, its composition 5.4-5.8 ms of GPU time at integer bezel and 7.3-7.8 in non-integer game
+  (docked 6.1-6.6 and 10.0-12.0; Sharp CRT 1.7-1.8 and 2.8-3.0, docked 2.4-2.5 and 4.9-5.8), about 1 W more socket
+  power, with the GPU clock never past 1040 of its 1600 MHz. So
   the four moved to it and one rule holds for every system: a console played on a CRT television defaults to Retro
   Crisis's GDV-NTSC with his Steam Deck values for its cleanest signal, a handheld to an LCD look, an HD console to
   none; Sharp CRT one press of Next Shader away. The review round's 4 ms GPU-time cap is retired for the frame rate
   with the GPU never the limit (PLAN M16 item 9's record, reversible). The owner's saved CRT Royale on the Dreamcast
-  and Wii stays. Deck cases m16-check.cases D7-D10 and D12-D15.
+  and Wii stays. Installed in 37211798 and observed on the Deck (D12-D15 in a fresh home: GDV-NTSC by default,
+  Sharp CRT one press away, the rates held). Deck cases m16-check.cases D7-D10 and D12-D15.
 - M16 items 1 and 6 (crosshair, the Wii's controller): built 2026-10-06 (51bcddb, 47c1303) and observed on the Mac
   render host and in the podman VM (RetroArch's DS and 3DS cores, standalone Azahar, Dolphin with Mario Kart Wii);
   contracts right_trackpad, standalone_cursor, controller_layouts, players, emulator_runtime, radial_render. DS and
@@ -4383,6 +4403,7 @@ Update this block whenever a milestone criterion changes state.
   stopped. Installed on the Deck 2026-10-06: af0470d8 (then `steam input` with Steam stopped), 9d52f6f and
   a70ece76, the last after that commit; Steam's templates have not changed since af0470d8, so the radial is
   current. Then 6c40e186 (item 8's Flycast patch), installed with `install-delta` and `prepare`, no game running.
+  Then 37211798 (item 9's shader defaults; release 4770562e), the same way; Steam's templates still unchanged.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,
