@@ -149,7 +149,7 @@ class RenderScaleSpecProfiles {  // each standalone's own key at the system's sc
         contract.contains(RenderScaleSpecTools.profile(fixture, scaled, "nds", "melonds", "melonDS.toml"), "ScaleFactor = 2\n", "melonDS's OpenGL 3D at 2x");
         string hotkeys = RenderScaleSpecTools.profile(fixture, native, "gc", "dolphin", "Hotkeys.ini");
         contract.contains(RenderScaleSpecTools.profile(fixture, native, "gc", "dolphin", "Dolphin.ini"), "OnScreenDisplayMessages = False\n", "Dolphin draws no OSD message over the composed picture: no Internal Resolution: 2x at a live switch");
-        contract.expect(hotkeys.contains("Internal Resolution/Increase IR = @(Alt+F9)\n") && hotkeys.contains("Internal Resolution/Decrease IR = @(Alt+F10)\n"), "Dolphin binds Increase IR and Decrease IR to the chords Semu types for a live scale: " + hotkeys);
+        contract.expect(hotkeys.contains("Internal Resolution/Increase IR = @(Alt+Prior)\n") && hotkeys.contains("Internal Resolution/Decrease IR = @(Alt+Next)\n"), "Dolphin binds Increase IR and Decrease IR to the chords Semu types for a live scale: " + hotkeys);
     }
 }
 
@@ -184,14 +184,14 @@ class RenderScaleSpecSupervisor {  // Scale steps and saves for the system: at R
         SemuTypedSteps.count = 0;
         SemuLaunchPlan launch = RenderScaleSpecTools.launch(fixture, "gc", "gc", "dolphin");
         SemuRenderScaleSpec spec = launch.variants.scaleSpec;
-        contract.expect(spec.live() && spec.increase.equals("Alt+F9") && spec.decrease.equals("Alt+F10"), "gc on Dolphin switches its scale live, on Alt+F9 and Alt+F10");
+        contract.expect(spec.live() && spec.increase.equals("Alt+Prior") && spec.decrease.equals("Alt+Next"), "gc on Dolphin switches its scale live, on Alt+Prior and Alt+Next");
         SemuActionExecutor.execute(launch, "visual.scale.next", SEMU_SOURCE_X11);
-        bool up = RenderScaleSpecSupervisor.typedOnce("Alt+F9", spec.pressMs);
+        bool up = RenderScaleSpecSupervisor.typedOnce("Alt+Prior", spec.pressMs);
         contract.expect(up && InputDeliveryTools.record(launch.stateDir, 0, SemuActions.scaleSelect(), 1) && RenderScaleSpecTools.reserved(launch.stateDir, 0) == 0 && !SemuGameRestart.waiting(launch), "Render Scale types Increase IR once and journals 88/1 reserved 0: Dolphin draws at 2x now, nothing waits for Restart Game");
         contract.expect(SemuJson.textAt(SemuJson.readFile(PathTools.join(launch.semuHome, "semu.json")), "visual.systems.gc.render_scale").equals("2x"), "and saves 2x for the next boot");
         SemuTypedSteps.count = 0;
         SemuActionExecutor.execute(launch, "visual.scale.next", SEMU_SOURCE_X11);
-        contract.expect(RenderScaleSpecSupervisor.typedOnce("Alt+F10", spec.pressMs) && InputDeliveryTools.record(launch.stateDir, 1, SemuActions.scaleSelect(), 0) && RenderScaleSpecTools.reserved(launch.stateDir, 1) == 0, "the wrap back to native types Decrease IR once, live too");
+        contract.expect(RenderScaleSpecSupervisor.typedOnce("Alt+Next", spec.pressMs) && InputDeliveryTools.record(launch.stateDir, 1, SemuActions.scaleSelect(), 0) && RenderScaleSpecTools.reserved(launch.stateDir, 1) == 0, "the wrap back to native types Decrease IR once, live too");
         SemuTypedSteps.recording = 0;
     }
 

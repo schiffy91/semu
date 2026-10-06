@@ -21,6 +21,7 @@ import ../../../src/check.btrc;
 import ../../../src/emit/rendering.btrc;
 import ../../../src/emit/render_variants.btrc;
 import ../../../src/launch/plan.btrc;
+import ../../../src/launch/input_state.btrc;
 import ../../../src/renderer/action_abi.btrc;
 import ../../../src/renderer/renderer_config.btrc;
 import ../../../src/renderer/renderer_menu.btrc;
@@ -204,6 +205,11 @@ class RadialChordParts {  // "Ctrl+Shift+F" as its modifiers and its final key; 
 }
 
 class RadialChordCollisions {  // Dolphin's and PCSX2's matchers accept extra modifiers: no chord Steam sends may end on a key they bind with fewer
+    class Vector<string> desktopReserved() {  // chords a Linux desktop claims by default, so a key Semu types there never reaches the game: KDE Plasma (the Deck's Desktop Mode) Alt+F1 launcher, Alt+F2 and Alt+Space KRunner, Alt+F3 window menu, Alt+F4 close, Alt+Tab, Alt+Shift+F12 compositing; GNOME (org.gnome.desktop.wm.keybindings) Alt+F1 overview, Alt+F2 run, Alt+F4 close, Alt+F5 unmaximize, Alt+F6 and Shift+Alt+F6 cycle group, Alt+F7 move, Alt+F8 resize, Alt+F10 maximize, Alt+Space window menu, Alt+Tab, Alt+Escape, Alt+Print a window's screenshot (Mutter minimizes on Super+H, not Metacity's old Alt+F9)
+        return ["Alt+F1", "Alt+F2", "Alt+F3", "Alt+F4", "Alt+F5", "Alt+F6", "Alt+F7", "Alt+F8", "Alt+F10", "Alt+Space", "Alt+Tab", "Alt+Escape", "Alt+Print",
+                "Shift+Alt+F6", "Alt+Shift+F6", "Alt+Shift+F12", "Shift+Alt+F12", "Shift+Alt+Tab", "Alt+Shift+Tab"];
+    }
+
     class void run(Contract contract, Fixture fixture) {
         Vector<string> sent = EmulatorHotkeyTools.steamChords(fixture);
         contract.expect(sent.contains("Ctrl+Shift+F") && sent.contains("Ctrl+Shift+G") && sent.contains("Ctrl+Shift+R"), "the radials send Fit, Aspect and Reset as Ctrl+Shift chords");
@@ -239,6 +245,9 @@ class RadialChordCollisions {  // Dolphin's and PCSX2's matchers accept extra mo
                 for binding in bound { if (own.equals(binding) || RadialChordParts.fires(binding, own)) { crossed.push(own + " fires " + binding); } }
             }
             contract.expect(crossed.isEmpty(), emulatorId + f": no chord Steam sends fires a key the supervisor types, and no typed key is another's or fires another binding ({typed.size()} typed): " + crossed.join(", "));
+            Vector<string> claimed = [];
+            for own in typed { if (RadialChordCollisions.desktopReserved().contains(own) || SemuKeyNames.chord(own).isEmpty()) { claimed.push(own); } }
+            contract.expect(claimed.isEmpty(), emulatorId + f": every key the supervisor types ({typed.size()}) is one Semu can type and no Linux desktop claims (KDE Plasma's and GNOME's default shortcuts would take it from the game): " + claimed.join(", "));
         }
         contract.expect(superset == 2, f"Dolphin and PCSX2 declare their superset matchers ({superset})");
     }

@@ -151,8 +151,8 @@ class PlayersProfilesSpec {  // each emulator's per-player output
             "Dolphin: the GameCube layout's Wii Remote binds nothing, its IR hidden, so no button wakes it once unlinked: " + unbound);
         contract.contains(PlayersBed.file(fixture, wii, "dolphin", "dolphin-user/Config/Semu Layouts/P2 Classic.ini"), "[Profile]\nDevice = SDL/0/Xbox Series X Controller\nButtons/A = `Button S`\n", "Dolphin: a Wii Remote layout keeps its bound body ahead of the extension");
         string hotkeys = PlayersBed.file(fixture, wii, "dolphin", "dolphin-user/Config/Hotkeys.ini");
-        contract.contains(hotkeys, "Controller Profile 4/Next Profile = @(Alt+F8)\n", "Dolphin: each player's Next Profile key");
-        contract.contains(hotkeys, "Wii/Connect Wii Remote 1 = @(Alt+F11)\nWii/Connect Wii Remote 2 = @(Alt+F12)\nWii/Connect Wii Remote 3 = @(Alt+F1)\nWii/Connect Wii Remote 4 = @(Alt+F2)\n", "Dolphin: each player's Connect Wii Remote key, which links and unlinks it live");
+        contract.contains(hotkeys, "Controller Profile 4/Next Profile = @(Alt+End)\n", "Dolphin: each player's Next Profile key");
+        contract.contains(hotkeys, "Wii/Connect Wii Remote 1 = @(Alt+F11)\nWii/Connect Wii Remote 2 = @(Alt+F12)\nWii/Connect Wii Remote 3 = @(Alt+F9)\nWii/Connect Wii Remote 4 = @(Alt+Pause)\n", "Dolphin: each player's Connect Wii Remote key, which links and unlinks it live");
         string pcsx2 = PlayersBed.file(fixture, PlayersBed.plan(fixture, "steam-deck", "ps2", "", 2), "pcsx2", "config/PCSX2/inputprofiles/Steam Deck.ini");
         string padTwo = PlayersBed.section(pcsx2, "[Pad2]");
         contract.expect(padTwo.contains("Type = DualShock2") && padTwo.contains("Cross = SDL-1/FaceSouth") && !padTwo.contains("Keyboard/"), "PCSX2: Pad2 reads player 2's SDL pad and no keyboard");

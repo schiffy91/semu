@@ -153,7 +153,7 @@ class EmulatorRuntimeSpecControllerModes {
             contract.contains(wiimote, "Extension = " + extensions.get(index), label + ": wii remote extension");
             contract.contains(wiimote, "Classic/Buttons/A =", label + ": classic bindings stay present");
             contract.contains(wiimote, "Nunchuk/Buttons/C =", label + ": nunchuk bindings stay present");
-            contract.contains(hotkeys, "Controller Profile 1/Next Profile = @(Alt+F5)\n", label + ": player 1's profile cycle key");
+            contract.contains(hotkeys, "Controller Profile 1/Next Profile = @(Alt+Insert)\n", label + ": player 1's profile cycle key");
             contract.lacks(hotkeys, "Semu Controller Mode", label + ": no hotkey Dolphin does not know");
             contract.lacks(hotkeys, "Undo Load State", label + ": no bare F12, which Steam's Ctrl+Shift+F12 would fire");
             contract.expect(stored == 4, label + ": player 1 has a stored profile per layout, every one live");

@@ -234,7 +234,7 @@ class StandaloneSpecContract {
         contract.contains(hotkeys, "Save State/Save to Selected Slot = @(Ctrl+S)", target + " dolphin saves to the selected slot");
         contract.contains(hotkeys, "General/Toggle Pause = @(Ctrl+P)", target + " dolphin pause chord");
         contract.contains(hotkeys, "Other State Hotkeys/Increase Selected State Slot = @(Ctrl+K)", target + " dolphin next slot chord");
-        contract.contains(hotkeys, "Controller Profile 1/Next Profile = @(Alt+F5)\nController Profile 2/Next Profile = @(Alt+F6)\nController Profile 3/Next Profile = @(Alt+F7)\nController Profile 4/Next Profile = @(Alt+F8)\n", target + " dolphin cycles each player's profile on its own key");
+        contract.contains(hotkeys, "Controller Profile 1/Next Profile = @(Alt+Insert)\nController Profile 2/Next Profile = @(Alt+Home)\nController Profile 3/Next Profile = @(Alt+Delete)\nController Profile 4/Next Profile = @(Alt+End)\n", target + " dolphin cycles each player's profile on its own key");
         contract.lacks(hotkeys, "Semu Controller Mode", target + " dolphin binds no hotkey it does not know");
         fixture.plan.tokens.remove("system");
     }

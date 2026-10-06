@@ -89,18 +89,18 @@ class LayoutsBed {  // a Wii launch on Dolphin with PADS pads: profiles written 
 
 class LayoutsTimingSpec {  // the paced timeline and the press count
     class void run(Contract contract) {
-        Vector<int> chord = [KEY_LEFTALT, KEY_F5];
+        Vector<int> chord = [KEY_LEFTALT, KEY_INSERT];
         Vector<SemuKeyStep> steps = SemuPacedTyper.steps(chord, 3, 40, 40);
         Vector<string> timeline = [];
-        for step in steps { timeline.push(Strings.fromInt(step.offsetMs) + (step.down ? "+" : "-") + (step.code == KEY_F5 ? "F5" : "Alt")); }
+        for step in steps { timeline.push(Strings.fromInt(step.offsetMs) + (step.down ? "+" : "-") + (step.code == KEY_INSERT ? "F5" : "Alt")); }
         contract.expect(timeline.join(" ").equals("0+Alt 0+F5 40-F5 40-Alt 80+Alt 80+F5 120-F5 120-Alt 160+Alt 160+F5 200-F5 200-Alt"), "each press holds 40 ms and the next waits 40 ms, the modifier around each: " + timeline.join(" "));
         Vector<SemuKeyStep> linking = SemuPacedTyper.then(SemuPacedTyper.steps(chord, 1, 40, 40), SemuPacedTyper.steps([KEY_LEFTALT, KEY_F11], 1, 40, 40), 40);
         Vector<string> linked = [];
-        for step in linking { linked.push(Strings.fromInt(step.offsetMs) + (step.down ? "+" : "-") + (step.code == KEY_F5 ? "F5" : (step.code == KEY_F11 ? "F11" : "Alt"))); }
+        for step in linking { linked.push(Strings.fromInt(step.offsetMs) + (step.down ? "+" : "-") + (step.code == KEY_INSERT ? "F5" : (step.code == KEY_F11 ? "F11" : "Alt"))); }
         contract.expect(linked.join(" ").equals("0+Alt 0+F5 40-F5 40-Alt 80+Alt 80+F11 120-F11 120-Alt"), "the link key follows the profile key a whole gap after its release: " + linked.join(" "));
         Vector<SemuKeyStep> fast = SemuPacedTyper.steps(chord, 2, 5, 0);
         contract.expect(fast.size() == 8 && fast.get(2).offsetMs == 30 && fast.get(4).offsetMs == 60, "a press or a gap under 30 ms is lengthened to 30: the emulator would miss it");
-        contract.expect(SemuXTest.keycode(KEY_F5) == KEY_F5 + 8, "XTest types the X keycode, the evdev code plus eight");
+        contract.expect(SemuXTest.keycode(KEY_INSERT) == KEY_INSERT + 8, "XTest types the X keycode, the evdev code plus eight");
         contract.expect(SemuControllerLayouts.presses(0, 0, 1) == 1 && SemuControllerLayouts.presses(1, 0, 2) == 1 && SemuControllerLayouts.presses(0, 2, 4) == 2 && SemuControllerLayouts.presses(3, 1, 4) == 2 && SemuControllerLayouts.presses(1, 1, 4) == 4, "presses from the shared index wrap the sorted listing; landing where it is takes a full cycle, never none");
     }
 }
@@ -115,36 +115,36 @@ class LayoutsSwitchSpec {  // live switches, the stray, GameCube live with its l
         contract.expect(SemuControllerLayouts.prepare(set) && LayoutsBed.active(launch).equals(FileSystem.readText(set.storeFile(0, 1))), "at launch Semu's one file holds player 1's layout (Nunchuk)");
         contract.expect(!FileSystem.exists(retired) && FileSystem.readText(PathTools.join(set.retiredDirectory, "Semu Classic.ini")).equals("[Profile]\nold\n") && SemuControllerLayouts.listing(set.directory).size() == 1, "an older release's profile moves out of the cycled folder, kept whole");
         SemuControllerLayouts.select(launch, 0, 2);
-        contract.expect(LayoutsBed.downs(KEY_F5) == 1 && LayoutsBed.downs(KEY_LEFTALT) == 1 && LayoutsBed.active(launch).equals(FileSystem.readText(set.storeFile(0, 2))), "Classic for player 1: its stored profile copied in, then one paced Alt+F5");
+        contract.expect(LayoutsBed.downs(KEY_INSERT) == 1 && LayoutsBed.downs(KEY_LEFTALT) == 1 && LayoutsBed.active(launch).equals(FileSystem.readText(set.storeFile(0, 2))), "Classic for player 1: its stored profile copied in, then one paced Alt+Insert");
         contract.expect(RadialBed.record(launch, 0, SemuActions.layoutSelect(), 2, 0) && set.layouts.get(0) == 2 && set.runningLayouts.get(0) == 2 && SemuJson.textAt(RadialBed.saved(launch), "input.systems.wii.players.1.layout").equals("classic"), "it journals 83 slot 2 for player 1, applied, and saves the layout for the system");
         FileSystem.writeText(PathTools.join(set.directory, "Aaa.ini"), "[Profile]\n");  // the owner's own profile sorts first
         SemuTypedSteps.count = 0;
         SemuControllerLayouts.select(launch, 1, 0);
         string second = LayoutsBed.active(launch);
-        contract.expect(LayoutsBed.downs(KEY_F6) == 1 && second.contains("Device = SDL/0/Xbox Series X Controller\n") && !second.contains("Steam Deck"), "Wii Remote for player 2: Alt+F6 once from index 0 to Semu's file at 1, and the profile names only player 2's pad");
+        contract.expect(LayoutsBed.downs(KEY_HOME) == 1 && second.contains("Device = SDL/0/Xbox Series X Controller\n") && !second.contains("Steam Deck"), "Wii Remote for player 2: Alt+Home once from index 0 to Semu's file at 1, and the profile names only player 2's pad");
         SemuTypedSteps.count = 0;
         SemuControllerLayouts.select(launch, 1, 0);
-        contract.expect(LayoutsBed.downs(KEY_F6) == 2 && set.sharedIndex == 1, "choosing it again cycles once around the two files: a lost press is redone");
+        contract.expect(LayoutsBed.downs(KEY_HOME) == 2 && set.sharedIndex == 1, "choosing it again cycles once around the two files: a lost press is redone");
         SemuTypedSteps.count = 0;
         SemuControllerLayouts.select(launch, 0, 3);
         string unbound = FileSystem.readText(set.storeFile(0, 3));
-        contract.expect(LayoutsBed.downs(KEY_F5) == 2 && LayoutsBed.downs(KEY_F11) == 1 && LayoutsBed.downs(KEY_LEFTALT) == 3 && LayoutsBed.firstDown(KEY_F11) >= LayoutsBed.lastUp(KEY_F5) + 40 && LayoutsBed.active(launch).equals(unbound) && !unbound.contains("Buttons/"),
-            "GameCube (M16 item 6) switches live: the Wii Remote's unbound profile copied in and Alt+F5 (twice: the shared index already names Semu's file beside the owner's), then, 40 ms after the last release, one Alt+F11 (Connect Wii Remote 1) unlinks the remote");
+        contract.expect(LayoutsBed.downs(KEY_INSERT) == 2 && LayoutsBed.downs(KEY_F11) == 1 && LayoutsBed.downs(KEY_LEFTALT) == 3 && LayoutsBed.firstDown(KEY_F11) >= LayoutsBed.lastUp(KEY_INSERT) + 40 && LayoutsBed.active(launch).equals(unbound) && !unbound.contains("Buttons/"),
+            "GameCube (M16 item 6) switches live: the Wii Remote's unbound profile copied in and Alt+Insert (twice: the shared index already names Semu's file beside the owner's), then, 40 ms after the last release, one Alt+F11 (Connect Wii Remote 1) unlinks the remote");
         contract.expect(RadialBed.record(launch, 3, SemuActions.layoutSelect(), 3, 0) && set.layouts.get(0) == 3 && set.runningLayouts.get(0) == 3 && !set.waiting(0) && !set.linked.get(0) && SemuJson.textAt(RadialBed.saved(launch), "input.systems.wii.players.1.layout").equals("gamecube"),
             "it journals 83 slot 3 applied (reserved 0), runs GameCube with the remote unlinked, and saves the layout");
         contract.expect(SemuSupervisorRuntime.relaunch == 0 && SemuSupervisorRuntime.quit == 0 && !set.pending(), "and the game keeps running with nothing waiting for Restart Game");
         SemuTypedSteps.count = 0;
         SemuControllerLayouts.select(launch, 0, 3);
-        contract.expect(RadialBed.record(launch, 4, SemuActions.layoutSelect(), 3, 0) && LayoutsBed.downs(KEY_F5) == 2 && LayoutsBed.downs(KEY_F11) == 0 && !set.linked.get(0), "choosing GameCube again redoes the profile (a full cycle of the two files) and leaves the unlinked remote alone");
+        contract.expect(RadialBed.record(launch, 4, SemuActions.layoutSelect(), 3, 0) && LayoutsBed.downs(KEY_INSERT) == 2 && LayoutsBed.downs(KEY_F11) == 0 && !set.linked.get(0), "choosing GameCube again redoes the profile (a full cycle of the two files) and leaves the unlinked remote alone");
         SemuTypedSteps.count = 0;
         SemuControllerLayouts.step(launch, 0, 1);
-        contract.expect(LayoutsBed.downs(KEY_F5) > 0 && LayoutsBed.downs(KEY_F11) == 1 && LayoutsBed.firstDown(KEY_F11) > LayoutsBed.lastUp(KEY_F5) && RadialBed.record(launch, 5, SemuActions.layoutSelect(), 0, 0) && set.runningLayouts.get(0) == 0 && set.linked.get(0) && LayoutsBed.active(launch).equals(FileSystem.readText(set.storeFile(0, 0))),
+        contract.expect(LayoutsBed.downs(KEY_INSERT) > 0 && LayoutsBed.downs(KEY_F11) == 1 && LayoutsBed.firstDown(KEY_F11) > LayoutsBed.lastUp(KEY_INSERT) && RadialBed.record(launch, 5, SemuActions.layoutSelect(), 0, 0) && set.runningLayouts.get(0) == 0 && set.linked.get(0) && LayoutsBed.active(launch).equals(FileSystem.readText(set.storeFile(0, 0))),
             "the next step, Wii Remote, loads its bound profile first, then one Alt+F11 links the remote back: the owner cycles through freely");
         set.runningLayouts.set(0, 3);  // a game booted on GameCube: Dolphin links every emulated remote at boot, unbound here
         set.layouts.set(0, 3);
         SemuTypedSteps.count = 0;
         SemuControllerLayouts.select(launch, 0, 1);
-        contract.expect(LayoutsBed.downs(KEY_F5) > 0 && LayoutsBed.downs(KEY_F11) == 0 && RadialBed.record(launch, 6, SemuActions.layoutSelect(), 1, 0) && !set.waiting(0) && set.linked.get(0),
+        contract.expect(LayoutsBed.downs(KEY_INSERT) > 0 && LayoutsBed.downs(KEY_F11) == 0 && RadialBed.record(launch, 6, SemuActions.layoutSelect(), 1, 0) && !set.waiting(0) && set.linked.get(0),
             "leaving a GameCube the game booted on is live too: its remote is still linked, so only the bound profile loads");
         SemuTypedSteps.count = 0;
         SemuControllerLayouts.select(launch, 0, 3);
@@ -161,13 +161,13 @@ class LayoutsSwitchSpec {  // live switches, the stray, GameCube live with its l
         set.linked.set(0, true);
         SemuTypedSteps.count = 0;
         SemuControllerLayouts.pick(launch, "wii.controller.wiimote");
-        contract.expect(set.layouts.get(0) == 0 && LayoutsBed.downs(KEY_F5) > 0, "a Wii layer slot picks that layout for player 1");
+        contract.expect(set.layouts.get(0) == 0 && LayoutsBed.downs(KEY_INSERT) > 0, "a Wii layer slot picks that layout for player 1");
         contract.expect(SemuControllerLayouts.stepped(set, 2, 1) == 3 && SemuControllerLayouts.stepped(set, 0, -1) == 3 && SemuControllerLayouts.stepped(set, 3, 1) == 0, "Controller Layout steps through the layouts and wraps");
         set.layouts.set(1, 2);
         set.runningLayouts.set(1, 2);
         SemuTypedSteps.count = 0;
         SemuControllerLayouts.reset(launch);
-        contract.expect(set.layouts.get(0) == 1 && set.layouts.get(1) == 1 && LayoutsBed.downs(KEY_F5) > 0 && LayoutsBed.downs(KEY_F6) > 0 && !set.pending(), "Reset switches every player back to Nunchuk live: nothing waits");
+        contract.expect(set.layouts.get(0) == 1 && set.layouts.get(1) == 1 && LayoutsBed.downs(KEY_INSERT) > 0 && LayoutsBed.downs(KEY_HOME) > 0 && !set.pending(), "Reset switches every player back to Nunchuk live: nothing waits");
         SemuControllerLayouts.select(launch, 1, 3);
         contract.expect(!set.linked.get(1), "player 2 on GameCube has its remote unlinked");
         SemuTypedSteps.count = 0;

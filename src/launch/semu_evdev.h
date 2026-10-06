@@ -73,8 +73,10 @@ struct uinput_abs_setup { uint16_t code; struct input_absinfo absinfo; };
 #define KEY_BACKSPACE 14
 #define KEY_C 46
 #define KEY_D 32
+#define KEY_DELETE 111
 #define KEY_DOWN 108
 #define KEY_E 18
+#define KEY_END 107
 #define KEY_ENTER 28
 #define KEY_EQUAL 13
 #define KEY_ESC 1
@@ -105,7 +107,9 @@ struct uinput_abs_setup { uint16_t code; struct input_absinfo absinfo; };
 #define KEY_F9 67
 #define KEY_G 34
 #define KEY_H 35
+#define KEY_HOME 102
 #define KEY_I 23
+#define KEY_INSERT 110
 #define KEY_J 36
 #define KEY_KPMINUS 74
 #define KEY_KPPLUS 78
@@ -121,6 +125,9 @@ struct uinput_abs_setup { uint16_t code; struct input_absinfo absinfo; };
 #define KEY_N 49
 #define KEY_O 24
 #define KEY_P 25
+#define KEY_PAGEDOWN 109
+#define KEY_PAGEUP 104
+#define KEY_PAUSE 119
 #define KEY_Q 16
 #define KEY_R 19
 #define KEY_RIGHT 106

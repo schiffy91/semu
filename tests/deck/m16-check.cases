@@ -67,10 +67,10 @@ nds retroarch melonds 40 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0
 n64 retroarch mupen64plus_next 40 key:ctrl+shift+n key:ctrl+shift+d key:ctrl+m key:ctrl+m -- Super Mario 64 (USA).zip
 # S2. The GameCube on Dolphin, live. before: native, receipts surface0_native=640x480 surface0_scaled=0x0.
 #     after-1 (88/1/0, SCALE: 2X): the game keeps running (restarts=0) and its picture turns sharper in place;
-#     the launch log reads "semu: render scale 2x: 1 press(es) of Alt+F9 via X"; no Dolphin text over the
+#     the launch log reads "semu: render scale 2x: 1 press(es) of Alt+Prior via X"; no Dolphin text over the
 #     picture (its Internal Resolution: 2x stays hidden); receipts render_scale=2 surface0_scaled=1067x800;
 #     rate lines at 59.94 per second. after-2 (88/0/0, SCALE: NATIVE): back to native live with one press of
-#     Alt+F10. choices gc {"render_scale":"1x"}.
+#     Alt+Next. choices gc {"render_scale":"1x"}.
 gc dolphin - 50 key:ctrl+shift+n key:ctrl+shift+n -- Legend of Zelda, The - The Wind Waker (USA).rvz
 # S3. The PS2 on PCSX2, applied by Restart Game. after-1 (88/1/1, SCALE 2X: RESTART TO APPLY). after-2 (87/1):
 #     the game boots again. after-3 (1) and after-5 (1): the menu's SCALE row reads 2X. after-4 and after-6:
@@ -109,8 +109,8 @@ n3ds azahar - 50 move:0.5,0.5 tap:0.5,0.5 move:0.9,0.1 -- Legend of Zelda, The -
 # C3. Item 6, every Wii controller layout live (Dolphin), on Mario Kart Wii, which takes the Wii Remote and the
 #    GameCube controller alike. By 90 s the game is on its title (Press the A Button) at full speed. The two
 #    Controller Layouts step P1 from the default Nunchuk to Classic (journal 83/2/0, toast P1: CLASSIC, run.log
-#    "P1 layout classic: 1 press(es) of Alt+F5 via X") and on to GameCube (83/3/0, toast P1: GAMECUBE, never
-#    RESTART TO APPLY; run.log "P1 layout gamecube: 1 press(es) of Alt+F5, then Alt+F11 to unlink it via X").
+#    "P1 layout classic: 1 press(es) of Alt+Insert via X") and on to GameCube (83/3/0, toast P1: GAMECUBE, never
+#    RESTART TO APPLY; run.log "P1 layout gamecube: 1 press(es) of Alt+Insert, then Alt+F11 to unlink it via X").
 #    south is then the GameCube pad's A, the only input left (the Wii Remote is unbound and away): after-3 has
 #    left the title that after-2 shows. east (the GameCube pad's B) goes back. The third Controller Layout steps to
 #    Wii Remote (83/0/0, P1: WII REMOTE, "... then Alt+F11 to link it"), and the last south is the Wii Remote's A

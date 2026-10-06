@@ -128,6 +128,13 @@ class SemuKeyNames {  // "Ctrl+Shift+S" -> evdev codes; the same table types cho
         if (lower.equals("backspace")) { return KEY_BACKSPACE; }
         if (lower.equals("esc") || lower.equals("escape")) { return KEY_ESC; }
         if (lower.equals("tab")) { return KEY_TAB; }
+        if (lower.equals("insert")) { return KEY_INSERT; }  // the navigation block, named as X names its keysyms (Prior and Next are Page Up and Page Down)
+        if (lower.equals("delete")) { return KEY_DELETE; }
+        if (lower.equals("home")) { return KEY_HOME; }
+        if (lower.equals("end")) { return KEY_END; }
+        if (lower.equals("prior") || lower.equals("pageup")) { return KEY_PAGEUP; }
+        if (lower.equals("next") || lower.equals("pagedown")) { return KEY_PAGEDOWN; }
+        if (lower.equals("pause")) { return KEY_PAUSE; }
         if (lower.startsWith("f") && lower.len() <= 3) {
             int number = Strings.toInt(lower.substring(1, lower.len() - 1));
             int functions[24] = {KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12,
