@@ -1,9 +1,10 @@
 // What the supervisor knows of the players of a launch and changes while it runs: how many the game
 // takes, the roster's pads, which pad and layout each player holds now and held at the launch, the
 // system's layouts with how this emulator applies each (live, or at Restart Game), which layout each
-// player's emulator runs now (the launch's or the last live switch), and the facts of the
-// emulator's live switch (emulator.json controllers). SemuControllerLayouts and SemuPlayersPage
-// change it; the menu and the renderer show it.
+// player's emulator runs now (the launch's or the last live switch), whether the game sees each
+// player's controller linked (a layout may unlink it: Dolphin's GameCube sends the Wii Remote away),
+// and the facts of the emulator's live switch (emulator.json controllers). SemuControllerLayouts and
+// SemuPlayersPage change it; the menu and the renderer show it.
 
 import Library.JSON;
 import Library.Strings;
@@ -26,7 +27,10 @@ class SemuPlayerSet {
     public Vector<string> layoutLabels;
     public Vector<string> layoutApply;  // per layout: live, relaunch, or "" where this emulator has no row for it
     public Vector<string> layoutProfiles;  // per layout: the stored profile's name (Dolphin's "Nunchuk")
+    public Vector<bool> layoutLinks;  // per layout: the game sees the controller linked (Dolphin's GameCube: the Wii Remote away)
     public Vector<string> chords;  // per player: the emulator's own key that loads the next profile
+    public Vector<string> linkChords;  // per player: the emulator's own key that links or unlinks the controller (Connect Wii Remote N)
+    public Vector<bool> linked;  // per player: whether the game sees the controller linked now (every one at boot)
     public string directory;  // the profile folder the emulator cycles
     public string active;  // Semu's one file in it
     public string store;  // the profiles rendered at launch, one per player and live layout
@@ -50,7 +54,10 @@ class SemuPlayerSet {
         self.layoutLabels = [];
         self.layoutApply = [];
         self.layoutProfiles = [];
+        self.layoutLinks = [];
         self.chords = [];
+        self.linkChords = [];
+        self.linked = [true];
         self.directory = "";
         self.active = "";
         self.store = "";
@@ -76,6 +83,12 @@ class SemuPlayerSet {
     public bool layoutsAvailable() { return self.choosable() >= 2; }
 
     public bool live(int layout) { return layout >= 0 && layout < self.layoutApply.size() && self.layoutApply.get(layout).equals("live") && !self.directory.isEmpty(); }
+
+    public bool links(int layout) { return layout < 0 || layout >= self.layoutLinks.size() || self.layoutLinks.get(layout); }  // the game sees the controller while LAYOUT runs
+
+    public bool relinks(int player0, int layout) {  // switching PLAYER0 to LAYOUT changes the link the game sees: one press of its link key
+        return player0 >= 0 && player0 < self.linked.size() && self.linked.get(player0) != self.links(layout);
+    }
 
     public bool waiting(int player0) {  // a connected player's chosen layout is not the one its emulator runs: it applies at Restart Game
         return self.connected(player0) && player0 < self.layouts.size() && player0 < self.runningLayouts.size() && self.layouts.get(player0) != self.runningLayouts.get(player0);
@@ -130,6 +143,13 @@ class SemuPlayerSet {
 }
 
 class SemuPlayerSets {
+    class Vector<string> nativeChords(SemuEmulator emulator, string group) {  // per player: the native_chord of each row of profile.json GROUP
+        Vector<string> result = [];
+        JSONValue rows = emulator == null ? null : SemuJson.get(emulator.profile, group);
+        for (int index = 0; rows != null && rows.isArray() && index < rows.size(); index++) { result.push(SemuJson.textAt(rows.at(index), "native_chord")); }
+        return result;
+    }
+
     class SemuPlayerSet from(SemuPlan plan, SemuSystem system, SemuEmulator emulator) {  // the launch's players, from the same rows the profiles were rendered from
         SemuPlayerSet set = SemuPlayerSet();
         JSONValue rows = SemuPlayers.rows(plan, system, emulator);
@@ -138,6 +158,7 @@ class SemuPlayerSets {
         set.layouts = [];
         set.launchLayouts = [];
         set.runningLayouts = [];
+        set.linked = [];
         set.count = rows.size();
         set.padCount = SemuPlayers.known(plan) ? plan.pads.size() : 0;
         for (int index = 0; index < rows.size(); index++) {
@@ -148,6 +169,7 @@ class SemuPlayerSets {
         for pad in set.pads { set.launchPads.push(pad); }
         for layout in set.layouts { set.launchLayouts.push(layout); }
         for layout in set.layouts { set.runningLayouts.push(layout); }
+        for (int index = 0; index < set.count; index++) { set.linked.push(true); }  // the emulator links every controller at boot, whatever the layout
         set.defaultLayout = SemuPlayers.layoutIndex(system, SemuPlayers.defaultLayout(system));
         JSONValue declared = SemuPlayers.layouts(system);
         for (int index = 0; index < declared.size(); index++) {
@@ -157,9 +179,10 @@ class SemuPlayerSets {
             set.layoutLabels.push(SemuJson.textAt(declared.at(index), "label"));
             set.layoutApply.push(fields == null ? "" : SemuJson.textAt(fields, "apply"));
             set.layoutProfiles.push(fields == null ? "" : SemuJson.textAt(fields, "profile"));
+            set.layoutLinks.push(fields == null || !SemuJson.textAt(fields, "connection").equals("disconnected"));
         }
-        JSONValue hotkeys = emulator == null ? null : SemuJson.get(emulator.profile, "layout_hotkeys");
-        for (int index = 0; hotkeys != null && hotkeys.isArray() && index < hotkeys.size(); index++) { set.chords.push(SemuJson.textAt(hotkeys.at(index), "native_chord")); }
+        set.chords = SemuPlayerSets.nativeChords(emulator, "layout_hotkeys");
+        set.linkChords = SemuPlayerSets.nativeChords(emulator, "connection_hotkeys");
         JSONValue controllers = emulator == null ? null : SemuJson.get(emulator.definition, "controllers");
         if (controllers != null && controllers.isObject() && SemuJson.textAt(controllers, "switch").equals("profile_cycle")) {
             set.directory = plan.tokens.resolve(SemuJson.textAt(controllers, "directory"));

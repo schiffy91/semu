@@ -224,6 +224,21 @@ class RadialChordCollisions {  // Dolphin's and PCSX2's matchers accept extra mo
             Vector<string> collisions = [];
             for chord in sent { for own in bound { if (RadialChordParts.fires(own, chord)) { collisions.push(chord + " fires " + own); } } }
             contract.expect(!bound.isEmpty() && collisions.isEmpty(), emulatorId + ": no chord Steam sends also fires one of its Ctrl bindings: " + collisions.join(", "));
+            Vector<string> typed = [];  // the emulator's own keys the supervisor types: Dolphin's Next Profile, render scale and Connect Wii Remote
+            for group in ["layout_hotkeys", "scale_hotkeys", "connection_hotkeys"] {
+                JSONValue keys = SemuJson.get(emulator.profile, group);
+                for (int index = 0; keys != null && keys.isArray() && index < keys.size(); index++) { typed.push(SemuJson.textAt(keys.at(index), "native_chord")); }
+            }
+            Vector<string> crossed = [];
+            for chord in sent { for own in typed { if (own.equals(chord) || RadialChordParts.fires(own, chord)) { crossed.push(chord + " fires " + own); } } }
+            for (int index = 0; index < typed.size(); index++) {
+                string own = typed.get(index);
+                for (int other = 0; other < typed.size(); other++) {
+                    if (other != index && (own.equals(typed.get(other)) || RadialChordParts.fires(typed.get(other), own))) { crossed.push(own + " fires " + typed.get(other)); }
+                }
+                for binding in bound { if (own.equals(binding) || RadialChordParts.fires(binding, own)) { crossed.push(own + " fires " + binding); } }
+            }
+            contract.expect(crossed.isEmpty(), emulatorId + f": no chord Steam sends fires a key the supervisor types, and no typed key is another's or fires another binding ({typed.size()} typed): " + crossed.join(", "));
         }
         contract.expect(superset == 2, f"Dolphin and PCSX2 declare their superset matchers ({superset})");
     }

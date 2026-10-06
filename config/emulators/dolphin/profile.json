@@ -82,6 +82,25 @@
             "-": "minus"
           }
         }
+      },
+      "connection_hotkeys": {
+        "rows": "connection_hotkeys",
+        "format": "${setting} = ${chord}",
+        "chord_encoding": {
+          "mode": "joined",
+          "separator": "+",
+          "format": "@(${value})",
+          "whole": {
+            "Esc": "Escape"
+          },
+          "keys": {
+            "Enter": "Return",
+            "Backspace": "BackSpace",
+            "Space": "space",
+            "+": "KP_Add",
+            "-": "minus"
+          }
+        }
       }
     }
   },
@@ -99,9 +118,9 @@
     "speed": "Dolphin 2606a (c77bbaa) ships desktop defaults that stutter on the Deck: single core (MainSettings.cpp:59-65, DEFAULT_CPU_THREAD true only on Android) and synchronous shader compiles (GraphicsSettings.cpp:110-111), so every new shader stalls a frame. Dolphin.ini [Core] CPUThread = True runs the GPU thread beside the CPU thread; a GameSettings INI that needs one core (98 say CPUThread = False) still wins, as GlobalGame is searched ahead of Base (Common/Config/Enums.h:39-47). GFX.ini ShaderCompilationMode = 2 is AsynchronousUberShaders, the UI's Hybrid Ubershaders (VideoConfig.h:43-49): an ubershader draws while the specialised shader compiles in the background, which OpenGL on radeonsi supports (OGLConfig.cpp:688-690). WaitForShadersBeforeStarting stays at Dolphin's False: with ubershaders on it would queue every ubershader pipeline and block the boot until all compiled (ShaderCache.cpp:69-75), a long black screen on the first boot after a release. visual.performance_overlay turns on ShowFPS, ShowSpeed and LogRenderTimeToFile, which writes one line per frame to Logs/render_times.txt and per VI to Logs/vblank_times.txt in the user directory (PerformanceMetrics.h:53-54, PerformanceTracker.cpp:187-198); Dolphin draws the overlay at the window's top-right (PerformanceMetrics.cpp:170-171), outside the 4:3 picture the compositor cuts on a 16:10 screen, so on the Deck the log is the measure.",
     "quit": "General/Stop is bound only on macOS: on Linux the supervisor reads every keyboard and quits the process group itself, so Ctrl+Q is Semu's alone there.",
     "wiimote": "The Wii Remote, Nunchuk and Classic Controller read their buttons, d-pad, sticks and triggers from the player's own SDL pad (${dolphin_pad}, the player row's identity), with Dolphin's SDL control names. Player 1 aims with the XInput2 pointer (wiimote_pointer_body: Device = ${dolphin_pointer}, every pad control qualified) and reads motion from ${dolphin_motion}, the Deck's own controller through Dolphin's SteamDeck backend, which opens hidraw (SteamDeck.cpp:143,175); players 2 to 4 aim with their right stick (wiimote_stick_body: Device = their pad, XInput-signed halves, Y+ up) and have no motion, so no profile of one player names another player's device. So the open Semu menu's EVIOCGRAB of the pads covers every Wii button, the Deck's grips (L4, R4, L5, R5), which Steam's template holds for its Hotkeys and Wii presets, reach no Wii control, and each name exists on the device it is read from (native_controls). The keyboard alternates on the XInput2 pointer device are written (`KEY` & !`Ctrl`): every Semu chord holds Ctrl, so a chord Steam types never also presses a Wii button. Keys are backticked: Dolphin lexes a bare digit as a number (ExpressionParser.cpp:172-181, 252-253), so the old Buttons/1 = 1|... and Buttons/2 = 2|... held 1 and 2 down for good.",
-    "pointer": "The Wii Remote IR reads the X pointer the right trackpad moves (IR/Up/Down/Left/Right = `Cursor Y-/Y+/X-/X+` on ${pointer}), and libsemupreload hands Dolphin that pointer on the bezelled picture as the point Dolphin drew there (wii surface_mapping.pointer_screen), so the IR follows the finger. The IR keeps Dolphin's own defaults, chosen to reach the screen edges in most games (Cursor.cpp:34-62): Vertical Offset 10, Total Yaw 25, Total Pitch 20, Auto-Hide off; with Auto-Hide on the pointer vanished 2.5 s after it last moved and no button brought it back (Cursor.cpp:139-163). Dolphin.ini [Interface] CursorVisibility = 0 (ShowCursor::Never, MainSettings.h:255-260) blanks the X arrow over the render window, so the one pointer seen is the game's own; Semu draws no arrow on Wii (its cursor is for touch screens only).",
-    "layouts": "Layouts switch through Dolphin's own profile cycle: Hotkeys.ini binds Controller Profile N/Next Profile (HotkeyScheduler.cpp:303-321) to the layout_hotkeys chords, and a press loads the next file of Config/Profiles/Wiimote (DoFileSearch, sorted, recursive, FileSearch.cpp) into Wii Remote N with its Device line (UpdateToProfile, InputProfile.cpp:76-90), keeping one index for all four remotes (m_wiimote_profile_index). The GameCube layout disconnects the Wii Remote (WiimoteSource 0) and plays on the GameCube pad (SIDevice 6), which Dolphin reads at boot, so it applies by restarting the game. The Undo Load/Save State hotkeys are not bound: Dolphin matches superset modifiers, so a bare F12 fired on Steam's Ctrl+Shift+F12.",
-    "osd": "OnScreenDisplayMessages = False keeps every Dolphin OSD message (MAIN_OSD_MESSAGES, OnScreenDisplay.cpp:157 at c77bbaa0) off the composed picture, as PCSX2's OsdMessagesPos = 0 does: Internal Resolution: 2x at a live Render Scale, a controller profile loaded at a live layout switch, a state saved. Semu's own toasts announce each of them."
+    "pointer": "The Wii Remote IR reads the X pointer the right trackpad moves (IR/Up/Down/Left/Right = `Cursor Y-/Y+/X-/X+` on ${pointer}), and libsemupreload hands Dolphin that pointer on the bezelled picture as the point Dolphin drew there (wii surface_mapping.pointer_screen), so the IR follows the finger. The IR keeps Dolphin's own defaults, chosen to reach the screen edges in most games (Cursor.cpp:34-62): Vertical Offset 10, Total Yaw 25, Total Pitch 20, Auto-Hide off; with Auto-Hide on the pointer vanished 2.5 s after it last moved and no button brought it back (Cursor.cpp:139-163). Dolphin.ini [Interface] CursorVisibility = 0 (ShowCursor::Never, MainSettings.h:255-260) blanks the X arrow over the render window, so the one pointer seen is the game's own; Semu draws no crosshair on Wii (its cursor is for touch screens only), since the game draws the pointer the IR aims and a second one at the finger would disagree with it (M16 item 1).",
+    "layouts": "Layouts switch through Dolphin's own profile cycle: Hotkeys.ini binds Controller Profile N/Next Profile (HotkeyScheduler.cpp:303-321) to the layout_hotkeys chords, and a press loads the next file of Config/Profiles/Wiimote (DoFileSearch, sorted, recursive, FileSearch.cpp) into Wii Remote N with its Device line (UpdateToProfile, InputProfile.cpp:76-90), keeping one index for all four remotes (m_wiimote_profile_index). Every layout is live, GameCube too (M16 item 6). Every connected player holds an emulated Wii Remote (WiimoteSource 1) and a GameCube pad (SIDevice 6) from boot: Dolphin applies a new WiimoteSource or SIDevice only through its own config layer (Wiimote.cpp:40-60 and 190, from its Controllers window), never from a file once running, so neither may change. GameCube is instead a Wii Remote with nothing bound (unbound_remote_body: IR hidden, no motion pointer) that the game sees leave: after the profile, the supervisor types the player's Connect Wii Remote N (connection_hotkeys, Hotkeys.ini Wii/Connect Wii Remote N, HotkeyManager.cpp:81-84 and 308), which toggles the emulated remote's link live (HotkeyScheduler.cpp:275-282, MainWindow.cpp:2065-2073, WiimoteDevice::Activate at WiimoteDevice.cpp:218-238); leaving GameCube loads the bound profile first and toggles it back. The remote must be unbound while it is away because any bound button a disconnected emulated remote reads asks to connect again (WiimoteDevice.cpp:345-364 and 378-385). A game booted on GameCube keeps that unbound remote linked (Dolphin links every emulated remote at boot, WiimoteDevice.cpp:69-80), so the supervisor counts it as linked and toggles only on a change. The Undo Load/Save State hotkeys are not bound: Dolphin matches superset modifiers, so a bare F12 fired on Steam's Ctrl+Shift+F12. Connect Wii Remote 1-4 are Alt+F11, Alt+F12, Alt+F1 and Alt+F2: Dolphin's defaults (Alt+F5-F8, HotkeyManager.cpp:427-430) belong to Next Profile and Alt+F9/F10 to the render scale (scale_hotkeys); no chord Steam sends holds Alt, and F3/F4 stay free of Alt (Alt+F4 closes a window under most window managers).",
+    "osd": "OnScreenDisplayMessages = False keeps every Dolphin OSD message (MAIN_OSD_MESSAGES, OnScreenDisplay.cpp:157 at c77bbaa0) off the composed picture, as PCSX2's OsdMessagesPos = 0 does: Internal Resolution: 2x at a live Render Scale, a controller profile loaded at a live layout switch, a state saved. Semu's own toasts announce each of them. The Wii Remote's own \"Wii Remote 1 connected\" and \"disconnected\" (WiimoteDevice.cpp:224 and 235), which the GameCube layout's unlink and link would post, go with them; the FPS overlay is drawn apart (OnScreenUI.cpp:421-423) and stays."
   },
   "blocks": {
     "gamecube_pad_body": [
@@ -218,7 +237,11 @@
       "IR/Auto-Hide = False",
       "IMUIR/Enabled = False"
     ],
-    "none_body": []
+    "none_body": [],
+    "unbound_remote_body": [
+      "IR/Hide = 1",
+      "IMUIR/Enabled = False"
+    ]
   },
   "hotkeys": {
     "keymap": [
@@ -336,7 +359,14 @@
           "when": "connected",
           "lines": [
             "[Wiimote${player}]",
-            "@block:wiimote_${dolphin_aim}_body",
+            {
+              "if": "remote_bound",
+              "line": "@block:wiimote_${dolphin_aim}_body"
+            },
+            {
+              "if": "remote_unbound",
+              "line": "@block:unbound_remote_body"
+            },
             "Extension = ${extension}",
             "@block:nunchuk_body",
             "@block:classic_body",
@@ -364,6 +394,7 @@
         "@lines:keymap_hotkeys",
         "@lines:layout_hotkeys",
         "@lines:scale_hotkeys",
+        "@lines:connection_hotkeys",
         "Emulation Speed/Disable Emulation Speed Limit = ${speed_limit_expression}"
       ]
     },
@@ -372,7 +403,14 @@
       "path": "${emulator_name}/config/Semu Layouts/P${player} ${profile}.ini",
       "lines": [
         "[Profile]",
-        "@block:wiimote_${dolphin_aim}_body",
+        {
+          "if": "remote_bound",
+          "line": "@block:wiimote_${dolphin_aim}_body"
+        },
+        {
+          "if": "remote_unbound",
+          "line": "@block:unbound_remote_body"
+        },
         "Extension = ${extension}",
         "@block:${extension_block}",
         "Rumble/Motor = `${dolphin_pad}:Strong`"
@@ -545,7 +583,10 @@
       "extension": "None",
       "extension_block": "none_body",
       "wiimote_source": "1",
-      "apply": "live"
+      "apply": "live",
+      "remote_bound": "1",
+      "remote_unbound": "",
+      "connection": "connected"
     },
     {
       "layout": "nunchuk",
@@ -553,7 +594,10 @@
       "extension": "Nunchuk",
       "extension_block": "nunchuk_body",
       "wiimote_source": "1",
-      "apply": "live"
+      "apply": "live",
+      "remote_bound": "1",
+      "remote_unbound": "",
+      "connection": "connected"
     },
     {
       "layout": "classic",
@@ -561,15 +605,21 @@
       "extension": "Classic",
       "extension_block": "classic_body",
       "wiimote_source": "1",
-      "apply": "live"
+      "apply": "live",
+      "remote_bound": "1",
+      "remote_unbound": "",
+      "connection": "connected"
     },
     {
       "layout": "gamecube",
       "profile": "GameCube",
       "extension": "None",
       "extension_block": "none_body",
-      "wiimote_source": "0",
-      "apply": "relaunch"
+      "wiimote_source": "1",
+      "apply": "live",
+      "remote_bound": "",
+      "remote_unbound": "1",
+      "connection": "disconnected"
     }
   ],
   "players": {
@@ -586,7 +636,10 @@
       "extension": "None",
       "extension_block": "none_body",
       "wiimote_source": "1",
-      "apply": "relaunch"
+      "apply": "relaunch",
+      "remote_bound": "1",
+      "remote_unbound": "",
+      "connection": "connected"
     }
   },
   "layout_hotkeys": [
@@ -619,6 +672,28 @@
     {
       "setting": "Internal Resolution/Decrease IR",
       "native_chord": "Alt+F10"
+    }
+  ],
+  "connection_hotkeys": [
+    {
+      "player": 1,
+      "setting": "Wii/Connect Wii Remote 1",
+      "native_chord": "Alt+F11"
+    },
+    {
+      "player": 2,
+      "setting": "Wii/Connect Wii Remote 2",
+      "native_chord": "Alt+F12"
+    },
+    {
+      "player": 3,
+      "setting": "Wii/Connect Wii Remote 3",
+      "native_chord": "Alt+F1"
+    },
+    {
+      "player": 4,
+      "setting": "Wii/Connect Wii Remote 4",
+      "native_chord": "Alt+F2"
     }
   ]
 }

@@ -148,6 +148,15 @@ class SemuPacedTyper {
         return result;
     }
 
+    class Vector<SemuKeyStep> then(Vector<SemuKeyStep> first, Vector<SemuKeyStep> second, int gapMs) {  // FIRST, then SECOND a gap after FIRST's last edge
+        int gap = gapMs < SemuPacedTyper.minimumMs() ? SemuPacedTyper.minimumMs() : gapMs;
+        int start = first.isEmpty() ? 0 : first.get(first.size() - 1).offsetMs + gap;
+        Vector<SemuKeyStep> result = [];
+        for step in first { result.push(step); }
+        for step in second { result.push(SemuKeyStep(start + step.offsetMs, step.code, step.down)); }
+        return result;
+    }
+
     class bool available() {  // some way to type: the recording seam, XTest on the game's display, or Semu's uinput keyboard (none on macOS)
         return SemuTypedSteps.recording != 0 || SemuXTest.ready() || SemuUinputKeyboard.open();
     }

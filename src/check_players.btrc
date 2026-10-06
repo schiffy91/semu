@@ -1,7 +1,8 @@
 // Players and controller layouts must be playable as declared: every layout a system offers has a
 // row in each bound emulator that switches layouts, a live switch has a profile file and a key for
 // every player, and its presses are slow enough for the emulator to see each one (at least 30 ms
-// held and 30 ms apart: Dolphin polls every 5 ms and needs a release between presses).
+// held and 30 ms apart: Dolphin polls every 5 ms and needs a release between presses). A layout the
+// game sees as its controller gone (connection disconnected) needs a link key for every player.
 
 import Library.JSON;
 import Library.Vector;
@@ -21,17 +22,21 @@ class SemuPlayersChecker {
         for binding in system.bindingsFor(plan.platform) {
             SemuEmulator emulator = model.emulator(binding.emulator);
             if (emulator == null || !SemuJson.get(emulator.profile, "controller_layouts").isArray()) { continue; }
+            bool unlinks = false;
             for (int index = 0; index < layouts.size(); index++) {
                 string layout = SemuJson.textAt(layouts.at(index), "id");
                 JSONValue row = SemuPlayers.layoutRow(emulator, layout);
                 string apply = row == null ? "" : SemuJson.textAt(row, "apply");
                 if (!apply.equals("live") && !apply.equals("relaunch")) { diagnostics.add(emulator.profileFile, "controller_layouts", f"{system.id} layout {layout} has no row applied live or by relaunch"); }
+                string connection = row == null ? "" : SemuJson.textAt(row, "connection");
+                if (!connection.isEmpty() && !connection.equals("connected") && !connection.equals("disconnected")) { diagnostics.add(emulator.profileFile, "controller_layouts", f"{system.id} layout {layout}: connection is connected or disconnected"); }
+                unlinks = unlinks || connection.equals("disconnected");
             }
-            SemuPlayersChecker.checkSwitch(emulator, SemuPlayers.count(system, emulator), diagnostics);
+            SemuPlayersChecker.checkSwitch(emulator, SemuPlayers.count(system, emulator), unlinks, diagnostics);
         }
     }
 
-    class void checkSwitch(SemuEmulator emulator, int players, SemuDiagnostics diagnostics) {  // the live switch's facts
+    class void checkSwitch(SemuEmulator emulator, int players, bool unlinks, SemuDiagnostics diagnostics) {  // the live switch's facts
         JSONValue controllers = SemuJson.get(emulator.definition, "controllers");
         if (controllers == null || !controllers.isObject()) { return; }
         string file = PathTools.join(emulator.directory, "emulator.json");
@@ -43,7 +48,14 @@ class SemuPlayersChecker {
         for key in ["press_ms", "gap_ms"] {
             if (SemuJson.intAt(controllers, key, 0) < 30) { diagnostics.add(file, "controllers." + key, "must be at least 30: the emulator would miss presses"); }
         }
-        JSONValue hotkeys = SemuJson.get(emulator.profile, "layout_hotkeys");
-        if (!hotkeys.isArray() || hotkeys.size() < players) { diagnostics.add(emulator.profileFile, "layout_hotkeys", f"needs a key for each of the {players} players"); }
+        Vector<string> groups = ["layout_hotkeys"];
+        if (unlinks) { groups.push("connection_hotkeys"); }  // a layout unlinks the controller: each player needs the key that links it back
+        for group in groups {
+            JSONValue hotkeys = SemuJson.get(emulator.profile, group);
+            if (hotkeys == null || !hotkeys.isArray() || hotkeys.size() < players) { diagnostics.add(emulator.profileFile, group, f"needs a key for each of the {players} players"); continue; }
+            for (int index = 0; index < players; index++) {
+                if (SemuJson.textAt(hotkeys.at(index), "native_chord").isEmpty()) { diagnostics.add(emulator.profileFile, group, f"player {index + 1} has no native_chord"); }
+            }
+        }
     }
 }

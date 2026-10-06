@@ -2,7 +2,7 @@
 // hands every render-window mouse move, press, release and leave to semu_pointer_sample, which the
 // Vulkan layer and the macOS stand-in export; SemuCompose turns the last sample into each frame's
 // cursor through the policy RetroArch's bridge uses, gated on the touch screen; Azahar's own cursor
-// is blank so one arrow shows. The Deck's arrow check draws the renderer's own arrow.
+// is blank so one crosshair shows. The Deck's crosshair check draws the renderer's own crosshair.
 
 #include <string.h>
 
@@ -88,23 +88,26 @@ class StandaloneCursorSpec {
         contract.expect(StandaloneCursorText.count(patch, "     emit MouseActivity();") == 3 && patch.contains("     emit MouseActivity();\n+    SemuPointer(pos, event->buttons(), true);\n }\n \n void GRenderWindow::mouseMoveEvent(")
                 && patch.contains("     emit MouseActivity();\n+    SemuPointer(pos, event->buttons(), true);\n }\n \n void GRenderWindow::mouseReleaseEvent(")
                 && patch.contains("     emit MouseActivity();\n+    SemuPointer(event->pos(), event->buttons(), true);\n+}\n+\n+void GRenderWindow::leaveEvent(QEvent* event) {\n+    QWidget::leaveEvent(event);\n+    SemuPointer(QPointF{}, Qt::NoButton, false);\n+}"),
-            "a press, a move and a release hand Semu the pointer after Azahar's own handling, and leaving the window hides the arrow");
+            "a press, a move and a release hand Semu the pointer after Azahar's own handling, and leaving the window hides the crosshair");
         contract.contains(patch, "+    if (!Frontend::SemuPointerSample(x, y, (buttons & Qt::LeftButton) != 0, inside))\n+        return;\n+    if (child_widget && !child_widget->testAttribute(Qt::WA_SetCursor))\n+        child_widget->setCursor(QCursor(Qt::BlankCursor));",
-            "while Semu draws the arrow, the render widget's own cursor is blank, beyond GMainWindow's show and hide");
+            "while Semu draws the crosshair, the render widget's own cursor is blank, beyond GMainWindow's show and hide");
         contract.contains(patch, "+    void leaveEvent(QEvent* event) override;", "GRenderWindow declares the leave handler");
         contract.contains(patch, "+    void SemuPointer(const QPointF& pos, Qt::MouseButtons buttons, bool inside);", "and the forwarder");
     }
 
-    class void arrow(Contract contract, Fixture fixture) {  // the Deck's arrow check looks for the arrow the renderer draws
-        string script = StandaloneCursorText.read(fixture, "tests/deck/cursor-arrow.sh");
+    class void crosshair(Contract contract, Fixture fixture) {  // the Deck's crosshair check looks for the crosshair the renderer draws, where it draws it
+        string script = StandaloneCursorText.read(fixture, "tests/deck/cursor-crosshair.sh");
         string block = StandaloneCursorText.between(script, "rows=(\n", "\n)\n");
         Vector<string> rows = [];
         for part in Strings.split(block, "\"") { if (part.len() == SEMU_RENDER_CURSOR_WIDTH) { rows.push(part); } }
         bool same = rows.size() == SEMU_RENDER_CURSOR_HEIGHT;
         for (int line = 0; same && line < SEMU_RENDER_CURSOR_HEIGHT; line++) { same = strcmp(rows.get(line), RendererCursor.row(line)) == 0; }
-        contract.expect(same, f"cursor-arrow.sh's rows are renderer_cursor.btrc's arrow ({rows.size()} rows)");
+        contract.expect(same, f"cursor-crosshair.sh's rows are renderer_cursor.btrc's crosshair ({rows.size()} rows)");
+        contract.contains(script, f"hotspot={SEMU_RENDER_CURSOR_HOTSPOT}  # the centre cell", "with the renderer's hotspot cell");
+        contract.contains(script, "offset=$((hotspot * scale + scale / 2))", "and the renderer's hotspot pixel at a scale (RendererCursor.hotspot)");
+        contract.expect(RendererCursor.hotspot(2) == SEMU_RENDER_CURSOR_HOTSPOT * 2 + 1 && RendererCursor.hotspot(3) == SEMU_RENDER_CURSOR_HOTSPOT * 3 + 1, "which is hotspot * scale + scale / 2 in the renderer too");
         contract.contains(script, "scale=$((height / 400)); [ \"$scale\" -ge 1 ] || scale=1; [ \"$scale\" -le 8 ] || scale=8", "at the renderer's scale: one whole step per 400 rows, 1 to 8");
-        contract.contains(script, "[ \"$white\" = \"$fill_total\" ] && [ \"$outline\" = \"$outline_total\" ]", "the whole arrow is there only when every fill pixel is white and every outline pixel black");
+        contract.contains(script, "[ \"$white\" = \"$arm_total\" ] && [ \"$outline\" = \"$outline_total\" ]", "the whole crosshair is there only when every arm pixel is white and every outline pixel black");
     }
 
     class void run(Contract contract, Fixture fixture) {
@@ -112,6 +115,6 @@ class StandaloneCursorSpec {
         StandaloneCursorSpec.compose(contract, fixture);
         StandaloneCursorSpec.exports(contract, fixture);
         StandaloneCursorSpec.patch(contract, fixture);
-        StandaloneCursorSpec.arrow(contract, fixture);
+        StandaloneCursorSpec.crosshair(contract, fixture);
     }
 }

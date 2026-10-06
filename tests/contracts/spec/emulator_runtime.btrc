@@ -125,10 +125,10 @@ class EmulatorRuntimeSpecProfiles {
 }
 
 class EmulatorRuntimeSpecControllerModes {
-    class void run(Contract contract, string targetId) {  // player 1's saved Wii layout picks Dolphin's Wii Remote source and extension at boot
+    class void run(Contract contract, string targetId) {  // player 1's saved Wii layout picks Dolphin's Wii Remote bindings and extension at boot; every layout keeps the remote emulated
         Fixture fixture = Fixture(targetId);
         Vector<string> modes = ["wiimote", "nunchuk", "classic", "gamecube"];
-        Vector<string> sources = ["1", "1", "1", "0"];
+        Vector<string> sources = ["1", "1", "1", "1"];  // M16 item 6: GameCube unbinds the remote and unlinks it live, never WiimoteSource 0, which Dolphin reads only at boot
         Vector<string> extensions = ["None", "Nunchuk", "Classic", "None"];
         SemuEmulator dolphin = fixture.model.emulator("dolphin");
         for (int index = 0; index < modes.size(); index++) {
@@ -156,7 +156,12 @@ class EmulatorRuntimeSpecControllerModes {
             contract.contains(hotkeys, "Controller Profile 1/Next Profile = @(Alt+F5)\n", label + ": player 1's profile cycle key");
             contract.lacks(hotkeys, "Semu Controller Mode", label + ": no hotkey Dolphin does not know");
             contract.lacks(hotkeys, "Undo Load State", label + ": no bare F12, which Steam's Ctrl+Shift+F12 would fire");
-            contract.expect(stored == 3, label + ": player 1 has a stored profile per live layout");
+            contract.expect(stored == 4, label + ": player 1 has a stored profile per layout, every one live");
+            string first = wiimote.substring(0, wiimote.indexOf("[Wiimote2]") < 0 ? wiimote.len() : wiimote.indexOf("[Wiimote2]"));
+            bool unbound = mode.equals("gamecube");
+            contract.expect(first.contains("\nButtons/A = ") != unbound && first.contains("\nIR/Hide = 1\n") == unbound, label + ": the Wii Remote binds its buttons, or nothing with its IR hidden on GameCube");
+            contract.contains(hotkeys, "Wii/Connect Wii Remote 1 = @(Alt+F11)\n", label + ": player 1's Connect Wii Remote key");
+            contract.contains(main, "\nOnScreenDisplayMessages = False\n", label + ": Dolphin draws none of its own messages over the composed picture");
         }
     }
 }

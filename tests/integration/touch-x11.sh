@@ -9,8 +9,8 @@
 #   taps at 5, 50 and 95 percent across it, half way down, reach the core within 1 percent of
 #   where that core reads them (3DS: 0.1 + 0.8 f across its 400-wide frame; DS: f), and 0.75 down;
 #   a tap on the bezel presses nothing; RetroArch loads Semu's remap file for that library name;
-#   Semu's whole arrow is drawn with its tip where the pointer moved 1.5 s after the move (xwd sees
-#   it, as it is drawn into the frame; tests/deck/cursor-arrow.sh judges it) and is gone 5 s after.
+#   Semu's whole crosshair is drawn centred where the pointer moved 1.5 s after the move (xwd sees
+#   it, as it is drawn into the frame; tests/deck/cursor-crosshair.sh judges it) and is gone 5 s after.
 #   With SHADER=none the card's pixels reach the screen as they are, so the picture is also checked
 #   where the receipt says it is drawn: each screen's outermost drawn ring is the card's white border
 #   and the ring just outside it is not (a tap on the receipt's rectangle is a tap on the picture).
@@ -163,10 +163,10 @@ EOF
   shot "$out/$label-1-cursor.png"
   while [ $(( $(date +%s%3N) - moved )) -lt 5000 ]; do sleep 0.1; done
   shot "$out/$label-2-idle.png"
-  arrow_shown=0; arrow_idle=0
-  shown_text="$(PATH="$(dirname "$magick"):$PATH" bash /src/tests/deck/cursor-arrow.sh "$out/$label-1-cursor.png" 40 44)" || arrow_shown=$?
-  idle_text="$(PATH="$(dirname "$magick"):$PATH" bash /src/tests/deck/cursor-arrow.sh "$out/$label-2-idle.png" 40 44)" || arrow_idle=$?
-  "$magick" "$out/$label-1-cursor.png" -crop 64x80+30+34 +repage -scale 400% "$out/$label-1-cursor-zoom.png"
+  crosshair_shown=0; crosshair_idle=0
+  shown_text="$(PATH="$(dirname "$magick"):$PATH" bash /src/tests/deck/cursor-crosshair.sh "$out/$label-1-cursor.png" 40 44)" || crosshair_shown=$?
+  idle_text="$(PATH="$(dirname "$magick"):$PATH" bash /src/tests/deck/cursor-crosshair.sh "$out/$label-2-idle.png" 40 44)" || crosshair_idle=$?
+  "$magick" "$out/$label-1-cursor.png" -crop 64x64+8+12 +repage -scale 400% "$out/$label-1-cursor-zoom.png"
   alive=yes; kill -0 "$game" 2>/dev/null || alive=no
   kill -TERM "$game" 2>/dev/null || true
   wait "$game" 2>/dev/null || true
@@ -181,8 +181,8 @@ EOF
     echo "bezel_logged=$(grep -c 'semu-retroarch: touch .* -> no surface' "$log" || true)"
     echo "bridge_presses=$(grep -c 'semu-retroarch: touch .* -> surface 1' "$log" || true)"
     echo "remap=$(grep -o "Core-specific remap found at \"[^\"]*\"" "$log" | head -1)"
-    echo "arrow_shown=$arrow_shown arrow_idle=$arrow_idle"
-    echo "arrow_text=$shown_text / $idle_text" | tr " " "_"
+    echo "crosshair_shown=$crosshair_shown crosshair_idle=$crosshair_idle"
+    echo "crosshair_text=$shown_text / $idle_text" | tr " " "_"
     echo "renderer_cursor=$(grep -o 'semu-renderer: cursor [a-z]* [0-9,-]*' "$log" | head -6 | cut -d" " -f3,4 | tr " \n" ":;")"
   } > "$out/$label.result"
   grep 'semu-retroarch: touch\|synthetic: pointer' "$log" > "$out/$label.touch-lines" || true
@@ -242,8 +242,8 @@ kill "$xvfb_pid" 2>/dev/null || true
       *"/remaps/$library/$library.rmp\"") echo "ok   $label: RetroArch loads Semu's remaps/$library/$library.rmp" ;;
       *) echo "FAIL $label: no remaps/$library/$library.rmp load in RetroArch's log" ;;
     esac
-    expect "$label: Semu's whole arrow at the pointer 1.5 s after a relative move (cursor-arrow.sh: $(value "$label" arrow_text))" "$(value "$label" arrow_shown)" 0
-    expect "$label: and gone 5 s after it" "$(value "$label" arrow_idle)" 1
+    expect "$label: Semu's whole crosshair centred on the pointer 1.5 s after a relative move (cursor-crosshair.sh: $(value "$label" crosshair_text))" "$(value "$label" crosshair_shown)" 0
+    expect "$label: and gone 5 s after it" "$(value "$label" crosshair_idle)" 1
     expect "$label: RetroArch ran to the end" "$(value "$label" alive)" yes
   done < "$out/labels"
 } | tee "$out/result"

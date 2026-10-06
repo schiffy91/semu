@@ -1,6 +1,6 @@
 // A virtual gamepad for headless input tests, over /dev/uinput (Linux).
 // usage: virtual_pad [--steam-virtual-pad | --steam-virtual-pad-slot N] SECONDS_BEFORE_FIRST token...
-//        tokens press:NAME hold:NAME release:NAME sleep:SECONDS
+//        tokens press:NAME hold:NAME release:NAME sleep:SECONDS listen:PATH (more tokens, a line each, until PATH closes)
 // By default it is the truthfully named "Semu Test Gamepad". With --steam-virtual-pad it is a
 // replica of the pad Steam gives games in Game Mode, the only one a game sees there: the same
 // name, bus and ids (so the same SDL GUID, SDL mapping and emulator device identities) and the
@@ -174,6 +174,34 @@ class VirtualPad {
     }
 }
 
+class VirtualPadScript {  // the tokens: from the command line, then any a listen:PATH file (a FIFO a harness writes) hands over, one a line
+    class int apply(VirtualPad pad, char* token) {  // 0 done, 64 an unknown button
+        char* colon = strchr(token, (int)':');
+        if (colon == null) { return 0; }
+        *colon = 0;
+        char* name = colon + 1;
+        if (strcmp(token, "sleep") == 0) { usleep((unsigned int)(atof(name) * 1000000.0)); return 0; }
+        if (strcmp(token, "listen") == 0) { return VirtualPadScript.listen(pad, name); }
+        if (!pad.knows(name)) { Console.error(f"virtual_pad: unknown button {name}"); return 64; }
+        if (strcmp(token, "press") == 0 || strcmp(token, "hold") == 0) { pad.set(name, true); usleep(80000); }
+        if (strcmp(token, "press") == 0 || strcmp(token, "release") == 0) { pad.set(name, false); usleep(120000); }
+        return 0;
+    }
+
+    class int listen(VirtualPad pad, char* path) {  // every line of PATH until its writer closes it
+        FILE* input = fopen(path, "r");
+        if (input == null) { Console.error(f"virtual_pad: cannot read {path}"); return 64; }
+        char line[256];
+        int status = 0;
+        while (status == 0 && fgets(line, 256, input) != null) {
+            line[strcspn(line, "\r\n")] = 0;
+            status = VirtualPadScript.apply(pad, line);
+        }
+        fclose(input);
+        return status;
+    }
+}
+
 int main(int argc, char** argv) {
     int first = 1;
     bool steam = argc > 1 && strcmp(argv[1], "--steam-virtual-pad") == 0;
@@ -184,20 +212,12 @@ int main(int argc, char** argv) {
         slot = atoi(argv[2]);
         first = 3;
     }
-    if (argc <= first) { Console.error("usage: virtual_pad [--steam-virtual-pad | --steam-virtual-pad-slot N] SECONDS_BEFORE_FIRST press:NAME|hold:NAME|release:NAME|sleep:SECONDS ..."); return 64; }
+    if (argc <= first) { Console.error("usage: virtual_pad [--steam-virtual-pad | --steam-virtual-pad-slot N] SECONDS_BEFORE_FIRST press:NAME|hold:NAME|release:NAME|sleep:SECONDS|listen:PATH ..."); return 64; }
     VirtualPad pad = VirtualPad(steam, slot);
     if (!pad.create()) { Console.error("virtual_pad: cannot create a device on /dev/uinput"); return 1; }
     usleep((unsigned int)(atof(argv[first]) * 1000000.0));
     for (int index = first + 1; index < argc; index++) {
-        char* token = argv[index];
-        char* colon = strchr(token, (int)':');
-        if (colon == null) { continue; }
-        *colon = 0;
-        char* name = colon + 1;
-        if (strcmp(token, "sleep") == 0) { usleep((unsigned int)(atof(name) * 1000000.0)); continue; }
-        if (!pad.knows(name)) { Console.error(f"virtual_pad: unknown button {name}"); pad.remove(); return 64; }
-        if (strcmp(token, "press") == 0 || strcmp(token, "hold") == 0) { pad.set(name, true); usleep(80000); }
-        if (strcmp(token, "press") == 0 || strcmp(token, "release") == 0) { pad.set(name, false); usleep(120000); }
+        if (VirtualPadScript.apply(pad, argv[index]) != 0) { pad.remove(); return 64; }
     }
     usleep(300000);
     pad.remove();

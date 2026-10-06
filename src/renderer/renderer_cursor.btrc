@@ -1,14 +1,17 @@
 // The pointer cursor Semu draws over a touch screen system, without GL: Steam's trackpad mouse is
-// relative, so the player aims with this arrow. It follows the emulator's pointer sample in the
-// frame, shows on motion or a press (held ones too), and hides after three idle seconds. The
-// post-UI pass uploads the arrow and draws it last, above the bezel and the menu.
+// relative, so the player aims with this crosshair. It follows the emulator's pointer sample in the
+// frame, shows on motion or a press (held ones too), and hides after three idle seconds. Thin white
+// arms with a black outline read on light and dark pictures; the centre is a clear gap, and the
+// pointer (the hotspot, where a tap lands) is its middle. The post-UI pass uploads it and draws it
+// last, above the bezel and the menu.
 
 #include <string.h>
 
 import ./renderer_abi.btrc;
 
-int SEMU_RENDER_CURSOR_WIDTH = 12;
-int SEMU_RENDER_CURSOR_HEIGHT = 19;
+int SEMU_RENDER_CURSOR_WIDTH = 15;
+int SEMU_RENDER_CURSOR_HEIGHT = 15;
+int SEMU_RENDER_CURSOR_HOTSPOT = 7;  // the centre cell, across and down: the clear gap's middle
 int SEMU_RENDER_CURSOR_IDLE_MS = 3000;
 
 struct RendererCursorState {
@@ -18,30 +21,16 @@ struct RendererCursorState {
     int pressed;
     long long active_ms;  // the last motion or held press, 0 before any
     int shown;  // what the debug line last reported
-    unsigned char pixels[12 * 19 * 4];
+    unsigned char pixels[15 * 15 * 4];
 };
 
 class RendererCursor {
-    class const char* row(int index) {  // B outline, W fill, space clear; the tip is the hotspot
-        if (index == 0) { return "B           "; }
-        if (index == 1) { return "BB          "; }
-        if (index == 2) { return "BWB         "; }
-        if (index == 3) { return "BWWB        "; }
-        if (index == 4) { return "BWWWB       "; }
-        if (index == 5) { return "BWWWWB      "; }
-        if (index == 6) { return "BWWWWWB     "; }
-        if (index == 7) { return "BWWWWWWB    "; }
-        if (index == 8) { return "BWWWWWWWB   "; }
-        if (index == 9) { return "BWWWWWWWWB  "; }
-        if (index == 10) { return "BWWWWWWWWWB "; }
-        if (index == 11) { return "BWWWWWWBBBBB"; }
-        if (index == 12) { return "BWWWBWWB    "; }
-        if (index == 13) { return "BWWBBWWB    "; }
-        if (index == 14) { return "BWB  BWWB   "; }
-        if (index == 15) { return "BB   BWWB   "; }
-        if (index == 16) { return "B     BWWB  "; }
-        if (index == 17) { return "      BWWB  "; }
-        return "       BB   ";
+    class const char* row(int index) {  // B outline, W arm, space clear; the clear centre holds the hotspot
+        if (index == 0 || index == 14) { return "      BBB      "; }
+        if (index == 5 || index == 9) { return "      BBB      "; }
+        if (index == 6 || index == 8) { return "BBBBBB   BBBBBB"; }
+        if (index == 7) { return "BWWWWB   BWWWWB"; }
+        return "      BWB      ";
     }
 
     class void raster(unsigned char* pixels) {  // RGBA rows top first, as the menu texture is
@@ -58,7 +47,7 @@ class RendererCursor {
         }
     }
 
-    class bool update(struct RendererCursorState* state, struct SemuRenderCursorGl* cursor, long long now) {  // true while the arrow should show
+    class bool update(struct RendererCursorState* state, struct SemuRenderCursorGl* cursor, long long now) {  // true while the crosshair should show
         if (state == null) { return false; }
         if (cursor == null || cursor->visible == 0) {  // forget it all: a returning pointer must move to show
             state->known = 0;
@@ -66,7 +55,7 @@ class RendererCursor {
             return false;
         }
         bool moved = state->known != 0 && (cursor->x != state->x || cursor->y != state->y || cursor->pressed != state->pressed);
-        bool held = cursor->pressed != 0;  // a held press is activity: a drag that pauses keeps its arrow
+        bool held = cursor->pressed != 0;  // a held press is activity: a drag that pauses keeps its crosshair
         bool reported = cursor->visible == 2;  // an event-driven sample (Azahar): even the first one is motion; a polled first one shows only when pressed
         if (moved || held || reported) { state->active_ms = now; }
         state->known = 1;
@@ -87,17 +76,20 @@ class RendererCursor {
             && now - state->active_ms < (long long)SEMU_RENDER_CURSOR_IDLE_MS;
     }
 
-    class int scale(int framebufferHeight) {  // one whole step per 400 rows: 38 pixels tall at 800
+    class int scale(int framebufferHeight) {  // one whole step per 400 rows: 30 pixels across at 800
         int steps = framebufferHeight / 400;
         if (steps < 1) { return 1; }
         return steps > 8 ? 8 : steps;
     }
 
-    class void placement(struct RendererCursorState* state, int framebufferHeight, struct RendererPixelRect* rectangle) {  // GL rows from the bottom, the tip on the pointer
+    class int hotspot(int scale) { return SEMU_RENDER_CURSOR_HOTSPOT * scale + scale / 2; }  // the centre cell's middle pixel at a scale
+
+    class void placement(struct RendererCursorState* state, int framebufferHeight, struct RendererPixelRect* rectangle) {  // GL rows from the bottom, the centre on the pointer
         int scale = RendererCursor.scale(framebufferHeight);
+        int offset = RendererCursor.hotspot(scale);
         rectangle->width = SEMU_RENDER_CURSOR_WIDTH * scale;
         rectangle->height = SEMU_RENDER_CURSOR_HEIGHT * scale;
-        rectangle->x = state->x;
-        rectangle->y = framebufferHeight - state->y - rectangle->height;
+        rectangle->x = state->x - offset;
+        rectangle->y = framebufferHeight - (state->y - offset) - rectangle->height;
     }
 }

@@ -86,3 +86,37 @@ ps2 pcsx2 - 60 key:ctrl+shift+n key:ctrl+shift+d key:ctrl+m key:ctrl+m key:ctrl+
 #     the same size and place as in before; InternalResolution = 3; rate lines at 60 per second. choices psp
 #     {"render_scale":"3x"}.
 psp ppsspp - 45 key:ctrl+shift+n key:ctrl+shift+d key:ctrl+m key:ctrl+m -- Daxter*.iso
+#
+# Items 1 and 6 (the controls track). move: and tap: are the right trackpad (relative motion to a fraction of the
+# touch screen as drawn, then a click for tap:); key:ctrl+shift+c is the radial's Controller Layout; bare names are
+# Steam's virtual pad (the replica). Each move or tap leaves cursor-N (1.5 s after it, gamescope type 3, its cursor
+# plane included) and idle-N (5 s after it), and the result line crosshair-N: ok when cursor-crosshair.sh finds
+# Semu's whole crosshair centred where inject.sh put the pointer in cursor-N and not in idle-N (unchecked without
+# ImageMagick on the Deck: run it on the fetched shots). Journal 83 is a layout (slot 0 Wii Remote, 1 Nunchuk, 2
+# Classic, 3 GameCube; the reserved field the player minus one, plus 16 only while a layout waits for Restart Game).
+#
+# C1. Item 1, the crosshair on the DS (RetroArch melonDS). cursor-1, -2 and -3: Semu's crosshair, four thin white
+#    arms with a black outline round a clear centre, 30x30 at 1280x800, its centre on the pointer, readable on
+#    the light and the dark parts of the screen; crosshair-1, -2 and -3 ok; nothing else at the pointer (no arrow:
+#    RetroArch's X cursor is blank). idle-N: no crosshair 5 s later. The centre tap still lands: touch.log
+#    "-> surface 1 native" about 128,96.
+nds retroarch melonds 40 move:0.5,0.5 tap:0.5,0.5 move:0.1,0.9 -- Legend of Zelda, The - Phantom Hourglass*.zip
+# C2. Item 1, the crosshair on the 3DS (standalone Azahar through the Vulkan layer), as C1: crosshair-1, -2
+#    and -3 ok, and cursor-N holds exactly one pointer, Semu's crosshair, with no Qt arrow beside it (Azahar's own
+#    cursor is blank on its render widget while Semu draws). The centre tap: "semu-vulkan: touch X,Y -> 1
+#    160,120".
+n3ds azahar - 50 move:0.5,0.5 tap:0.5,0.5 move:0.9,0.1 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+# C3. Item 6, every Wii controller layout live (Dolphin), on Mario Kart Wii, which takes the Wii Remote and the
+#    GameCube controller alike. By 90 s the game is on its title (Press the A Button) at full speed. The two
+#    Controller Layouts step P1 from the default Nunchuk to Classic (journal 83/2/0, toast P1: CLASSIC, run.log
+#    "P1 layout classic: 1 press(es) of Alt+F5 via X") and on to GameCube (83/3/0, toast P1: GAMECUBE, never
+#    RESTART TO APPLY; run.log "P1 layout gamecube: 1 press(es) of Alt+F5, then Alt+F11 to unlink it via X").
+#    south is then the GameCube pad's A, the only input left (the Wii Remote is unbound and away): after-3 has
+#    left the title that after-2 shows. east (the GameCube pad's B) goes back. The third Controller Layout steps to
+#    Wii Remote (83/0/0, P1: WII REMOTE, "... then Alt+F11 to link it"), and the last south is the Wii Remote's A
+#    (and the pad's): after-6 moves on from after-5. One Dolphin process throughout (no "semu: restarting" in
+#    run.log, cmdline unchanged), and no Dolphin message over the picture in any shot ("Wii Remote 1
+#    disconnected", "Loading input profile"), only Semu's toasts. choices: input.systems.wii.players.1.layout
+#    "wiimote" in OUT/home/semu.json. (In the VM, at a fraction of full speed, the GameCube pad's X+Y+Start held
+#    with the remote away logged Dolphin's own PAD - COMBO_ORIGIN three times, and the game relinked the remote.)
+wii dolphin - 90 key:ctrl+shift+c key:ctrl+shift+c south east key:ctrl+shift+c south -- Mario Kart Wii*.wbfs

@@ -55,7 +55,7 @@ class DeckHarnessSockets {  // display sockets as gamescope's wlroots leaves the
 }
 
 class DeckHarnessScripts {  // read as text: the parts of a run that only the Deck can execute
-    class void pointer(Contract contract, string check, string injector) {  // a move lands on time and the arrow is judged where it landed
+    class void pointer(Contract contract, string check, string injector) {  // a move lands on time and the crosshair is judged where it landed
         contract.contains(injector, "carriers=\"$(grep -l -z -x \"SEMU_INJECT_START_MS=$start_ms\" /proc/[0-9]*/environ 2>/dev/null)\"", "one grep over every process's environment finds the case's processes");
         contract.lacks(injector, "for path in /proc/[0-9]*; do", "no fork per process to find the emulator (a second on the Deck)");
         int ahead = injector.indexOf("wait_for \"$((due - 1000))\"\n        rect=\"$(touch_rect)\" && resolved=yes ;;");
@@ -65,10 +65,11 @@ class DeckHarnessScripts {  // read as text: the parts of a run that only the De
         contract.expect(injector.contains("moved=$?; times=\"moved at $(elapsed)\"") && injector.contains("times=\"$times, down at $(elapsed)\"") && injector.contains("times=\"$times, up at $(elapsed)\"")
             && injector.contains("echo \"inject: $when step $((step + 1)) $token -> $column,$row"), "each move or tap note names its step and when it moved, pressed and released");
         contract.contains(check, "grep -o 'step [0-9]* [a-z]*:[0-9.,]* -> [0-9]*,[0-9]*' \"$dir/inject.log\"", "input-check.sh reads where each step put the pointer from those notes");
-        contract.contains(check, "shown=\"$(bash \"$here/cursor-arrow.sh\" \"$dir/cursor-$step.png\" \"${point%,*}\" \"${point#*,}\")\"; shown_status=$?", "and looks for Semu's arrow there in cursor-N");
-        contract.contains(check, "elif [ \"$shown_status\" -eq 0 ] && [ \"$hidden_status\" -eq 1 ]; then verdict=ok", "arrow-N is ok only with the whole arrow in cursor-N and not in idle-N");
+        contract.contains(check, "shown=\"$(bash \"$here/cursor-crosshair.sh\" \"$dir/cursor-$step.png\" \"${point%,*}\" \"${point#*,}\")\"; shown_status=$?", "and looks for Semu's crosshair centred there in cursor-N");
+        contract.contains(check, "elif [ \"$shown_status\" -eq 0 ] && [ \"$hidden_status\" -eq 1 ]; then verdict=ok", "crosshair-N is ok only with the whole crosshair in cursor-N and not in idle-N");
         contract.contains(check, "if [ \"$shown_status\" -gt 1 ] || [ \"$hidden_status\" -gt 1 ]; then verdict=unchecked", "any status but found (0) or not found (1), a missing script's 127 included, is unchecked, never FAIL");
-        contract.contains(check, "for helper in inject.sh cursor-arrow.sh; do", "a run refuses to start without the injector and the arrow check beside it");
+        contract.contains(check, "for helper in inject.sh cursor-crosshair.sh; do", "a run refuses to start without the injector and the crosshair check beside it");
+        contract.contains(check, "note \"crosshair-$step: $verdict (cursor-$step $shown; idle-$step $hidden)\"", "each move's verdict is written as crosshair-N with both counts");
         string evidence = check.substring(check.indexOf("evidence() {"), check.indexOf("\nwhile IFS= read -r line; do") - check.indexOf("evidence() {"));
         int scans = 0;
         int binary = 0;

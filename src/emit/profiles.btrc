@@ -375,8 +375,8 @@ class SemuProfileContext {
             if (!guarded || !SemuChords.taken(self.plan.input == null ? null : self.plan.input.definition, SemuJson.textAt(value, "keyboard_key"))) { output.push(bindings.render(SemuJson.textAt(value, "line"))); }
             return;
         }
-        if (value.isObject()) {
-            if (!bindings.get(SemuJson.textAt(value, "if")).isEmpty()) { output.push(bindings.render(SemuJson.textAt(value, "line"))); }
+        if (value.isObject()) {  // {"if": a row field that must be set, "line": one line, an @block: or @lines: line too}
+            if (!bindings.get(SemuJson.textAt(value, "if")).isEmpty()) { self.renderLine(output, JSONValue.makeString(SemuJson.textAt(value, "line")), bindings, groups); }
             return;
         }
         string line = SemuJson.text(value);

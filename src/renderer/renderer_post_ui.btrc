@@ -441,7 +441,7 @@ class RendererPostUiPhase {
                      struct RendererPostUiState* state,
                      struct RendererCompositionGeometry* geometry,
                      struct RendererCursorState* cursor,
-                     unsigned long long* hash, int* nonblank) {  // CURSOR: null while the arrow is hidden
+                     unsigned long long* hash, int* nonblank) {  // CURSOR: null while the crosshair is hidden
         if (!RendererPostUiCompositor.draw(gl, resources, frame, state)) {
             return false;
         }

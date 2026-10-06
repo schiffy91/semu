@@ -145,8 +145,14 @@ class PlayersProfilesSpec {  // each emulator's per-player output
         contract.contains(PlayersBed.section(PlayersBed.file(fixture, wii, "dolphin", "dolphin-user/Config/GCPadNew.ini"), "[GCPad2]"), "Device = SDL/0/Xbox Series X Controller", "Dolphin: GameCube pad 2 is player 2's pad");
         Vector<string> stored = [];
         for path in PlayersBed.paths(fixture, wii, "dolphin") { if (path.contains("Semu Layouts/")) { stored.push(PathTools.basename(path)); } }
-        contract.expect(stored.sorted().join(",").equals("P1 Classic.ini,P1 Nunchuk.ini,P1 Wiimote.ini,P2 Classic.ini,P2 Nunchuk.ini,P2 Wiimote.ini"), "Dolphin: one stored profile per connected player and live layout, none for GameCube: " + stored.join(","));
-        contract.contains(PlayersBed.file(fixture, wii, "dolphin", "dolphin-user/Config/Hotkeys.ini"), "Controller Profile 4/Next Profile = @(Alt+F8)\n", "Dolphin: each player's Next Profile key");
+        contract.expect(stored.sorted().join(",").equals("P1 Classic.ini,P1 GameCube.ini,P1 Nunchuk.ini,P1 Wiimote.ini,P2 Classic.ini,P2 GameCube.ini,P2 Nunchuk.ini,P2 Wiimote.ini"), "Dolphin: one stored profile per connected player and live layout, GameCube included (M16 item 6): " + stored.join(","));
+        string unbound = PlayersBed.file(fixture, wii, "dolphin", "dolphin-user/Config/Semu Layouts/P2 GameCube.ini");
+        contract.expect(unbound.startsWith("[Profile]\nIR/Hide = 1\nIMUIR/Enabled = False\nExtension = None\n") && !unbound.contains("Buttons/") && !unbound.contains("D-Pad/") && !unbound.contains("IR/Up"),
+            "Dolphin: the GameCube layout's Wii Remote binds nothing, its IR hidden, so no button wakes it once unlinked: " + unbound);
+        contract.contains(PlayersBed.file(fixture, wii, "dolphin", "dolphin-user/Config/Semu Layouts/P2 Classic.ini"), "[Profile]\nDevice = SDL/0/Xbox Series X Controller\nButtons/A = `Button S`\n", "Dolphin: a Wii Remote layout keeps its bound body ahead of the extension");
+        string hotkeys = PlayersBed.file(fixture, wii, "dolphin", "dolphin-user/Config/Hotkeys.ini");
+        contract.contains(hotkeys, "Controller Profile 4/Next Profile = @(Alt+F8)\n", "Dolphin: each player's Next Profile key");
+        contract.contains(hotkeys, "Wii/Connect Wii Remote 1 = @(Alt+F11)\nWii/Connect Wii Remote 2 = @(Alt+F12)\nWii/Connect Wii Remote 3 = @(Alt+F1)\nWii/Connect Wii Remote 4 = @(Alt+F2)\n", "Dolphin: each player's Connect Wii Remote key, which links and unlinks it live");
         string pcsx2 = PlayersBed.file(fixture, PlayersBed.plan(fixture, "steam-deck", "ps2", "", 2), "pcsx2", "config/PCSX2/inputprofiles/Steam Deck.ini");
         string padTwo = PlayersBed.section(pcsx2, "[Pad2]");
         contract.expect(padTwo.contains("Type = DualShock2") && padTwo.contains("Cross = SDL-1/FaceSouth") && !padTwo.contains("Keyboard/"), "PCSX2: Pad2 reads player 2's SDL pad and no keyboard");
@@ -192,9 +198,10 @@ class PlayersIdentitySpec {  // a player's files name only that player's devices
                 if (named != (other == player)) { own = false; }
             }
             if (player > 1 && (file.content.contains(pointer) || file.content.contains(motion))) { own = false; }
-            if (player > 1 && (!file.content.contains("IR/Up = `Right Y+`") || file.content.contains("Cursor") || file.content.contains("IMUGyroscope"))) { own = false; }  // the others aim with their own stick and have no motion
+            bool unbound = file.content.contains("\nIR/Hide = 1\n");  // GameCube: a remote with nothing bound
+            if (player > 1 && ((!unbound && !file.content.contains("IR/Up = `Right Y+`")) || file.content.contains("Cursor") || file.content.contains("IMUGyroscope"))) { own = false; }  // the others aim with their own stick and have no motion
         }
-        contract.expect(checked == 12 && own && diagnostics.ok(), f"each of the {checked} stored profiles names its own player's pad and no other's; only player 1's name the pointer and the Deck's motion");
+        contract.expect(checked == 16 && own && diagnostics.ok(), f"each of the {checked} stored profiles (GameCube's unbound ones too) names its own player's pad and no other's; only player 1's name the pointer and the Deck's motion");
         string remotes = PlayersBed.file(fixture, wii, "dolphin", "dolphin-user/Config/WiimoteNew.ini");
         bool sections = true;
         for (int player = 1; player <= 4; player++) {
@@ -232,6 +239,17 @@ class PlayersCheckerSpec {  // the checker refuses a layout no emulator row appl
         string refused = thinner.render();
         contract.expect(refused.contains("layout_hotkeys") && refused.contains("needs a key for each of the 4 players"), "the checker refuses fewer layout keys than players (players 3 and 4 could never switch): " + refused);
         contract.expect(refused.contains("controllers.layouts") && refused.contains("declare two or more layouts, or none"), "and a single layout, which has nothing to switch to: " + refused);
+        Fixture unlinked = Fixture("steam-deck");
+        JSONValue links = unlinked.model.emulator("dolphin").profile.get("connection_hotkeys");
+        JSONValue three = JSONValue.makeArray();
+        for (int index = 0; index < 3; index++) { three.push(links.at(index)); }
+        unlinked.model.emulator("dolphin").profile.set("connection_hotkeys", three);
+        unlinked.model.emulator("dolphin").profile.get("controller_layouts").at(1).set("connection", JSONValue.makeString("away"));
+        SemuDiagnostics linkless = SemuDiagnostics();
+        SemuPlayersChecker.check(unlinked.model, unlinked.plan, unlinked.model.system("wii"), linkless);
+        string missing = linkless.render();
+        contract.expect(missing.contains("connection_hotkeys") && missing.contains("needs a key for each of the 4 players") && missing.contains("wii layout nunchuk: connection is connected or disconnected"),
+            "a layout that unlinks the Wii Remote (GameCube) needs every player's Connect key, and a link is connected or disconnected: " + missing);
     }
 }
 

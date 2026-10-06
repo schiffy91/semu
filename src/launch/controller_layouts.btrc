@@ -3,7 +3,10 @@
 // layout the emulator switches live goes through its own profile cycle: the player's stored profile
 // is copied over Semu's one file in the cycled folder and the player's Next Profile key is typed,
 // paced, as many times as the folder's sorted listing needs from the emulator's one shared index
-// (with Semu's file alone there, always once). A layout read only at boot, or leaving one, never
+// (with Semu's file alone there, always once). A layout the game sees as its controller gone
+// (Dolphin's GameCube: a Wii Remote with nothing bound, unlinked; the GameCube pad plays) types the
+// player's link key once after its profile, and once more after the next bound profile, so the
+// link follows the layout live. A layout read only at boot, or leaving one, never
 // restarts the game by itself: it is saved and waits for Restart Game (SemuGameRestart), so every
 // press steps on and the owner can cycle through freely. A choice is saved for the system
 // (input.systems.<id>.players.<n>.layout) and journaled as 83: slot the layout, reserved the player
@@ -74,18 +77,23 @@ class SemuControllerLayouts {
 
     class int reserved(int player0, int kind) { return player0 + 16 * kind; }
 
-    class bool switchLive(SemuPlayerSet set, int player0, int layout) {  // copy the stored profile in, then type the player's Next Profile key, paced
+    class bool switchLive(SemuPlayerSet set, int player0, int layout) {  // copy the stored profile in, type the player's Next Profile key, paced, then its link key once where the link changes
         string source = set.storeFile(player0, layout);
         string active = PathTools.join(set.directory, set.active);
-        if (player0 >= set.chords.size() || !FileSystem.isFile(source) || !SemuPaths.replace(active, FileSystem.readText(source))) { return false; }
+        bool relink = set.relinks(player0, layout);  // after the profile: an unbound remote unlinks, a bound one links back
+        if (player0 >= set.chords.size() || (relink && player0 >= set.linkChords.size()) || !FileSystem.isFile(source) || !SemuPaths.replace(active, FileSystem.readText(source))) { return false; }
         Vector<string> files = SemuControllerLayouts.listing(set.directory);
         int position = files.indexOf(active);
         if (position < 0) { return false; }
         int count = SemuControllerLayouts.presses(position, set.sharedIndex, files.size());
         string route = SemuPacedTyper.route();
-        bool typed = SemuPacedTyper.play(SemuPacedTyper.steps(SemuKeyNames.chord(set.chords.get(player0)), count, set.pressMs, set.gapMs));
+        Vector<SemuKeyStep> steps = SemuPacedTyper.steps(SemuKeyNames.chord(set.chords.get(player0)), count, set.pressMs, set.gapMs);
+        if (relink) { steps = SemuPacedTyper.then(steps, SemuPacedTyper.steps(SemuKeyNames.chord(set.linkChords.get(player0)), 1, set.pressMs, set.gapMs), set.gapMs); }
+        bool typed = SemuPacedTyper.play(steps);
         if (typed) { set.sharedIndex = position; }  // the emulator's index now names Semu's file
-        if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: P" + Strings.fromInt(player0 + 1) + " layout " + set.layoutIds.get(layout) + ": " + Strings.fromInt(count) + " press(es) of " + set.chords.get(player0) + " via " + route + (typed ? "" : " failed")); }
+        if (typed && relink) { set.linked.set(player0, set.links(layout)); }
+        string linking = relink ? ", then " + set.linkChords.get(player0) + (set.links(layout) ? " to link it" : " to unlink it") : "";
+        if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: P" + Strings.fromInt(player0 + 1) + " layout " + set.layoutIds.get(layout) + ": " + Strings.fromInt(count) + " press(es) of " + set.chords.get(player0) + linking + " via " + route + (typed ? "" : " failed")); }
         return typed;
     }
 

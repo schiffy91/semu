@@ -2216,6 +2216,112 @@ The owner played the M15 release (3682cb6) in Game Mode and reported (verbatim w
     opening is antialiased and the PS1's light bar is gone, checked by eye at 1280x800 and 1920x1080.
 
 Status: started 2026-10-06.
+- Items 1 and 6 (controls track): built and contract-proven on the Mac, observed on the Mac render host and in the
+  podman VM (RetroArch DS and 3DS, standalone Azahar, Dolphin with Mario Kart Wii); the Deck checks are cases 1-3 of
+  `tests/deck/m16-check.cases` and the updated radial-check cases 3, 4 and 16.
+  - Item 1, the pointer. Why it was an arrow: M13 drew a 12x19 arrow because the trackpad mouse needed something to aim
+    with; nobody had asked for a shape. Now `renderer_cursor.btrc` draws a 15x15 crosshair: four white arms one cell
+    wide and four long, each with a one-cell black outline, round a clear 3x3 centre, at one whole step per 400 rows
+    (30x30 at 1280x800 and 1920x1080, 75x75 at 2160), its centre cell's middle pixel on the pointer
+    (`RendererCursor.hotspot`), so a tap lands at the cross. The show and hide rules are M13's (motion or a held press
+    shows it, 3 s idle hides it). Every route that draws Semu's pointer draws this one: RetroArch's DS and 3DS cores
+    through the bridge and standalone Azahar through the Vulkan layer. Observed on the Mac render host (nds and n3ds
+    at 1280x800 and 1920x1080, RENDER_HOST_CURSOR, by eye at 8x): the cross reads on the dark shell, on a mid colour
+    and on the black and white checker; `tests/deck/cursor-crosshair.sh` (was cursor-arrow.sh) finds 64/64 white and
+    224/224 black pixels centred on the pointer, and 24/64 two pixels off. Rulings, reversible:
+    - The Wii keeps one pointer, the game's own. Semu draws no crosshair there: the game draws the pointer the IR aims
+      (a hand, a cursor) and, at Dolphin's IR defaults, it sits about 48 px above the finger and moves about 1.34
+      times as far (M13), so a crosshair at the finger would be a second pointer that disagrees with it. Dolphin's own
+      X arrow stays blank (CursorVisibility = 0, Never). Dolphin draws no IR pointer of its own over a game.
+    - The second cursor M15 left open (Azahar's X cursor "in 3 of 12 runs") was the harness, not Azahar. The maim pair
+      ran after the slow ImageMagick check of the frame, and in those three runs it straddled Semu's own idle hide:
+      Semu hid the arrow 3.2-3.8 s after the move (renderer log) and the captures with and without the X cursor were
+      written at +3.2 to +4.2 s and +3.5 to +4.9 s. The "X cursor" pixels were Semu's arrow vanishing between them:
+      around the pointer the capture with the X cursor is pixel for pixel the frame xwd grabbed (0 differing pixels;
+      xwd never holds the X cursor), and the difference is exactly Semu's 24x38 arrow box at 40,44 (276 white
+      pixels, 472 with the outline on a lighter background), present in the first capture and gone from the second.
+      `tests/visual/vm-azahar-layer.sh` now grabs the frame and both maim captures back to back before any slow check,
+      and a pair without Semu's crosshair in both reads unchecked.
+    Observed in the podman VM (Rosetta, llvmpipe and lavapipe, Xvfb at 1280x800): `tests/integration/touch-x11.sh`
+    (RetroArch's DS and 3DS routes) twice: on both cores the whole crosshair (64/64 white, 224/224 black) centred on
+    40,44 1.5 s after a relative move, and none 5 s later; `tests/visual/vm-azahar-layer.sh` (standalone Azahar
+    through the layer, Pushmo): the same at 40,44, the captures with and without the X cursor identical (0 pixels,
+    the crosshair in both), so one pointer; by eye (4x crops) one crosshair, no arrow. In touch-x11 the first tap of
+    a session was missed in 3 of 4 sessions while the host's load average was 110-180 (four other tracks building);
+    every later tap landed within 1 percent and this track changed no input code.
+    Contracts: right_trackpad (the crosshair's shape, symmetry, clear centre, 72 opaque and 16 white cells, placement
+    with the centre on the pointer at 800 and 2160 rows, whole-step growth), standalone_cursor (cursor-crosshair.sh's
+    rows, hotspot and scale equal the renderer's), deck_harness (input-check.sh needs cursor-crosshair.sh and writes
+    crosshair-N with both counts).
+  - Item 6, the Wii controller. Why it needed a restart: only GameCube did. Wii Remote, Nunchuk and Classic already
+    switched live (M14, Dolphin's profile cycle: Next Profile, HotkeyScheduler.cpp:303-321, loads a profile and its
+    extension into the running remote, InputProfile.cpp:74-90). GameCube was built as "no Wii Remote at all"
+    (WiimoteSource 0), and Dolphin applies a remote's source only through its own config layer (OnSourceChanged,
+    Wiimote.cpp:40-60, registered at Wiimote.cpp:190), which only its Controllers window sets while a game runs; a
+    file is read at boot. So stepping onto or off GameCube said RESTART TO APPLY. What Dolphin 2606a (c77bbaa) can do
+    live, and what it cannot:
+    - live: a Wii Remote profile (buttons, IR, motion, extension None/Nunchuk/Classic), through Next Profile;
+    - live: a remote's link, through its own "Connect Wii Remote N" hotkey (HotkeyManager.cpp:81-84 and 308,
+      HotkeyScheduler.cpp:275-282, MainWindow.cpp:2065-2073), which toggles the emulated remote the way a real one
+      powers off and on (WiimoteDevice::Activate, WiimoteDevice.cpp:218-238); an unlinked emulated remote asks to link
+      again at any bound button it reads (WiimoteDevice.cpp:345-364 and 378-385);
+    - boot only (or Dolphin's own windows): a remote's source (none, emulated, real; Wiimote.cpp:40-60), a GameCube
+      port's device (SIDevice), a GameCube pad's mapping and device (GCPad.cpp:38-43; the profile hotkeys cycle Wii
+      Remotes only, InputProfile.cpp:190-210), the Balance Board, real remotes;
+    - so GameCube becomes live this way: every connected player boots with an emulated Wii Remote (WiimoteSource 1) and
+      a GameCube pad (SIDevice 6), as before; GameCube is a Wii Remote profile with nothing bound (its IR hidden, no
+      motion pointer) plus one press of that player's Connect Wii Remote (Alt+F11, Alt+F12, Alt+F1, Alt+F2), so the game sees the
+      remote leave and the GameCube pad play; leaving GameCube loads the bound profile first and presses Connect
+      again, so the remote comes back with its buttons. Nothing about it waits for Restart Game.
+    What still waits for Restart Game on the Wii: moving a player to another pad (the players page: the GameCube pad's
+    device is read at boot), and the 4:3/16:9 output (the game reads it at boot). Rulings, reversible:
+    - A game booted on GameCube keeps its unbound remote linked (Dolphin links every emulated remote at boot,
+      WiimoteDevice.cpp:69-80; a press timed to the game's own Bluetooth start would race it). It sends nothing, so the
+      GameCube pad is the only input; choosing GameCube again unlinks it.
+    - Semu tracks each player's link from boot and presses Connect only when the layout changes it. If a game unlinks
+      a remote itself, the worst case is a remote linked with nothing bound (harmless) or an unlinked bound remote,
+      which the next button press links again (Dolphin's own rule above).
+    - Dolphin's own messages are off (Dolphin.ini [Interface] OnScreenDisplayMessages = False, also set by item 2's track; MainSettings.cpp:434,
+      OnScreenDisplay.cpp:157): its "Loading input profile 'Semu' for device 'Wiimote1'" and "Wii Remote 1
+      disconnected" drew over the composed picture beside Semu's own toast. The FPS overlay is drawn apart
+      (OnScreenUI.cpp:421-423) and stays.
+    - Connect Wii Remote 1-4 are Alt+F11, Alt+F12, Alt+F1 and Alt+F2: Dolphin's defaults (Alt+F5-F8, HotkeyManager.cpp:427-430)
+      belong to Next Profile and Alt+F9/F10 to the render scale (item 2); no chord Steam sends holds Alt, Alt+F4 closes
+      windows under most window managers, and a contract now checks every key the supervisor types against
+      Steam's chords and Dolphin's bindings under its superset matcher.
+    Observed in the podman VM (Rosetta, llvmpipe, Xvfb and openbox at 1280x800, a rootful run with one replica of
+    Steam's pad; real Dolphin 2606a with Mario Kart Wii mounted read-only; `PADS=1 BASICS=0 DOLPHIN_LOG=1
+    TARGET=steam-deck tests/integration/live-switch.sh` with CHORDS typing Controller Layout as XTest the way Steam
+    does). Nine runs; the last on the Deck target, whose identities name the replica as Dolphin's SDL does
+    (SDL/0/Steam Deck Controller, with Steam's own slot-file format; the earlier runs launched linux-desktop, whose
+    player 1 is SDL/0/Xbox Controller, so no pad input reached Dolphin at all, which is why they showed none). Every
+    run (Connect was still Alt+F9 then; it moved to Alt+F11 when the render scale took Alt+F9/F10 on main): journal
+    83/2/0, 83/3/0, 83/0/0 (Classic, GameCube, Wii Remote, each applied, never waiting), run.log "P1
+    layout gamecube: 1 press(es) of Alt+F5, then Alt+F9 to unlink it via X" and "P1 layout wiimote: ... then Alt+F9
+    to link it", inotify saw Dolphin open Semu.ini at each switch, the toasts read P1: CLASSIC, P1: GAMECUBE and P1:
+    WII REMOTE (by eye), no Dolphin message showed over the picture, one Dolphin process to the end (restarts=0) and
+    semu.json saved players.1.layout. Dolphin's own log (Logger.ini IOS_WIIMOTE, SI, CI at INFO, OUT/*-dolphin.log):
+    the game accepted the remote at boot and again about a second after the switch back to Wii Remote, with the whole
+    pairing handshake (HCI_CMD_ACCEPT_CON, AUTH_REQ, SNIFF_MODE), which only an unlinked remote asks for; and with
+    GameCube running and the remote away, the GameCube pad's X+Y+Start held from the replica logged
+    "PAD - COMBO_ORIGIN" three times (SI_DeviceGCController.cpp:270), the line only the game's own polling of that
+    pad writes. The game ran at about an eighth of full speed there, so the title's response to a single press is
+    left to the Deck (case 3).
+    Contracts: controller_layouts (the profile key, then the link key a whole gap after its release; GameCube live with
+    83 reserved 0; choosing it again leaves the link alone; Wii Remote links it back; a game booted on GameCube; a
+    boot-only layout still waits; Reset relinks with Alt+F12 for player 2), players (stored profiles for all four
+    layouts, GameCube's binding nothing; the Connect keys in Hotkeys.ini; the checker refuses a link-less player and an
+    unknown link), emulator_runtime (WiimoteSource 1 on every layout, the bound or unbound body, Connect key, Dolphin's
+    messages off), radial_render (no typed key collides). The profile compiler's {"if", "line"} now carries an @block:
+    line. Mutations, each run on a copy, restored with cp and checked with cmp, each failing its checks (15 of 15):
+    the crosshair placed by its corner, its gap filled, the Deck check without the hotspot's half step, input-check.sh
+    needing cursor-arrow.sh, GameCube back to relaunch, GameCube keeping the remote linked, no link press, no Connect
+    keys in Hotkeys.ini, Dolphin's messages back on, an if-line that cannot carry a block, a bare F9 Connect key (also
+    caught by the collision check: Ctrl+Shift+F9 fires F9; after the rebase onto the render scale's Alt+F9/F10, a
+    Connect key equal to Alt+F9 and a bare F11 each fail it too), the checker forgetting link keys, remotes starting
+    unlinked, the link state never updated, the unbound remote showing its IR. The Deck was offline (ssh timed out
+    all session), so the owner's Wii session log was not read; the code had one restart path for a layout, GameCube
+    (apply relaunch), which is what the report describes.
 
 - Items 5 and 7, Fit's four states and the Wii's sizes (the placement track, 2026-10-06): built and observed
   on the Mac render host and in the editor; the Deck is open (`tests/deck/m16-check.cases`, cases F1-F4).

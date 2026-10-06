@@ -12,8 +12,9 @@
 # the case sets it too, with the SteamVirtualGamepadInfo slot file through which SDL names pad 0
 # "Steam Deck Controller" (the name ES-DE logs in Game Mode, and Dolphin's compiled device). The
 # Deck's own controls (28de:1205, hidraw) are hidden as Steam hides them from games, or SDL's HIDAPI
-# driver lists them first under the same name. Dolphin's Wii remotes read those controls directly
-# (its SteamDeck backend), so Wii input cannot be checked this way. Steam ignores that replica (its own virtual
+# driver lists them first under the same name. Dolphin's Wii Remote motion reads those controls directly
+# (its SteamDeck backend), so motion cannot be checked this way; the Wii Remote's buttons and the GameCube pads
+# read the replica (SDL), as every other emulator does. Steam ignores that replica (its own virtual
 # pad's ids); a pad Steam adopts would drive Steam's UI instead (a plain test pad once pressed A
 # on Semu in the library), so the case stops the pad before its first press if Steam's controller
 # log shows it found a new device, and the run ends. The game is captured just before the first press and a few seconds after
@@ -61,8 +62,8 @@
 # move or tap cursor-<n>.png 1.5 s after it and idle-<n>.png 5 s after it, both gamescope screenshot
 # type 3 (every layer, gamescope's cursor plane included; gamescope 3.16.30 takes the type as the
 # screenshot command's third argument, the other shots keep the default base plane), and the result
-# line arrow-<n>: ok when cursor-arrow.sh finds Semu's whole arrow with its tip where inject.sh put
-# the pointer in cursor-<n> and not in idle-<n> (unchecked without ImageMagick: run cursor-arrow.sh
+# line crosshair-<n>: ok when cursor-crosshair.sh finds Semu's whole crosshair centred where inject.sh put
+# the pointer in cursor-<n> and not in idle-<n> (unchecked without ImageMagick: run cursor-crosshair.sh
 # on the fetched shots), with renderer-cursor: lines for each show and hide on the shared clock; schedule;
 # cmdline (the emulator argv, read the moment it is first seen); run.log; inject.log; touch.log
 # (Semu's touch lines); journal.od (the action journal, od -A d -t d4, one 56-byte record a line);
@@ -146,8 +147,8 @@ if [ "${1:-}" = --plan ]; then  # the timelines a run would follow, from the sam
   exit "$status"
 fi
 
-for helper in inject.sh cursor-arrow.sh; do  # copied to the Deck together, or a run types nothing or judges nothing
-  [ -f "$here/$helper" ] || { echo "input-check: $here/$helper is missing; copy tests/deck/inject.sh and tests/deck/cursor-arrow.sh beside input-check.sh" >&2; exit 64; }
+for helper in inject.sh cursor-crosshair.sh; do  # copied to the Deck together, or a run types nothing or judges nothing
+  [ -f "$here/$helper" ] || { echo "input-check: $here/$helper is missing; copy tests/deck/inject.sh and tests/deck/cursor-crosshair.sh beside input-check.sh" >&2; exit 64; }
 done
 pad="$1"; cases="$2"; out="$(mkdir -p "$3" && cd "$3" && pwd -P)"
 roms=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs
@@ -176,15 +177,15 @@ wait_until() {  # MS after launch on the shared clock
   [ "$left" -gt 0 ] && sleep "$(awk -v left="$left" 'BEGIN { printf "%.3f", left / 1000 }')"
   return 0
 }
-arrows() {  # each move or tap inject.sh sent: Semu's whole arrow at the pointer in cursor-N, not in idle-N
+crosshairs() {  # each move or tap inject.sh sent: Semu's whole crosshair centred on the pointer in cursor-N, not in idle-N
   local step point shown hidden shown_status hidden_status verdict
   grep -o 'step [0-9]* [a-z]*:[0-9.,]* -> [0-9]*,[0-9]*' "$dir/inject.log" 2>/dev/null | while read -r _ step _ _ point; do
-    shown="$(bash "$here/cursor-arrow.sh" "$dir/cursor-$step.png" "${point%,*}" "${point#*,}")"; shown_status=$?
-    hidden="$(bash "$here/cursor-arrow.sh" "$dir/idle-$step.png" "${point%,*}" "${point#*,}")"; hidden_status=$?
+    shown="$(bash "$here/cursor-crosshair.sh" "$dir/cursor-$step.png" "${point%,*}" "${point#*,}")"; shown_status=$?
+    hidden="$(bash "$here/cursor-crosshair.sh" "$dir/idle-$step.png" "${point%,*}" "${point#*,}")"; hidden_status=$?
     if [ "$shown_status" -gt 1 ] || [ "$hidden_status" -gt 1 ]; then verdict=unchecked  # 2 no ImageMagick, 127 no script: no verdict either way
     elif [ "$shown_status" -eq 0 ] && [ "$hidden_status" -eq 1 ]; then verdict=ok
     else verdict=FAIL; fi
-    note "arrow-$step: $verdict (cursor-$step $shown; idle-$step $hidden)"
+    note "crosshair-$step: $verdict (cursor-$step $shown; idle-$step $hidden)"
   done
 }
 evidence() {  # what the case left: the X key adapter, each action by source, the touches, the journal, the receipts, the saved choices (grep -a: a restarted emulator can leave NUL bytes in run.log)
@@ -197,7 +198,7 @@ evidence() {  # what the case left: the X key adapter, each action by source, th
   head -12 "$dir/touch.log" | sed 's/^/touch-line: /' >> "$dir/result"
   grep -a -o 'semu-renderer: cursor [a-z]* [0-9-]*,[0-9-]* ms=[0-9]*' "$dir/run.log" | head -20 \
     | awk -v zero="$start_ms" '{ split($5, pair, "="); printf "renderer-cursor: %s at %s t=%.3f\n", $3, $4, (pair[2] - zero) / 1000 }' >> "$dir/result"
-  arrows
+  crosshairs
   if [ -n "$game" ] && [ -f "$state/semu-render-actions.bin" ]; then  # emptied when this session started
     od -A d -t d4 -w56 -v "$state/semu-render-actions.bin" > "$dir/journal.od"
     note "journal (action/slot[/reserved: a player, or a prompt]; 1 menu, 2 up, 3 down, 4 confirm, 5 back, 6 save, 7 load, 9 screenshot, 77 next slot, 78 previous slot, 79 bezel, 80 shader, 81 fit, 82 aspect, 83 layout, 84 pad, 85 reset, 86 players page, 87 restart): $(awk 'NF >= 11 { printf "%s%s/%s%s", separator, $8, $10, ($11 != 0 ? "/" $11 : ""); separator = " " }' "$dir/journal.od")"

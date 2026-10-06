@@ -149,19 +149,47 @@ class RightTrackpadSpecCursor {  // Semu draws the pointer on touch systems and 
         bool shownOnce = RendererCursor.changed(&reported, true) && !RendererCursor.changed(&reported, true);
         bool hiddenOnce = RendererCursor.changed(&reported, false) && !RendererCursor.changed(&reported, false);
         contract.expect(shownOnce && hiddenOnce && !RendererCursor.changed(null, true), "the debug line is due once per show and once per hide");
-        RendererCursor.raster(state.pixels);
+        RightTrackpadSpecCursor.crosshair(contract, &state);
+    }
+
+    class void crosshair(Contract contract, struct RendererCursorState* state) {  // M16 item 1: a crosshair, its clear centre on the pointer
+        RendererCursor.raster(state->pixels);
         int opaque = 0;
-        for (int index = 0; index < SEMU_RENDER_CURSOR_WIDTH * SEMU_RENDER_CURSOR_HEIGHT; index++) { if (state.pixels[index * 4 + 3] == 255) { opaque++; } }
-        contract.expect(state.pixels[3] == 255 && state.pixels[0] == 0, "the arrow's tip, its hotspot, is the texture's first pixel, opaque black");
-        int fill = (2 * SEMU_RENDER_CURSOR_WIDTH + 1) * 4;
-        int corner = (SEMU_RENDER_CURSOR_WIDTH - 1) * 4;
-        contract.expect(state.pixels[fill] == 255 && state.pixels[fill + 3] == 255 && state.pixels[corner + 3] == 0 && opaque == 118, f"a white arrow with a black outline on clear ({opaque} opaque pixels)");
+        int white = 0;
+        for (int index = 0; index < SEMU_RENDER_CURSOR_WIDTH * SEMU_RENDER_CURSOR_HEIGHT; index++) {
+            if (state->pixels[index * 4 + 3] == 255) { opaque++; }
+            if (state->pixels[index * 4 + 3] == 255 && state->pixels[index * 4] == 255) { white++; }
+        }
+        int centre = (SEMU_RENDER_CURSOR_HOTSPOT * SEMU_RENDER_CURSOR_WIDTH + SEMU_RENDER_CURSOR_HOTSPOT) * 4;
+        bool gap = true;
+        for (int down = -1; down <= 1; down++) {
+            for (int across = -1; across <= 1; across++) { gap = gap && state->pixels[centre + (down * SEMU_RENDER_CURSOR_WIDTH + across) * 4 + 3] == 0; }
+        }
+        contract.expect(SEMU_RENDER_CURSOR_WIDTH == SEMU_RENDER_CURSOR_HEIGHT && SEMU_RENDER_CURSOR_HOTSPOT * 2 + 1 == SEMU_RENDER_CURSOR_WIDTH && gap,
+            "the crosshair is square with its hotspot in the middle of a clear 3x3 gap");
+        bool symmetric = true;
+        for (int line = 0; line < SEMU_RENDER_CURSOR_HEIGHT; line++) {
+            const char* across = RendererCursor.row(line);
+            const char* mirrored = RendererCursor.row(SEMU_RENDER_CURSOR_HEIGHT - 1 - line);
+            for (int column = 0; column < SEMU_RENDER_CURSOR_WIDTH; column++) {
+                const char* down = RendererCursor.row(column);
+                symmetric = symmetric && across[column] == down[line] && across[column] == mirrored[SEMU_RENDER_CURSOR_WIDTH - 1 - column];
+            }
+        }
+        int top = (1 * SEMU_RENDER_CURSOR_WIDTH + SEMU_RENDER_CURSOR_HOTSPOT) * 4;
+        int left = (SEMU_RENDER_CURSOR_HOTSPOT * SEMU_RENDER_CURSOR_WIDTH + 1) * 4;
+        contract.expect(symmetric && state->pixels[top] == 255 && state->pixels[left] == 255 && state->pixels[3] == 0 && white == 16 && opaque == 72,
+            f"four thin white arms with a black outline on clear, the same each way ({white} white of {opaque} opaque)");
+        contract.expect(strchr(RendererCursor.row(0), 'W') == null && strchr(RendererCursor.row(SEMU_RENDER_CURSOR_HOTSPOT), 'W') != null, "no arm reaches the edge without its outline");
         struct RendererPixelRect rectangle;
-        state.x = 100;
-        state.y = 50;
-        RendererCursor.placement(&state, 800, &rectangle);
-        contract.expect(rectangle.x == 100 && rectangle.width == 24 && rectangle.height == 38 && rectangle.y == 712, f"at 800 rows the arrow is 24x38 with its tip on the pointer ({rectangle.x},{rectangle.y} {rectangle.width}x{rectangle.height})");
-        contract.expect(RendererCursor.scale(400) == 1 && RendererCursor.scale(2160) == 5 && RendererCursor.scale(200) == 1, "the arrow grows in whole steps with the screen");
+        state->x = 100;
+        state->y = 50;
+        RendererCursor.placement(state, 800, &rectangle);
+        contract.expect(rectangle.x == 85 && rectangle.width == 30 && rectangle.height == 30 && rectangle.y == 735,
+            f"at 800 rows the crosshair is 30x30 with its centre (15,15 in it) on the pointer ({rectangle.x},{rectangle.y} {rectangle.width}x{rectangle.height})");
+        RendererCursor.placement(state, 2160, &rectangle);
+        contract.expect(rectangle.x == 100 - 37 && rectangle.width == 75 && rectangle.y == 2160 - (50 - 37) - 75, f"at 2160 rows 75x75, the centre still on the pointer ({rectangle.x},{rectangle.y})");
+        contract.expect(RendererCursor.scale(400) == 1 && RendererCursor.scale(1080) == 2 && RendererCursor.scale(2160) == 5 && RendererCursor.scale(200) == 1, "the crosshair grows in whole steps with the screen");
     }
 
     class void frame(Contract contract) {  // ABI 3 grew a cursor at its end: older emulator frames still compose

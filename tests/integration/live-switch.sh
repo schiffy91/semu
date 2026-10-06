@@ -25,7 +25,12 @@
 # Deck, then Xbox Series X pads) so the launch deals players; BASICS=0 skips the bezel, shader and menu
 # presses; for Dolphin the result also lists each layout switch, the players dealt, every open of the
 # Wiimote profile folder's files (inotify: Dolphin reading the profile a press loaded) and the Wii Remote
-# sources the last Dolphin.ini holds.
+# sources the last Dolphin.ini holds. A CHORDS step pad:NAME (south, east, start, ...) presses that button on player 1's
+# replica pad instead of typing a key, pad:hold:NAME and pad:release:NAME hold it across steps (PADS=1 or more), and
+# sleep:SECONDS waits; TARGET=steam-deck launches with the Deck's device identities, which name the replica as SDL does. DOLPHIN_LOG=1 has Dolphin log at INFO (Logger.ini: IOS_WIIMOTE, SI, CI) into
+# OUT/<n>-dolphin-wii-dolphin.log, and the result counts the Wii Remote links the game accepted (HCI_CMD_ACCEPT_CON) and
+# the GameCube pad's X+Y+Start held 3 s (PAD - COMBO_ORIGIN, SI_DeviceGCController.cpp:243-270), which only the
+# game's own polling of that pad logs.
 set -eu
 image=docker.io/nixos/nix:latest
 if [ "${1:-}" != "--inside" ] && [ "${1:-}" != "--build" ]; then
@@ -44,7 +49,7 @@ if [ "${1:-}" != "--inside" ] && [ "${1:-}" != "--build" ]; then
   [ -n "${SEMU_BIOS:-}" ] && mounts+=(-v "$SEMU_BIOS:/bios:ro")
   name="semu-live-switch-$(date +%Y%m%d%H%M%S)"  # left behind exited
   echo "container $name, results in $out"
-  environment=(-e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" -e SCALE="${SCALE:-}" -e CHORDS="${CHORDS:-}" -e SETTLE="${SETTLE:-}" -e PADS="${PADS:-0}" -e BASICS="${BASICS:-1}" -e SIZE="${SIZE:-1280x800}" -e CAPTURE_FRAME="${CAPTURE_FRAME:-}" -e FIRMWARE="${SEMU_BIOS:+/bios}")
+  environment=(-e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" -e SCALE="${SCALE:-}" -e CHORDS="${CHORDS:-}" -e SETTLE="${SETTLE:-}" -e PADS="${PADS:-0}" -e BASICS="${BASICS:-1}" -e SIZE="${SIZE:-1280x800}" -e CAPTURE_FRAME="${CAPTURE_FRAME:-}" -e FIRMWARE="${SEMU_BIOS:+/bios}" -e DOLPHIN_LOG="${DOLPHIN_LOG:-}" -e SEMU_TARGET="${TARGET:-}")
   nixConfig="experimental-features = nix-command flakes
 filter-syscalls = false
 sandbox = false
@@ -82,7 +87,8 @@ if [ "$1" = "--build" ] || [ ! -f "$out/paths.env" ]; then  # the bundle and the
   [ "$1" = "--build" ] && exit 0
 fi
 . "$out/paths.env"
-if [ "${PADS:-0}" -gt 0 ]; then export SDL_JOYSTICK_DISABLE_UDEV=1; fi  # no udev daemon in the container: SDL watches /dev/input itself
+[ -n "${SEMU_TARGET:-}" ] || unset SEMU_TARGET  # TARGET=steam-deck launches with the Deck's identities (Dolphin binds SDL/0/Steam Deck Controller, the replica's name)
+if [ "${PADS:-0}" -gt 0 ]; then export SDL_JOYSTICK_DISABLE_UDEV=1 SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1; fi  # no udev daemon in the container: SDL watches /dev/input itself; SDL ignores a Steam virtual pad (the replicas) unless told, as Steam tells every game
 [ -x "$bundle/bin/semu" ] || { echo "FAIL: no bundle" | tee "$out/result"; exit 1; }
 echo "bundle $bundle" | tee "$out/bundle"
 export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe LIBGL_DRIVERS_PATH="$mesa/lib/dri" __GLX_VENDOR_LIBRARY_NAME=mesa
@@ -106,7 +112,14 @@ focus() {  # size every named window to the screen, then activate the last one, 
   if [ -n "$window" ]; then x windowactivate --sync "$window" 2>/dev/null || true; x windowfocus --sync "$window" 2>/dev/null || true; fi
   [ -n "$window" ] || echo "live-switch: no window to focus yet"  # the captures and the result still record the case
 }
-press() { x key --delay 80 "$1"; }
+press() {  # a key as Steam types it (XTest), pad:NAME (a press of player 1's replica pad, through its listen FIFO on descriptor 7) or sleep:SECONDS
+  case "$1" in
+    pad:*) token="${1#pad:}"; case "$token" in *:*) ;; *) token="press:$token" ;; esac  # pad:NAME presses, pad:hold:NAME and pad:release:NAME hold across steps
+      if [ -n "$pad" ]; then echo "$token" >&7; echo "$token $(date +%s%3N)" >> "$root/pad-presses"; else echo "live-switch: $1 needs PADS=1 or more"; fi ;;
+    sleep:*) sleep "${1#sleep:}" ;;  # sleep:SECONDS: let the game get somewhere before the next step
+    *) x key --delay 80 "$1" ;;
+  esac
+}
 burst() {  # PREFIX: the screen 0.3, 1 and 2 s after a chord, grabbed raw first so the times hold
   sleep 0.3; DISPLAY="$display" "$xwd/bin/xwd" -root -silent > "$1-a.xwd"
   sleep 0.7; DISPLAY="$display" "$xwd/bin/xwd" -root -silent > "$1-b.xwd"
@@ -128,14 +141,24 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
     names=("Steam Deck Controller" "Xbox Series X Controller" "Xbox Series X Controller" "DualSense Wireless Controller")
     : > "$root/steam-slots"
     for slot in $(seq 0 $((PADS - 1))); do
-      printf "[slot %s]\nVID=0x28de\nPID=0x11ff\nname=%s\n" "$slot" "${names[$slot]}" >> "$root/steam-slots"
-      "$pad" --steam-virtual-pad-slot "$slot" 900 sleep:1 > "$out/$label-pad$slot.log" 2>&1 & pads+=($!)
+      printf "[slot %s]\nVID=0x28de\nPID=0x11ff\ntype=%s\nname=%s\nhandle=%s\n" "$slot" "$([ "$slot" = 0 ] && echo steamdeck || echo xboxone)" "${names[$slot]}" "$((slot + 1))" >> "$root/steam-slots"  # as Steam writes it (input-check.sh): SDL takes a slot with a handle
+      if [ "$slot" = 0 ]; then  # player 1's pad takes its presses from a FIFO, so a CHORDS pad:NAME lands when its step comes
+        mkfifo "$root/pad0.fifo"
+        "$pad" --steam-virtual-pad-slot 0 1 "listen:$root/pad0.fifo" > "$out/$label-pad0.log" 2>&1 & pads+=($!)
+        exec 7>"$root/pad0.fifo"
+      else
+        "$pad" --steam-virtual-pad-slot "$slot" 900 sleep:1 > "$out/$label-pad$slot.log" 2>&1 & pads+=($!)
+      fi
     done
     export SteamVirtualGamepadInfo="$root/steam-slots"
     sleep 2
   fi
+  if [ "$emulator" = dolphin ] && [ -n "${DOLPHIN_LOG:-}" ]; then  # Dolphin's own log of the Wii Remote's Bluetooth link (INFO: the game accepting a remote that asks to link)
+    mkdir -p "$root/state/dolphin/dolphin-user/Config"
+    printf "[Logs]\nIOS_WIIMOTE = True\nSI = True\nCI = True\n[Options]\nVerbosity = 4\nWriteToFile = True\nWriteToConsole = False\n" > "$root/state/dolphin/dolphin-user/Config/Logger.ini"
+  fi
   HOME="$root/home" DISPLAY="$display" SEMU_RENDER_DEBUG=1 SEMU_RENDER_CAPTURE_FRAME="${CAPTURE_FRAME:-}" "$bundle/bin/semu" launch "$emulator" --system "$system" --rom "$rom" \
-    --settings-json "$settings" --semu-home "$root/home/semu" > "$out/$label.log" 2>&1 &
+    --settings-json "$settings" --semu-home "$root/home/semu" > "$out/$label.log" 2>&1 7>&- &
   launcher=$!
   profiles="$root/state/$emulator/dolphin-user/Config/Profiles"
   ( for second in $(seq 1 60); do [ -d "$profiles" ] && break; sleep 1; done; exec "$inotify/bin/inotifywait" -m -r -e open --timefmt %T --format "%T %w%f %e" "$profiles" ) > "$out/$label.profile-opens" 2>&1 & watcher=$!
@@ -170,6 +193,7 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
   kill -TERM "$launcher" 2>/dev/null || true
   status=0; wait "$launcher" 2>/dev/null || status=$?
   kill "$watcher" 2>/dev/null || true
+  [ -z "$pad" ] || exec 7>&-  # player 1's pad reads the end of its FIFO and removes itself
   for pid in "${pads[@]}"; do kill "$pid" 2>/dev/null || true; done
   for evidence in semu-render-final.ppm semu-render-evidence.log; do  # the frame-CAPTURE_FRAME picture (the emulator's own overlay included) and every receipt
     if [ -f "$root/state/$emulator/$evidence" ]; then cp "$root/state/$emulator/$evidence" "$out/$label-$evidence"; fi
@@ -193,6 +217,8 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
     echo "layout_actions=$(grep -a -c "semu: action controller.layout.next" "$out/$label.log" || true) players_actions=$(grep -a -c "semu: action ui.players" "$out/$label.log" || true)"
     echo "profile_opens=$(grep -c "Semu.ini OPEN" "$out/$label.profile-opens" 2>/dev/null || true) ($(grep "Semu.ini OPEN" "$out/$label.profile-opens" 2>/dev/null | cut -d" " -f1 | tr "\n" " "))"
     echo "remote_sources=$(grep -E "^(WiimoteSource|SIDevice)" "$root/state/$emulator/dolphin-user/Config/Dolphin.ini" 2>/dev/null | tr "\n" " ")"
+    [ ! -f "$root/state/dolphin/dolphin-user/Logs/dolphin.log" ] || cp "$root/state/dolphin/dolphin-user/Logs/dolphin.log" "$out/$label-dolphin.log"
+    echo "remote_links_accepted=$(grep -a -c "HCI_CMD_ACCEPT_CON" "$out/$label-dolphin.log" 2>/dev/null || true) pad_tokens=$(grep -a -c . "$root/pad-presses" 2>/dev/null || true) gamecube_pad_combos=$(grep -a -c "PAD - COMBO_ORIGIN" "$out/$label-dolphin.log" 2>/dev/null || true)"
     echo "remote2_device=$(grep -A 1 "^\[Wiimote2\]" "$root/state/$emulator/dolphin-user/Config/WiimoteNew.ini" 2>/dev/null | grep "^Device" | head -1)"
     echo "saved_input=$("$jq" -c ".input" "$root/home/semu/semu.json" 2>/dev/null || echo none)"
     echo "unsafe_settings_notices=$(grep -a -c "Unsafe Settings" "$out/$label-emulog.txt" 2>/dev/null || true) sources=$(grep -a -o "surface0_source=[^ ]* surface0_native=[^ ]*\|surface0_native=[^ ]* surface0_source=[^ ]*" "$out/$label-semu-render-evidence.log" 2>/dev/null | sort | uniq -c | tr -s " \n" " ;")"
