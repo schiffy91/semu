@@ -121,9 +121,9 @@ class GameBoyFitScreen {  // one package placed on one screen, as RendererGeomet
 
 class GameBoyFitSpecContract {
     class void shells(Contract contract, Fixture fixture) {  // the silhouette rides with the package, a recolour shares its base's
-        string systems[8] = {"gb", "gb", "gbc", "gbc", "psp", "psp", "gba", "gba"};
-        string variants[8] = {"dmg", "studio", "shell", "berry", "e1000", "red", "shell", "arctic"};
-        for (int index = 0; index < 8; index++) {
+        string systems[7] = {"gb", "gbc", "gbc", "psp", "psp", "gba", "gba"};
+        string variants[7] = {"dmg", "shell", "berry", "e1000", "red", "shell", "arctic"};
+        for (int index = 0; index < 7; index++) {
             Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systems[index], variants[index]);
             string shell = PlacementSpecEnvironment.entry(environment, "SEMU_RENDER_CANVAS_SHELL");
             GameBoyFitScreen placed = GameBoyFitScreen(fixture, systems[index], variants[index], 2, 1280, 800);
@@ -141,13 +141,13 @@ class GameBoyFitSpecContract {
     }
 
     class void steps(Contract contract, Fixture fixture) {  // the numbers the owner asked for: the largest step whose whole shell fits, 1% leeway
-        string systems[7] = {"gb", "gb", "gbc", "gbc", "psp", "gba", "gba"};
-        string variants[7] = {"dmg", "studio", "shell", "berry", "e1000", "shell", "arctic"};
-        int deck[7] = {1, 2, 1, 1, 1, 2, 2};
-        int docked[7] = {2, 3, 2, 2, 2, 3, 3};
+        string systems[6] = {"gb", "gbc", "gbc", "psp", "gba", "gba"};
+        string variants[6] = {"dmg", "shell", "berry", "e1000", "shell", "arctic"};
+        int deck[6] = {1, 1, 1, 1, 2, 2};
+        int docked[6] = {2, 2, 2, 2, 3, 3};
         int widths[2] = {1280, 1920};
         int heights[2] = {800, 1080};
-        for (int index = 0; index < 7; index++) {
+        for (int index = 0; index < 6; index++) {
             for (int size = 0; size < 2; size++) {
                 GameBoyFitScreen placed = GameBoyFitScreen(fixture, systems[index], variants[index], 2, widths[size], heights[size]);
                 int wanted = size == 0 ? deck[index] : docked[index];
@@ -165,13 +165,13 @@ class GameBoyFitSpecContract {
     }
 
     class void pixels(Contract contract, Fixture fixture) {  // whole native pixels on any screen, the outermost ones uncovered
-        string systems[4] = {"gb", "gb", "gbc", "gbc"};
-        string variants[4] = {"dmg", "studio", "shell", "berry"};
+        string systems[3] = {"gb", "gbc", "gbc"};
+        string variants[3] = {"dmg", "shell", "berry"};
         int widths[10] = {1280, 1920, 1366, 1281, 2560, 1600, 1024, 3840, 1279, 1440};
         int heights[10] = {800, 1080, 768, 801, 1440, 900, 600, 2160, 799, 900};
         Vector<string> broken = [];
         Vector<string> covered = [];
-        for (int index = 0; index < 4; index++) {
+        for (int index = 0; index < 3; index++) {
             for (int size = 0; size < 10; size++) {
                 for (int placement = 1; placement <= 2; placement++) {
                     GameBoyFitScreen placed = GameBoyFitScreen(fixture, systems[index], variants[index], placement, widths[size], heights[size]);
@@ -182,16 +182,16 @@ class GameBoyFitSpecContract {
             }
         }
         contract.expect(broken.isEmpty(), "every Game Boy and Game Boy Color picture is a whole step, each native pixel k by k, in game and bezel placement at ten screen sizes: " + broken.join(" | "));
-        contract.expect(covered.isEmpty(), "no screen shape covers or darkens an outermost Game Boy pixel (the studio LCD is square like the real one): " + covered.join(" | "));
+        contract.expect(covered.isEmpty(), "no screen shape covers or darkens an outermost Game Boy pixel: " + covered.join(" | "));
     }
 
     class void copies(Contract contract, Fixture fixture) {  // the composed scale (texture packs) and the editor preview take the renderer's step
-        string systems[3] = {"gb", "gb", "psp"};
-        string variants[3] = {"dmg", "studio", "e1000"};
-        string emulators[3] = {"retroarch", "retroarch", "ppsspp"};
-        int deck[3] = {1, 2, 1};
-        int docked[3] = {2, 3, 2};
-        for (int index = 0; index < 3; index++) {
+        string systems[2] = {"gb", "psp"};
+        string variants[2] = {"dmg", "e1000"};
+        string emulators[2] = {"retroarch", "ppsspp"};
+        int deck[2] = {1, 1};
+        int docked[2] = {2, 2};
+        for (int index = 0; index < 2; index++) {
             for (int size = 0; size < 2; size++) {
                 string display = size == 0 ? "" : "\"display\":{\"width\":1920,\"height\":1080},";
                 string overlay = "{\"visual\":{" + display + "\"systems\":{\"" + systems[index] + "\":{\"placement\":\"bezel\",\"bezel_variant\":\"" + variants[index] + "\"}}}}";

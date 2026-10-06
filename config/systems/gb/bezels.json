@@ -8,11 +8,6 @@
       "id": "dmg",
       "label": "Game Boy DMG-01",
       "bezel": "gb-dmg-shell"
-    },
-    {
-      "id": "studio",
-      "label": "Studio Gray",
-      "bezel": "gb-studio"
     }
   ],
   "placement": "game"

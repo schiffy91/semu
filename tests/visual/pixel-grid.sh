@@ -30,7 +30,7 @@ while [ $# -gt 0 ] && [ "$1" != "--" ]; do sizes+=("$1"); shift; done
 cells=("$@")
 [ ${#sizes[@]} -gt 0 ] || sizes=(1280x800 1920x1080)
 if [ ${#cells[@]} -eq 0 ]; then
-  cells=(gb:dmg:none 'gb:dmg:none>@bezel' gb:studio:none 'gb:studio:none>@bezel' gbc:shell:none 'gbc:shell:none>@bezel' gbc:berry:none 'gbc:berry:none>@bezel')
+  cells=(gb:dmg:none 'gb:dmg:none>@bezel' gbc:shell:none 'gbc:shell:none>@bezel' gbc:berry:none 'gbc:berry:none>@bezel')
   for system in gb gbc gba nds n3ds; do
     bezel="$(jq -r '.default_variant' "$root/config/systems/$system/bezels.json")"
     for look in $(jq -r '.variants[].id' "$root/config/systems/$system/shaders.json"); do

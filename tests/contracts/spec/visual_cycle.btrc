@@ -207,7 +207,7 @@ class VisualCycleToasts {  // input.json's toast templates reach the renderer; t
         SemuLaunchPlan launch = LaunchSpecTools.retroarchPlan(fixture);
         contract.expect(launch.environment.contains("SEMU_MENU_ACTIONS=" + launch.menuActions.join("|")) && launch.environment.contains("SEMU_MENU_ITEMS=" + launch.menuLabels.join("|")), "the renderer gets the menu's labels and actions in the same order");
         contract.expect(launch.environment.contains("SEMU_MENU_TOASTS=" + toasts), "the renderer gets every toast template");
-        contract.expect(launch.variants.written && launch.variants.bezel.ids.size() == 3 && launch.variants.bezel.current().equals("dmg") && launch.variants.shader.current().equals("dmg"), "a RetroArch gb launch carries its choices: dmg, studio, none");
+        contract.expect(launch.variants.written && launch.variants.bezel.ids.size() == 2 && launch.variants.bezel.current().equals("dmg") && launch.variants.shader.current().equals("dmg"), "a RetroArch gb launch carries its choices: dmg, none");
         contract.expect(FileSystem.isFile(PathTools.join(launch.stateDir, RendererActionJournal.variantsFileName())), "the launch writes the variants file beside the action journal");
     }
 }

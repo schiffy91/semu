@@ -20,10 +20,9 @@
 #    centred on pure black, about 160 px of black above and below, nothing cut.
 gb retroarch gambatte 15 key:ctrl+shift+f -- Aerostar (USA, Europe).zip
 # 2. Items 1, 4 and 5, GB variants (case 1 left gb on Fit: Bezel). before: the DMG at 1x as in case 1.
-#    after-1 (79/1, BEZEL: STUDIO GRAY): the studio shell at 2x, the whole shell, about 40 px of black above
-#    and below, black where the plate's wood bands were. after-2 (81/1, FIT: SCREEN): the studio LCD at 5x
-#    with square corners and the picture's corner pixels whole, no darkened outer row; pure black wherever
-#    the shell does not cover the screen. choices gb {"bezel_variant":"studio","placement":"game"}.
+#    after-1 (79/1, BEZEL: OFF): no shell, the picture alone on pure black. after-2 (81/1, FIT: SCREEN): still
+#    no shell, the picture's corner pixels whole. choices gb {"bezel_variant":"none","placement":"game"}.
+#    Until M16 item 3 this case's Next Bezel reached the Studio Gray shell, which the owner had deleted.
 gb retroarch gambatte 25 key:ctrl+shift+b key:ctrl+shift+f -- Tetris (World) (Rev 1).zip
 # 3. Items 1 and 4, GBC. before: Fit: Screen, 800x720 (5x) centred, the shell on pure black. after-1 (81/0,
 #    FIT: BEZEL): the whole GBC shell at 1x centred, about 157 px of black above and below. after-2 (79/1,

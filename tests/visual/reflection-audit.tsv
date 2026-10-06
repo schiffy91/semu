@@ -12,9 +12,6 @@ dreamcast	speakers	tv-soqueroeu-generic	game	1280x800	0.4	mirror	83842	83	22.5	-
 gb	dmg	gb-dmg-shell	fit	1280x800	0.4	mirror	2876	56	4.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gb	dmg	gb-dmg-shell	bezel	1280x800	0.4	mirror	1856	54	3.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gb	dmg	gb-dmg-shell	game	1280x800	0.4	mirror	52773	58	17.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gb	studio	gb-studio	fit	1280x800	0.4	mirror	30724	60	25.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gb	studio	gb-studio	bezel	1280x800	0.4	mirror	30549	60	25.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gb	studio	gb-studio	game	1280x800	0.4	mirror	128319	61	42.2	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gba	shell	gba-shell	fit	1280x800	0.4	mirror	10285	89	6.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gba	shell	gba-shell	bezel	1280x800	0.4	mirror	9383	90	5.9	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gba	shell	gba-shell	game	1280x800	0.4	mirror	21895	83	5.5	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
@@ -131,9 +128,6 @@ dreamcast	speakers	tv-soqueroeu-generic	game	1920x1080	0.4	mirror	179083	83	40.0
 gb	dmg	gb-dmg-shell	fit	1920x1080	0.4	mirror	5796	56	6.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gb	dmg	gb-dmg-shell	bezel	1920x1080	0.4	mirror	8676	57	7.1	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gb	dmg	gb-dmg-shell	game	1920x1080	0.4	mirror	106263	57	25.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gb	studio	gb-studio	fit	1920x1080	0.4	mirror	56757	68	34.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gb	studio	gb-studio	bezel	1920x1080	0.4	mirror	69322	60	38.0	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
-gb	studio	gb-studio	game	1920x1080	0.4	mirror	203269	62	47.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gba	shell	gba-shell	fit	1920x1080	0.4	mirror	23632	86	9.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gba	shell	gba-shell	bezel	1920x1080	0.4	mirror	21116	86	8.8	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok
 gba	shell	gba-shell	game	1920x1080	0.4	mirror	83566	83	17.4	-	mirror	retroarch-gl-tap	same entry and compositor; Deck capture after deploy	ok

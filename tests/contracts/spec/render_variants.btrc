@@ -223,17 +223,17 @@ class RenderVariantChoiceSpec {  // a system's own choice beats the global switc
     class void run(Contract contract, Fixture fixture) {
         SemuSystem gameBoy = fixture.model.system("gb");
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        Vector<string> chosen = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false,\"systems\":{\"gb\":{\"bezel_variant\":\"studio\",\"shader_variant\":\"pocket\"}}}}"), gameBoy, "retroarch", "/state/retroarch", diagnostics);
-        contract.expect(chosen.contains("SEMU_RENDER_BEZELS=1") && chosen.contains("SEMU_RENDER_BEZEL_ID=gb-studio") && chosen.contains("SEMU_RENDER_SHADERS=1"), "with both global switches off, gb's own studio bezel and pocket shader still draw");
+        Vector<string> chosen = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false,\"systems\":{\"gb\":{\"bezel_variant\":\"dmg\",\"shader_variant\":\"pocket\"}}}}"), gameBoy, "retroarch", "/state/retroarch", diagnostics);
+        contract.expect(chosen.contains("SEMU_RENDER_BEZELS=1") && chosen.contains("SEMU_RENDER_BEZEL_ID=gb-dmg-shell") && chosen.contains("SEMU_RENDER_SHADERS=1"), "with both global switches off, gb's own DMG bezel and pocket shader still draw");
         Vector<string> turnedOff = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"systems\":{\"gb\":{\"bezel_variant\":\"none\",\"shader_variant\":\"none\"}}}}"), gameBoy, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(turnedOff.contains("SEMU_RENDER_BEZELS=0") && turnedOff.contains("SEMU_RENDER_SHADERS=0"), "with both global switches on, gb's own none turns its bezel and shader off");
         Vector<string> defaulted = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false}}"), gameBoy, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(defaulted.contains("SEMU_RENDER_BEZELS=0") && defaulted.contains("SEMU_RENDER_SHADERS=0"), "a system without its own choice follows the global switches");
         contract.expect(diagnostics.ok(), "the per-system ladder compiles cleanly: " + diagnostics.render());
         JSONValue off = SemuSettingsUi.document(fixture.model, RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false}}"));
-        JSONValue own = SemuSettingsUi.document(fixture.model, RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false,\"systems\":{\"gb\":{\"bezel_variant\":\"studio\"}}}}"));
+        JSONValue own = SemuSettingsUi.document(fixture.model, RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false,\"systems\":{\"gb\":{\"bezel_variant\":\"dmg\"}}}}"));
         JSONValue plain = SemuSettingsUi.document(fixture.model, fixture.plan);
-        contract.expect(RenderVariantChoiceSpec.fieldValue(off, "visual.systems.gb.bezel_variant").equals("none") && RenderVariantChoiceSpec.fieldValue(own, "visual.systems.gb.bezel_variant").equals("studio") && RenderVariantChoiceSpec.fieldValue(plain, "visual.systems.gb.bezel_variant").equals("dmg"), "the gb page shows what the launch draws: none under a global off, its own studio, else the default");
+        contract.expect(RenderVariantChoiceSpec.fieldValue(off, "visual.systems.gb.bezel_variant").equals("none") && RenderVariantChoiceSpec.fieldValue(own, "visual.systems.gb.bezel_variant").equals("dmg") && RenderVariantChoiceSpec.fieldValue(plain, "visual.systems.gb.bezel_variant").equals("dmg"), "the gb page shows what the launch draws: none under a global off, its own DMG, else the default");
         string labels = plain.get("sections").at(0).get("fields").stringify();
         contract.contains(labels, "\"BEZELS (UNLESS A SYSTEM CHOOSES)\"", "the global bezel switch says it is only the default");
         contract.contains(labels, "\"CRT SHADERS (UNLESS A SYSTEM CHOOSES)\"", "the global shader switch says it is only the default");
@@ -246,8 +246,14 @@ class RenderVariantChoiceSpec {  // a system's own choice beats the global switc
         contract.expect(!defaultBezel.isEmpty() && fallback.contains(defaultBezel) && fallback.contains("SEMU_RENDER_BEZELS=1") && fallback.contains("SEMU_RENDER_SHADERS=1"), "the launch then draws the default bezel (" + defaultBezel + ") and shader instead of nothing");
         SemuVariantChoice stale = SemuRenderVariants.choice(RenderVariantTools.plan(fixture, "{\"visual\":{\"systems\":{\"gb\":{\"bezel_variant\":\"retired\"}}}}"), gameBoy, "bezel");
         contract.expect(stale.current().equals("dmg") && stale.lastReal == 0, "a stale per-system id starts on the default");
+        SemuPlan deleted = RenderVariantTools.plan(fixture, "{\"visual\":{\"systems\":{\"gb\":{\"bezel_variant\":\"studio\"}}}}");  // the GB bezel the owner had deleted (M16 item 3), still saved in their semu.json
+        Vector<string> deletedCompile = SemuRenderEnvironment.compile(deleted, gameBoy, "retroarch", "/state/retroarch", diagnostics);
+        SemuVariantChoice deletedChoice = SemuRenderVariants.choice(deleted, gameBoy, "bezel");
+        contract.expect(SemuRenderEnvironment.bezelVariantId(deleted, gameBoy).equals("dmg") && deletedCompile.join("\n").equals(plainCompile.join("\n"))
+            && deletedChoice.current().equals("dmg") && deletedChoice.ids.size() == 2 && RenderVariantChoiceSpec.fieldValue(SemuSettingsUi.document(fixture.model, deleted), "visual.systems.gb.bezel_variant").equals("dmg") && diagnostics.ok(),
+            "a saved \"studio\" launches exactly as no choice: the DMG shell drawn, Next Bezel starting on DMG of dmg and none, the gb page showing DMG, nothing reported: " + deletedChoice.ids.join("|"));
         SemuVariantChoice none = SemuRenderVariants.choice(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false}}"), gameBoy, "bezel");
-        contract.expect(none.off() && none.index == 2 && none.lastReal == 0, "under a global off the launch starts on none, the On switch returning to the default");
+        contract.expect(none.off() && none.index == 1 && none.lastReal == 0, "under a global off the launch starts on none, the On switch returning to the default");
     }
 }
 

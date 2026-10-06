@@ -147,12 +147,12 @@ hidden, reordered or made the canvas and every rectangle and corner radius
 dragged at integer zoom, with Save writing the package back. The upstream
 plates are bundled verbatim (`.#bezel-layers`); recolours (`recolor`) and the late-night light
 (`ambient`) are drawn by the renderer over them, and the few flattened plates are baked from
-recipes when the bundle is built (see `config/assets/NOTICE.md` for the art's licences). Every
-system offers its default, an alternate and `none` for both bezel and shader. Switch variants
+recipes when the bundle is built (see `config/assets/NOTICE.md` for the art's licences). A
+system offers its default and `none` for both bezel and shader, and most an alternate. Switch variants
 without a rebuild:
 
 ```sh
-semu settings put visual.systems.gb.bezel_variant studio
+semu settings put visual.systems.gbc.bezel_variant berry
 semu settings put visual.systems.gb.shader_variant pocket
 semu settings put visual.bezels false
 semu settings get visual.integer_scaling

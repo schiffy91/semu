@@ -785,8 +785,8 @@ class BezelPlacementContract {  // the Mega Bezel port against the last render-b
 class SettingsWriteContract {
     class void run(Contract contract) {
         JSONValue current = JSONValue.parse("{\"visual\":{\"bezels\":true},\"ui\":{\"theme\":\"slate-es-de\"}}");
-        JSONValue updated = SemuSettingsStore.withPath(current, ["visual", "systems", "gb", "bezel_variant"], 0, JSONValue.makeString("studio"));
-        contract.expect(SemuJson.textAt(updated, "visual.systems.gb.bezel_variant").equals("studio"), "deep put creates intermediate objects");
+        JSONValue updated = SemuSettingsStore.withPath(current, ["visual", "systems", "gb", "bezel_variant"], 0, JSONValue.makeString("dmg"));
+        contract.expect(SemuJson.textAt(updated, "visual.systems.gb.bezel_variant").equals("dmg"), "deep put creates intermediate objects");
         contract.expect(SemuJson.boolAt(updated, "visual.bezels", false), "deep put keeps sibling keys");
         contract.expect(SemuJson.textAt(updated, "ui.theme").equals("slate-es-de"), "deep put keeps unrelated sections");
         JSONValue replaced = SemuSettingsStore.withPath(updated, ["visual", "bezels"], 0, JSONValue.makeBool(false));

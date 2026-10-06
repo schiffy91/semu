@@ -2511,6 +2511,16 @@ Status: started 2026-10-06.
     `tests/deck/system-matrix.sh`'s waits (lower an offered maximum where a system falls short); the melonDS
     core's OpenGL renderer at 2x through RetroArch (not drawn anywhere yet: neither the render host nor the VM ran the melonDS core above native); Azahar at 2x on a
     title without a texture pack.
+- Item 3 (GB studio): done on the Mac, the Deck check open. The owner asked for the deletion, so the `studio`
+  variant left `config/systems/gb/bezels.json`, and `config/bezels/gb-studio/` and its render
+  `config/assets/bezels/gb/classic.png` (nothing else used it) were removed with git rm, with the render's
+  recipe in `config/assets/bezels.json`. Every reference went with them: the gb, Game Boy fit, render-variant,
+  visual-cycle and settings contracts, `tests/visual/pixel-grid.sh`'s cells, the six gb rows of
+  `tests/visual/reflection-audit.tsv`, M15's case 2 comment and the README's example (now gbc berry). The radial,
+  menu and settings page list variants from the manifest, so gb now offers DMG and OFF. A "studio" an owner
+  saved in semu.json is a stale id and falls back to the default: `tests/contracts/spec/render_variants.btrc`
+  launches it and requires exactly the environment of no choice (the DMG shell), Next Bezel starting on DMG of
+  `dmg|none`, the gb page showing DMG and no diagnostic.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
