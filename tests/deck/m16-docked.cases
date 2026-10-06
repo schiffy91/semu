@@ -28,8 +28,9 @@ nes retroarch mesen 20 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ct
 #     list is integer game and non-integer game): 1920x1080 at 0,0. On the Deck's 800 rows both states are
 #     1280x720, so only a docked screen shows the difference.
 wiiu cemu - 60 key:ctrl+shift+f -- MARIO KART 8 (US).wua
-# K5. Item 8 docked: the Dreamcast (Flycast, Sonic Adventure) at a 60 Hz TV, no input, on its defaults (the TV, Sharp
-#     CRT, integer bezel: the 640x480 picture at 1x, at 640,300, with the whole TV). rate: the Sega logo at least 59.8
+# K5. Item 8 docked: the Dreamcast (Flycast, Sonic Adventure) at a 60 Hz TV, no input, on its defaults (the TV,
+#     GDV-NTSC (Dreamcast) since M16 item 9, integer bezel: the 640x480 picture at 1x, at 640,300, with the whole TV;
+#     pitch "scanlines 1 rows each, intres 0.000 (480 lines drawn 480 tall)"). rate: the Sega logo at least 59.8
 #     per second with the longest gap under 25 ms, then the opening movie, which the game draws at 30 frames a second,
 #     at least 29.8 per second with the longest gap under 50 ms (one and a half of its frames). At a whole multiple of
 #     60 Hz the swap-interval patch leaves Flycast's own interval, so its frames come evenly (the logo's about 17 ms

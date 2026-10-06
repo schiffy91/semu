@@ -33,7 +33,7 @@ wii dolphin - 60 120 180 -- Mario Kart Wii (USA)*.wbfs
 # Sonic Adventure for speed (M16 item 8, "super laggy at like 23fps"): Flycast standalone, the owner's route, and the
 # RetroArch Flycast core beside it, each sampled at 30, 60 and 90 s (rate lines every tenth second, GPU busy and
 # clock, the four busiest threads). Run them four ways and compare (the decision table is PLAN M16 item 8):
-#   1. the defaults (the TV, Sharp CRT):        system-matrix.sh CASES OUT
+#   1. the defaults (the TV, GDV-NTSC):         system-matrix.sh CASES OUT  (Sharp CRT until M16 item 9)
 #   2. the shader off:                          SEMU_MATRIX_SETTINGS='{"visual":{"crt_shaders":false}}'
 #   3. the shader and the bezel off:            SEMU_MATRIX_SETTINGS='{"visual":{"bezels":false,"crt_shaders":false}}'
 #   4. Semu's renderer not loaded (Flycast's own picture, its FPS counter on screen in at-N.png):

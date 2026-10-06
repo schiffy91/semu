@@ -4,7 +4,10 @@
 // pinned libretro tree with his Steam Deck (720p) values for the system, every one emitted into the wrapper; intres 1
 // (his 480i preset's one extra line) draws a 480-line frame as 240 scanlines; interm 0 keeps whole frames; his hum bar
 // and overscan crop are left out; the PS1 and SNES merge their NTSC fields (ntsc_fields 1, his presets have 0), so the
-// chroma phase does not flip every frame; and each system's previous default stays one step away.
+// chroma phase does not flip every frame; and each system's previous default stays one step away. M16 item 9 brought
+// the NES (NES - Clean) and then, once the Deck measured them at full speed, the four 480-line consoles: the Dreamcast
+// (Dreamcast - Clean), the PS2 (PS2 - Clean) and the GameCube and Wii (no preset of his: the PS2's), Sharp CRT one press
+// away as sharp.
 
 import Library.JSON;
 import Library.Strings;
@@ -92,6 +95,14 @@ class CrtGdvSpecChecks {
         return failures;
     }
 
+    class int position(Fixture fixture, string systemId, string variantId) {  // the variant's place in Next Shader's order, or -1
+        JSONValue variants = fixture.model.system(systemId).shaders.get("variants");
+        for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
+            if (SemuJson.textAt(variants.at(index), "id").equals(variantId)) { return index; }
+        }
+        return -1;
+    }
+
     class void port(Contract contract, Fixture fixture, JSONValue manifest, string systemId, string previousId, string previousPath) {
         string defaultId = SemuJson.textAt(fixture.model.system(systemId).shaders, "default_variant");
         JSONValue chosen = CrtGdvSpecChecks.variant(fixture, systemId, defaultId);
@@ -106,24 +117,20 @@ class CrtGdvSpecChecks {
             systemId + "'s default CRT is Retro Crisis's GDV-NTSC (crt-guest-advanced-ntsc, his Steam Deck values, intres 1, interm 0), each value emitted and the wrapper pinned: " + failures.join("; "));
         JSONValue previous = CrtGdvSpecChecks.variant(fixture, systemId, previousId);
         JSONValue previousRecipe = previous == null ? null : manifest.get("assets").get(SemuJson.textAt(previous, "screen"));
-        contract.expect(previousRecipe != null && SemuJson.textAt(previousRecipe, "reference.path").equals(previousPath) && !defaultId.equals(previousId),
-            systemId + "'s previous default (" + previousPath + ") stays one step away as " + systemId + "/" + previousId);
+        int defaultAt = CrtGdvSpecChecks.position(fixture, systemId, defaultId);
+        contract.expect(previousRecipe != null && SemuJson.textAt(previousRecipe, "reference.path").equals(previousPath) && !defaultId.equals(previousId)
+            && defaultAt >= 0 && CrtGdvSpecChecks.position(fixture, systemId, previousId) == defaultAt + 1,
+            systemId + "'s previous default (" + previousPath + ") stays one step away as " + systemId + "/" + previousId + ", the next press of Next Shader");
     }
 
-    // A 480-line console offers his preset one step after its default while the Deck measures it (M16 item 9).
-    class void offered(Contract contract, Fixture fixture, JSONValue manifest, string systemId, string defaultPath) {
-        JSONValue shaders = fixture.model.system(systemId).shaders;
-        JSONValue variants = shaders.get("variants");
-        JSONValue offer = CrtGdvSpecChecks.variant(fixture, systemId, "gdv");
-        string logical = offer == null ? "" : SemuJson.textAt(offer, "screen");
-        Vector<string> failures = CrtGdvSpecChecks.mismatches(manifest, logical, CrtGdvSpecChecks.retroCrisis(systemId));
-        bool guest = SemuJson.textAt(manifest.get("assets").get(logical), "reference.path").equals("crt/crt-guest-advanced-ntsc.slangp");
-        contract.expect(guest && failures.isEmpty() && GameBoySpecFiles.wrapperHashes(fixture.scratch, manifest, logical),
-            systemId + " offers Retro Crisis's GDV-NTSC as " + systemId + "/gdv, his Steam Deck values, the wrapper pinned: " + failures.join("; "));
-        JSONValue chosen = CrtGdvSpecChecks.variant(fixture, systemId, SemuJson.textAt(shaders, "default_variant"));
-        JSONValue recipe = chosen == null ? null : manifest.get("assets").get(SemuJson.textAt(chosen, "screen"));
-        contract.expect(recipe != null && SemuJson.textAt(recipe, "reference.path").equals(defaultPath) && variants.size() >= 2
-            && SemuJson.textAt(variants.at(1), "id").equals("gdv"), systemId + "'s default stays " + defaultPath + ", with gdv one step away");
+    // The four 480-line consoles moved to his preset once the Deck measured it at full speed (M16 item 9). The owner's
+    // semu.json names their shaders by id: "default" follows the rule, "royale" stays CRT Royale, and a "gdv" saved
+    // while his preset was offered one step away is stale and falls back to the default, the same preset.
+    class void moved(Contract contract, Fixture fixture, string systemId) {
+        JSONValue royale = CrtGdvSpecChecks.variant(fixture, systemId, "royale");
+        contract.expect(SemuJson.textAt(fixture.model.system(systemId).shaders, "default_variant").equals("default") && royale != null
+            && SemuJson.textAt(royale, "screen").equals("assets/shaders/" + systemId + "/screen.slangp") && CrtGdvSpecChecks.variant(fixture, systemId, "gdv") == null,
+            systemId + "'s default is the variant a saved \"default\" names, a saved \"royale\" keeps CRT Royale, and no second id names his preset");
     }
 
     class void noHumBar(Contract contract, JSONValue manifest) {  // a rolling band is the fault the owner reported, and Semu places the picture itself
@@ -150,10 +157,10 @@ class CrtGdvSpecContract {
         CrtGdvSpecChecks.port(contract, fixture, manifest, "n64", "hyllian", "crt/crt-hyllian.slangp");
         CrtGdvSpecChecks.port(contract, fixture, manifest, "snes", "svideo", "ntsc/ntsc-256px-svideo-scanline.slangp");
         CrtGdvSpecChecks.port(contract, fixture, manifest, "genesis", "rainbow", "presets/crt-royale-fast/crt-royale-fast-ntsc-composite-aperture-genesis-rainbow-effect.slangp");
-        CrtGdvSpecChecks.offered(contract, fixture, manifest, "dreamcast", "crt/crt-easymode-halation.slangp");
-        CrtGdvSpecChecks.offered(contract, fixture, manifest, "ps2", "crt/crt-easymode-halation.slangp");
-        CrtGdvSpecChecks.offered(contract, fixture, manifest, "gc", "crt/crt-easymode-halation.slangp");
-        CrtGdvSpecChecks.offered(contract, fixture, manifest, "wii", "crt/crt-easymode-halation.slangp");
+        for system in ["dreamcast", "ps2", "gc", "wii"] {
+            CrtGdvSpecChecks.port(contract, fixture, manifest, system, "sharp", "crt/crt-easymode-halation.slangp");
+            CrtGdvSpecChecks.moved(contract, fixture, system);
+        }
         CrtGdvSpecChecks.port(contract, fixture, manifest, "nes", "composite", "ntsc/ntsc-256px-composite-scanline.slangp");
         CrtGdvSpecChecks.noHumBar(contract, manifest);
         CrtRuleSpec.run(contract, fixture, manifest);

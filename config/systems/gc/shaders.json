@@ -3,19 +3,19 @@
   "enabled": true,
   "doc": {
     "note": "Standalone Dolphin reports game-only geometry to the shared Semu CRT pipeline; bezels.json resolves 4:3 or 16:9 art independently.",
-    "default": "480-line systems draw at 1x in integer bezel and about 1.67x in non-integer game on the Deck's 800 rows, where the royale slot mask aliases; easymode with halation (Sharp CRT) stays the default until GDV-NTSC's Deck GPU time is measured (PLAN M16 item 9), royale the alternate",
-    "gdv": "M16 (2026-10-06): Retro Crisis's GDV-NTSC for this console is offered one step away while its Deck GPU time is measured (480-line frames make its NTSC passes 2560 px wide; 3.4 ms against easymode's 0.6 ms on the Mac render host). The default moves to it if it holds the Deck's frame."
+    "default": "M16 rule (2026-10-06): a console played on a CRT television defaults to Retro Crisis's GDV-NTSC (crt-guest-advanced-ntsc) with his Steam Deck values for its cleanest stock signal, here PS2 - Clean (he publishes none for the GameCube or Wii; the PS2's is the same 480i/480p video), scanlines on whole output rows at every size (one scanline per line at integer bezel, 400 of 2 rows in non-integer game on 800 rows). The 480-line consoles moved to it once the Deck measured it (PLAN M16 item 9): the same frame rates as Sharp CRT in the same scenes, at 1280x800 and 90 Hz and docked at 1920x1080 and 60 Hz, with the GPU never at its top clock.",
+    "variants": "Sharp CRT (easymode with halation), the default until M16 item 9, stays one step away as sharp; CRT Royale after it. A saved shader_variant default follows the rule, a saved royale keeps CRT Royale, and a gdv saved while his preset was one step away is stale and falls back to the default, the same preset."
   },
   "variants": [
     {
       "id": "default",
-      "label": "Sharp CRT (easymode)",
-      "screen": "assets/shaders/gc/sharp.slangp"
-    },
-    {
-      "id": "gdv",
       "label": "GDV-NTSC (PS2 values)",
       "screen": "assets/shaders/gc/gdv-ntsc.slangp"
+    },
+    {
+      "id": "sharp",
+      "label": "Sharp CRT (easymode)",
+      "screen": "assets/shaders/gc/sharp.slangp"
     },
     {
       "id": "royale",

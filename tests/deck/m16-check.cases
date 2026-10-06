@@ -220,15 +220,16 @@ gb retroarch gambatte 25 key:ctrl+shift+b -- Tetris (World) (Rev 1).zip
 gc dolphin - 30 -- Legend of Zelda, The - The Wind Waker (USA).rvz
 # D2. Item 4, the Wii (Dolphin): as D1, New Super Mario Bros. Wii's strap or title.
 wii dolphin - 30 -- New Super Mario Bros. Wii*.wbfs
-# D3. Items 8 and 9, the Dreamcast (Flycast), the owner's Sonic Adventure with no input on its defaults (the TV, Sharp
-#     CRT) in the Fit state T5 left (non-integer game): the Sega logo, then the opening movie from about 20 s. The run
+# D3. Items 8 and 9, the Dreamcast (Flycast), the owner's Sonic Adventure with no input on its defaults (the TV,
+#     GDV-NTSC (Dreamcast) since item 9) in the Fit state T5 left (non-integer game): the Sega logo, then the opening movie from about 20 s. The run
 #     is at the Deck screen's own refresh (the result's gamescope line: 90 Hz on the OLED). size: one line, 1280x800
 #     from frame 1. rate (run.log, a line every two seconds): the logo at least 59.8 per second with the longest gap
 #     under 25 ms; the movie, which the game draws at 30 frames a second (Flycast shows only the frames the game
 #     draws), at least 29.8 per second with the longest gap under 50 ms (one and a half of its frames). Before the
 #     swap-interval patch the movie read 22.5 per second at 90 Hz, four refreshes a frame, with the game at 75%
-#     (item 8); the composition's GPU time printed. pitch: none with Sharp CRT (easymode declares no intres, so the
-#     renderer sets nothing); D7 measures the pitch on the gdv variant. before: the movie inside the TV.
+#     (item 8); the composition's GPU time printed. pitch: "scanlines 2 rows each, intres 1.200 (480 lines drawn 800
+#     tall)", 400 scanlines of 2 rows (on Sharp CRT, before item 9 moved the default, none: easymode declares no
+#     intres, so the renderer sets nothing). before: the movie inside the TV.
 dreamcast flycast - 90 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
 # D4. Item 4, the PS2 (PCSX2): size: no line smaller than the last; before: Def Jam's boot at full size.
 ps2 pcsx2 - 40 -- Def Jam - Fight for NY (USA).iso
@@ -241,35 +242,41 @@ n3ds azahar - 40 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
 #     second, the GPU time beside the SNES's and Genesis's.
 nes retroarch mesen 20 -- Super Mario Bros. 3 (USA) (Rev 1).zip
 #
-# Item 9, GDV-NTSC on the four 480-line consoles (the review round): their default stays Sharp CRT until these
-# measure the gdv variant (Retro Crisis's values) on the Deck. key:ctrl+shift+v is Next Shader: from the default
-# it journals 80/1 (SHADER: GDV-NTSC (DREAMCAST), (PS2) or (PS2 VALUES)); each Fit press then steps the state on,
-# so the run covers integer bezel and non-integer game. Read every rate line in run.log (one each two seconds)
-# against schedule's token times, not only the result's last four, and the pitch lines for each state: one row
-# per line at integer bezel (intres 0, 480 lines drawn 480 tall) and "scanlines 2 rows each, intres 1.200 (480
-# lines drawn 800 tall)" at non-integer game. The pass bar that moves a console's default to gdv (the same in
-# PLAN M16 item 9): in both states every rate line at least 59.8 per second with the longest gap under 25 ms,
-# and the composition's GPU time at most 4 ms mean (a quarter of the frame the emulator shares); else Sharp CRT
-# stays and gdv is one press away. A shot judged by eye: even scanlines, no bands, no mask grain.
-# D7. The Dreamcast (Flycast, Sonic Adventure). Earlier cases left it in non-integer game: after-1 (80/1) gdv there;
-#     after-2 (81/3) non-integer bezel; after-3 (81/0) integer game; after-4 (81/1) integer bezel. choices
-#     dreamcast {"shader_variant":"gdv","placement":"bezel"}. These shots fall in the opening movie, which the game
-#     draws at 30 frames a second, so the rate bar here is D3's for the movie (at least 29.8 per second, the longest
-#     gap under 50 ms); the GPU-time bar is the same.
-dreamcast flycast - 90 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
-# D8. The PS2 (PCSX2, Def Jam), from integer bezel (no earlier Fit press on the PS2): after-1 (80/1) gdv at integer
-#     bezel; after-2 (81/2) non-integer game; after-3 (81/3); after-4 (81/0); after-5 (81/1) integer bezel. S3 left
-#     the PS2 at render scale 2x (receipts render_scale=2), a stricter run than the default 1x: a pass here holds
-#     at 1x; a miss only here is rerun at 1x (Reset twice, Restart Game, then D8) before Sharp CRT is kept.
-ps2 pcsx2 - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Def Jam - Fight for NY (USA).iso
-# D9. The GameCube (Dolphin, The Wind Waker), in the state T4 left (non-integer game): after-1 (80/1) gdv there;
-#     after-2 to after-4 step on to integer bezel as D7.
-gc dolphin - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Legend of Zelda, The - The Wind Waker (USA).rvz
-# D10. The Wii (Dolphin, New Super Mario Bros. Wii), in the state F1 left (integer game): after-1 (80/1) gdv at
-#     integer game; after-2 (81/1) integer bezel; after-3 (81/2) non-integer game; after-4 (81/3); after-5 (81/0).
-wii dolphin - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- New Super Mario Bros. Wii*.wbfs
+# Item 9, GDV-NTSC on the four 480-line consoles: their default since the Deck measured it (PLAN M16 item 9; Sharp
+# CRT before, GDV-NTSC then one press away as gdv). Each case starts on the default, GDV-NTSC (DREAMCAST), (PS2) or
+# (PS2 VALUES), steps the Fit states on with each Fit press, so the run covers every state, and ends with
+# key:ctrl+shift+v, Next Shader: 80/1, SHADER: SHARP CRT (EASYMODE), the previous default one press away. Read every
+# rate line in run.log (one each two seconds) against schedule's token times, not only the result's last four, and
+# the pitch lines for each state: one row per line at integer bezel (intres 0, 480 lines drawn 480 tall) and
+# "scanlines 2 rows each, intres 1.200 (480 lines drawn 800 tall)" at non-integer game (448 lines: intres 1.120).
+# The bar that keeps a console on GDV-NTSC (the same in PLAN M16 item 9): in every state each rate line as Sharp
+# CRT's in the same scene, at least 59.8 per second with the longest gap under 25 ms where the game draws 60 frames
+# a second, with the GPU never the limit: gpu_busy_percent well under 100 and the clock under its 1600 MHz top. The
+# composition's GPU time is read, not barred: the Deck runs its GPU at the slowest clock that keeps up, so the time
+# grows as the clock drops (GDV-NTSC 5.4-6.0 ms at integer bezel and 7.3-7.8 ms in non-integer game where Sharp CRT
+# took 1.7-1.9 and 2.8-3.0, at 200-1040 MHz, on 2026-10-06; the review round's 4 ms cap was this time, and it was
+# not what limits a frame). A shot judged by eye: even scanlines, no bands, no mask grain; the PS2 values' red
+# convergence offset (his deconvergence, 2 px) shows as a red edge on dark text on the PS2, GameCube and Wii.
+# D7. The Dreamcast (Flycast, Sonic Adventure). Earlier cases left it in non-integer game: before, GDV-NTSC there;
+#     after-1 (81/3) non-integer bezel; after-2 (81/0) integer game; after-3 (81/1) integer bezel; after-4 (80/1)
+#     Sharp CRT at integer bezel. choices dreamcast {"shader_variant":"sharp","placement":"bezel"}. These shots fall
+#     in the opening movie, which the game draws at 30 frames a second, so the rate bar here is D3's for the movie
+#     (at least 29.8 per second, the longest gap under 50 ms).
+dreamcast flycast - 90 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+v -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
+# D8. The PS2 (PCSX2, Def Jam), from integer bezel (no earlier Fit press on the PS2): before, GDV-NTSC at integer
+#     bezel; after-1 (81/2) non-integer game; after-2 (81/3); after-3 (81/0); after-4 (81/1) integer bezel; after-5
+#     (80/1) Sharp CRT. S3 left the PS2 at render scale 2x (receipts render_scale=2), a stricter run than the
+#     default 1x: a pass here holds at 1x; a miss only here is rerun at 1x (Reset twice, Restart Game, then D8).
+ps2 pcsx2 - 60 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+v -- Def Jam - Fight for NY (USA).iso
+# D9. The GameCube (Dolphin, The Wind Waker), in the state T4 left (non-integer game): before, GDV-NTSC there;
+#     after-1 to after-3 step on to integer bezel as D7; after-4 (80/1) Sharp CRT.
+gc dolphin - 60 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+v -- Legend of Zelda, The - The Wind Waker (USA).rvz
+# D10. The Wii (Dolphin, New Super Mario Bros. Wii), in the state F1 left (integer game): before, GDV-NTSC at
+#     integer game; after-1 (81/1) integer bezel; after-2 (81/2) non-integer game; after-3 (81/3); after-4 (81/0);
+#     after-5 (80/1) Sharp CRT at integer game.
+wii dolphin - 60 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+v -- New Super Mario Bros. Wii*.wbfs
 # D11. Item 8 in play, on the owner's own Dreamcast shader (CRT Royale, the owner's semu.json): Sonic Adventure at the
-#     Deck screen's own refresh (90 Hz on the OLED). D7 left the gdv variant and integer bezel, so key:ctrl+shift+v
+#     Deck screen's own refresh (90 Hz on the OLED). D7 left Sharp CRT and integer bezel, so key:ctrl+shift+v
 #     journals 80/2 (SHADER: CRT ROYALE). start at 30 s skips the opening movie to the title (after-1, at least 59.8
 #     per second with the longest gap under 25 ms), whose attract mode then plays Sonic's story scene against E-101
 #     (from about 65 s) and Speed Highway's demo (about 131 to 175 s), both drawn by the game at 30 frames a second:
@@ -280,3 +287,25 @@ wii dolphin - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shi
 #     Before the swap-interval patch (90 Hz, 2026-10-06): the scenes at 22.5 per second and the HUD gaining 1.87 s in
 #     2.5 s. choices dreamcast {"shader_variant":"royale","placement":"bezel"}.
 dreamcast flycast - 30 start key:ctrl+shift+v key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
+# D12 to D15. Item 9's comparison in one run each: GDV-NTSC, then Sharp CRT, on the same game a minute apart (the
+#     measurement that moved the default ran each shader in a home of its own, the same scenes at the same times; PLAN
+#     M16 item 9). Reset to Defaults (85/1, RESET TO DEFAULTS: 79/0 80/0 81/1) puts the console on GDV-NTSC at integer
+#     bezel; four shots later Fit (81/2) moves it to non-integer game, the larger picture; four shots later Next Shader
+#     (80/1, SHADER: SHARP CRT (EASYMODE)) the same state on Sharp CRT. Bar: every rate line of a 60-frame scene at
+#     least 59.8 per second with the longest gap under 25 ms on both shaders, and the GPU never the limit
+#     (gpu_busy_percent well under 100, the clock under 1600 MHz; a sampler beside the run, or system-matrix.sh's
+#     lines); the composition's GPU time printed for each window (2026-10-06, at 200-1040 MHz: GDV-NTSC about 5.5 ms at
+#     integer bezel and 7.5 ms in non-integer game, Sharp CRT about 1.8 and 2.9). A load between scenes reads lower on
+#     either shader. Shots judged by eye: GDV-NTSC brighter and smoother, no mask grain, scanlines whole rows.
+# D12. The Dreamcast (Sonic Adventure): start at 30 s reaches the title (60 per second), whose attract mode plays the
+#     story scene at 30 frames a second from about 48 s (its bar: at least 29.8 per second, gaps under 50 ms).
+dreamcast flycast - 30 start key:ctrl+shift+r,ctrl+shift+r key:shift key:shift key:shift key:shift key:ctrl+shift+f key:shift key:shift key:shift key:shift key:ctrl+shift+v key:shift key:shift key:shift key:shift -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
+# D13. The PS2 (Def Jam): S3 left it at render scale 2x, so Restart Game (87/1) follows Reset and the game boots again
+#     at 1x (receipts render_scale=1) on GDV-NTSC at integer bezel; the bar holds once it draws.
+ps2 pcsx2 - 40 key:ctrl+shift+r,ctrl+shift+r key:ctrl+shift+d key:shift key:shift key:shift key:shift key:shift key:shift key:ctrl+shift+f key:shift key:shift key:shift key:shift key:ctrl+shift+v key:shift key:shift key:shift key:shift -- Def Jam - Fight for NY (USA).iso
+# D14. The GameCube (The Wind Waker): the title at 30 frames a second, its attract scenes after it.
+gc dolphin - 40 key:ctrl+shift+r,ctrl+shift+r key:shift key:shift key:shift key:shift key:ctrl+shift+f key:shift key:shift key:shift key:shift key:ctrl+shift+v key:shift key:shift key:shift key:shift -- Legend of Zelda, The - The Wind Waker (USA).rvz
+# D15. The Wii (Mario Kart Wii): its attract race from about 50 s, the heaviest scene measured (a run's first race
+#     after a new release compiles Dolphin's shaders and stutters on either shader: 2026-10-06's first run on Sharp CRT
+#     missed 41 of 55 lines, the warm runs a handful at track changes).
+wii dolphin - 40 key:ctrl+shift+r,ctrl+shift+r key:shift key:shift key:shift key:shift key:ctrl+shift+f key:shift key:shift key:shift key:shift key:ctrl+shift+v key:shift key:shift key:shift key:shift -- Mario Kart Wii (USA)*.wbfs

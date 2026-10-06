@@ -47,12 +47,10 @@ class CrtRuleSpec {
         for system in declared { if (television.contains(system) || handheld.contains(system) || high.contains(system)) { classified++; } }
         contract.expect(classified == declared.size() && television.size() + handheld.size() + high.size() == declared.size(),
             f"every system is a TV console, a handheld or an HD console ({classified} of {declared.size()} classified)");
-        for system in television {  // the 480-line four default to it once its Deck frame time is measured; until then they offer it as gdv
+        for system in television {  // the 480-line four included, since the Deck measured them at full speed on it (M16 item 9)
             string screen = CrtRuleSpec.defaultScreen(fixture, system);
-            bool lines480 = system.equals("dreamcast") || system.equals("ps2") || system.equals("gc") || system.equals("wii");
             bool guest = SemuJson.textAt(manifest.get("assets").get(screen), "reference.path").equals("crt/crt-guest-advanced-ntsc.slangp");
-            bool offered = lines480 && SemuJson.textAt(manifest.get("assets").get("assets/shaders/" + system + "/gdv-ntsc.slangp"), "reference.path").equals("crt/crt-guest-advanced-ntsc.slangp");
-            contract.expect(guest || offered, system + " (a TV console) defaults to Retro Crisis's GDV-NTSC, crt-guest-advanced-ntsc, or offers it while the Deck measures it: " + screen);
+            contract.expect(guest, system + " (a TV console) defaults to Retro Crisis's GDV-NTSC, crt-guest-advanced-ntsc: " + screen);
         }
         for system in handheld {
             string screen = CrtRuleSpec.defaultScreen(fixture, system);
@@ -87,9 +85,21 @@ class CrtRuleSpec {
         contract.contains(binding, "libra_gl_filter_chain_set_param(&self.handle, name, value)", "through librashader's runtime parameters");
     }
 
+    class void plan(Contract contract, string project) {  // PLAN M16 keeps the Deck measurement that moved the 480-line four, the plain answer and the Status line
+        string text = FileSystem.readText(PathTools.join(project, "PLAN.md"));
+        int milestone = text.indexOf("### M16. ");
+        int gaps = text.indexOf("## Gap review");
+        string section = milestone >= 0 && gaps > milestone ? text.substring(milestone, gaps - milestone) : "";
+        contract.contains(section, "\n  - Item 9 on the Deck (2026-10-06, ", "PLAN.md M16 records item 9's measurement on the Deck");
+        contract.contains(section, "\n  - Item 9 for the owner, in plain words: ", "and answers the owner plainly");
+        int status = text.indexOf("\n## Status\n");
+        contract.contains(status > 0 ? text.substring(status, text.len() - status) : "", "\n- M16 item 9 (shaders per system): done 2026-10-06", "and the live Status block says it");
+    }
+
     class void run(Contract contract, Fixture fixture, JSONValue manifest) {
         CrtRuleSpec.classes(contract, fixture, manifest);
         CrtRuleSpec.pitch(contract);
         CrtRuleSpec.wiring(contract, fixture.project);
+        CrtRuleSpec.plan(contract, fixture.project);
     }
 }

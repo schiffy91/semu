@@ -32,16 +32,27 @@ class M16ReviewSpecContract {
                      "gc dolphin - 50 key:ctrl+shift+n key:ctrl+shift+r,ctrl+shift+r -- Legend of Zelda, The - The Wind Waker (USA).rvz",
                      "wii dolphin - 60 move:0.5,0.5 move:0.2,0.8 -- Mario Kart Wii*.wbfs",
                      "nds melonds - 40 move:0.5,0.75 tap:0.5,0.75 -- Legend of Zelda, The - Phantom Hourglass*.zip",
-                     "dreamcast flycast - 90 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd",
-                     "ps2 pcsx2 - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Def Jam - Fight for NY (USA).iso",
-                     "gc dolphin - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- Legend of Zelda, The - The Wind Waker (USA).rvz",
-                     "wii dolphin - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f -- New Super Mario Bros. Wii*.wbfs"] {
+                     "dreamcast flycast - 90 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+v -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd",
+                     "ps2 pcsx2 - 60 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+v -- Def Jam - Fight for NY (USA).iso",
+                     "gc dolphin - 60 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+v -- Legend of Zelda, The - The Wind Waker (USA).rvz",
+                     "wii dolphin - 60 key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shift+v -- New Super Mario Bros. Wii*.wbfs"] {
             contract.contains(text, "\n" + line + "\n", "m16-check.cases runs " + line.substring(0, line.indexOf(" --")));
         }
-        for label in ["# F5. ", "# S5. ", "# S6. ", "# S7. ", "# C4. ", "# C5. ", "# D7. ", "# D8. ", "# D9. ", "# D10. "] { contract.contains(text, "\n" + label, "each review case says what its shots must show: " + label.trim()); }
+        Vector<string> fillers = [];  // item 9's comparison: four shots on GDV-NTSC at integer bezel, four in non-integer game, four on Sharp CRT
+        for (int index = 0; index < 4; index++) { fillers.push("key:shift"); }
+        string windows = " " + fillers.join(" ") + " key:ctrl+shift+f " + fillers.join(" ") + " key:ctrl+shift+v " + fillers.join(" ") + " -- ";
+        string reset = "key:ctrl+shift+r,ctrl+shift+r";
+        for line in ["dreamcast flycast - 30 start " + reset + windows + "Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd",
+                     "ps2 pcsx2 - 40 " + reset + " key:ctrl+shift+d key:shift key:shift" + windows + "Def Jam - Fight for NY (USA).iso",
+                     "gc dolphin - 40 " + reset + windows + "Legend of Zelda, The - The Wind Waker (USA).rvz",
+                     "wii dolphin - 40 " + reset + windows + "Mario Kart Wii (USA)*.wbfs"] {
+            contract.contains(text, "\n" + line + "\n", "m16-check.cases compares GDV-NTSC with Sharp CRT on " + line.substring(0, line.indexOf(" ")) + " (D12 to D15)");
+        }
+        for label in ["# F5. ", "# S5. ", "# S6. ", "# S7. ", "# C4. ", "# C5. ", "# D7. ", "# D8. ", "# D9. ", "# D10. ", "# D12 to D15. "] { contract.contains(text, "\n" + label, "each review case says what its shots must show: " + label.trim()); }
         contract.expect(text.contains("longest gap under 25 ms") && !text.contains("under 34 ms") && text.contains("at least 59.8 per second") && !text.contains("700x525"),
             "a dropped frame fails: the rate bar is 59.8 per second and a gap under 25 ms (one and a half frames), and the TV's non-integer bezel names the picture the renderer draws");
-        contract.contains(text, "and the composition's GPU time at most 4 ms mean", "the GDV cases state the bar that moves a 480-line console's default");
+        contract.expect(text.contains("each rate line as Sharp\n# CRT's in the same scene") && text.contains("with the GPU never the limit") && !text.contains("GPU time at most 4 ms"),
+            "the GDV cases state the bar that keeps a 480-line console on GDV-NTSC: Sharp CRT's frame rates in the same scenes with the GPU never the limit, not the composition's clock-bound GPU time");
         string dockedText = FileSystem.readText(docked);
         for start in ["psx retroarch mednafen_psx 45 key:ctrl+shift+f", "ps2 pcsx2 - 60 key:ctrl+shift+f", "nes retroarch mesen 20 key:ctrl+shift+f", "wiiu cemu - 60 key:ctrl+shift+f"] {
             contract.contains(dockedText, "\n" + start, "m16-docked.cases runs " + start.substring(0, start.indexOf(" ")) + " at 1920x1080");

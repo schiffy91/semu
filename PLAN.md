@@ -2698,7 +2698,8 @@ Status: started 2026-10-06.
     59.8 per second with the longest gap under 25 ms, and the composition's GPU time at most 4 ms mean), else
     Sharp CRT stays and GDV-NTSC is one Next Shader away. The plain answer to the owner: yes, GDV-NTSC is the right
     family for the Dreamcast too, but on the Mac its 640-wide NTSC passes cost three times Sharp CRT's GPU time,
-    and the Dreamcast is already the system reported slow, so it moves only once the Deck shows it holds 60.
+    and the Dreamcast is already the system reported slow, so it moves only once the Deck shows it holds 60 (it
+    did, and the four moved: "Item 9 on the Deck" below).
     6562dd9's title ("One shader rule for every system") overstated what it changed. The toasts now name each
     preset whole (SHADER: SHARP CRT (EASYMODE), SHADER: GDV-NTSC (DREAMCAST)), so pressing Next Shader shows
     which one runs.
@@ -2707,6 +2708,63 @@ Status: started 2026-10-06.
     chain is built), so every scanline spans whole output rows: one per line at a whole step, and at a
     fractional one round(scale) rows (a 480-line picture on 800 rows: 400 scanlines of 2 rows, intres 1.2,
     instead of 1.67-row ones that beat into bands; never a 240-line look on a 480-line picture).
+  - Item 9 on the Deck (2026-10-06, release 6c40e186; off-screen, `tests/deck/input-check.sh` in a private headless
+    gamescope at Game Mode's 90 Hz and, docked, at 1920x1080 and 60 Hz, the sound on SDL's dummy driver, render scale
+    1x, the owner's Sonic Adventure (USA) (Rev A), Def Jam: Fight for NY, The Wind Waker and Mario Kart Wii from the
+    SD card, plus Animal Crossing: City Folk on the Wii's 16:9 output and Twilight Princess docked). Each shader ran in
+    a home of its own (`visual.systems.<id>.shader_variant` and `placement` seeded), so both drew the same scenes at
+    the same times; beside each run, gpu_busy_percent read ten times a second, the GPU clock and the APU's socket power
+    (amdgpu power1_average). Means over each case's rate lines after its first 10 s, Sharp CRT then GDV-NTSC:
+    - Integer bezel (the TVs' default; the picture 1x, 640x480, Def Jam 597x448), 1280x800: the composition's GPU
+      time 1.70-1.80 ms against 5.44-5.83 ms; GPU load 10-18% against 24-41%. The frame rates the same line for line:
+      Sonic's title at 60.2 per second (22 ms gaps: 60 frames on a 90 Hz screen), its attract scenes at 30.0; The Wind
+      Waker's title at 30.0; Def Jam at 59.9 (16.9 ms gaps); Mario Kart Wii's attract race at 59.6-59.7, both missing
+      the same 6 of 56 lines, at its track changes. A first run on a fresh release compiles Dolphin's shaders: the
+      first Mario Kart Wii run (Sharp CRT) missed 41 of 55 lines, its rerun 6.
+    - Non-integer game (1067x800; City Folk's 16:9 picture 1280x720), 1280x800: 2.81-3.00 ms against 7.25-7.84 ms;
+      load 15-26% against 30-57%; with GDV-NTSC the socket power 4.8-10.7 W. The same rates and the same missed lines
+      (scene loads: 8 of 48 on both for Sonic, 3 of 41 on both for The Wind Waker, none for Def Jam).
+    - Docked, non-integer game (1440x1080; City Folk 1920x1080), 1920x1080 at 60 Hz: 4.86-5.81 ms against
+      9.95-11.96 ms; load 20-46% against 37-77%; socket power 4.2-10.6 W against 4.9-12.3 W (peak 14.7 W, City Folk
+      with GDV-NTSC, under the APU's 15 W limit). The same rates; the missed lines fall at the same scene loads (one
+      more on GDV-NTSC, a 26.6 ms gap as City Folk's title changed scene).
+    - In no sample of any run did the GPU clock pass 1040 MHz of its 1600 (power_dpm_force_performance_level auto),
+      and Def Jam, the steadiest 60-frame scene, held 16.9 ms gaps on both shaders in every state.
+    - So GDV-NTSC holds full speed on all four: its cost is GPU time the Deck had spare. The review round's bar capped
+      the composition's GPU time at 4 ms, and every case exceeds that (5.4 ms at integer bezel), but that time is
+      measured at the clock the GPU chose, and the Deck runs its GPU at the slowest clock that keeps up (200-1040 MHz
+      here), so the time grows as the clock drops without a frame coming late. The bar is now what the owner sees:
+      the frame rates Sharp CRT gets in the same scenes, with the GPU never the limit (its load well under 100% and
+      its clock under the top). Reversible decision; the cost is battery, 0.7-1.7 W more socket power docked in
+      non-integer game while a 480-line game runs.
+    - Moved (reversible default): the Dreamcast, PS2, GameCube and Wii default to GDV-NTSC (variant `default`,
+      Dreamcast - Clean; PS2 - Clean on the other three), so every console played on a CRT television follows the one
+      rule; Sharp CRT is one press of Next Shader away (`sharp`), CRT Royale the press after, then off. The ids are the
+      240-line consoles' (the NES's move in 6562dd9 did the same): a saved `default` follows the rule (the owner's PS2),
+      a saved `royale` keeps CRT Royale (the owner's Dreamcast and Wii, saved on 2026-10-05: two presses of Next Shader
+      reach GDV-NTSC, or Reset to Defaults), and a `gdv` saved while it was one step away is stale and falls back to
+      the default, the same preset. Contracts crt_rule.btrc (every TV console's default is guest's, PLAN keeps this
+      record) and crt_gdv.btrc (his values on the four, Sharp CRT the next press, the saved ids).
+    - By eye (the Deck's shots, 1:1 and at 4x): the Dreamcast on GDV-NTSC is brighter and cleaner than on Sharp CRT,
+      whose dot mask grains the whites at 1x; at integer bezel one scanline per line (no doubled lines), in
+      non-integer game 400 even scanlines of 2 rows (no bands), docked 540 of 2 rows. His PS2 values (the PS2,
+      GameCube and Wii) are softer than Sharp CRT, with his red convergence offset (deconvergence 2 output pixels)
+      showing as a red edge on dark text (Def Jam's autosave notice) and a light grain (his noise): his published look,
+      which the owner can rule on; Sharp CRT is the next press.
+    - Deck cases: `tests/deck/m16-check.cases` D7-D10 now start on GDV-NTSC, step the Fit states and end one press away
+      on Sharp CRT (80/1); D12-D15 compare the two in one run each (Reset to Defaults, four shots at integer bezel,
+      four in non-integer game, four on Sharp CRT); D3's pitch line and K5's defaults name GDV-NTSC.
+  - Item 9 for the owner, in plain words: no, they were not all on the right shader, and now they are. Since M14 the
+    consoles that drew 240 lines (NES, SNES, Genesis, N64, PlayStation) used Retro Crisis's GDV-NTSC, the look the
+    owner picked. The four that draw 480 lines (Dreamcast, PS2, GameCube, Wii) stayed on Sharp CRT, with CRT Royale as
+    the other choice, because GDV-NTSC costs about three times the graphics work per frame and the Dreamcast had just
+    been reported slow. That slowness was Flycast's timing on the 90 Hz screen (item 8), not the shader. Measured on
+    the Deck, GDV-NTSC runs those four at exactly the speed Sharp CRT does, on the Deck's screen and docked, with the
+    graphics chip never near its top speed. So the rule is now one rule: every console that was played on a CRT
+    television uses GDV-NTSC with Retro Crisis's Steam Deck values for that console (his Dreamcast and PS2 ones; the
+    GameCube and Wii take his PS2 values, as he publishes none for them); handhelds use an LCD look; the Wii U and
+    Switch use none. Sharp CRT is one press of Next Shader away. The Dreamcast and the Wii were saved on CRT Royale in
+    the owner's settings, and Semu keeps a saved choice, so they stay on it until Next Shader is pressed twice.
   - Item 8, Dreamcast speed: the measurement is ready and open. Sharp CRT plus the TV cost 1.45 ms of the M1
     Max's GPU; the Deck's GPU has about a sixth of its compute, so the composition alone may take 7 to 9 ms of the
     16.7 ms frame Flycast shares with it. Open on the Deck: Sonic Adventure's rate lines, GPU load and threads
@@ -2897,8 +2955,9 @@ Status: started 2026-10-06.
   - Done of that list (2026-10-06, the Deck chain): the release (af0470d8, then 9d52f6f and a70ece76), prepare,
     `semu-deck-cli steam input` with Steam stopped, and boot-capture.cases before and after (item 4 above); item 8
     (Sonic Adventure at Game Mode's 90 Hz, release 6c40e186, its record above): the four-way table was not needed
-    past its first row, and m16-check.cases D3 and D11 and m16-docked.cases K5 ran on their own; the rest of
-    m16-check.cases and m16-docked.cases is still open.
+    past its first row, and m16-check.cases D3 and D11 and m16-docked.cases K5 ran on their own; item 9 (the
+    480-line four on GDV-NTSC against Sharp CRT, each in its own home, at 1280x800 and docked; its record above),
+    whose cases are now D7-D10 and D12-D15; the rest of m16-check.cases and m16-docked.cases is still open.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
@@ -4272,7 +4331,7 @@ Update this block whenever a milestone criterion changes state.
   crt_rule.btrc. Item 4's cause is Dolphin's late full-screen switch over an inner GL window sized once at start
   (patched); item 9's rule, Retro Crisis's GDV-NTSC on a CRT television console, holds for the 240-line consoles
   and the NES only (corrected in the review round: the 480-line four keep Sharp CRT, `gdv` one press away, so item
-  9 stays open until measured), LCD on handhelds, none on HD consoles, with CRT scanlines on whole output rows at
+  9 stays open until measured; measured on the Deck and moved, the item 9 line below), LCD on handhelds, none on HD consoles, with CRT scanlines on whole output rows at
   every size; item 8's cause is Flycast's swap interval on the OLED's 90 Hz screen (next line). Item 4 observed
   on the Deck (2026-10-06, `tests/deck/boot-capture.cases` before and after the releases): the owner's shrink filmed on the M15 release in
   both Dolphin cases and gone from af0470d8 on; the other emulators never shrank; PCSX2's game list, Cemu's
@@ -4290,6 +4349,16 @@ Update this block whenever a milestone criterion changes state.
   at 60, the HUD clock gaining 6.00-6.04 s every 6 s, on Sharp CRT and on the owner's CRT Royale; docked at 60 Hz
   unchanged. Not the composition, the GPU, the processor or the SD card (PLAN M16 item 8's record). Deck cases
   m16-check.cases D3 and D11, m16-docked.cases K5.
+- M16 item 9 (shaders per system): done 2026-10-06, measured on the Deck off-screen (release 6c40e186, Game Mode's
+  90 Hz at 1280x800 and docked at 1920x1080 and 60 Hz, render scale 1x, each shader in its own home on the same
+  scenes): GDV-NTSC holds the frame rates Sharp CRT holds on the Dreamcast, PS2, GameCube and Wii in integer bezel
+  and non-integer game, its composition 5.4-5.8 ms of GPU time at integer bezel, 7.3-7.8 in non-integer game and
+  10.0-12.0 docked (Sharp CRT 1.7-1.8, 2.8-3.0 and 4.9-5.8) with the GPU clock never past 1040 of its 1600 MHz. So
+  the four moved to it and one rule holds for every system: a console played on a CRT television defaults to Retro
+  Crisis's GDV-NTSC with his Steam Deck values for its cleanest signal, a handheld to an LCD look, an HD console to
+  none; Sharp CRT one press of Next Shader away. The review round's 4 ms GPU-time cap is retired for the frame rate
+  with the GPU never the limit (PLAN M16 item 9's record, reversible). The owner's saved CRT Royale on the Dreamcast
+  and Wii stays. Deck cases m16-check.cases D7-D10 and D12-D15.
 - M16 items 1 and 6 (crosshair, the Wii's controller): built 2026-10-06 (51bcddb, 47c1303) and observed on the Mac
   render host and in the podman VM (RetroArch's DS and 3DS cores, standalone Azahar, Dolphin with Mario Kart Wii);
   contracts right_trackpad, standalone_cursor, controller_layouts, players, emulator_runtime, radial_render. DS and
