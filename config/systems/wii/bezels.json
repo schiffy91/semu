@@ -13,7 +13,7 @@
     },
     {
       "id": "tv_wide",
-      "label": "Living room CRT (widescreen)",
+      "label": "Living room CRT (wide)",
       "bezel": "tv-soqueroeu-wii-16x9",
       "output": "widescreen"
     },

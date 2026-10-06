@@ -97,7 +97,7 @@ class SteamControllerSpecSettings {  // the settings radial: a page the quick ri
         SteamControllerSpecRadial.ring(contract, document, settings, slots, 1);
         contract.lacks(settings, "touch_menu_button_12", "the settings ring has exactly eleven slots");
         contract.contains(settings, SteamControllerSpecRadial.head(0) + "controller_action CHANGE_PRESET 1 0 0, Close Settings, semu-close.png, #232323 #FFFFFF\" } \"settings\"", "its centre returns to the gamepad preset and the quick radial");
-        for needle in ["key_press F, Fit (Bezel/Screen), semu-fit.png", "key_press G, Aspect (4:3/16:9), semu-aspect.png", "key_press N, Render Scale, semu-scale.png", "key_press C, Controller Layout, semu-controller.png", "key_press U, Players, semu-players.png", "key_press R, Reset to Default, semu-reset.png", "key_press D, Restart Game, semu-restart.png", "key_press B, Bezel On/Off, semu-bezel-toggle.png", "key_press H, Shader On/Off, semu-shader-toggle.png"] {
+        for needle in ["key_press F, Fit, semu-fit.png", "key_press G, Aspect (4:3/16:9), semu-aspect.png", "key_press N, Render Scale, semu-scale.png", "key_press C, Controller Layout, semu-controller.png", "key_press U, Players, semu-players.png", "key_press R, Reset to Default, semu-reset.png", "key_press D, Restart Game, semu-restart.png", "key_press B, Bezel On/Off, semu-bezel-toggle.png", "key_press H, Shader On/Off, semu-shader-toggle.png"] {
             contract.contains(settings, needle, "the settings ring presses each slot's Ctrl+Shift chord: " + needle);
         }
         string layer = SteamControllerSpecText.group(vdf, "22");

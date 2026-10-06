@@ -8,17 +8,17 @@
   "variants": [
     {
       "id": "default",
-      "label": "GDV-NTSC (Retro Crisis RGB)",
+      "label": "GDV-NTSC (RGB)",
       "screen": "assets/shaders/genesis/gdv-ntsc.slangp"
     },
     {
       "id": "rainbow",
-      "label": "Composite CRT (Genesis rainbow)",
+      "label": "Composite (rainbow)",
       "screen": "assets/shaders/genesis/screen.slangp"
     },
     {
       "id": "sharp",
-      "label": "Sharp CRT (easymode + halation)",
+      "label": "Sharp CRT (easymode)",
       "screen": "assets/shaders/genesis/sharp.slangp"
     }
   ],

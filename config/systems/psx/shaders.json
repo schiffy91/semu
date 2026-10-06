@@ -8,7 +8,7 @@
   "variants": [
     {
       "id": "default",
-      "label": "GDV-NTSC (Retro Crisis RGB)",
+      "label": "GDV-NTSC (RGB)",
       "screen": "assets/shaders/psx/gdv-ntsc.slangp"
     },
     {
@@ -18,7 +18,7 @@
     },
     {
       "id": "sharp",
-      "label": "Sharp CRT (easymode + halation)",
+      "label": "Sharp CRT (easymode)",
       "screen": "assets/shaders/psx/sharp.slangp"
     }
   ],

@@ -1,0 +1,40 @@
+// Toast labels spec (M16 item 9, the review round): "are we using the right shaders for each system?" The owner reads
+// which preset runs from the toast Next Shader shows, and the renderer cuts a composed toast at 31 characters, so
+// "SHADER: SHARP CRT (EASYMODE + H" and "SHADER: GDV-NTSC (RETRO CRISIS" named nothing. Every label a toast carries (each
+// system's bezel, shader and output variants) fits its toast whole, so the toast names the preset in full.
+
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/emit/render_choices.btrc;
+
+class ToastLabelsSpecContract {
+    class void labels(JSONValue variants, string template, string where, Vector<string> cut, Vector<int> counted) {  // each variant's label composed into TEMPLATE, as the renderer draws it
+        for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
+            string label = SemuJson.textAt(variants.at(index), "label");
+            if (label.isEmpty()) { continue; }
+            string toast = template.replace("{label}", SemuRenderLabels.toastSafe(label, 31));
+            counted.push(toast.len());
+            if (toast.len() > 31) { cut.push(where + ": " + toast); }
+        }
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        JSONValue actions = SemuJson.get(fixture.plan.input.definition, "actions");
+        string bezel = SemuJson.textAt(actions.get("visual.bezel.next"), "toast");
+        string shader = SemuJson.textAt(actions.get("visual.shader.next"), "toast");
+        string output = SemuJson.textAt(actions.get("visual.output.next"), "toast");
+        Vector<string> cut = [];
+        Vector<int> counted = [];
+        for systemId in fixture.model.systemIds() {
+            ToastLabelsSpecContract.labels(fixture.model.system(systemId).bezels.get("variants"), bezel, systemId + " bezel", cut, counted);
+            ToastLabelsSpecContract.labels(SemuJson.get(fixture.model.system(systemId).shaders, "variants"), shader, systemId + " shader", cut, counted);
+            ToastLabelsSpecContract.labels(SemuJson.get(fixture.model.system(systemId).definition, "display.outputs"), output, systemId + " output", cut, counted);
+        }
+        contract.expect(bezel.equals("BEZEL: {label}") && shader.equals("SHADER: {label}") && output.equals("ASPECT: {label}") && counted.size() >= 60 && cut.isEmpty(),
+            f"every bezel, shader and output label ({counted.size()}) fits its toast whole in the renderer's 31 characters, so a toast names the preset in full: " + cut.join(" | "));
+    }
+}

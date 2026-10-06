@@ -9,7 +9,7 @@
   "variants": [
     {
       "id": "default",
-      "label": "3DS LCD (top and bottom panels)",
+      "label": "3DS LCD",
       "screen": "assets/shaders/n3ds/screen.slangp",
       "screens": {
         "top": "assets/shaders/n3ds/top.slangp",

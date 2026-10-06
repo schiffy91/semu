@@ -155,7 +155,7 @@ without a rebuild:
 semu settings put visual.systems.gbc.bezel_variant berry
 semu settings put visual.systems.gb.shader_variant pocket
 semu settings put visual.bezels false
-semu settings get visual.integer_scaling
+semu settings get visual.systems.psx.placement
 ```
 
 Settings precedence:

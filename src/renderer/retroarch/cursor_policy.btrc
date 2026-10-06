@@ -2,7 +2,7 @@
 // pointer: RetroArch's bridge (runtime_bridge.btrc, from its window pointer) and the standalone
 // compositor (preload/semu_compose.btrc, from Azahar's semu_pointer_sample). It lives beside the
 // RetroArch bridge because only this directory reaches RetroArch's build. The renderer then shows
-// the arrow on motion or a press and hides it when idle (renderer_cursor.btrc). RetroArch's bridge
+// its crosshair on motion or a press and hides it when idle (renderer_cursor.btrc). RetroArch's bridge
 // polls the pointer every frame, so its first sample is only a position; Azahar reports a sample only
 // on a mouse event, so a sample new since the last frame is motion: visible 2 says so.
 

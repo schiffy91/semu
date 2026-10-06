@@ -58,7 +58,7 @@ class SemuActions {
     // 86 slot 1 the players page (reserved 3 rows rewritten), 0 back to the menu; 87 slot 1
     // restarting, 0 nothing to apply. 88 is the render scale's absolute index, reserved 1 while the
     // chosen scale waits for Restart Game (0: the emulator renders at it).
-    class int placementSelect() { return SemuActions.shaderSelect() + 1; }  // 81: the system's placements, bezel or screen
+    class int placementSelect() { return SemuActions.shaderSelect() + 1; }  // 81: the Fit state, an index into the variants file's four placements (integer game, integer bezel, non-integer game, non-integer bezel; the two game states where there is no bezel to place)
     class int outputSelect() { return SemuActions.shaderSelect() + 2; }  // 82: the system's outputs, 4:3 or 16:9
     class int layoutSelect() { return SemuActions.shaderSelect() + 3; }  // 83: a player's controller layout
     class int playerAssign() { return SemuActions.shaderSelect() + 4; }  // 84: the pad a player holds on the players page

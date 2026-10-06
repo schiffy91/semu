@@ -3,18 +3,18 @@
   "enabled": true,
   "doc": {
     "intent": "480i/480p era CRT or VGA softness",
-    "default": "480-line systems fill their tube at about 2x, where the royale slot mask aliases; easymode with halation is the default and royale the alternate",
+    "default": "480-line systems draw at 1x in integer bezel and about 1.67x in non-integer game on the Deck's 800 rows, where the royale slot mask aliases; easymode with halation (Sharp CRT) stays the default until GDV-NTSC's Deck GPU time is measured (PLAN M16 item 9), royale the alternate",
     "gdv": "M16 (2026-10-06): Retro Crisis's GDV-NTSC for this console is offered one step away while its Deck GPU time is measured (480-line frames make its NTSC passes 2560 px wide; 3.4 ms against easymode's 0.6 ms on the Mac render host). The default moves to it if it holds the Deck's frame."
   },
   "variants": [
     {
       "id": "default",
-      "label": "Sharp CRT (easymode + halation)",
+      "label": "Sharp CRT (easymode)",
       "screen": "assets/shaders/dreamcast/sharp.slangp"
     },
     {
       "id": "gdv",
-      "label": "GDV-NTSC (Retro Crisis Dreamcast)",
+      "label": "GDV-NTSC (Dreamcast)",
       "screen": "assets/shaders/dreamcast/gdv-ntsc.slangp"
     },
     {
