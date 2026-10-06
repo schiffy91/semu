@@ -126,6 +126,10 @@ class PlacementSpecGeometry {
     }
 
     class void placeVariant(Fixture fixture, string systemId, string bezelVariant, int nativeWidth, int nativeHeight, int placement, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas, struct RendererCanvasRect* picture) {  // the shell's canvas and the game in it, bottom-up as GL counts rows
+        PlacementSpecGeometry.placeShown(fixture, systemId, bezelVariant, nativeWidth, nativeHeight, 0.0f, placement, areaWidth, areaHeight, canvas, picture);
+    }
+
+    class void placeShown(Fixture fixture, string systemId, string bezelVariant, int nativeWidth, int nativeHeight, float aspect, int placement, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas, struct RendererCanvasRect* picture) {  // as placeVariant, the title shown at ASPECT (a 16:9 Wii game), else at the launch's own
         Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, bezelVariant);
         struct RendererVariantConfig variant;
         PlacementSpecGeometry.load(environment, &variant);
@@ -139,7 +143,7 @@ class PlacementSpecGeometry {
         struct RendererSurfaceCrop crops[2];
         memset(crops, 0, sizeof(crops));
         PlacementSpecGeometry.crops(environment, crops);
-        frame.presentation_aspect = PlacementSpecGeometry.aspect(environment, nativeWidth, nativeHeight);
+        frame.presentation_aspect = aspect > 0.01f ? aspect : PlacementSpecGeometry.aspect(environment, nativeWidth, nativeHeight);
         RendererSurfaceCropping.apply(&frame, crops, frame.presentation_aspect);  // what the renderer does before it places: the picture only, its pixels square
         float shown = frame.presentation_aspect;
         RendererPlacement.canvas(&frame, &variant, placement, shown, areaWidth, areaHeight, variant.canvas_width, variant.canvas_height, canvas);

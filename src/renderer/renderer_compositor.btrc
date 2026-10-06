@@ -820,7 +820,7 @@ class RendererShaderPasses {
         }
         gl->disable((unsigned int)RGL_SCISSOR_TEST);
         RendererGlErrors.clear(gl);
-        if (lane->scaled_width > 0) {  // a render scale: the picture kept at its own size, the native one its box average
+        if (RendererRenderScaling.keeps(lane)) {  // a render scale: the picture kept at its own size, the native one its box average
             if (!RendererScaledLane.capture(gl, &resources->scaled, resources->extraction_framebuffer, frame, lane, index)
                 || !RendererScaledLane.native(gl, &resources->scaled, resources->extraction_framebuffer, resources->raw_textures[index], lane, index)) { return false; }
             gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->raw_textures[index]);
@@ -1159,7 +1159,7 @@ class RendererCompositor {
         unsigned int pictures[2];  // what an unshaded lane draws and mirrors: the picture above native when one is kept, else the native one
         for (int index = 0; index < 2; index++) {
             int lane = index < geometry->lane_count ? index : second;
-            pictures[index] = geometry->lanes[lane].scaled_width > 0 ? resources->scaled.textures[lane] : resources->raw_textures[lane];
+            pictures[index] = RendererRenderScaling.picture(&geometry->lanes[lane], resources->scaled.textures[lane], resources->raw_textures[lane]);
         }
         RendererGlErrors.clear(gl);
         gl->active_texture((unsigned int)RGL_TEXTURE0);

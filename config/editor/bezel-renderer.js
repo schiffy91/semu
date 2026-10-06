@@ -193,9 +193,10 @@ const BezelRenderer = (() => {
       if (native < 1 || pictureHeight < 1) return canvas;
       const carried = Geometry.carried(variant), game = placement === "game" || placement === "game_fractional", whole = placement !== "game_fractional" && placement !== "bezel_fractional", shell = variant.shell;
       const down = float(areaHeight / native), across = float(areaWidth / float(native * shown));
-      let most = down < across ? down : across;  // game: the largest the screen holds
+      const fits = down < across ? down : across;  // the largest the screen holds the picture at
+      let most = fits;  // game: the largest the screen holds
       if (!game) most = float(float(pictureHeight * Geometry.room(variant, area, canvas, areaWidth, areaHeight, float(0.01))) / native);  // bezel: the whole bezel on screen, 1% of it allowed past the edges, whole step or not
-      const steps = whole && most >= 1 ? float(integer(most)) : most;  // the non-integer states as they are; an integer state larger than the screen at 1x falls back to them
+      const steps = !whole ? most : (most >= 1 ? float(integer(most)) : (fits >= 1 ? 1 : most));  // RendererPlacement.wholeStep: an integer state never below 1x while the picture fits the screen at 1x (the bezel then cut by it); only a picture larger than the screen falls back
       const grow = float(float(steps * native) / pictureHeight);
       const centerX = float(canvas.x + float(float(area.x + float(area.width * 0.5)) * canvas.width));
       const centerY = float(canvas.y + float(float(float(1 - area.y) - float(area.height * 0.5)) * canvas.height));

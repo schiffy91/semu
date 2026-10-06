@@ -52,9 +52,10 @@ class RendererPlacement {
         struct RendererNormalizedHole* shell = &variant->canvas_shell;
         float down = (float)areaHeight / native;
         float across = (float)areaWidth / (native * shown);
-        float most = down < across ? down : across;  // game: the largest the screen holds
+        float fits = down < across ? down : across;  // the largest the screen holds the picture at
+        float most = fits;  // game: the largest the screen holds
         if (!game) { most = pictureHeight * RendererPlacement.room(variant, image, canvas, areaWidth, areaHeight, 0.01f) / native; }  // bezel: the largest that keeps the whole bezel on screen, 1% of it allowed past the edges, whole step or not
-        float steps = whole && most >= 1.0f ? (float)(int)most : most;  // the non-integer states as they are; an integer state larger than the screen at 1x (PPSSPP's internal resolution set for a bigger display) falls back to them, never an overflow
+        float steps = RendererPlacement.wholeStep(whole, most, fits);
         float grow = steps * native / pictureHeight;
         float centerX = canvas->x + (image->x + image->width * 0.5f) * canvas->width;
         float centerY = canvas->y + (1.0f - image->y - image->height * 0.5f) * canvas->height;  // pixel rows count up from the bottom
@@ -73,6 +74,12 @@ class RendererPlacement {
             if (canvas->height <= (float)areaHeight) { canvas->y = canvas->y + RendererPlacement.wholePixels(((float)areaHeight - canvas->height) * 0.5f - canvas->y); }
         }
         RendererPlacement.wholeCorner(image, steps * native, shown, canvas);
+    }
+
+    class float wholeStep(bool whole, float most, float fits) {  // a Fit state's step: the non-integer states take MOST as it is; an integer state the largest whole step under it, and where the whole bezel needs less than 1x (a 16:9 picture on a 4:3 TV) 1x with the bezel cut by the screen while the picture itself fits (FITS, as the retired fit drew it), never a downscaled whole state; only a picture larger than the screen at 1x (PPSSPP's internal resolution set for a bigger display) falls back to MOST, never an overflow
+        if (!whole) { return most; }
+        if (most >= 1.0f) { return (float)(int)most; }
+        return fits >= 1.0f ? 1.0f : most;
     }
 
     class void wholeCorner(struct RendererNormalizedHole* image, float height, float shown, struct RendererCanvasRect* canvas) {  // the picture's corner on a whole pixel: a device's rounded rectangle, or a TV's picture, is then exactly the step, every native pixel k by k on any screen

@@ -1,0 +1,96 @@
+// Render scale wiring spec (M16 item 2, the review round): what the arithmetic in render_scale.btrc feeds. The game
+// phase applies the scale before anything crops or places (RendererRenderScaling.apply: a scale Dolphin switched to
+// live replaces the launch's, then a scaled frame goes back to native), the extraction keeps the picture above native
+// beside the native one, and an unshaded lane draws and mirrors that kept picture. The review found each of these
+// could be deleted with every contract still passing; each is now pinned by its behaviour and by where it is called.
+
+#include <string.h>
+
+import Library.FileSystem;
+import Library.Platform;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+import ../../../src/renderer/renderer_render_scale.btrc;
+import ../../../src/renderer/renderer_surface_crop.btrc;
+
+class RenderScaleWiringBehaviour {  // the GL-free halves of the game phase and the picture choice
+    class void frame(struct SemuRenderFrameGl* frame, int width, int height) {  // one surface reporting WIDTHxHEIGHT as its own size
+        memset(frame, 0, sizeof(struct SemuRenderFrameGl));
+        frame->surface_count = 1;
+        frame->surfaces[0].width = width;
+        frame->surfaces[0].height = height;
+        frame->surfaces[0].native_width = width;
+        frame->surfaces[0].native_height = height;
+    }
+
+    class void run(Contract contract) {
+        struct SemuRenderFrameGl frame;
+        RenderScaleWiringBehaviour.frame(&frame, 939, 711);
+        struct RendererRenderScale scale;
+        scale.scale = 3;
+        scale.frames_scaled = 1;
+        RendererRenderScaling.apply(&frame, &scale, 0);
+        contract.expect(frame.surfaces[0].native_width == 313 && frame.surfaces[0].native_height == 237 && scale.scale == 3,
+            f"the game phase reads GLideN64's 3x frame (939x711, SEMU_RENDER_SURFACE_SCALED=1) as the N64's native 313x237: {frame.surfaces[0].native_width}x{frame.surfaces[0].native_height}");
+        RenderScaleWiringBehaviour.frame(&frame, 1067, 800);
+        scale.scale = 1;
+        scale.frames_scaled = 0;
+        RendererRenderScaling.apply(&frame, &scale, 2);
+        contract.expect(scale.scale == 2 && frame.surfaces[0].native_width == 1067, f"a scale Dolphin switched to live (2) replaces the launch's 1x, and a window producer's size is never divided: scale {scale.scale}");
+        scale.scale = 2;
+        RendererRenderScaling.apply(&frame, &scale, 0);
+        contract.expect(scale.scale == 2, "no live switch leaves the scale as it is");
+        struct RendererLaneGeometry kept;
+        memset(&kept, 0, sizeof(struct RendererLaneGeometry));
+        kept.source_width = 939;
+        kept.source_height = 711;
+        kept.native_width = 313;
+        kept.native_height = 237;
+        RendererRenderScaling.scaled(&kept, 3);
+        struct RendererLaneGeometry native;
+        memset(&native, 0, sizeof(struct RendererLaneGeometry));
+        native.source_width = 313;
+        native.source_height = 237;
+        native.native_width = 313;
+        native.native_height = 237;
+        RendererRenderScaling.scaled(&native, 1);
+        contract.expect(RendererRenderScaling.keeps(&kept) && !RendererRenderScaling.keeps(&native) && !RendererRenderScaling.keeps(null)
+            && RendererRenderScaling.picture(&kept, 7u, 3u) == 7u && RendererRenderScaling.picture(&native, 7u, 3u) == 3u,
+            "a lane at 3x keeps its 939x711 picture and an unshaded lane draws that one; at 1x there is only the native picture to draw");
+    }
+}
+
+class RenderScaleWiringSource {  // where the renderer calls them: before the crop, in the extraction, and for every unshaded binding
+    class void run(Contract contract, string project) {
+        string library = FileSystem.readText(PathTools.join(project, "src/renderer/libsemurenderer.btrc"));
+        int entry = Strings.find(library, "semu_render_game_gl(", 0);
+        int apply = Strings.find(library, "RendererRenderScaling.apply(frame, &SemuRenderer.config.render_scale, SemuRenderer.post_ui.scale_live);", entry < 0 ? 0 : entry);
+        int crop = Strings.find(library, "RendererSurfaceCropping.apply(frame, SemuRenderer.config.surface_crops, SemuRenderer.config.display_aspect);", entry < 0 ? 0 : entry);
+        contract.expect(entry >= 0 && apply > entry && crop > apply && !library.contains("RendererRenderScaling.normalize(frame,"),
+            "semu_render_game_gl applies the render scale (the live switch, then the division) before RendererSurfaceCropping.apply counts game pixels");
+        string compositor = FileSystem.readText(PathTools.join(project, "src/renderer/renderer_compositor.btrc"));
+        int branch = Strings.find(compositor, "if (RendererRenderScaling.keeps(lane)) {  // a render scale", 0);
+        int capture = Strings.find(compositor, "if (!RendererScaledLane.capture(gl, &resources->scaled, resources->extraction_framebuffer, frame, lane, index)", branch < 0 ? 0 : branch);
+        int native = Strings.find(compositor, "|| !RendererScaledLane.native(gl, &resources->scaled, resources->extraction_framebuffer, resources->raw_textures[index], lane, index)) { return false; }", branch < 0 ? 0 : branch);
+        int blit = Strings.find(compositor, "bool downscale = lane->source_width > lane->native_width", branch < 0 ? 0 : branch);
+        contract.expect(branch >= 0 && capture > branch && native > capture && blit > native,
+            "the extraction keeps a lane's picture above native (RendererScaledLane.capture) and makes the native one from it (RendererScaledLane.native) whenever the lane keeps one, before the plain blit");
+        Vector<string> missing = [];
+        for wanted in ["pictures[index] = RendererRenderScaling.picture(&geometry->lanes[lane], resources->scaled.textures[lane], resources->raw_textures[lane]);",
+                       "? resources->shader_textures[0] : pictures[0]);", "? resources->shader_textures[second] : pictures[1]);",
+                       "filtered[0] != 0 ? resources->raw_textures[0] : pictures[0]);", "filtered[second] != 0 ? resources->raw_textures[second] : pictures[1]);"] {
+            if (!compositor.contains(wanted)) { missing.push(wanted); }
+        }
+        contract.expect(missing.isEmpty(), "an unshaded lane draws (units 0 and 4) and mirrors (units 7 and 8) the kept picture: missing " + missing.join(" | "));
+    }
+}
+
+class RenderScaleWiringSpecContract {
+    class void run(Contract contract) {
+        RenderScaleWiringBehaviour.run(contract);
+        RenderScaleWiringSource.run(contract, Environment.get("SEMU_PROJECT", FileSystem.currentDirectory()));
+    }
+}

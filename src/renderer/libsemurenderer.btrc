@@ -265,8 +265,7 @@ int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
     }
 
     RendererFrameTiming.begin(frame);  // SEMU_RENDER_DEBUG: size changes, frame rate, the game phase's cost
-    if (SemuRenderer.post_ui.scale_live > 0) { SemuRenderer.config.render_scale.scale = SemuRenderer.post_ui.scale_live; }  // a scale the emulator switched to live
-    RendererRenderScaling.normalize(frame, &SemuRenderer.config.render_scale);  // a scaled frame's size back to the game's, before the crop counts game pixels
+    RendererRenderScaling.apply(frame, &SemuRenderer.config.render_scale, SemuRenderer.post_ui.scale_live);  // a scale the emulator switched to live, then a scaled frame's size back to the game's, before the crop counts game pixels
     RendererSurfaceCropping.apply(frame, SemuRenderer.config.surface_crops, SemuRenderer.config.display_aspect);  // the picture only, before anything places or mirrors it
     SemuRendererLiveVariants.apply();  // a pending select replaces the variant keys before this frame's geometry
     RendererConfiguration.select(&SemuRenderer.config, frame);

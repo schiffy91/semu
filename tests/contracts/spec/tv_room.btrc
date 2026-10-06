@@ -148,10 +148,44 @@ class TvRoomSpecChecks {
             "to either side the room carries on from four texels in, past the dark bevel the art draws at each end of the table, so the table meets its carried part without a step");
     }
 
+    class void wide(Contract contract, Fixture fixture) {  // a 16:9 title on a 4:3 TV (no wide variant): its whole TV needs less than 1x, and an integer state stays at 1x or more, the TV cut by the screen, never a downscaled whole state
+        int widths[2] = {1280, 1920};
+        int heights[2] = {800, 1080};
+        Vector<string> failures = [];
+        int cells = 0;
+        for systemId in ["wii", "gc", "ps2", "dreamcast"] {
+            JSONValue screen = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0");
+            int nativeWidth = SemuJson.intAt(screen, "native.w", 0);
+            int nativeHeight = SemuJson.intAt(screen, "native.h", 0);
+            int lines = nativeHeight - SemuJson.intAt(screen, "crop.top", 0) - SemuJson.intAt(screen, "crop.bottom", 0);
+            for variantId in ["tv", "speakers"] {
+                for (int size = 0; size < 2; size++) {
+                    for (int placement = SEMU_PLACEMENT_GAME; placement <= SEMU_PLACEMENT_BEZEL; placement++) {
+                        struct RendererCanvasRect canvas;
+                        struct RendererCanvasRect picture;
+                        PlacementSpecGeometry.placeShown(fixture, systemId, variantId, nativeWidth, nativeHeight, 16.0f / 9.0f, placement, widths[size], heights[size], &canvas, &picture);
+                        int rows = PlacementSpecGeometry.rounded(picture.height);
+                        cells++;
+                        if (rows < lines || rows % lines != 0 || !PlacementSpecGeometry.near(picture.height, (float)rows) || picture.width > (float)widths[size] + 0.5f || !TvRoomSpecChecks.onGrid(&picture)) {
+                            failures.push(systemId + ":" + variantId + f" state {placement} at {widths[size]}x{heights[size]}: " + PlacementSpecGeometry.text(&picture));
+                        }
+                    }
+                }
+            }
+        }
+        struct RendererCanvasRect canvas;
+        struct RendererCanvasRect picture;
+        PlacementSpecGeometry.placeShown(fixture, "wii", "speakers", 640, 480, 16.0f / 9.0f, SEMU_PLACEMENT_BEZEL, 1280, 800, &canvas, &picture);
+        bool deck = PlacementSpecGeometry.rounded(picture.height) == 480 && PlacementSpecGeometry.rounded(picture.width) == 853;
+        PlacementSpecGeometry.placeShown(fixture, "wii", "speakers", 640, 480, 16.0f / 9.0f, SEMU_PLACEMENT_BEZEL_FRACTIONAL, 1280, 800, &canvas, &picture);
+        bool whole = picture.height < 480.0f && picture.height > 240.0f;
+        contract.expect(cells == 32 && failures.isEmpty() && deck && whole, f"a 16:9 title on a 4:3 TV ({cells} cells) keeps whole steps of 1x or more in integer game and integer bezel, the Wii's speakers TV 853x480 in integer bezel on the Deck as the retired fit drew it, the whole TV only in non-integer bezel (" + PlacementSpecGeometry.text(&picture) + "): " + failures.join("; "));
+    }
+
     class void editor(Contract contract, Fixture fixture) {  // the editor preview places a room exactly as the renderer does
         string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
         Vector<string> missing = [];
-        for wanted in ["const anchorY = game || carried ? float(areaHeight * 0.5)", "static bodyStays(body, image, canvas, grow, areaWidth, areaHeight, slack) {", "if (!game && !carried && shell && shell.set) {", "if (game && !carried) {",
+        for wanted in ["const anchorY = game || carried ? float(areaHeight * 0.5)", "const steps = !whole ? most : (most >= 1 ? float(integer(most)) : (fits >= 1 ? 1 : most));","static bodyStays(body, image, canvas, grow, areaWidth, areaHeight, slack) {", "if (!game && !carried && shell && shell.set) {", "if (game && !carried) {",
                        "const top = float(float(areaHeight * 0.5) - float(float(float(image.y + float(image.height * 0.5)) - body.y) * height)), bottom = float(top + float(body.height * height));",
                        "{  // RendererPlacement.wholeCorner: the picture's corner on a whole pixel, a device's or a TV's"] {
             if (!source.contains(wanted)) { missing.push(wanted); }
@@ -169,6 +203,7 @@ class TvRoomSpecContract {
         TvRoomSpecChecks.body(contract, fixture);
         TvRoomSpecChecks.rooms(contract, fixture);
         TvRoomSpecChecks.band(contract, fixture);
+        TvRoomSpecChecks.wide(contract, fixture);
         TvRoomSpecChecks.editor(contract, fixture);
     }
 }

@@ -43,6 +43,18 @@ class RendererRenderScaling {
         }
     }
 
+    class void apply(struct SemuRenderFrameGl* frame, struct RendererRenderScale* scale, int live) {  // the game phase, before the crop: a scale the emulator switched to live (LIVE, Dolphin's own Increase IR and Decrease IR) replaces the launch's, then a scaled frame's size goes back to the game's
+        if (scale == null) { return; }
+        if (live > 0) { scale->scale = RendererRenderScaling.clamped(live); }
+        RendererRenderScaling.normalize(frame, scale);
+    }
+
+    class bool keeps(struct RendererLaneGeometry* lane) { return lane != null && lane->scaled_width > 0; }  // the lane carries a picture above native beside the native one
+
+    class unsigned int picture(struct RendererLaneGeometry* lane, unsigned int kept, unsigned int native) {  // what an unshaded lane draws and mirrors: the picture kept above native, else the native one
+        return RendererRenderScaling.keeps(lane) ? kept : native;
+    }
+
     class float factor(int sourceWidth, int sourceHeight, int nativeWidth, int nativeHeight, int scale) {  // game pixels' worth of picture per game pixel kept: the scale, never more than the frame carries
         if (scale < 2 || nativeWidth < 1 || nativeHeight < 1) { return 1.0f; }
         float across = (float)sourceWidth / (float)nativeWidth;
