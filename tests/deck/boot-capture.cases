@@ -7,7 +7,13 @@ ps2 pcsx2 - 30 -- Def Jam - Fight for NY (USA).iso
 dreamcast flycast - 25 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
 n3ds azahar - 30 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
 wiiu cemu - 40 -- MARIO KART 8 (US).wua
-switch ryujinx - 40 -- Animal Crossing New Horizons*.nsp
+# Ryujinx films 70 s: on 2026-10-06 the Deck took 10 s to load the game from the SD card and 10.5 s to recompile its
+# PPTC cache, so the 40 s film ended on Ryujinx's loading view (PPTC 20987 of 22500) before the game's first frame,
+# where the size is judged; the window tree showed the Vulkan child at 1278x706+0+35 in the 1280x800 window there.
+switch ryujinx - 70 -- Animal Crossing New Horizons*.nsp
 psp ppsspp - 20 -- Ape Escape - On the Loose (USA).iso
 nds melonds - 20 -- Advance Wars - Dual Strike (USA, Australia).zip
+# Beetle PSX reports its 256x240 placeholder, then 640x472, with a 478-line blip at the Sony logo (about 20 s): the TV
+# holds still through all of them, sized for the PS1's 240 lines (RendererNominalFrame), the 472 lines in its 480-row
+# frame with 4 black rows above and below (judge the bezel's corner in the shots before and after each change).
 psx retroarch mednafen_psx 25 -- Crash Bandicoot (USA).m3u

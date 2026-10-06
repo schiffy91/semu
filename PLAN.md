@@ -2977,6 +2977,94 @@ Status: started 2026-10-06.
     480-line four on GDV-NTSC against Sharp CRT, each in its own home, at 1280x800 and docked; its record above),
     whose cases are now D7-D10 and D12-D15; the rest of m16-check.cases and m16-docked.cases is still open.
 
+- The final Deck run's steady track (2026-10-06; the run: 53 cases, 37 passed; this track takes the PS1 TV's breathing,
+  standalone melonDS's render scale and seven case texts): built and contracted on the Mac (8415424, the nominal frame,
+  and the commit after it), observed on the Mac render host, in the editor and in the podman VM; read-only on the
+  Deck, so every Deck check below is a rerun.
+  - The PS1's TV breathed (boot line 10): Beetle PSX reports its 256x240 placeholder, then 640x472, with a 478-line
+    blip at the Sony logo, and the set was sized from each frame's own height, so the whole room shrank 1.7% and
+    grew back for a frame (bezelrect 1326x746 to 1304x733). A real TV does not resize when the game changes
+    resolution. Now a single screen's set, and with the bezel off its frame, is sized from the system's nominal
+    display: its declared native lines less its declared crop (`SEMU_RENDER_SURFACE_0_NATIVE` and `_CROP`, loaded
+    into every variant: the PS1's 240, the N64's 237 cropped VI lines, the PS2's 448) at the Fit state's step, and a
+    picture of another height is placed inside that frame (`src/renderer/renderer_nominal_frame.btrc`, the
+    compositor's framed and bare paths, and the editor's port, `NominalFrame` in config/editor/bezel-renderer.js).
+    Decisions per case, reversible defaults (the owner's integer rule where it can hold):
+    - a whole multiple of the nominal lines fills the frame: 240 or 480 lines in the PS1's 240-line frame (the
+      placeholder, the 320 and 512 modes and the 480-line interlaced mode all draw 640x480 at 320,160 on the Deck at
+      integer bezel), a Genesis 448-line interlaced picture in its 224;
+    - a picture short of its multiple (Beetle's 472 lines, the 478-line blip) keeps the frame's own step per line and
+      is centred, the rows it lacks black inside the opening as a CRT's border: 630x472 at 325,164 in the 640x480
+      frame, 4 black rows above and below; in the integer states the border splits on whole rows (711 of 720: 4
+      below, 5 above), so a whole step keeps every native pixel k by k;
+    - an interlaced or hi-res mode whose per-line step is not whole is scaled to the nominal height: docked, the
+      PS1's integer bezel is 3x of 240 lines (960x720 at 480,180), so its 480-line mode draws 1.5 rows a line and fills
+      the frame, sharp-bilinear (no doubled rows); a whole step there would be 1x, 480 lines in the 720-row frame with
+      120 black rows above and below, which no CRT draws;
+    - a picture taller than its frame (a PAL or overscan mode, the SNES's 239 lines in its 224, a 480- or 512-line PS2
+      game in its 448) is fitted to the frame, never past the opening or the lip: all five PS2 sizes tried (448, 480,
+      512 lines, a 224-line field drawn twice, 512 wide) draw 597x448 at 341,176 on the Deck. The integer alternative,
+      cropping the extra rows as a CRT's overscan hides them, is the route if the owner prefers whole steps there;
+    - every single-screen bezel takes the rule (a handheld's picture never changes height, so nothing moves there),
+      and the bezel off keeps the same frame: in integer game the bare picture is exactly the TV's, in non-integer
+      game within a pixel.
+    Observed on the Mac render host (`RENDER_HOST_NATIVE=WxH tests/visual/render.sh`, new; judged by eye on contact
+    sheets and 6x crops): the PS1 at 256x240, 320x240, 512x240, 640x480 and 640x472 in each of the four Fit states at
+    1280x800 and 1920x1080, 40 cells: within a state the TV (its bezelrect) is the same in all five, e.g. -23,-15
+    1326x746 at integer bezel on the Deck and -465,-292 2210x1243 in non-integer game; the 472-line picture sits
+    inside the frame the others fill with a thin dark border, the lip's glow following its corner (non-integer game
+    1049x786 at 116,7 in the 1067x800 frame; docked integer game 1258x944 in 1280x960). The editor matches
+    (`tests/visual/editor-sync.sh --card test --frame 640x472`, new, the editor's `?frame=`): both PS1 variants in the
+    four states, framing equal and MAE 0; and every variant of every system in the four states at 1280x800 with no
+    frame override (38 cells a state), MAE 0. At the declared sizes nothing moved: the render host of 2b6f91a against
+    this track's, every system's default variant (and the bezel-less Wii U and Switch) in the four states at both
+    sizes, shader off, 136 cells, pixel for pixel identical. Contracts: nominal_frame.btrc (the lines and
+    multiples, the PS1's two TVs standing still for six frame sizes in four states at both sizes, the pictures above,
+    the bare frame, the N64's crop, the PS2's taller pictures, the compositor's and the editor's wiring),
+    radial_render and picture_edges moved to it. Mutations, each on a copy of the tree, each failing checks (13 in all with the four below): the set
+    sized by the frame's height (8), no border (2), the border unrounded (1), the bare picture fitted plainly (1),
+    the crop ignored (2), every picture one multiple (4), the compositor passing no nominal (1), the editor passing
+    none (1), the nominal never loaded (8).
+  - Standalone melonDS's render scale did nothing (C5): Semu's melonDS.toml ran the software renderer ([3D] Renderer 0,
+    labelled opengl in emulator.json), and only melonDS's OpenGL renderer reads [3D.GL] ScaleFactor (EmuThread.cpp:858-888
+    at 906e9eb). Decision, reversible: above 1x the profile writes Renderer = 1 (OpenGL), at 1x it keeps 0 (software,
+    as the Deck ran), through new `render_scale_upscaled` and `render_scale_native` profile bindings; Screen.UseGL
+    stays false (the OpenGL renderer brings melonDS's GL panel by itself, Window.cpp:817-818, with its own fallback
+    to software). Observed in the podman VM (`tests/integration/live-switch.sh`, BASICS=0, TARGET=steam-deck, the
+    pinned melonDS on llvmpipe at 1280x800, Phantom Hourglass from ES-DE's library read-only): at 1x
+    "Renderer = 0 ScaleFactor = 1", no GL context, and in a 400x280 patch of the touch screen's 3D every pixel equals
+    the top left of its 2x2 block (0 of 112000 differ); at 2x "Renderer = 1 ScaleFactor = 2", melonDS logs "Created a
+    OpenGL context", and 24098 and 30852 of 112000 pixels differ from their block in two shots: by eye (4x crops) the
+    seagull's and the rope's edges step one screen pixel instead of two, the 2D clouds still native. Contract:
+    render_scale.btrc (Renderer 1 with ScaleFactor 2, Renderer 0 at 1x; mutations: the upscaled line writing the
+    software value, the binding never upscaled).
+  - Case texts that were wrong, not the product (`tests/deck/m16-check.cases`, `tests/deck/boot-capture.cases`;
+    `input-check.sh --plan` accepts all three case files, m16_review.btrc keeps the new lines; mutations: C5's old aim
+    and C4 without its presses each fail it):
+    - S2 and D1: The Wind Waker draws its title and opening at 30 frames a second and Dolphin presents only those
+      (D14), so the bar there is at least 29.8 per second with gaps under 50 ms; D1's Nintendo and Dolby logos keep
+      59.8 per second with a gap under 50 ms (a first run's shader compiles dropped a frame at a logo: 47.6 and 30.1
+      ms), the disc load into the opening excused for two lines with gaps under 200 ms. S2's receipt is frame 60's,
+      before the press, so the scaled size is read from the frame lines: 1066x800, Dolphin's window.
+    - S3: 878x768 is right. PCSX2's IntegerScaling (GSRenderer.cpp:358-390 at v2.6.3) shrinks the 4:3 window rectangle
+      (1067x800) to a whole multiple of the frame's texel width when that width fits it, so Devil May Cry's 1024 texels
+      at 2x draw 1024x768 at 128,16 and the renderer keeps 878x768; Def Jam's 1278 do not fit and draw 1068x800. The
+      TV and picture do not move either way; the hook is unchanged.
+    - C3: Mario Kart Wii's title loops (title, intro, attract race), so a screen past the title is an A press
+      answered: two of the GameCube pad's A leave the loop, then the Wii Remote layout, two fillers for its 6 s
+      relink, and two of the Wii Remote's A, each shot a screen after the last (the pad's A rides along; C4's pointer
+      is the remote's alone).
+    - C4: two of the Wii Remote's A reach a screen that takes the pointer before the moves.
+    - C5: the aim is the middle of the touch screen in Semu's side-by-side layout, 0.70,0.50 (896,400), with melonDS's
+      own arrow judged there and the 3D at 2x.
+    - Boot line 7: Ryujinx is filmed 70 s (a 10 s load from the SD card and a 10.5 s PPTC recompile ended the 40 s film
+      on its loading view); boot line 10 now says the TV holds still through Beetle's sizes.
+  - Not this track: RetroArch's load-content animation over the PS1's TV at boot (boot line 10's other finding), S1,
+    S5, D4, D11, D13 and boot lines 4, 6 and 8.
+  - Rerun on the Deck after a release at or after this track's commit (it changes the renderer, melonDS's profile and
+    the case files): boot-capture.cases lines 7 (switch ryujinx, 70 s) and 10 (psx); m16-check.cases S2, S3, C3, C4,
+    C5 (after S5, which leaves the DS at 2x), D1, and F2 (the PS1's Fit states, now sized for 240 lines).
+
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
 The review ran on the Mac (mbp21, aarch64-darwin, macOS 27). FRACTAL-NORTH did not resolve
@@ -4404,6 +4492,14 @@ Update this block whenever a milestone criterion changes state.
   a70ece76, the last after that commit; Steam's templates have not changed since af0470d8, so the radial is
   current. Then 6c40e186 (item 8's Flycast patch), installed with `install-delta` and `prepare`, no game running.
   Then 37211798 (item 9's shader defaults; release 4770562e), the same way; Steam's templates still unchanged.
+- M16 final Deck run, steady track (2026-10-06): a single screen's TV, and its bare frame, are sized from the system's
+  nominal lines (declared native less its crop), so the PS1's set holds still while Beetle PSX changes resolution
+  (256x240, 640x472, the 478-line blip); a picture of another height sits in that frame (a whole multiple fills it,
+  a short one is centred with whole black rows, a taller one is fitted). Standalone melonDS switches to its OpenGL
+  renderer above 1x, so its ScaleFactor applies (seen in the VM at 2x). Seven case texts corrected (S2, S3, C3, C4,
+  C5, D1, boot line 7). Observed on the Mac render host, in the editor (MAE 0) and in the podman VM; contracts
+  nominal_frame.btrc and render_scale.btrc, 13 mutations killed. Open on the Deck, after a release with it: the
+  reruns listed in PLAN M16's steady-track block.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,

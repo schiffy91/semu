@@ -146,7 +146,11 @@ class RenderScaleSpecProfiles {  // each standalone's own key at the system's sc
         contract.contains(RenderScaleSpecTools.profile(fixture, native, "dreamcast", "flycast", "emu.cfg"), "rend.Resolution = 480\n", "Flycast at 480 lines");
         contract.contains(RenderScaleSpecTools.profile(fixture, scaled, "dreamcast", "flycast", "emu.cfg"), "rend.Resolution = 960\n", "Flycast at 960 lines for 2x");
         contract.contains(RenderScaleSpecTools.profile(fixture, scaled, "n3ds", "azahar", "qt-config.ini"), "resolution_factor=2\nresolution_factor\\default=false\n", "Azahar at 2x, read over its default");
-        contract.contains(RenderScaleSpecTools.profile(fixture, scaled, "nds", "melonds", "melonDS.toml"), "ScaleFactor = 2\n", "melonDS's OpenGL 3D at 2x");
+        string melonScaled = RenderScaleSpecTools.profile(fixture, scaled, "nds", "melonds", "melonDS.toml");
+        string melonNative = RenderScaleSpecTools.profile(fixture, native, "nds", "melonds", "melonDS.toml");
+        contract.contains(melonScaled, "ScaleFactor = 2\n", "melonDS's OpenGL 3D at 2x");
+        contract.expect(melonScaled.contains("[3D]\nRenderer = 1\n") && melonNative.contains("[3D]\nRenderer = 0\n") && melonNative.contains("ScaleFactor = 1\n") && !melonScaled.contains("Renderer = 0") && !melonNative.contains("Renderer = 1"),
+            "standalone melonDS switches to its OpenGL renderer above 1x, the only one that reads ScaleFactor (its software renderer drew the Deck's 2x at 256x192, M16's case C5), and keeps the software one at native");
         string hotkeys = RenderScaleSpecTools.profile(fixture, native, "gc", "dolphin", "Hotkeys.ini");
         contract.contains(RenderScaleSpecTools.profile(fixture, native, "gc", "dolphin", "Dolphin.ini"), "OnScreenDisplayMessages = False\n", "Dolphin draws no OSD message over the composed picture: no Internal Resolution: 2x at a live switch");
         contract.expect(hotkeys.contains("Internal Resolution/Increase IR = @(Alt+Prior)\n") && hotkeys.contains("Internal Resolution/Decrease IR = @(Alt+Next)\n"), "Dolphin binds Increase IR and Decrease IR to the chords Semu types for a live scale: " + hotkeys);

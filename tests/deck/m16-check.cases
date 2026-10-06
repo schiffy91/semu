@@ -83,20 +83,28 @@ n3ds azahar - 50 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0.5 key:c
 #     retroarch-core-options.cfg mupen64plus-43screensize "640x480" and mupen64plus-EnableNativeResFactor "2";
 #     rate lines at 60 per second. choices n64 {"render_scale":"2x"}.
 n64 retroarch mupen64plus_next 40 key:ctrl+shift+n key:ctrl+shift+d key:ctrl+m key:ctrl+m -- Super Mario 64 (USA).zip
-# S2. The GameCube on Dolphin, live. before: native, receipts surface0_native=640x480 surface0_scaled=0x0.
-#     after-1 (88/1/0, SCALE: 2X): the game keeps running (restarts=0) and its picture turns sharper in place;
-#     the launch log reads "semu: render scale 2x: 1 press(es) of Alt+Prior via X"; no Dolphin text over the
-#     picture (its Internal Resolution: 2x stays hidden); receipts render_scale=2 surface0_scaled=1067x800;
-#     rate lines at 59.94 per second. after-2 (88/0/0, SCALE: NATIVE): back to native live with one press of
-#     Alt+Next. choices gc {"render_scale":"1x"}.
+# S2. The GameCube on Dolphin, live. before: native, receipts surface0_native=640x480 surface0_scaled=0x0 (the
+#     case's one receipt is frame 60's, before the first press). after-1 (88/1/0, SCALE: 2X): the game keeps
+#     running (restarts=0) and its picture turns sharper in place; the launch log reads "semu: render scale 2x: 1
+#     press(es) of Alt+Prior via X"; no Dolphin text over the picture (its Internal Resolution: 2x stays hidden);
+#     the renderer's frame lines after the press read "native 640x480 scaled 1066x800 source 1066x800" (Dolphin's
+#     window kept whole: its 4:3 picture is 1066 wide on 800 rows). Rate: The Wind Waker draws its title at 30
+#     frames a second and Dolphin presents only the frames the game draws (D14), so every line at least 29.8 per
+#     second with the longest gap under 50 ms (one and a half of its frames), before, at 2x and after: an even 30
+#     is full speed (two refreshes a frame), a slower game reads under 29.8. after-2 (88/0/0, SCALE: NATIVE): back
+#     to native live with one press of Alt+Next, the frame lines "scaled 0x0" again. choices gc {"render_scale":"1x"}.
 gc dolphin - 50 key:ctrl+shift+n key:ctrl+shift+n -- Legend of Zelda, The - The Wind Waker (USA).rvz
 # S3. The PS2 on PCSX2, applied by Restart Game. after-1 (88/1/1, SCALE 2X: RESTART TO APPLY). after-2 (87/1):
 #     the game boots again. after-3 (1) and after-5 (1): the menu's SCALE row reads 2X. after-4 and after-6:
 #     once the game draws, the TV and the picture the size and place they had in before (within 1 px: PCSX2's
 #     own rectangle at 2x is rounded without a whole step); receipts render_scale=2 frames_scaled=1,
-#     surface0_native=512x448 (Devil May Cry's GS texels halved back) and surface0_scaled=914x800 (PCSX2 fits a
-#     2x picture past 800 rows to the window); PCSX2.ini upscale_multiplier = 2; no PCSX2 text over the
-#     picture; rate lines at 59.94 per second. choices ps2 {"render_scale":"2x"}.
+#     surface0_native=512x448 (Devil May Cry's GS texels halved back), surface0_source=128,16,1024,768 and
+#     surface0_scaled=878x768: PCSX2's IntegerScaling (GSRenderer.cpp:358-390 at v2.6.3) shrinks the 4:3 window
+#     rectangle (1067x800) to a whole multiple of the frame's texel width when that width fits it, so Devil May
+#     Cry's 1024 texels draw 1024x768 at 128,16 and the renderer keeps 878x768 of it (768 rows at 512x448's
+#     shape); a frame wider than 1067 texels (Def Jam's 1278) is fitted to the window, 1068x800. PCSX2.ini
+#     upscale_multiplier = 2; no PCSX2 text over the picture; rate lines at 59.94 per second. choices ps2
+#     {"render_scale":"2x"}.
 ps2 pcsx2 - 60 key:ctrl+shift+n key:ctrl+shift+d key:ctrl+m key:ctrl+m key:ctrl+m key:ctrl+m -- Devil May Cry (USA).iso
 # S4. The PSP on PPSSPP: 2x is now the default (ppsspp.ini InternalResolution = 2; it was 0, the window's own
 #     size, about 3x). before: the PSP shell and its picture as in M15. after-1 (88/2/1, SCALE 3X: RESTART TO
@@ -143,33 +151,50 @@ nds retroarch melonds 40 move:0.5,0.5 tap:0.5,0.5 move:0.1,0.9 -- Legend of Zeld
 #    160,120".
 n3ds azahar - 50 move:0.5,0.5 tap:0.5,0.5 move:0.9,0.1 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
 # C3. Item 6, every Wii controller layout live (Dolphin), on Mario Kart Wii, which takes the Wii Remote and the
-#    GameCube controller alike. By 90 s the game is on its title (Press the A Button) at full speed. The two
-#    Controller Layouts step P1 from the default Nunchuk to Classic (journal 83/2/0, toast P1: CLASSIC, run.log
-#    "P1 layout classic: 1 press(es) of Alt+Insert via X") and on to GameCube (83/3/0, toast P1: GAMECUBE, never
-#    RESTART TO APPLY; run.log "P1 layout gamecube: 1 press(es) of Alt+Insert, then Alt+F11 to unlink it via X").
-#    south is then the GameCube pad's A, the only input left (the Wii Remote is unbound and away): after-3 has
-#    left the title that after-2 shows. east (the GameCube pad's B) goes back. The third Controller Layout steps to
-#    Wii Remote (83/0/0, P1: WII REMOTE, "... then Alt+F11 to link it"), and the last south is the Wii Remote's A
-#    (and the pad's): after-6 moves on from after-5. One Dolphin process throughout (no "semu: restarting" in
-#    run.log, cmdline unchanged), and no Dolphin message over the picture in any shot ("Wii Remote 1
+#    GameCube controller alike. By 90 s the game is in its title loop: the title (Press the A Button), its intro
+#    movie, then an attract race with Press the A Button over it, round again; nothing in that loop goes past the
+#    title by itself, so a shot of any other screen (a save-data prompt, the license or main menu) is an A press
+#    answered. The two Controller Layouts step P1 from the default Nunchuk to Classic (journal 83/2/0, toast P1:
+#    CLASSIC, run.log "P1 layout classic: 1 press(es) of Alt+Insert via X") and on to GameCube (83/3/0, toast P1:
+#    GAMECUBE, never RESTART TO APPLY; run.log "P1 layout gamecube: 1 press(es) of Alt+Insert, then Alt+F11 to
+#    unlink it via X"). The two souths are then the GameCube pad's A, the only input left (the Wii Remote is unbound
+#    and away): the first brings an intro or attract race back to the title (or leaves the title), the second
+#    leaves the title, so after-4 shows a screen past the title. The third Controller Layout steps to Wii Remote
+#    (83/0/0, P1: WII REMOTE, "... then Alt+F11 to link it"); the game pairs the remote again, which slowed it for
+#    about 6 s on 2026-10-06 (31-53 per second, a 431 ms gap), so two fillers wait that out; the last two souths are
+#    the Wii Remote's A (and the pad's): after-8 and after-9 each show the game answering A, a screen after the
+#    one before it (the next prompt or menu), never the title loop again. One Dolphin process throughout (no
+#    "semu: restarting" in run.log), and no Dolphin message over the picture in any shot ("Wii Remote 1
 #    disconnected", "Loading input profile"), only Semu's toasts. choices: input.systems.wii.players.1.layout
 #    "wiimote" in OUT/home/semu.json. (In the VM, at a fraction of full speed, the GameCube pad's X+Y+Start held
 #    with the remote away logged Dolphin's own PAD - COMBO_ORIGIN three times, and the game relinked the remote.)
-wii dolphin - 90 key:ctrl+shift+c key:ctrl+shift+c south east key:ctrl+shift+c south -- Mario Kart Wii*.wbfs
+wii dolphin - 90 key:ctrl+shift+c key:ctrl+shift+c south south key:ctrl+shift+c key:shift key:shift south south -- Mario Kart Wii*.wbfs
 # C4. Item 1 on the Wii: one pointer, the game's own (M16's ruling: Semu draws no crosshair there, since the game's
-#    IR pointer sits about 48 px above the finger and moves about 1.34 times as far). C3 left P1 on Wii Remote. cursor-1
-#    and cursor-2 (gamescope type 3, its cursor plane included): Mario Kart Wii's own hand pointer where the IR aims,
-#    no Semu crosshair and no X arrow (Dolphin's CursorVisibility 0); so crosshair-1 and crosshair-2 read FAIL here
-#    (cursor-crosshair.sh finds no crosshair), which is this case's pass. idle-N: the hand pointer as the game keeps it.
-wii dolphin - 60 move:0.5,0.5 move:0.2,0.8 -- Mario Kart Wii*.wbfs
+#    IR pointer sits about 48 px above the finger and moves about 1.34 times as far). C3 left P1 on Wii Remote. At
+#    60 s Mario Kart Wii plays its title loop (its intro movie draws no pointer), so the Wii Remote's A goes first:
+#    the first south brings the loop back to the title (or leaves it), the second leaves the title for a screen that
+#    takes the pointer (a save-data prompt, the license or main menu: after-2 is not the title loop). Then the moves:
+#    cursor-3 and cursor-4 (gamescope type 3, its cursor plane included): Mario Kart Wii's own hand pointer where the
+#    IR aims, no Semu crosshair and no X arrow (Dolphin's CursorVisibility 0); so crosshair-3 and crosshair-4 read
+#    FAIL here (cursor-crosshair.sh finds no crosshair), which is this case's pass. idle-N: the hand pointer as the
+#    game keeps it (or hidden, if the game hides an idle pointer: say which).
+wii dolphin - 60 south south move:0.5,0.5 move:0.2,0.8 -- Mario Kart Wii*.wbfs
 # C5. Item 1 on standalone melonDS (ES-DE's melonDS (Standalone) for the DS on Linux), which Semu does not compose:
 #    no receipt, so inject.sh moves to fractions of the whole screen (its note reads "surface screen at 0,0
-#    1280x800"; 0.5,0.75 is the middle of melonDS's lower screen in its default stacked layout). cursor-1 and
-#    cursor-2: melonDS's own arrow at the pointer, no Semu crosshair (M16's ruling, reversible: the emulator's arrow
-#    stays where Semu draws no pointer, a touch screen needs a visible aim), so crosshair-1 and -2 read FAIL, this
-#    case's pass; the tap lands on the touch screen in melonDS's own picture (no Semu touch.log line). S5 left the
-#    DS at 2x, so melonDS.toml's [3D.GL] ScaleFactor = 2 (the same layout).
-nds melonds - 40 move:0.5,0.75 tap:0.5,0.75 -- Legend of Zelda, The - Phantom Hourglass*.zip
+#    1280x800"). Semu's melonDS profile lays the screens side by side (ScreenLayout = 2, IntegerScaling: 2x, the top
+#    screen at x 128-639 and the touch screen at x 640-1151, both y 208-591 on the Deck), so 0.70,0.50 (896,400) is
+#    the middle of the touch screen. cursor-1 and cursor-2: melonDS's own arrow at 896,400 (it shows Qt's arrow over
+#    its picture and hides it only with Mouse.Hide, which Semu leaves off; gamescope hides an idle cursor after 3 s,
+#    and the shots are 1.5 s after the pointer moves), no Semu crosshair (M16's ruling, reversible: the emulator's
+#    arrow stays where Semu draws no pointer, a touch screen needs a visible aim), so crosshair-1 and -2 read FAIL,
+#    this case's pass; no arrow at all means melonDS or gamescope hides it: say which shot. The tap lands on the
+#    touch screen in melonDS's own picture (no Semu touch.log line): the game answers it (the opening moves on to the
+#    title, or the title to the file menu). S5 left the DS at 2x, so melonDS.toml has [3D] Renderer = 1 (its OpenGL
+#    renderer, the only one that reads ScaleFactor) and [3D.GL] ScaleFactor = 2, run.log "Created a OpenGL context":
+#    the 3D at twice the DS's lines, its edges stepping one screen pixel instead of two (the VM, 2026-10-06: a
+#    quarter of the 3D's pixels differ from their 2x2 block at 2x, none at 1x), the 2D layers native, the layout the
+#    same.
+nds melonds - 40 move:0.70,0.50 tap:0.70,0.50 -- Legend of Zelda, The - Phantom Hourglass*.zip
 #
 # Items 10 and 3, the TV cutout and the GB studio bezel (the picture track). key:ctrl+shift+b is the radial's
 # Next Bezel (79/<index into the system's bezel variants>). Judge the shots at 1:1 and with crops zoomed 4x
@@ -215,8 +240,14 @@ gb retroarch gambatte 25 key:ctrl+shift+b -- Tetris (World) (Rev 1).zip
 #     frame 1": Dolphin's render window is full screen before its core boots, so the first frame Semu composes is
 #     already the screen's size and no later frame is smaller. before: Wind Waker's boot (the Nintendo logo or
 #     its opening) inside the TV at full size, nothing drawn in a block in the top left with black to its right
-#     and below. rate: once the game draws, every line at least 59.8 per second with the longest gap under 25 ms
-#     (one and a half frames: a single dropped frame at 59.94 Hz logs about 33 ms).
+#     and below. rate, read line by line in run.log against the shots (the bar is the game's own frame rate):
+#     the Nintendo and Dolby logos, drawn at 60 frames a second, at least 59.8 per second with the longest gap under
+#     50 ms (a first run compiles Dolphin's shaders and may drop a frame or two at a logo: 2026-10-06 logged 47.6 and
+#     30.1 ms; a gap of 50 ms or more fails); the disc load into the opening is excused, at most two
+#     lines under that bar with the longest gap under 200 ms (2026-10-06: 40.0 and 29.3 per second, 83 and 145 ms);
+#     from the opening on the game draws 30 frames a second and Dolphin presents only those (D14), so every line at
+#     least 29.8 per second with the longest gap under 50 ms (one and a half of its frames; an even 30.0 is full
+#     speed).
 gc dolphin - 30 -- Legend of Zelda, The - The Wind Waker (USA).rvz
 # D2. Item 4, the Wii (Dolphin): as D1, New Super Mario Bros. Wii's strap or title.
 wii dolphin - 30 -- New Super Mario Bros. Wii*.wbfs

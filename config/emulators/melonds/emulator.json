@@ -40,7 +40,8 @@
         "section": "3D",
         "key": "Renderer",
         "values": {
-          "opengl": "0"
+          "software": "0",
+          "opengl": "1"
         },
         "extra_pins": [
           {
@@ -121,7 +122,7 @@
       "render_scale": {
         "frame": "declared",
         "apply": "restart",
-        "doc": "[3D.GL] ScaleFactor is melonDS's OpenGL 3D scale, read at boot; the 2D layers stay native."
+        "doc": "[3D.GL] ScaleFactor is melonDS's OpenGL 3D scale, read at boot; the 2D layers stay native. The software renderer ignores it, so above 1x the profile switches [3D] Renderer to OpenGL (1); at 1x it stays software (0), as before (M16 final run, case C5)."
       }
     }
   },
@@ -129,7 +130,7 @@
     "launch": "The bundled source-built melonDS Qt frontend receives --fullscreen followed by exactly one positional Nintendo DS ROM. No host executable, Flatpak, libretro core, or prebuilt binary is permitted.",
     "state": "melonDS reads $XDG_CONFIG_HOME/melonDS/melonDS.toml; the managed save, savestate and cheat paths point into its isolated state root.",
     "input": "SDL raw joystick zero is the Steam Virtual Gamepad lane. The profile maps every DS control explicitly; pinned Qt actions consume Ctrl+S and Ctrl+A for slot-1 save/load, while Semu's process-group watcher owns Ctrl+Q and immediate physical Select+Start termination.",
-    "rendering": "The managed TOML pins both melonDS OpenGL selectors. The flake applies no Semu render hook, so no Semu bezel or shader reaches this emulator yet.",
+    "rendering": "The managed TOML picks melonDS's renderer by the render scale: software at native, OpenGL above it (profile.json doc.rendering). The flake applies no Semu render hook, so no Semu bezel or shader reaches this emulator yet.",
     "content": "melonDS 906e9ebb opens NDS and DSi ROMs (src/frontend/qt_sdl/Window.cpp:88) and, through libarchive (required by its CMakeLists.txt:87, ARCHIVE_SUPPORT_ENABLED), the ROM inside an archive (Window.cpp:117-130 lists .zip, .7z, .rar, .tar and compressed tars; the two ES-DE offers are declared)."
   },
   "save_states": {

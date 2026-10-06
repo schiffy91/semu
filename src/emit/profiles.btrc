@@ -243,6 +243,7 @@ class SemuProfileContext {
         int scale = SemuRenderScale.launched(self.plan, system, self.emulator.id);
         SemuSystem served = system == null ? self.servedSystem() : system;
         result.put("render_scale", Strings.fromInt(scale));  // the system's render scale, 1 where this emulator takes none
+        result.put(scale > 1 ? "render_scale_upscaled" : "render_scale_native", "1");  // an {"if"} line held only above native or only at it: melonDS's OpenGL renderer, the one its ScaleFactor scales
         result.put("render_scale_lines", Strings.fromInt(scale * (served == null ? 0 : SemuJson.intAt(served.definition, "display.screens.0.native.h", 0))));  // Flycast's rend.Resolution counts lines
         JSONValue definitions = SemuJson.get(self.emulator.profile, "compiler.bindings");
         if (!definitions.isObject()) { return result; }

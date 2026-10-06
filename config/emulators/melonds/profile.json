@@ -5,11 +5,14 @@
       "emulator_name": {
         "source": "emulator.name"
       },
-      "renderer_value": {
-        "source": "platform.graphics.values.opengl"
-      },
       "use_gl_value": {
         "source": "platform.graphics.extra_pins.0.value"
+      },
+      "renderer_software": {
+        "source": "platform.graphics.values.software"
+      },
+      "renderer_opengl": {
+        "source": "platform.graphics.values.opengl"
       }
     },
     "line_groups": {
@@ -111,7 +114,14 @@
       "path": "${emulator_name}/config/melonDS.toml",
       "lines": [
         "[3D]",
-        "Renderer = ${renderer_value}",
+        {
+          "if": "render_scale_native",
+          "line": "Renderer = ${renderer_software}"
+        },
+        {
+          "if": "render_scale_upscaled",
+          "line": "Renderer = ${renderer_opengl}"
+        },
         "",
         "[3D.GL]",
         "ScaleFactor = ${render_scale}",
@@ -178,7 +188,8 @@
     "hotkeys": "The emitter compiles four configurable Semu chords into melonDS's native hotkey table. melonDS saves and loads slot 1 only through its compiled menu shortcuts Shift+F1 and F1 (Window.cpp:318-343), never Ctrl+S and Ctrl+A, so those rows carry native_chord and the supervisor types Shift+F1 or F1 for a save or load from any source, the radial's Ctrl+S included. Ctrl+Q quits melonDS through its own Quit shortcut too, the same action the supervisor runs. Every declared action appears exactly once across native and external ownership lanes.",
     "geometry": "Horizontal layout id 2, even sizing id 0, zero gap, native 4:3 aspects, zero rotation, and no initial swap preserve two equal 256x192 LCD surfaces. Ctrl+Tab may swap positions without changing semantic tap order.",
     "storage": "Relative writable asset paths are interpreted by the source patch from $XDG_CONFIG_HOME/melonDS and resolve into $XDG_DATA_HOME/melonDS. External BIOS and ROM-adjacent save sources stay read-only; only isolated copies/state are writable.",
-    "keypad_plus": "Ctrl++ (HK_FastForwardToggle) carries Qt::KeypadModifier: Steam types its + as KEYPAD_PLUS, and melonDS matches a hotkey on key | modifiers, the keypad modifier included (EmuInstanceInput.cpp:307-341 at 906e9eb), so the value is Ctrl 67108864 + keypad 536870912 + Key_Plus 43."
+    "keypad_plus": "Ctrl++ (HK_FastForwardToggle) carries Qt::KeypadModifier: Steam types its + as KEYPAD_PLUS, and melonDS matches a hotkey on key | modifiers, the keypad modifier included (EmuInstanceInput.cpp:307-341 at 906e9eb), so the value is Ctrl 67108864 + keypad 536870912 + Key_Plus 43.",
+    "rendering": "[3D] Renderer is melonDS's software renderer (0) at native and its OpenGL renderer (1) above it: only the OpenGL renderer reads [3D.GL] ScaleFactor (EmuThread.cpp:858-888 at 906e9eb; the software renderer draws 256x192 whatever the scale), so a render scale of 2x or 3x switches it on (render_scale_upscaled). With the OpenGL renderer melonDS draws its screens through its OpenGL panel too (hasOGL, Window.cpp:817-818; it falls back to software when no OpenGL context can be made); Screen.UseGL stays false, so native keeps the software path the Deck ran before."
   },
   "native_shortcuts": {
     "source": "melonds 906e9eb src/frontend/qt_sdl/Config.cpp:51 and src/frontend/qt_sdl/Window.cpp:247,318-349,363",
