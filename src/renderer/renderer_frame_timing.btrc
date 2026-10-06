@@ -1,0 +1,153 @@
+// What an off-screen run reads from the composed frames of any emulator (SEMU_RENDER_DEBUG): every change of the
+// framebuffer the game phase composes into, with its frame and time, so a boot that draws into a stale smaller
+// surface shows in the log; and every two seconds the frame rate, the longest gap between two frames, and what
+// the game phase (picture, shader, bezel, reflections) cost on the CPU. SEMU_RENDER_GPU_TIME=1 adds its GPU time,
+// read back from GL_TIME_ELAPSED queries four frames later, so the reading never waits on the GPU.
+// The ms= stamp is the wall clock, which a harness lines up with its own date +%s%3N.
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+import ./renderer_abi.btrc;
+import ./renderer_config.btrc;
+
+struct RendererFrameTimingState {
+    bool initialized;
+    bool debug;
+    bool gpu;  // SEMU_RENDER_GPU_TIME=1, and the context answered every query entry point
+    int last_width;
+    int last_height;
+    unsigned long long frames;
+    long long window_started_ns;  // the two-second window a rate line covers
+    long long previous_frame_ns;
+    long long longest_gap_ns;
+    int window_frames;
+    long long compose_started_ns;
+    long long compose_total_ns;
+    long long compose_longest_ns;
+    unsigned int queries[4];  // a ring: the query begun four frames ago is read before it is reused
+    bool query_pending[4];
+    int query_next;
+    long long gpu_total_ns;
+    long long gpu_longest_ns;
+    int gpu_samples;
+    __fn_ptr<void, int, unsigned int*> generate_queries;
+    __fn_ptr<void, unsigned int, unsigned int> begin_query;
+    __fn_ptr<void, unsigned int> end_query;
+    __fn_ptr<void, unsigned int, unsigned int, unsigned int*> query_unsigned;
+    __fn_ptr<void, unsigned int, unsigned int, unsigned long long*> query_unsigned_long;
+    __fn_ptr<unsigned int> get_error;
+};
+
+struct RendererFrameTimingState RendererFrameClock;
+
+class RendererFrameTiming {
+    class long long nanoseconds() {  // monotonic
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        return (long long)now.tv_sec * 1000000000LL + (long long)now.tv_nsec;
+    }
+
+    class void bind(void* slot, struct SemuRenderFrameGl* frame, const char* name) {  // C11 forbids casting void* to a function pointer
+        void* symbol = frame->get_proc(name);
+        memcpy(slot, &symbol, sizeof(symbol));
+    }
+
+    class void initialize(struct SemuRenderFrameGl* frame) {
+        if (RendererFrameClock.initialized) { return; }
+        RendererFrameClock.initialized = true;
+        RendererFrameClock.debug = getenv("SEMU_RENDER_DEBUG") != null;
+        char* gpu = getenv("SEMU_RENDER_GPU_TIME");
+        if (!RendererFrameClock.debug || gpu == null || strcmp(gpu, "1") != 0 || frame->get_proc == null) { return; }
+        RendererFrameTiming.bind(&RendererFrameClock.generate_queries, frame, "glGenQueries");
+        RendererFrameTiming.bind(&RendererFrameClock.begin_query, frame, "glBeginQuery");
+        RendererFrameTiming.bind(&RendererFrameClock.end_query, frame, "glEndQuery");
+        RendererFrameTiming.bind(&RendererFrameClock.query_unsigned, frame, "glGetQueryObjectuiv");
+        RendererFrameTiming.bind(&RendererFrameClock.query_unsigned_long, frame, "glGetQueryObjectui64v");
+        RendererFrameTiming.bind(&RendererFrameClock.get_error, frame, "glGetError");
+        RendererFrameClock.gpu = RendererFrameClock.generate_queries != null && RendererFrameClock.begin_query != null && RendererFrameClock.end_query != null
+            && RendererFrameClock.query_unsigned != null && RendererFrameClock.query_unsigned_long != null && RendererFrameClock.get_error != null;
+        if (RendererFrameClock.gpu) { RendererFrameClock.generate_queries(4, RendererFrameClock.queries); }
+        fprintf(stderr, "semu-renderer: GPU time %s\n", RendererFrameClock.gpu ? "measured" : "unavailable (no timer queries)");
+    }
+
+    class void collect(int slot) {  // a finished query's nanoseconds into the window; an unfinished one is dropped, never waited for
+        if (!RendererFrameClock.query_pending[slot]) { return; }
+        RendererFrameClock.query_pending[slot] = false;
+        unsigned int available = 0u;
+        RendererFrameClock.query_unsigned(RendererFrameClock.queries[slot], 0x8867u, &available);  // GL_QUERY_RESULT_AVAILABLE
+        if (available == 0u) { return; }
+        unsigned long long elapsed = 0ULL;
+        RendererFrameClock.query_unsigned_long(RendererFrameClock.queries[slot], 0x8866u, &elapsed);  // GL_QUERY_RESULT
+        RendererFrameClock.gpu_total_ns = RendererFrameClock.gpu_total_ns + (long long)elapsed;
+        if ((long long)elapsed > RendererFrameClock.gpu_longest_ns) { RendererFrameClock.gpu_longest_ns = (long long)elapsed; }
+        RendererFrameClock.gpu_samples = RendererFrameClock.gpu_samples + 1;
+    }
+
+    // Before the game phase draws: the size line, the gap since the last frame, and the GPU query opened.
+    class void begin(struct SemuRenderFrameGl* frame) {
+        RendererFrameTiming.initialize(frame);
+        if (!RendererFrameClock.debug) { return; }
+        long long now = RendererFrameTiming.nanoseconds();
+        RendererFrameClock.frames = RendererFrameClock.frames + 1ULL;
+        if (frame->framebuffer_width != RendererFrameClock.last_width || frame->framebuffer_height != RendererFrameClock.last_height) {
+            fprintf(stderr, "semu-renderer: framebuffer %dx%d (was %dx%d) at frame %llu ms=%lld\n", frame->framebuffer_width, frame->framebuffer_height,
+                RendererFrameClock.last_width, RendererFrameClock.last_height, RendererFrameClock.frames, RendererClock.epochMilliseconds());
+            RendererFrameClock.last_width = frame->framebuffer_width;
+            RendererFrameClock.last_height = frame->framebuffer_height;
+        }
+        if (RendererFrameClock.window_started_ns == 0LL) { RendererFrameClock.window_started_ns = now; }
+        if (RendererFrameClock.previous_frame_ns != 0LL && now - RendererFrameClock.previous_frame_ns > RendererFrameClock.longest_gap_ns) {
+            RendererFrameClock.longest_gap_ns = now - RendererFrameClock.previous_frame_ns;
+        }
+        RendererFrameClock.previous_frame_ns = now;
+        RendererFrameClock.compose_started_ns = now;
+        if (!RendererFrameClock.gpu) { return; }
+        int slot = RendererFrameClock.query_next;
+        RendererFrameTiming.collect(slot);
+        RendererFrameClock.get_error();  // nothing of the emulator's is left for the query to be blamed on
+        RendererFrameClock.begin_query(0x88BFu, RendererFrameClock.queries[slot]);  // GL_TIME_ELAPSED
+        RendererFrameClock.query_pending[slot] = RendererFrameClock.get_error() == 0u;  // another time query open: no sample, no error left behind
+    }
+
+    // After the game phase drew: the GPU query closed, the CPU cost counted, and every two seconds the rate line.
+    class void end() {
+        if (!RendererFrameClock.debug) { return; }
+        int slot = RendererFrameClock.query_next;
+        if (RendererFrameClock.gpu) {
+            if (RendererFrameClock.query_pending[slot]) { RendererFrameClock.end_query(0x88BFu); }
+            RendererFrameClock.query_next = (slot + 1) % 4;
+        }
+        long long now = RendererFrameTiming.nanoseconds();
+        long long spent = now - RendererFrameClock.compose_started_ns;
+        RendererFrameClock.compose_total_ns = RendererFrameClock.compose_total_ns + spent;
+        if (spent > RendererFrameClock.compose_longest_ns) { RendererFrameClock.compose_longest_ns = spent; }
+        RendererFrameClock.window_frames = RendererFrameClock.window_frames + 1;
+        long long window = now - RendererFrameClock.window_started_ns;
+        if (window < 2000000000LL) { return; }
+        RendererFrameTiming.report(window);
+        RendererFrameClock.window_started_ns = now;
+        RendererFrameClock.window_frames = 0;
+        RendererFrameClock.longest_gap_ns = 0LL;
+        RendererFrameClock.compose_total_ns = 0LL;
+        RendererFrameClock.compose_longest_ns = 0LL;
+        RendererFrameClock.gpu_total_ns = 0LL;
+        RendererFrameClock.gpu_longest_ns = 0LL;
+        RendererFrameClock.gpu_samples = 0;
+    }
+
+    class void report(long long window) {  // one line for the window that just closed
+        int frames = RendererFrameClock.window_frames;
+        char gpu[96];
+        gpu[0] = 0;
+        if (RendererFrameClock.gpu_samples > 0) {
+            snprintf(gpu, sizeof(gpu), ", GPU %.2f ms mean %.2f max", (double)RendererFrameClock.gpu_total_ns / (double)RendererFrameClock.gpu_samples / 1000000.0,
+                (double)RendererFrameClock.gpu_longest_ns / 1000000.0);
+        }
+        fprintf(stderr, "semu-renderer: %d frames in %lld ms (%.1f per second), longest gap %.1f ms, composing %.2f ms mean %.2f max%s ms=%lld\n",
+            frames, window / 1000000LL, (double)frames * 1000000000.0 / (double)window, (double)RendererFrameClock.longest_gap_ns / 1000000.0,
+            (double)RendererFrameClock.compose_total_ns / (double)frames / 1000000.0, (double)RendererFrameClock.compose_longest_ns / 1000000.0,
+            gpu, RendererClock.epochMilliseconds());
+    }
+}

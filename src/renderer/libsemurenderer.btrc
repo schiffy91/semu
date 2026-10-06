@@ -15,6 +15,7 @@ import ./renderer_variant_images.btrc;
 import ./renderer_menu.btrc;
 import ./renderer_cursor.btrc;
 import ./renderer_post_ui.btrc;
+import ./renderer_frame_timing.btrc;
 int semu_render_map_pointer_abi3(struct SemuRenderPointerMap* map,
                                  struct SemuRenderPointerQuery* query,
                                  struct SemuRenderPointerResult* result) {
@@ -263,6 +264,7 @@ int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
         return SEMU_RENDER_GL_UNAVAILABLE;
     }
 
+    RendererFrameTiming.begin(frame);  // SEMU_RENDER_DEBUG: size changes, frame rate, the game phase's cost
     if (SemuRenderer.post_ui.scale_live > 0) { SemuRenderer.config.render_scale.scale = SemuRenderer.post_ui.scale_live; }  // a scale the emulator switched to live
     RendererRenderScaling.normalize(frame, &SemuRenderer.config.render_scale);  // a scaled frame's size back to the game's, before the crop counts game pixels
     RendererSurfaceCropping.apply(frame, SemuRenderer.config.surface_crops, SemuRenderer.config.display_aspect);  // the picture only, before anything places or mirrors it
@@ -283,6 +285,7 @@ int semu_render_game_gl(struct SemuRenderFrameGl* frame) {
             &SemuRenderer.geometry);
     }
     SemuRendererLiveVariants.notice(frame);  // a Fit choice that draws what Fit: Bezel draws says so
+    RendererFrameTiming.end();
     RendererGlStateGuard.restore(&SemuRenderer.gl, &SemuRenderer.game_state);
     SemuRendererLiveVariants.receipt(frame, contextGeneration, status);
     if (status != SEMU_RENDER_APPLIED) {

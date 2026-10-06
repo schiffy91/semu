@@ -44,7 +44,8 @@
 # the second, so its keys and pointer reach the game only through gamescope, as Steam's XTest does,
 # and with Game Mode's --hide-cursor-delay 3000. inject.sh types only into displays it proves are
 # this gamescope's and numbered 2 or higher, and refuses otherwise (see inject.sh). The launch gets
-# SEMU_RENDER_DEBUG=1 (Semu's and the renderer's input lines) and SEMU_RENDER_CAPTURE_FRAME=60 (a
+# SEMU_RENDER_DEBUG=1 (Semu's and the renderer's input lines, and its frame rate and framebuffer lines, with
+# SEMU_RENDER_GPU_TIME=1 the GPU time of each frame's composition) and SEMU_RENDER_CAPTURE_FRAME=60 (a
 # receipt of the drawn screens before the first token, which move and tap read).
 #
 # Isolation, exactly: every case runs with --semu-home OUT/home, whose semu.json (made once per OUT)
@@ -209,6 +210,8 @@ evidence() {  # what the case left: the X key adapter, each action by source, th
          printf "receipt: phase=%s bezel_art=%s shader_preset=%s layout=%s", value["phase"], art, preset, value["layout"]
          if (value["phase"] == "switch") printf " bezel_index=%s shader_index=%s reload_ms=%s", value["bezel_index"], value["shader_index"], value["reload_ms"]
          printf " surface1_content=%s\n", value["surface1_content"] }' "$dir/evidence.log" >> "$dir/result"
+  grep -a -o 'semu-renderer: framebuffer [0-9]*x[0-9]* (was [0-9]*x[0-9]*) at frame [0-9]*' "$dir/run.log" | head -6 | sed 's/^semu-renderer: /size: /' >> "$dir/result"
+  grep -a -o 'semu-renderer: [0-9]* frames in .* max[^m]*' "$dir/run.log" | tail -4 | sed 's/^semu-renderer: /rate: /' >> "$dir/result"  # the last eight seconds: frame rate, longest gap, CPU and GPU cost
   note "choices: $(jq -c '.visual.systems // {}' "$home/semu.json" 2>/dev/null)"
   grep '^inject:' "$dir/inject.log" 2>/dev/null >> "$dir/result"
 }
@@ -260,7 +263,7 @@ while IFS= read -r line; do
   "$pad" $replica $arguments > "$dir/pad.log" 2>&1 &  # present before the emulator starts, so no hotplug is needed
   padpid=$!
   SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1 SDL_GAMECONTROLLER_IGNORE_DEVICES=0x28de/0x1205 SteamVirtualGamepadInfo="$out/steam-virtual-gamepad-info" PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy ALSA_CONFIG_PATH="$out/alsa-null.conf" SEMU_MATRIX_ROM="$rom" \
-    SEMU_RENDER_DEBUG=1 SEMU_RENDER_CAPTURE_FRAME=60 SEMU_INJECT_START_MS="$start_ms" SEMU_INJECT_EVIDENCE="$evidence" SEMU_INJECT_EVIDENCE_FROM="$from" \
+    SEMU_RENDER_GPU_TIME=1 SEMU_RENDER_DEBUG=1 SEMU_RENDER_CAPTURE_FRAME=60 SEMU_INJECT_START_MS="$start_ms" SEMU_INJECT_EVIDENCE="$evidence" SEMU_INJECT_EVIDENCE_FROM="$from" \
     bwrap --dev-bind / / --tmpfs /tmp/.X11-unix $cover -- gamescope --backend headless -W 1280 -H 800 -w 1280 -h 800 --xwayland-count 2 --hide-cursor-delay 3000 -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
   headless=$!
   game=""; display=""

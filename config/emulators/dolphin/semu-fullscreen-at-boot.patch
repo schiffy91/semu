@@ -1,0 +1,29 @@
+--- a/Source/Core/DolphinQt/MainWindow.cpp
++++ b/Source/Core/DolphinQt/MainWindow.cpp
+@@ -1231,7 +1231,7 @@
+     Discord::UpdateDiscordPresence();
+ #endif
+ 
+-  if (Config::Get(Config::MAIN_FULLSCREEN))
++  if (Config::Get(Config::MAIN_FULLSCREEN) && !m_render_widget->isFullScreen())  // Semu: already full screen from boot
+     m_fullscreen_requested = true;
+ }
+ 
+@@ -1285,6 +1285,17 @@
+     // Otherwise, just show it.
+     m_rendering_to_main = false;
+ 
++#if defined(HAVE_X11) && HAVE_X11
++    // Semu: a game booting full screen shows its window full screen before the core starts, so the
++    // video backend creates its surface (on X11, a child window sized from this one) at the screen's
++    // size. Shown at the default 640x480 and made full screen once running, the surface kept the
++    // small size in the top left until the first frame after the switch, seconds into a disc boot.
++    if (Config::Get(Config::MAIN_FULLSCREEN) && Core::IsUninitialized(m_system))
++    {
++      m_render_widget->showFullScreen();
++      return;
++    }
++#endif
+     m_render_widget->showNormal();
+     m_render_widget->restoreGeometry(m_render_widget_geometry);
+   }

@@ -79,6 +79,7 @@ import ./spec/audio.btrc;
 import ./spec/ps2_picture.btrc;
 import ./spec/m15_deck.btrc;
 import ./spec/render_scale.btrc;
+import ./spec/boot_resize.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -1045,6 +1046,7 @@ int main() {
     Ps2PictureSpecContract.run(contract);
     M15DeckSpecContract.run(contract);
     RenderScaleSpecContract.run(contract);
+    BootResizeSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);

@@ -1,0 +1,13 @@
+# The first seconds of every emulator ES-DE launches on the Deck (M16 item 4), filmed by boot-capture.sh:
+# SYSTEM EMULATOR CORE|- SECONDS -- ROM-GLOB. The owner saw GameCube games start at the right size, drop to a
+# third of the screen in the top left, and come back; each standalone emulator and RetroArch is filmed once.
+gc dolphin - 30 -- Legend of Zelda, The - The Wind Waker (USA).rvz
+wii dolphin - 30 -- New Super Mario Bros. Wii*.wbfs
+ps2 pcsx2 - 30 -- Def Jam - Fight for NY (USA).iso
+dreamcast flycast - 25 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
+n3ds azahar - 30 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
+wiiu cemu - 40 -- MARIO KART 8 (US).wua
+switch ryujinx - 40 -- Animal Crossing New Horizons*.nsp
+psp ppsspp - 20 -- Ape Escape - On the Loose (USA).iso
+nds melonds - 20 -- Advance Wars - Dual Strike (USA, Australia).zip
+psx retroarch mednafen_psx 25 -- Crash Bandicoot (USA).m3u

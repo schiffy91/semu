@@ -17,6 +17,7 @@
           version = "2606a";
           src = source;
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
+          patches = (previous.patches or [ ]) ++ [ ./semu-fullscreen-at-boot.patch ];  # X11: the render window is full screen before the backend sizes its surface
           postUnpack = (previous.postUnpack or "") + ''
             echo "${source.rev}" > "$sourceRoot/COMMIT"
           '';  # preConfigure stamps DOLPHIN_WC_REVISION from it

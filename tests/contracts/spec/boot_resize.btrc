@@ -1,0 +1,97 @@
+// Boot resize spec (M16 item 4): "correctly sized, then a third of the screen in the top left, then right again"
+// while a GameCube game loads. DolphinQt shows its render window at Qt's default 640x480 and asks for full screen
+// only once the core runs (MainWindow.cpp:1234, 422-426 at 2606a); on X11 its OpenGL surface is a child window
+// created at the render window's size when the backend starts (GLX11Window.cpp:35-50) and resized only by the next
+// presented frame (OGLGfx.cpp:475-485). Gamescope scaled the small window up to the screen, then made it full
+// screen at 1280x800 with the 640x480 child in its top left until the game drew again. Semu's patch shows the window
+// full screen before the core boots (X11 builds only). Every launch's renderer logs each framebuffer size it composes
+// into and the frame rate (SEMU_RENDER_DEBUG), which boot-capture.sh films and input-check.sh records.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Process;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ./deck_harness.btrc;
+
+class BootResizeSpecChecks {
+    class string read(string project, string relative) {
+        return FileSystem.readText(PathTools.join(project, relative));
+    }
+
+    class bool before(string text, string first, string second) {  // FIRST appears, and before SECOND
+        int at = text.indexOf(first);
+        return at >= 0 && text.indexOf(second) > at;
+    }
+}
+
+class BootResizeSpecContract {
+    class void dolphin(Contract contract, string project) {
+        string flake = BootResizeSpecChecks.read(project, "config/emulators/dolphin/flake.nix");
+        string patch = BootResizeSpecChecks.read(project, "config/emulators/dolphin/semu-fullscreen-at-boot.patch");
+        contract.contains(flake, "patches = (previous.patches or [ ]) ++ [ ./semu-fullscreen-at-boot.patch ];", "Dolphin is built with the full-screen-at-boot patch");
+        contract.contains(patch, "+++ b/Source/Core/DolphinQt/MainWindow.cpp", "the patch changes DolphinQt's main window");
+        contract.expect(BootResizeSpecChecks.before(patch, "+#if defined(HAVE_X11) && HAVE_X11", "+    if (Config::Get(Config::MAIN_FULLSCREEN) && Core::IsUninitialized(m_system))")
+            && BootResizeSpecChecks.before(patch, "+    if (Config::Get(Config::MAIN_FULLSCREEN) && Core::IsUninitialized(m_system))", "+      m_render_widget->showFullScreen();")
+            && BootResizeSpecChecks.before(patch, "+      m_render_widget->showFullScreen();", "+#endif\n     m_render_widget->showNormal();"),
+            "on X11, a game booting full screen shows its render window full screen before the core starts, instead of at 640x480");
+        contract.contains(patch, "+  if (Config::Get(Config::MAIN_FULLSCREEN) && !m_render_widget->isFullScreen())", "and the deferred full-screen toggle is skipped when the window already is");
+        JSONValue emulator = SemuJson.readFile(PathTools.join(project, "config/emulators/dolphin/emulator.json"));
+        string arguments = SemuJson.csv(SemuJson.get(emulator, "platforms.linux.args"));
+        contract.contains(arguments, "Dolphin.Display.Fullscreen=True", "Linux launches Dolphin full screen, the setting the patch keys on");
+    }
+
+    class void renderer(Contract contract, string project) {
+        string entry = BootResizeSpecChecks.read(project, "src/renderer/libsemurenderer.btrc");
+        string timing = BootResizeSpecChecks.read(project, "src/renderer/renderer_frame_timing.btrc");
+        contract.expect(BootResizeSpecChecks.before(entry, "    RendererFrameTiming.begin(frame);", "        status = RendererCompositor.game(")
+            && BootResizeSpecChecks.before(entry, "        status = RendererCompositor.game(", "    RendererFrameTiming.end();\n    RendererGlStateGuard.restore(&SemuRenderer.gl, &SemuRenderer.game_state);"),
+            "the game phase is timed around its composition, inside the saved GL state");
+        string size = "semu-renderer: framebuffer %dx%d (was %dx%d) at frame %llu ms=%lld\\n";
+        string rate = "semu-renderer: %d frames in %lld ms (%.1f per second), longest gap %.1f ms, composing %.2f ms mean %.2f max%s ms=%lld\\n";
+        contract.contains(timing, size, "the renderer logs every framebuffer size it composes into, with the frame and the wall clock");
+        contract.contains(timing, rate, "and every two seconds the frame rate, the longest gap and the composition's cost");
+        contract.contains(timing, "RendererFrameClock.debug = getenv(\"SEMU_RENDER_DEBUG\") != null;", "only under SEMU_RENDER_DEBUG");
+        contract.contains(timing, "0x88BFu", "SEMU_RENDER_GPU_TIME measures the composition with GL_TIME_ELAPSED queries");
+        string film = BootResizeSpecChecks.read(project, "tests/deck/boot-capture.sh");
+        string check = BootResizeSpecChecks.read(project, "tests/deck/input-check.sh");
+        string sizeLine = "semu-renderer: framebuffer [0-9]*x[0-9]* (was [0-9]*x[0-9]*) at frame [0-9]*";
+        contract.contains(film, "'" + sizeLine + " ms=[0-9]*'", "boot-capture.sh reads the renderer's size lines");
+        contract.contains(film, "'semu-renderer: [0-9]* frames in .*'", "and its rate lines");
+        contract.contains(check, "'" + sizeLine + "'", "input-check.sh records the size lines");
+        contract.contains(check, "'semu-renderer: [0-9]* frames in .* max[^m]*'", "and the rate lines");
+        contract.contains(check, "SEMU_RENDER_GPU_TIME=1 SEMU_RENDER_DEBUG=1", "and asks for the GPU time");
+        string matrix = BootResizeSpecChecks.read(project, "tests/deck/system-matrix.sh");
+        contract.contains(matrix, "SEMU_RENDER_GPU_TIME=1 SEMU_RENDER_DEBUG=1 SEMU_MATRIX_ROM=", "system-matrix.sh asks for the frame rate and GPU time lines");
+        contract.contains(matrix, "'semu-renderer: [0-9]* frames in .* max[^m]*'", "and records them");
+        contract.contains(matrix, "threads() {  # PID: its four busiest threads over one second", "with each wait's busiest threads, the GPU load and clock");
+    }
+
+    class void film(Contract contract, string project) {
+        string text = BootResizeSpecChecks.read(project, "tests/deck/boot-capture.cases");
+        Vector<string> wanted = ["gc dolphin - ", "wii dolphin - ", "ps2 pcsx2 - ", "dreamcast flycast - ", "n3ds azahar - ", "wiiu cemu - ",
+            "switch ryujinx - ", "psp ppsspp - ", "nds melonds - ", "psx retroarch "];
+        for start in wanted { contract.contains(text, "\n" + start, "boot-capture.cases films " + start.trim()); }
+        contract.contains(text, "gc dolphin - 30 -- Legend of Zelda, The - The Wind Waker (USA).rvz", "the GameCube case is the owner's Wind Waker");
+        string script = PathTools.join(project, "tests/deck/boot-capture.sh");
+        ExecResult syntax = ChildProcess.run("bash", ["-n", script]);
+        contract.expect(syntax.ok(), "boot-capture.sh parses: " + syntax.stderr());
+        string body = FileSystem.readText(script);
+        contract.contains(body, "timeout 5 gamescopectl screenshot \"$dir/shot-$(printf '%05d' \"$tick\").png\"", "a screenshot every interval, named by its millisecond, never waited for");
+        contract.contains(body, "kill -TERM \"$game\"", "it quits the way Semu quits");
+        contract.lacks(body, "pkill", "and never signals by name");
+        contract.lacks(body, "rm ", "and removes nothing");
+        ExecResult usage = DeckHarnessShell.run(script, ["--analyse"]);
+        contract.expect(!usage.ok(), "--analyse without OUT is refused");
+    }
+
+    class void run(Contract contract) {
+        string project = Fixture("steam-deck").project;
+        BootResizeSpecContract.dolphin(contract, project);
+        BootResizeSpecContract.renderer(contract, project);
+        BootResizeSpecContract.film(contract, project);
+    }
+}

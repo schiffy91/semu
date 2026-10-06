@@ -40,6 +40,15 @@ battery() { cat /sys/class/power_supply/BAT1/capacity 2>/dev/null || echo 100; }
 charging() { grep -q -E 'Charging|Full' /sys/class/power_supply/BAT1/status 2>/dev/null; }
 emulator_pids() { pgrep -f "/($emulators)([^/]*)( |$)" 2>/dev/null | sort; }
 leaf_of() { local leaf="$1" child; while [ -n "$leaf" ] && child=$(pgrep -P "$leaf" | tail -1) && [ -n "$child" ]; do leaf=$child; done; echo "$leaf"; }
+threads() {  # PID: its four busiest threads over one second, name:percent of one core, and the GPU load and clock meanwhile
+  local task before="" after=""
+  for task in /proc/$1/task/[0-9]*; do before="$before ${task##*/}:$(awk '{ print $14 + $15 }' "$task/stat" 2>/dev/null)"; done
+  local busy; busy="$(cat /sys/class/drm/card*/device/gpu_busy_percent 2>/dev/null | head -1)"; sleep 1; busy="$busy/$(cat /sys/class/drm/card*/device/gpu_busy_percent 2>/dev/null | head -1)"
+  for task in /proc/$1/task/[0-9]*; do after="$after ${task##*/}:$(awk '{ print $14 + $15 }' "$task/stat" 2>/dev/null):$(tr -d ' ' < "$task/comm" 2>/dev/null)"; done
+  echo "gpu busy ${busy}% at $(sed -n 's/^[0-9]*: \([0-9]*Mhz\) \*$/\1/p' /sys/class/drm/card*/device/pp_dpm_sclk 2>/dev/null | head -1), threads $(awk -v before="$before" -v after="$after" -v hertz="$(getconf CLK_TCK)" 'BEGIN {
+    count = split(before, list, " "); for (item = 1; item <= count; item++) { split(list[item], pair, ":"); start[pair[1]] = pair[2] }
+    count = split(after, list, " "); for (item = 1; item <= count; item++) { split(list[item], triple, ":"); if (triple[1] in start) printf "%d %s\n", (triple[2] - start[triple[1]]) * 100 / hertz, triple[3] } }' | sort -n -r | head -4 | awk '{ printf "%s%s:%d%%", separator, $2, $1; separator = " " }')"
+}
 record_argv() {  # $1 the emulator: its argv once it has exec'd, silently nothing if it is already gone
   local leaf="$1"
   if [ -s "$dir/cmdline" ] || [ -z "$leaf" ] || [ "$leaf" = "$game" ] || [ "$(cat "/proc/$leaf/comm" 2>/dev/null)" = semu-btrc ]; then return 0; fi
@@ -70,7 +79,7 @@ while IFS= read -r line; do
   chmod +x "$dir/inner.sh"
 
   start=$(date +%s)
-  PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy ALSA_CONFIG_PATH="$out/alsa-null.conf" SEMU_RENDER_DEBUG=1 SEMU_MATRIX_ROM="$rom" \
+  PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy ALSA_CONFIG_PATH="$out/alsa-null.conf" SEMU_RENDER_GPU_TIME=1 SEMU_RENDER_DEBUG=1 SEMU_MATRIX_ROM="$rom" \
     gamescope --backend headless -W 1280 -H 800 -w 1280 -h 800 -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
   headless=$!
   game=""; display=""
@@ -105,6 +114,7 @@ while IFS= read -r line; do
     leaf="$(leaf_of "$game")"; record_argv "$leaf"
     io=""; [ -n "$leaf" ] && io="$(cat "/proc/$leaf/comm" 2>/dev/null) state $(awk '{print $3}' "/proc/$leaf/stat" 2>/dev/null), read $(( $(sed -n 's/^rchar: //p' "/proc/$leaf/io" 2>/dev/null || echo 0) / 1048576 )) MB, cpu $(ps -o pcpu= -p "$leaf" 2>/dev/null | tr -d ' ')%"
     note "t=$wait running=$running shot=$([ -s "$shot" ] && echo yes || echo no) $io"
+    [ -n "$leaf" ] && note "  $(threads "$leaf"), disk read $(( $(sed -n 's/^read_bytes: //p' "/proc/$leaf/io" 2>/dev/null || echo 0) / 1048576 )) MB"
   done
   leaf="$(leaf_of "$game")"; record_argv "$leaf"
   [ -s "$dir/cmdline" ] || note "argv: the emulator was never seen"
@@ -142,6 +152,7 @@ while IFS= read -r line; do
       note "$log: $(awk '{ value[NR] = $1; total += $1 } END { for (line = int(NR / 2) + 1; line <= NR; line++) { late += value[line]; count++ } if (total > 0 && late > 0) printf "%d lines, %.2f per second overall, %.2f per second in the second half", NR, 1000 * NR / total, 1000 * count / late }' "$file")"
     done
   fi
+  grep -a -o 'semu-renderer: [0-9]* frames in .* max[^m]*' "$dir/run.log" | sed 's/^semu-renderer: /rate: /' | awk 'NR % 5 == 1' | head -12 >> "$dir/result"  # every tenth second: frame rate, longest gap, the composition's CPU and GPU cost
   grep -E 'semu-compose: first frame|semu:|error|Error|fatal|Fatal' "$dir/run.log" | grep -v -i 'fontconfig' | head -12 | sed 's/^/log: /' >> "$dir/result"
   { echo "== $name"; cat "$dir/result"; } >> "$out/summary"
   sleep 3

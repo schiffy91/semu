@@ -35,7 +35,7 @@ class RenderEnvSpecSources {  // the names the renderer sources ask for, as lite
     }
 
     class bool harnessKnob(string name) {  // set by a person or a test harness, never by the launch
-        return name.equals("SEMU_RENDER_DEBUG") || name.equals("SEMU_RENDER_CAPTURE_FRAME");
+        return name.equals("SEMU_RENDER_DEBUG") || name.equals("SEMU_RENDER_CAPTURE_FRAME") || name.equals("SEMU_RENDER_GPU_TIME");
     }
 }
 
