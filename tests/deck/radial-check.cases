@@ -76,11 +76,11 @@ wiiu cemu - 100 key:ctrl+shift+b -- MARIO KART 8 (US).wua
 #     PLAYERS row (86/0) and again closes the menu (5); each chord "(keyboard)" once.
 snes retroarch snes9x 30 key:ctrl+shift+c key:ctrl+shift+g key:ctrl+shift+u key:ctrl+down key:ctrl+space key:ctrl+up key:ctrl+backspace key:ctrl+backspace -- Super Mario World (USA).zip
 # 15. Bezel On/Off, Fit and Reset on a handheld (case 2 left the gba bezel OFF and case 1 the AGB-001
-#     shader): Ctrl+B brings the default shell back (79/0), Fit shows the whole shell at a whole step
-#     (81/0, FIT: BEZEL), Ctrl+B turns it off again (79/2); the first Reset prompts (85/0, RESET: PRESS
-#     AGAIN) and the second, a second later, journals 79/0 80/0 81/1 85/1 (RESET TO DEFAULTS): the
-#     default shell, the default shader and the screen fit come back live, and OUT/home/semu.json has
-#     no gba entry left under visual.systems or input.systems.
+#     shader): Ctrl+B brings the default shell back (79/0), Fit steps from integer game to integer bezel,
+#     the whole shell at a whole step (81/1, FIT: INTEGER BEZEL), Ctrl+B turns it off again (79/2); the
+#     first Reset prompts (85/0, RESET: PRESS AGAIN) and the second, a second later, journals 79/0 80/0 81/0
+#     85/1 (RESET TO DEFAULTS): the default shell, the default shader and integer game come back live, and
+#     OUT/home/semu.json has no gba entry left under visual.systems or input.systems.
 gba retroarch mgba 30 key:ctrl+b key:ctrl+shift+f key:ctrl+b key:ctrl+shift+r,ctrl+shift+r -- Legend of Zelda, The - The Minish Cap (USA).zip
 # 16. The Wii's own choices, none of which restarts the game by itself: Controller Layout steps P1
 #     from the default Nunchuk to Classic live (83/2, P1: CLASSIC, the log line "P1 layout classic: 1
@@ -94,13 +94,14 @@ gba retroarch mgba 30 key:ctrl+b key:ctrl+shift+f key:ctrl+b key:ctrl+shift+r,ct
 #     running, and Restart Game (87/1, RESTARTING GAME) restarts it once in the same launch
 #     (restarts=1), the new argv (cmdline) holding --config SYSCONF.IPL.AR=True.
 wii dolphin - 60 key:ctrl+shift+c key:ctrl+shift+c key:ctrl+shift+c key:ctrl+shift+f key:ctrl+shift+u key:ctrl+backspace key:ctrl+backspace key:ctrl+shift+g key:ctrl+shift+d -- New Super Mario Bros. Wii*.wbfs
-# 17. Fit on the DS (M15 item 2). Case 3 left nds on the large-main layout, which Semu works out from the screen
-#     and draws no art: Fit journals 81/-1 (FIT: NO BEZEL), saves no placement, and the centre tap is still
-#     about 128,96 on surface 1. Four Next Bezels reach the DS vertical shell (79/2, 79/3, 79/4, 79/5), drawn
-#     round both screens at 1x on the 1280x800 Deck (256x192 each, the largest whole step that keeps the whole
-#     shell); Fit then journals 81/1 and toasts FIT: SCREEN SAME AS BEZEL, the shell still there and nothing
-#     moved (both screens cannot be larger at the shell's spacing), the centre tap again about 128,96; choices
-#     nds {"bezel_variant":"vertical","placement":"game"}.
+# 17. Fit on the DS (M15 item 2, M16 item 5). Case 3 left nds on the large-main layout, which Semu works out from
+#     the screen and draws no art: Fit steps the two game states there, so it journals 81/2 (FIT: NON-INTEGER
+#     GAME), saves "placement":"game_fractional" and grows the whole layout to the screen's edge, the centre tap
+#     still about 128,96 on surface 1. Four Next Bezels reach the DS vertical shell (79/2, 79/3, 79/4, 79/5): in
+#     non-integer game both screens about 457x343 at the shell's spacing, the shell cut at the top and bottom;
+#     Fit then journals 81/3 (FIT: NON-INTEGER BEZEL), the whole shell as large as the screen holds, both screens
+#     about 345x259, the centre tap again about 128,96; choices nds
+#     {"bezel_variant":"vertical","placement":"bezel_fractional"}.
 nds retroarch melonds 40 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+b key:ctrl+shift+b key:ctrl+shift+b key:ctrl+shift+b key:ctrl+shift+f tap:0.5,0.5 -- Legend of Zelda, The - Phantom Hourglass*.zip
 # 18. Render Scale (M16 item 2) on the N64 through GLideN64: Ctrl+Shift+N steps the scale from NATIVE to 2X
 #     (88/1/1, SCALE 2X: RESTART TO APPLY), saves n64 {"render_scale":"2x"} and leaves the game running at

@@ -2282,6 +2282,21 @@ Status: started 2026-10-06.
     of psx, ps2, wii, gb, gba, psp, nds, n3ds, n64 and genesis in each of the four states at 1280x800, and
     non-integer bezel at 1920x1080 for psx, wii, gba and nds: framing within 1 px and MAE 0 in every cell,
     the computed DS layouts included.
+  - Contracts: fit_states.btrc (the names and codes, every single-screen bezel system's four states at both
+    sizes and the bezel off beside them, the DS and 3DS non-integer states, the computed layouts' growth, the
+    sampling, the case file and this Status), with dual_fit, tv_room, radial_choices, radial_render,
+    render_variants, scene_fill, placement, gameboy, gameboy_fit, editor_dual, live_variants, reflection_audit
+    and main moved to the four states. 18 mutations, each applied alone in a scratch copy of the tree, restored
+    with cp and checked with cmp, each failed checks: non-integer states snapped to whole steps (8), the TV body
+    tested as if centred (1), no 1% allowance (2), the bezel-off picture always whole (1), Fit with no bezel
+    stepping all four states (5), a saved fit passed through (2), Wii U offered the bezel states (1), the
+    computed layouts not grown (1), the SAME notice compared with integer bezel (1), point sampling at a
+    fractional step (1), the editor re-centring a room in game (1), the PS1 TV's body dropped (4), the old SAME
+    toast (3), the state left not remembered (2), the launch ignoring a system's saved state (18), the DS
+    layouts never fractional (1), the Wii case dropped from m16-check.cases (1), the DS shell scaled short (32).
+  - radial-check.cases 15 and 17 now expect the four states (the gba's Fit to integer bezel, 81/1, and Reset's
+    81/0; the DS large-main layout's Fit to non-integer game, 81/2, then the vertical shell's non-integer bezel,
+    81/3).
 - Item 2, the render scale (the render-scale track, 2026-10-06): built and observed on the Mac render host and in
   the podman VM (RetroArch's GLideN64, PCSX2, Dolphin); the Deck is open (`tests/deck/m16-check.cases`, cases
   S1-S4, and `tests/deck/radial-check.cases` case 18). c83689f, the live Dolphin switch 8a9a049.
