@@ -131,7 +131,7 @@ class RadialRenderGeometry {  // the 3D-era opt-in is gone: integer game is a wh
             contract.expect(snes && gameBoy && psp, f"at {widths[size]}x{heights[size]} snes's integer game and the Game Boy's and PSP's integer bezel stay on whole steps");
         }
         string compositor = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_compositor.btrc"));
-        string resolve = compositor.substring(Strings.find(compositor, "class bool resolve(", 0), 6000);
+        string resolve = compositor.substring(Strings.find(compositor, "class bool resolve(", 0), 8000);
         contract.expect(resolve.contains("bool whole = RendererConfiguration.wholeSteps(config->placement);") && resolve.contains("singleAspect, whole ? 1 : 0, &geometry->lanes[0]);") && resolve.contains("config->dual_screen_gap, !whole);") && !compositor.contains("integer_scaling"),
             "with no bezel to place the compositor takes whole steps or not from the Fit state (one screen and the DS layouts alike), never from a separate integer switch (M16 item 7)");
     }

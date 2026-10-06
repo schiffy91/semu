@@ -1,0 +1,85 @@
+// Picture edges spec (M16 items 5 and 7, the review round): rounding made the bezel-on and bezel-off pictures differ
+// by a pixel and left a seam. A whole step's width was rounded before it was scaled (224 lines at 4:3: 3 x 299 = 897
+// columns with the bezel off, 896 with it), a picture was centred by truncation (x 106 with the bezel off where the
+// bezel's whole corner rounds to 107; the PSP's 725.33 rows sat at 37 with the bezel and would sit at 38 with a
+// half rounded up from 725), and a framed picture was fitted inside a picture rectangle already rounded to
+// whole pixels, so the PSP shell's non-integer game drew 1279 of 1280 columns and its LCD surround showed in the
+// last. Now a bare picture keeps its unrounded size, its corner rounded as the bezel's whole corner is and its far
+// edges as the framed one's, and a framed picture
+// is worked out on the canvas with only its edges rounded (RendererCompositionContract.fitInside).
+
+#include <string.h>
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+import ../../../src/renderer/renderer_config.btrc;
+import ../../../src/renderer/renderer_placement.btrc;
+import ./placement.btrc;
+
+class PictureEdgesSpecContract {
+    class void bare(struct RendererPixelRect* output, int nativeWidth, int nativeHeight, float aspect, int whole) {  // one screen with the bezel off on the Deck
+        struct RendererPixelRect area;
+        area.x = 0;
+        area.y = 0;
+        area.width = 1280;
+        area.height = 800;
+        RendererCompositionContract.fit(&area, nativeWidth, nativeHeight, 0, aspect, whole, output);
+    }
+
+    class string framed(Fixture fixture, string systemId, string bezelVariant, int nativeWidth, int nativeHeight, int placement, int areaWidth, int areaHeight) {  // a framed 4:3 picture as the compositor draws it: placed by the Fit state, fitted on the canvas, "WxH at X,Y" from the bottom left
+        Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, bezelVariant);
+        struct RendererVariantConfig variant;
+        PlacementSpecGeometry.load(environment, &variant);
+        struct RendererCanvasRect canvas;
+        struct RendererCanvasRect picture;
+        PlacementSpecGeometry.placeVariant(fixture, systemId, bezelVariant, nativeWidth, nativeHeight, placement, areaWidth, areaHeight, &canvas, &picture);
+        struct RendererNormalizedHole* image = &variant.screens[0].image;
+        struct RendererPixelRect drawn;
+        RendererCompositionContract.fitInside(&canvas, image->x, image->y, image->width, image->height, nativeWidth, nativeHeight, 0, 4.0f / 3.0f, &drawn);
+        return f"{drawn.width}x{drawn.height} at {drawn.x},{drawn.y}";
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        struct RendererPixelRect genesis;
+        PictureEdgesSpecContract.bare(&genesis, 320, 224, 4.0f / 3.0f, 1);
+        struct RendererPixelRect filled;
+        PictureEdgesSpecContract.bare(&filled, 320, 224, 4.0f / 3.0f, 0);
+        struct RendererPixelRect gameBoy;
+        PictureEdgesSpecContract.bare(&gameBoy, 160, 144, 160.0f / 144.0f, 0);
+        contract.expect(genesis.width == 896 && genesis.height == 672 && genesis.x == 192 && genesis.y == 64,
+            f"the Genesis with the bezel off in integer game is 3 x 224 lines at exactly 4:3, 896x672 at 192,64, as with its TV: {genesis.width}x{genesis.height} at {genesis.x},{genesis.y}");
+        contract.expect(filled.width == 1067 && filled.x == 107 && gameBoy.width == 889 && gameBoy.x == 196,
+            f"a non-integer picture with the bezel off sits where the bezel's whole corner puts it, the half pixel rounded up: the Genesis at x {filled.x}, the Game Boy at x {gameBoy.x}");
+        Vector<string> environment = PlacementSpecEnvironment.compile(fixture, "psp", "e1000");
+        struct RendererVariantConfig variant;
+        PlacementSpecGeometry.load(environment, &variant);
+        struct RendererCanvasRect canvas;
+        struct RendererCanvasRect picture;
+        PlacementSpecGeometry.placeVariant(fixture, "psp", "e1000", 480, 272, SEMU_PLACEMENT_GAME_FRACTIONAL, 1280, 800, &canvas, &picture);
+        struct RendererNormalizedHole* image = &variant.screens[0].image;
+        struct RendererPixelRect drawn;
+        RendererCompositionContract.fitInside(&canvas, image->x, image->y, image->width, image->height, 480, 272, 0, 480.0f / 272.0f, &drawn);
+        contract.expect(image->set != 0 && drawn.x == 0 && drawn.width == 1280 && drawn.height >= 725 && drawn.height <= 726,
+            f"the PSP shell in non-integer game covers every one of the 1280 columns, no LCD surround in the last: {drawn.width}x{drawn.height} at {drawn.x},{drawn.y}");
+        struct RendererPixelRect handheld;
+        PictureEdgesSpecContract.bare(&handheld, 480, 272, 480.0f / 272.0f, 0);
+        contract.expect(handheld.x == drawn.x && handheld.y == drawn.y && handheld.width == drawn.width && handheld.height == drawn.height,
+            f"and with the bezel off the PSP's non-integer picture is the same rectangle: {handheld.width}x{handheld.height} at {handheld.x},{handheld.y}");
+        string deck = PictureEdgesSpecContract.framed(fixture, "psx", "tv", 320, 240, SEMU_PLACEMENT_BEZEL_FRACTIONAL, 1280, 800);
+        string docked = PictureEdgesSpecContract.framed(fixture, "psx", "tv", 320, 240, SEMU_PLACEMENT_BEZEL_FRACTIONAL, 1920, 1080);
+        string speakers = PictureEdgesSpecContract.framed(fixture, "dreamcast", "speakers", 640, 480, SEMU_PLACEMENT_BEZEL_FRACTIONAL, 1280, 800);
+        contract.expect(deck.equals("713x535 at 283,133") && docked.equals("962x722 at 479,179") && speakers.equals("682x511 at 299,144"),
+            f"a TV's non-integer bezel picture has its unrounded edges rounded once, as the render host draws it (m16-check.cases F1 and F2 name the first): the PS1 TV {deck} on the Deck and {docked} docked, the Dreamcast's speakers set {speakers}");
+        string compositor = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_compositor.btrc"));
+        string editor = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
+        contract.expect(compositor.contains("if (screen->image.set != 0 && screen->fit == SEMU_FIT_ASPECT) {") && compositor.contains("RendererCompositionContract.fitInside(&canvas, screen->image.x, screen->image.y, screen->image.width, screen->image.height,")
+            && editor.contains("if (screen.image.set && screen.fit === 0) {") && editor.contains("const picture = CompositionContract.fitInside(canvas, screen.image, native.w, native.h, 0, aspect);")
+            && editor.contains("output.x = area.x + CompositionContract.edge(float(float(area.width - width) * 0.5));"),
+            "the compositor and the editor fit a framed picture on the canvas and centre a bare one the same way, so the editor still shows what the renderer draws");
+    }
+}

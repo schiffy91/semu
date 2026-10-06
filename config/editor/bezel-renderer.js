@@ -38,15 +38,31 @@ const BezelRenderer = (() => {
       if (area.width <= 0 || area.height <= 0 || nativeWidth < 1 || nativeHeight < 1) return output;
       const rotatedWidth = rotation === 90 || rotation === 270 ? nativeHeight : nativeWidth, rotatedHeight = rotation === 90 || rotation === 270 ? nativeWidth : nativeHeight;
       const aspect = declaredAspect > 0.01 ? declaredAspect : float(rotatedWidth / rotatedHeight);
-      let height = area.height, width = CompositionContract.rounded(float(height * aspect));
-      if (width > area.width) { width = area.width; height = CompositionContract.rounded(float(width / aspect)); }
+      let height = float(area.height), width = float(height * aspect);  // the picture's size before any rounding
+      if (width > area.width) { width = float(area.width); height = float(width / aspect); }
       if (integerScaling) {
-        const integerWidth = CompositionContract.rounded(float(rotatedHeight * aspect));
-        const scale = Math.min(integer(area.width / integerWidth), integer(area.height / rotatedHeight));
-        if (scale > 0) { width = integerWidth * scale; height = rotatedHeight * scale; }
+        const step = float(rotatedHeight * aspect);  // one whole step's width, scaled before it is rounded
+        const scale = Math.min(integer(float(float(area.width / step) + float(0.0001))), integer(area.height / rotatedHeight));
+        if (scale > 0) { width = float(step * scale); height = float(rotatedHeight * scale); }
       }
-      output.width = width; output.height = height;
-      output.x = area.x + integer((area.width - width) / 2); output.y = area.y + integer((area.height - height) / 2);
+      output.x = area.x + CompositionContract.edge(float(float(area.width - width) * 0.5)); output.y = area.y + CompositionContract.edge(float(float(area.height - height) * 0.5));  // centred as a bezel's whole corner rounds it
+      output.width = CompositionContract.edge(float(output.x + width)) - output.x; output.height = CompositionContract.edge(float(output.y + height)) - output.y;
+      if (output.x + output.width > area.x + area.width) output.width = area.x + area.width - output.x;
+      if (output.y + output.height > area.y + area.height) output.height = area.y + area.height - output.y;
+      return output;
+    }
+    static fitInside(canvas, hole, nativeWidth, nativeHeight, rotation, declaredAspect) {  // RendererCompositionContract.fitInside: the game at its aspect in the picture rectangle on the canvas, only its edges rounded
+      const output = CompositionContract.empty();
+      if (!hole || canvas.width <= 0 || canvas.height <= 0 || hole.width <= 0 || hole.height <= 0 || nativeWidth < 1 || nativeHeight < 1) return output;
+      const rotatedWidth = rotation === 90 || rotation === 270 ? nativeHeight : nativeWidth, rotatedHeight = rotation === 90 || rotation === 270 ? nativeWidth : nativeHeight;
+      const aspect = declaredAspect > 0.01 ? declaredAspect : float(rotatedWidth / rotatedHeight);
+      const left = float(canvas.x + float(hole.x * canvas.width)), bottom = float(canvas.y + float(float(float(1 - hole.y) - hole.height) * canvas.height));
+      const areaWidth = float(hole.width * canvas.width), areaHeight = float(hole.height * canvas.height);
+      let pictureHeight = areaHeight, pictureWidth = float(areaHeight * aspect);
+      if (pictureWidth > areaWidth) { pictureWidth = areaWidth; pictureHeight = float(areaWidth / aspect); }
+      const pictureLeft = float(left + float(float(areaWidth - pictureWidth) * 0.5)), pictureBottom = float(bottom + float(float(areaHeight - pictureHeight) * 0.5));
+      output.x = CompositionContract.edge(pictureLeft); output.y = CompositionContract.edge(pictureBottom);
+      output.width = CompositionContract.edge(float(pictureLeft + pictureWidth)) - output.x; output.height = CompositionContract.edge(float(pictureBottom + pictureHeight)) - output.y;
       return output;
     }
   }
@@ -379,8 +395,13 @@ const BezelRenderer = (() => {
       return variant.screens.map((screen, index) => {
         if (!screen) return null;
         const tube = CompositionContract.aperture(canvas, screen.tube), image = screen.image.set ? CompositionContract.aperture(canvas, screen.image) : null;
-        const native = preview.screens[index];
-        return { tube, output: Geometry.placeInTube(screen, tube, image, native.w, native.h, preview.screens.length === 1 ? Geometry.singleAspect(preview) : 0), native };
+        const native = preview.screens[index], aspect = preview.screens.length === 1 ? Geometry.singleAspect(preview) : 0;
+        let output = Geometry.placeInTube(screen, tube, image, native.w, native.h, aspect);
+        if (screen.image.set && screen.fit === 0) {  // as the renderer: the game at its aspect in the picture rectangle on the canvas, its edges rounded once
+          const picture = CompositionContract.fitInside(canvas, screen.image, native.w, native.h, 0, aspect);
+          if (picture.width > 0 && picture.height > 0) output = picture;
+        }
+        return { tube, output, native };
       });
     }
   }

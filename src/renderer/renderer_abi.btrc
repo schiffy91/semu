@@ -329,27 +329,58 @@ class RendererCompositionContract {
             ? nativeWidth : nativeHeight;
         float aspect = declaredAspect > 0.01f ? declaredAspect
             : (float)rotatedWidth / (float)rotatedHeight;
-        int height = area->height;
-        int width = RendererCompositionContract.rounded((float)height * aspect);
-        if (width > area->width) {
-            width = area->width;
-            height = RendererCompositionContract.rounded((float)width / aspect);
+        float height = (float)area->height;  // the picture's size before any rounding
+        float width = height * aspect;
+        if (width > (float)area->width) {
+            width = (float)area->width;
+            height = width / aspect;
         }
         if (integerScaling != 0) {
-            int integerWidth = RendererCompositionContract.rounded(
-                (float)rotatedHeight * aspect);
-            int scaleWidth = area->width / integerWidth;
+            float step = (float)rotatedHeight * aspect;  // one whole step's width, scaled before it is rounded: 224 lines at 4:3 are 896 wide at 3x, never 3 x 299
+            int scaleWidth = (int)((float)area->width / step + 0.0001f);
             int scaleHeight = area->height / rotatedHeight;
             int scale = scaleWidth < scaleHeight ? scaleWidth : scaleHeight;
             if (scale > 0) {
-                width = integerWidth * scale;
-                height = rotatedHeight * scale;
+                width = step * (float)scale;
+                height = (float)(rotatedHeight * scale);
             }
         }
-        output->width = width;
-        output->height = height;
-        output->x = area->x + (area->width - width) / 2;
-        output->y = area->y + (area->height - height) / 2;
+        output->x = area->x + RendererCompositionContract.edge(((float)area->width - width) * 0.5f);  // centred, the corner rounded as RendererPlacement.wholeCorner rounds a bezel's picture and the far edges as fitInside does, so the bezel off sits exactly where the bezel on does
+        output->y = area->y + RendererCompositionContract.edge(((float)area->height - height) * 0.5f);
+        output->width = RendererCompositionContract.edge((float)output->x + width) - output->x;
+        output->height = RendererCompositionContract.edge((float)output->y + height) - output->y;
+        if (output->x + output->width > area->x + area->width) { output->width = area->x + area->width - output->x; }
+        if (output->y + output->height > area->y + area->height) { output->height = area->y + area->height - output->y; }
+    }
+
+    class void fitInside(struct RendererCanvasRect* canvas, float x, float y, float width, float height,
+                         int nativeWidth, int nativeHeight, int rotation, float declaredAspect,
+                         struct RendererPixelRect* output) {  // the game at its aspect inside a normalized top-left rectangle of a bottom-up canvas, worked out on the canvas and only its edges rounded: a picture that spans the screen covers it exactly (the PSP shell's non-integer game drew 1279 of 1280 columns from a rectangle rounded first)
+        if (output == null) { return; }
+        output->x = 0;
+        output->y = 0;
+        output->width = 0;
+        output->height = 0;
+        if (canvas == null || canvas->width <= 0.0f || canvas->height <= 0.0f || width <= 0.0f || height <= 0.0f || nativeWidth < 1 || nativeHeight < 1) { return; }
+        int rotatedWidth = rotation == 90 || rotation == 270 ? nativeHeight : nativeWidth;
+        int rotatedHeight = rotation == 90 || rotation == 270 ? nativeWidth : nativeHeight;
+        float aspect = declaredAspect > 0.01f ? declaredAspect : (float)rotatedWidth / (float)rotatedHeight;
+        float left = canvas->x + x * canvas->width;
+        float bottom = canvas->y + (1.0f - y - height) * canvas->height;
+        float areaWidth = width * canvas->width;
+        float areaHeight = height * canvas->height;
+        float pictureHeight = areaHeight;
+        float pictureWidth = areaHeight * aspect;
+        if (pictureWidth > areaWidth) {
+            pictureWidth = areaWidth;
+            pictureHeight = areaWidth / aspect;
+        }
+        float pictureLeft = left + (areaWidth - pictureWidth) * 0.5f;
+        float pictureBottom = bottom + (areaHeight - pictureHeight) * 0.5f;
+        output->x = RendererCompositionContract.edge(pictureLeft);
+        output->y = RendererCompositionContract.edge(pictureBottom);
+        output->width = RendererCompositionContract.edge(pictureLeft + pictureWidth) - output->x;
+        output->height = RendererCompositionContract.edge(pictureBottom + pictureHeight) - output->y;
     }
 
 }

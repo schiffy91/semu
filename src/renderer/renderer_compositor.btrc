@@ -351,6 +351,18 @@ class RendererGeometry {
                 }
                 RendererGeometry.placeInTube(&geometry->lanes[index], screen, &tube, &image,
                     frame->surface_count == 1 ? singleAspect : 0.0f, 0);  // a framed screen fills its picture rectangle; integer steps only without a bezel
+                if (screen->image.set != 0 && screen->fit == SEMU_FIT_ASPECT) {  // the game at its aspect in the picture rectangle, on the canvas, its edges rounded once
+                    struct RendererPixelRect picture;
+                    RendererCompositionContract.fitInside(&canvas, screen->image.x, screen->image.y, screen->image.width, screen->image.height,
+                        geometry->lanes[index].native_width, geometry->lanes[index].native_height, geometry->lanes[index].rotation,
+                        frame->surface_count == 1 ? singleAspect : 0.0f, &picture);
+                    if (picture.width > 0 && picture.height > 0) {
+                        geometry->lanes[index].output_x = picture.x;
+                        geometry->lanes[index].output_y = picture.y;
+                        geometry->lanes[index].output_width = picture.width;
+                        geometry->lanes[index].output_height = picture.height;
+                    }
+                }
             }
             return true;
         }

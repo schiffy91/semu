@@ -86,6 +86,7 @@ import ./spec/render_scale_wiring.btrc;
 import ./spec/fit_migration.btrc;
 import ./spec/toast_labels.btrc;
 import ./spec/flycast_keys.btrc;
+import ./spec/picture_edges.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -1065,6 +1066,7 @@ int main() {
     FitMigrationSpecContract.run(contract);
     ToastLabelsSpecContract.run(contract);
     FlycastKeysSpecContract.run(contract);
+    PictureEdgesSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);
