@@ -120,3 +120,34 @@ n3ds azahar - 50 move:0.5,0.5 tap:0.5,0.5 move:0.9,0.1 -- Legend of Zelda, The -
 #    "wiimote" in OUT/home/semu.json. (In the VM, at a fraction of full speed, the GameCube pad's X+Y+Start held
 #    with the remote away logged Dolphin's own PAD - COMBO_ORIGIN three times, and the game relinked the remote.)
 wii dolphin - 90 key:ctrl+shift+c key:ctrl+shift+c south east key:ctrl+shift+c south -- Mario Kart Wii*.wbfs
+#
+# Items 10 and 3, the TV cutout and the GB studio bezel (the picture track). key:ctrl+shift+b is the radial's
+# Next Bezel (79/<index into the system's bezel variants>). Judge the shots at 1:1 and with crops zoomed 4x
+# (magick SHOT -crop ... -filter point -resize 400%); the frame-60 capture of each launch is the emulator's state
+# root's semu-render-final.ppm.
+#
+# Item 10. In every shot of T1 to T5: (a) no light line round the TV's opening: the lip (the band between the
+# curved picture and the opening) is as dark as the TV's own plastic beside it, under the same night light (on the
+# PS1 in integer bezel the top lip about #181714 beside #1C1B19 plastic, where M15 drew a 3 px #626261 line on a
+# #333332 lip), and the game's colours mirror onto it, sharp at the picture's edge and fading outward; (b) every
+# curved picture edge is smooth at 4x: where the curve crosses a pixel row or column the edge pixel shades
+# gradually, with no notch, no step that jumps back, and no dark or coloured dash along the edge (the NTSC fringe
+# rows and columns of GDV-NTSC run unbroken), in the integer and the non-integer states alike. G1 is item 3.
+#
+# T1. Item 10, the PS1 (the owner's report; F2 left it on integer bezel). before: integer bezel. after-1 (81/2,
+#     FIT: NON-INTEGER GAME) and after-2 (81/3, FIT: NON-INTEGER BEZEL): each held to (a) and (b); crop the
+#     top-left corner of the opening and the left edge at mid-height.
+psx retroarch mednafen_psx 45 key:ctrl+shift+f key:ctrl+shift+f -- Crash Bandicoot (USA).m3u
+# T2. Item 10, the N64 on both TVs ("a lot of aliasing with the tv curve on a few consoles"). before: the Living
+#     room CRT; after-1 (79/1, BEZEL: CRT WITH SPEAKERS): the speakers TV; both held to (a) and (b).
+n64 retroarch mupen64plus_next 40 key:ctrl+shift+b -- Super Mario 64 (USA).zip
+# T3. Item 10, the Genesis. before and after-1 (the next Fit state): (a) and (b).
+genesis retroarch genesis_plus_gx 25 key:ctrl+shift+f -- Aero the Acro-Bat (USA).zip
+# T4. Item 10, the GameCube in Dolphin (the standalone path through the GL tap, the same compositor): (a) and (b).
+gc dolphin - 50 key:ctrl+shift+f -- Legend of Zelda, The - The Wind Waker (USA).rvz
+# T5. Item 10, the Dreamcast in Flycast: (a) and (b).
+dreamcast flycast - 40 key:ctrl+shift+f -- Crazy Taxi (USA).chd
+# G1. Item 3, the GB studio bezel is gone. before: the DMG shell round the LCD. after-1 (79/1, BEZEL: OFF): no
+#     shell, the picture alone on pure black; the toast never names STUDIO GRAY, and Next Bezel offers DMG and OFF
+#     only (the variants file's bezels=dmg|none). choices gb {"bezel_variant":"none"}.
+gb retroarch gambatte 25 key:ctrl+shift+b -- Tetris (World) (Rev 1).zip

@@ -1,0 +1,297 @@
+// TV cutout spec (M16 item 10): "there is a light bar and aliasing on the playstation bezel + screen cutout ...in fact
+// i think there is a lot of aliasing with the tv curve on a few consoles". Both come from the screen pass's lip, the
+// bezel it paints between the bent picture and the TV's opening.
+// The light bar: the lip was painted after the scene's late-night plate had dimmed the TV round it to about half, so
+// it stood at full brightness, with a lit chamfer (+0.22) along its outer edge: on the PS1 at 1280x800 a 3 px #6A6A68
+// line round a #3C3E3A lip inside a #24221E TV. The lip now stands in the same light (roomLight: the first multiply
+// layer under the screens, placed as drawLayers places it), and no TV draws the chamfer (ring.bevel 0, a new ring's
+// default 0).
+// The aliasing: the lip's blend over the bent picture edge was antialiased, but the colour it blended toward was the
+// lip at the pixel centre, whose mirror of the picture is nothing inside the picture and the sharp mirrored edge
+// outside it. So each edge pixel's colour snapped as the curve crossed its centre: a notch every few rows along every
+// curved edge (an N64 column at 1280x800 ran #AE then #8E). A centre inside the edge now takes the mirror at its foot
+// on the edge (reflectEdge), and the share of the pixel past the edge is the signed distance over its own screen
+// gradient (edgeCover), a ramp one device pixel wide however the bend stretches it. The functions are ported below and
+// run over the PS1's whole curved edge at 1280x800 and 1920x1080; the shader must carry exactly them.
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/rendering.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+import ../../../src/renderer/renderer_config.btrc;
+import ../../../src/renderer/renderer_placement.btrc;
+import ../../../src/renderer/renderer_room_light.btrc;
+import ./render_env.btrc;
+import ./placement.btrc;
+
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
+class TvCutoutScreen {  // one TV's picture and opening on one screen, and compositor.frag's edge functions over them
+    public double tubeX;
+    public double tubeY;
+    public double tubeWidth;
+    public double tubeHeight;
+    public double pictureX;
+    public double pictureY;
+    public double pictureWidth;
+    public double pictureHeight;
+    public double curvature;
+
+    public TvCutoutScreen(Fixture fixture, string systemId, int areaWidth, int areaHeight) {  // the default variant in fit, as the renderer places a 320x240 frame
+        struct RendererVariantConfig variant;
+        PlacementSpecGeometry.load(PlacementSpecEnvironment.compile(fixture, systemId, ""), &variant);
+        struct RendererCanvasRect canvas;
+        struct RendererCanvasRect picture;
+        PlacementSpecGeometry.place(fixture, systemId, 320, 240, 0, areaWidth, areaHeight, &canvas, &picture);
+        struct RendererPixelRect tube;
+        struct RendererNormalizedHole* opening = &variant.screens[0].tube;
+        RendererCompositionContract.aperture(&canvas, opening->x, opening->y, opening->width, opening->height, &tube);
+        self.tubeX = (double)tube.x;
+        self.tubeY = (double)tube.y;
+        self.tubeWidth = (double)tube.width;
+        self.tubeHeight = (double)tube.height;
+        self.pictureX = (double)PlacementSpecGeometry.rounded(picture.x);
+        self.pictureY = (double)PlacementSpecGeometry.rounded(picture.y);
+        self.pictureWidth = (double)PlacementSpecGeometry.rounded(picture.width);
+        self.pictureHeight = (double)PlacementSpecGeometry.rounded(picture.height);
+        self.curvature = (double)variant.screens[0].curvature;
+    }
+
+    public void bent(double column, double row, double* across, double* down) {  // bentUv: where a screen point lands in the picture after the bend, 0..1 inside
+        double centredX = (column - self.tubeX) / self.tubeWidth * 2.0 - 1.0;
+        double centredY = (row - self.tubeY) / self.tubeHeight * 2.0 - 1.0;
+        double grow = (1.0 + self.curvature * (centredX * centredX + centredY * centredY)) / (1.0 + self.curvature);
+        *across = (self.tubeX + (centredX * grow * 0.5 + 0.5) * self.tubeWidth - self.pictureX) / self.pictureWidth;
+        *down = (self.tubeY + (centredY * grow * 0.5 + 0.5) * self.tubeHeight - self.pictureY) / self.pictureHeight;
+    }
+
+    public double distance(double across, double down) {  // edgeDistance: signed picture pixels from the bent edge, negative inside
+        double clampedX = fmin(fmax(across, 0.0), 1.0);
+        double clampedY = fmin(fmax(down, 0.0), 1.0);
+        if (clampedX == across && clampedY == down) { return -fmin(fmin(across, 1.0 - across) * self.pictureWidth, fmin(down, 1.0 - down) * self.pictureHeight); }
+        return hypot((across - clampedX) * self.pictureWidth, (down - clampedY) * self.pictureHeight);
+    }
+
+    public void normal(double across, double down, double* normalX, double* normalY) {  // edgeNormal: outward from the nearest edge, in picture pixels
+        double clampedX = fmin(fmax(across, 0.0), 1.0);
+        double clampedY = fmin(fmax(down, 0.0), 1.0);
+        if (clampedX != across || clampedY != down) {
+            double length = hypot((across - clampedX) * self.pictureWidth, (down - clampedY) * self.pictureHeight);
+            *normalX = (across - clampedX) * self.pictureWidth / length;
+            *normalY = (down - clampedY) * self.pictureHeight / length;
+            return;
+        }
+        bool sideways = fmin(across, 1.0 - across) * self.pictureWidth < fmin(down, 1.0 - down) * self.pictureHeight;
+        *normalX = sideways ? (across < 0.5 ? -1.0 : 1.0) : 0.0;
+        *normalY = sideways ? 0.0 : (down < 0.5 ? -1.0 : 1.0);
+    }
+
+    public double cover(int column, int row) {  // edgeCover at a pixel centre, its gradient from the quad's neighbours as dFdx and dFdy take it
+        double across = 0.0;
+        double down = 0.0;
+        self.bent((double)column + 0.5, (double)row + 0.5, &across, &down);
+        int pairColumn = column - (column % 2);
+        int pairRow = row - (row % 2);
+        double leftX = 0.0;
+        double leftY = 0.0;
+        double rightX = 0.0;
+        double rightY = 0.0;
+        double lowX = 0.0;
+        double lowY = 0.0;
+        double highX = 0.0;
+        double highY = 0.0;
+        self.bent((double)pairColumn + 0.5, (double)row + 0.5, &leftX, &leftY);
+        self.bent((double)pairColumn + 1.5, (double)row + 0.5, &rightX, &rightY);
+        self.bent((double)column + 0.5, (double)pairRow + 0.5, &lowX, &lowY);
+        self.bent((double)column + 0.5, (double)pairRow + 1.5, &highX, &highY);
+        double normalX = 0.0;
+        double normalY = 0.0;
+        self.normal(across, down, &normalX, &normalY);
+        double alongX = normalX * (rightX - leftX) * self.pictureWidth + normalY * (rightY - leftY) * self.pictureHeight;
+        double alongY = normalX * (highX - lowX) * self.pictureWidth + normalY * (highY - lowY) * self.pictureHeight;
+        return fmin(fmax(self.distance(across, down) / fmax(hypot(alongX, alongY), 0.001) + 0.5, 0.0), 1.0);
+    }
+
+    public double area(int column, int row) {  // the truth edgeCover stands for: the share of the pixel past the bent edge, 16 by 16 samples
+        int past = 0;
+        for (int sampleRow = 0; sampleRow < 16; sampleRow++) {
+            for (int sampleColumn = 0; sampleColumn < 16; sampleColumn++) {
+                double across = 0.0;
+                double down = 0.0;
+                self.bent((double)column + ((double)sampleColumn + 0.5) / 16.0, (double)row + ((double)sampleRow + 0.5) / 16.0, &across, &down);
+                if (self.distance(across, down) > 0.0) { past++; }
+            }
+        }
+        return (double)past / 256.0;
+    }
+
+    public double mirrorReach(int column, int row) {  // picture pixels from the edge to the point the lip mirrors at this pixel centre: edgeFoot first, as reflectEdge does
+        double across = 0.0;
+        double down = 0.0;
+        self.bent((double)column + 0.5, (double)row + 0.5, &across, &down);
+        if (fmin(fmax(across, 0.0), 1.0) == across && fmin(fmax(down, 0.0), 1.0) == down) {
+            double normalX = 0.0;
+            double normalY = 0.0;
+            self.normal(across, down, &normalX, &normalY);
+            if (normalX != 0.0) { across = normalX < 0.0 ? -0.01 / self.pictureWidth : 1.0 + 0.01 / self.pictureWidth; }
+            else { down = normalY < 0.0 ? -0.01 / self.pictureHeight : 1.0 + 0.01 / self.pictureHeight; }
+        }
+        double reach = self.distance(across, down);
+        return reach > 0.0 ? reach : 1000000.0;  // mirrorFrom draws nothing for a point inside the picture: no mirror at all
+    }
+
+    public bool corner(int column, int row) {  // within two pixels of a corner of the bent picture, where a corner's area is not a distance
+        double across = 0.0;
+        double down = 0.0;
+        self.bent((double)column + 0.5, (double)row + 0.5, &across, &down);
+        double sideX = fmin(fabs(across), fabs(1.0 - across)) * self.pictureWidth;
+        double sideY = fmin(fabs(down), fabs(1.0 - down)) * self.pictureHeight;
+        return sideX < 2.0 && sideY < 2.0;
+    }
+}
+
+class TvCutoutChecks {
+    class void edges(Contract contract, Fixture fixture) {  // the PS1's curved edge, pixel by pixel, at the Deck's size and 1080p
+        int widths[2] = {1280, 1920};
+        int heights[2] = {800, 1080};
+        for (int size = 0; size < 2; size++) {
+            TvCutoutScreen screen = TvCutoutScreen(fixture, "psx", widths[size], heights[size]);
+            int edgePixels = 0;
+            double worstSide = 0.0;
+            double worstCorner = 0.0;
+            double worstReach = 0.0;
+            int blended = 0;
+            for (int row = (int)screen.tubeY; row < (int)(screen.tubeY + screen.tubeHeight); row++) {
+                for (int column = (int)screen.tubeX; column < (int)(screen.tubeX + screen.tubeWidth); column++) {
+                    double across = 0.0;
+                    double down = 0.0;
+                    screen.bent((double)column + 0.5, (double)row + 0.5, &across, &down);
+                    if (fabs(screen.distance(across, down)) > 1.5) { continue; }
+                    edgePixels++;
+                    double error = fabs(screen.cover(column, row) - screen.area(column, row));
+                    if (screen.corner(column, row)) { worstCorner = fmax(worstCorner, error); } else { worstSide = fmax(worstSide, error); }
+                    double cover = screen.cover(column, row);
+                    if (cover > 0.0 && cover < 1.0) {  // a pixel the lip blends over: its mirror starts at the edge, never at nothing
+                        blended++;
+                        worstReach = fmax(worstReach, screen.mirrorReach(column, row));
+                    }
+                }
+            }
+            string where = f"PS1 TV at {widths[size]}x{heights[size]}, picture {(int)screen.pictureWidth}x{(int)screen.pictureHeight} in a {(int)screen.tubeWidth}x{(int)screen.tubeHeight} opening, curvature {screen.curvature}";
+            contract.expect(edgePixels > 1000 && worstSide <= 0.08, where + f": every pixel along the bent edge is covered as much as its area past the edge, within 0.08 ({edgePixels} pixels, worst {worstSide})");
+            contract.expect(worstCorner <= 0.3, where + f": the four corner pixels within 0.3 of their area (worst {worstCorner})");
+            contract.expect(blended > 500 && worstReach <= 1.0, where + f": every blended edge pixel ({blended}) mirrors the picture from within a pixel of the edge, inside the edge as outside it (worst {worstReach} px)");
+        }
+    }
+
+    class string line(string source, string start) {  // the shader line that starts with START, else ""
+        int at = Strings.find(source, "\n" + start, 0);
+        if (at < 0) { return ""; }
+        int end = Strings.find(source, "\n", at + 1);
+        return source.substring(at + 1, (end < 0 ? source.len() : end) - at - 1);
+    }
+
+    class void shader(Contract contract, Fixture fixture) {  // compositor.frag carries exactly the functions modelled above, where the lip is drawn
+        string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "render/compositor.frag"));
+        Vector<string> functions = [
+            " vec2 curved(vec2 q,float k){vec2 c=q*2.0-1.0;c*=(1.0+k*dot(c,c))/(1.0+k);return c*0.5+0.5;}",
+            " float edgeDistance(vec2 g,vec4 rect){vec2 e=clamp(g,0.0,1.0);vec2 depth=min(e,1.0-e)*rect.zw;return g==e?-min(depth.x,depth.y):length((g-e)*rect.zw);}",
+            " vec2 edgeNormal(vec2 g,vec4 rect){vec2 e=clamp(g,0.0,1.0);if(g!=e)return normalize((g-e)*rect.zw);vec2 depth=min(g,1.0-g)*rect.zw;return depth.x<depth.y?vec2(g.x<0.5?-1.0:1.0,0.0):vec2(0.0,g.y<0.5?-1.0:1.0);}",
+            " float edgeCover(vec2 g,vec4 rect,vec4 j){vec2 n=edgeNormal(g,rect);return clamp(edgeDistance(g,rect)/max(length(vec2(dot(n,j.xy),dot(n,j.zw))),0.001)+0.5,0.0,1.0);}",
+            " vec2 edgeFoot(vec2 g,vec4 rect){if(g!=clamp(g,0.0,1.0))return g;vec2 n=edgeNormal(g,rect);vec2 foot=g;if(n.x!=0.0)foot.x=n.x<0.0?-0.01/rect.z:1.0+0.01/rect.z;else foot.y=n.y<0.0?-0.01/rect.w:1.0+0.01/rect.w;return foot;}",
+            " vec3 reflectEdge(sampler2D t,sampler2D raw,vec2 p,vec4 tube,vec4 rect,vec4 outer,vec4 fx,float rot,vec4 look){return look.x<=0.0?vec3(0.0):mirrorFrom(t,raw,edgeFoot(bentUv(p,tube,rect,fx),rect),rect,outer,rot,look);}",
+            " vec4 bend(vec2 p,vec4 tube,vec4 rect,vec4 fx){vec2 g=bentUv(p,tube,rect,fx)*rect.zw;return vec4(dFdx(g),dFdy(g));}",
+            " vec3 roomLight(vec2 p){if(uLightLook.y<0.5)return vec3(1.0);vec4 t=plate(uLight,p,uLightRect);return mix(vec3(1.0),mix(t.rgb,vec3(1.0),uLightLook.x),t.a*uLightLook.z);}"];
+        Vector<string> missing = [];
+        for expected in functions {
+            string name = expected.substring(0, Strings.find(expected, "{", 0));
+            if (!TvCutoutChecks.line(source, name).startsWith(expected)) { missing.push(name.trim()); }
+        }
+        contract.expect(missing.isEmpty(), "compositor.frag's edge, foot, bend and room-light functions are the ones this contract models: differ " + missing.join(" | "));
+        int pass = Strings.find(source, "\n if(uPass<1.5){", 0);
+        int gradients = Strings.find(source, "vec4 j0=bend(p,uTube,uRect,uFx);vec4 j1=dual>0.5?bend(p,uTube2,uRect2,uFx2):vec4(1.0,0.0,0.0,1.0);", 0);
+        int discarded = Strings.find(source, "if(m0<=0.0&&m1<=0.0)discard;", 0);
+        contract.expect(pass >= 0 && gradients > pass && discarded > gradients, "the screen pass takes the bend's gradients before its discard, while every pixel of the quad still runs");
+        Vector<string> lip = [
+            "float off=edgeCover(bentUv(p,uTube,uRect,uFx),uRect,j0);", "float off=edgeCover(bentUv(p,uTube2,uRect2,uFx2),uRect2,j1);",
+            "vec3 lip=lipColor(p,uRingOut,uRingLook,uRingColor,uBulge.xy)*uRingColor.a*roomLight(p);vec3 f=reflectEdge(uGame,uRaw,p,uTube,uRect,uRingOut,uFx,uRotation.x,uRingReflect);c=mix(c,1.0-(1.0-lip)*(1.0-f),off);",
+            "vec3 lip=lipColor(p,uRingOut2,uRingLook2,uRingColor2,uBulge.zw)*uRingColor2.a*roomLight(p);vec3 f=reflectEdge(uGame2,uRaw2,p,uTube2,uRect2,uRingOut2,uFx2,uRotation.y,uRingReflect2);c=mix(c,1.0-(1.0-lip)*(1.0-f),off);",
+            "c=screenColor(uGame,p,uTube,uRect,uFx,uSurround,uRotation.x,lipAtEdge?1.0:", "c=screenColor(uGame2,p,uTube2,uRect2,uFx2,uSurround2,uRotation.y,lipAtEdge?1.0:",
+            "*edgeCover(bentUv(p,tube,rect,fx),rect,j);return band>0.0?reflectEdge(t,raw,p,tube,rect,outer,fx,rot,reflection)*band:vec3(0.0);",
+            "lensMirror(uGame,uRaw,p,uTube,uRect,uRingOut,uRingLook,uRingColor,uRingReflect,uFx,uRotation.x,uBulge.xy,bend(p,uTube,uRect,uFx));"];
+        Vector<string> absent = [];
+        for wanted in lip { if (!source.contains(wanted)) { absent.push(wanted); } }
+        contract.expect(absent.isEmpty() && !source.contains("clamp(edgeDistance(bg,") && !source.contains("clamp(edgeDistance(bentUv("),
+            "both screens' lips blend over one device pixel of the bent edge toward the lip lit by the room, mirroring from the edge on both sides of it, the picture carried a pixel past the edge, and the painted lens likewise; no pixel-centre ramp is left: missing " + absent.join(" | "));
+        contract.contains(source, "t.rgb=mix(t.rgb,vec3(1.0),uLayer.z);float a=t.a*uLayer.x;if(uLayer.y>1.5)t.rgb*=a;", "the layer pass multiplies the plate by the light roomLight gives the lip: lifted, then weighed by its alpha and opacity");
+    }
+
+    class void light(Contract contract, Fixture fixture) {  // every TV's lip stands in its room's light; nothing else has one
+        Vector<string> lit = [];
+        Vector<string> wrong = [];
+        for systemId in fixture.model.systemIds() {
+            JSONValue variants = fixture.model.system(systemId).bezels.get("variants");
+            for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
+                string variantId = SemuJson.textAt(variants.at(index), "id");
+                JSONValue package = SemuBezelPackage.load(fixture.plan, SemuJson.textAt(variants.at(index), "bezel"));
+                struct RendererVariantConfig variant;
+                PlacementSpecGeometry.load(PlacementSpecEnvironment.compile(fixture, systemId, variantId), &variant);
+                int loaded[8] = {1, 1, 1, 1, 1, 1, 1, 1};
+                int chosen = RendererRoomLight.layer(variant.layers, variant.layer_count, loaded);
+                JSONValue ambient = package == null ? null : package.get("ambient");
+                bool night = ambient != null && ambient.isObject();
+                string cell = systemId + ":" + variantId;
+                if (!night) { if (chosen != -1) { wrong.push(cell + " lights its lip with no night plate"); } continue; }
+                double lift = 1.0 - atof(SemuJson.textAt(ambient, "opacity"));
+                bool right = chosen >= 0 && variant.layers[chosen].blend == 2 && variant.layers[chosen].above == 0 && fabs((double)variant.layers[chosen].lift - lift) < 0.001
+                    && strstr(variant.layers[chosen].file.value, "ambient") != null;
+                if (!right) { wrong.push(f"{cell} chose layer {chosen}"); continue; }
+                string bevel = SemuJson.textAt(SemuBezelPackage.screen(package, "main"), "ring.bevel");
+                if (!bevel.equals("0")) { wrong.push(cell + " still draws the lit chamfer (ring.bevel " + bevel + ")"); continue; }
+                lit.push(cell);
+            }
+        }
+        contract.expect(wrong.isEmpty() && lit.size() >= 19, f"every TV's lip stands in its night plate's light with no lit chamfer ({lit.size()} variants), and no other package lights one: " + wrong.join(" | "));
+        string compositor = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_compositor.btrc"));
+        int light = Strings.find(compositor, "RendererCompositor.roomLight(gl, resources, variant, geometry, variantIndex, frame, layered);", 0);
+        int game = Strings.find(compositor, "SEMU_RENDER_PASS_GAME, true);  // alpha carries the screen shape mask", 0);
+        bool placed = compositor.contains("RendererLayerPlacement.rect(layer, &canvas, frame->framebuffer_width, frame->framebuffer_height,")
+            && compositor.contains("RendererLayerPlacement.rect(&variant->layers[index], &canvas, frame->framebuffer_width, frame->framebuffer_height,");
+        contract.expect(light >= 0 && game > light && placed && compositor.contains("gl->uniform_1i(resources->uniform_light, 9);"),
+            "the compositor binds the room light on unit 9 before the screen pass, placed by the same rule as the plate it dims");
+        string editor = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
+        int editorLight = Strings.find(editor, "this.light(variant, canvas, screen);", 0);
+        int editorPass = Strings.find(editor, "if (scene.cutouts) this.pass(1, true);", 0);
+        contract.expect(editor.contains("uRaw2: 8, uLight: 9 }") && editorLight >= 0 && editorPass > editorLight && editor.contains("candidate.blend === 2 && !candidate.above && candidate.opacity > 0"),
+            "the editor preview lights the lip from the same layer before its screen pass, so it matches the renderer");
+    }
+
+    class void plan(Contract contract, Fixture fixture) {  // the round's record says what was found and what the Deck must still show
+        string text = FileSystem.readText(PathTools.join(fixture.project, "PLAN.md"));
+        int start = Strings.find(text, "### M16.", 0);
+        int end = start < 0 ? -1 : Strings.find(text, "\n## ", start);
+        string section = start < 0 ? "" : text.substring(start, (end < 0 ? text.len() : end) - start);
+        contract.contains(section, "- Item 10 (TV cutout):", "PLAN.md M16 records item 10's causes and fix");
+        contract.contains(section, "- Item 3 (GB studio):", "PLAN.md M16 records the studio's deletion");
+        contract.contains(section, "`tests/deck/m16-check.cases`", "PLAN.md M16 names the Deck cases still to run");
+    }
+}
+
+class TvCutoutSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        RenderEnvSpecAssets.packages(fixture.plan.assetRoot, fixture.plan.configRoot);  // every layer file exists, so every layer is emitted
+        TvCutoutChecks.edges(contract, fixture);
+        TvCutoutChecks.shader(contract, fixture);
+        TvCutoutChecks.light(contract, fixture);
+        TvCutoutChecks.plan(contract, fixture);
+    }
+}

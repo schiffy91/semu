@@ -81,6 +81,7 @@ import ./spec/m15_deck.btrc;
 import ./spec/render_scale.btrc;
 import ./spec/boot_resize.btrc;
 import ./spec/fit_states.btrc;
+import ./spec/tv_cutout.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -317,7 +318,7 @@ class RenderingContract {
         for entry in nesTv {
             if (entry.equals("SEMU_RENDER_SCREEN_0_REFLECT=0.4,0.95,1")) { nesReflect = true; }  // every mirror at the TVs' 0.4 (M15 item 8, edited over HSM_REFLECT_GLOBAL_AMOUNT 50); BLUR_MAX 95, FADE_AMOUNT 100
             if (entry.startsWith("SEMU_RENDER_SCREEN_0_IMAGE=0.275781,0.123148,0.448437,0.597685")) { nesImage = true; }  // 1059,266,1722,1291: HSM_NON_INTEGER_SCALE 59.77 at 4:3, POSITION_Y 78
-            if (entry.startsWith("SEMU_RENDER_SCREEN_0_RING=0.273698,0.119444,0.452604,0.605093,0.246354,0.099537,0.507292,0.644907,") && entry.endsWith(",0.0901961,0.0941176,0.0980392,1,1")) { nesRing = true; }  // black edge to bezel edge, bezel color #171819, a lit chamfer
+            if (entry.startsWith("SEMU_RENDER_SCREEN_0_RING=0.273698,0.119444,0.452604,0.605093,0.246354,0.099537,0.507292,0.644907,") && entry.endsWith(",0.0901961,0.0941176,0.0980392,1,0")) { nesRing = true; }  // black edge to bezel edge, bezel color #171819, no lit chamfer (M16 item 10: it read as a light bar)
         }
         contract.expect(nesImage && nesRing, "the NES picture and bezel ring follow Soqueroeu's preset");
         contract.expect(nesReflect, "the NES ring reflection is the TVs' 0.4, its blur and fade the preset's");
@@ -1055,6 +1056,7 @@ int main() {
     RenderScaleSpecContract.run(contract);
     BootResizeSpecContract.run(contract);
     FitStatesSpecContract.run(contract);
+    TvCutoutSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);

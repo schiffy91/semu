@@ -1,0 +1,44 @@
+// The room's light on the lip (M16 item 10, the PS1's "light bar"). A TV scene's late-night plate is a multiply
+// layer under the screens: the layer pass dims the TV's plastic round the opening with it, about to half. The screen
+// pass then paints the lip (the bezel between the bent picture and the opening) over that plastic, after the light,
+// so the lip stood at full brightness inside a dimmed TV and read as a light band round every screen. The screen
+// pass now multiplies the lip's paint by the same light where it stands (compositor.frag roomLight): this picks the
+// layer that lights it and places it exactly as drawLayers places every layer. No GL, so the contracts check both.
+
+import ./renderer_abi.btrc;
+import ./renderer_config_screen.btrc;
+import ./renderer_layout.btrc;
+
+class RendererLayerPlacement {
+    class bool rect(struct RendererLayerConfig* layer, struct RendererCanvasRect* canvas, int framebufferWidth, int framebufferHeight,
+                    int imageWidth, int imageHeight, float* placed) {  // x, y, width, height on screen: cover-fit to the screen like the background plate, else the layer's own rectangle on the canvas
+        if (layer->cover != 0) {
+            if (imageWidth <= 0 || imageHeight <= 0) { return false; }
+            float horizontal = (float)framebufferWidth / (float)imageWidth;
+            float vertical = (float)framebufferHeight / (float)imageHeight;
+            float scale = horizontal > vertical ? horizontal : vertical;
+            placed[2] = scale * (float)imageWidth;
+            placed[3] = scale * (float)imageHeight;
+            placed[0] = ((float)framebufferWidth - placed[2]) * 0.5f;
+            placed[1] = ((float)framebufferHeight - placed[3]) * 0.5f;
+        } else {
+            struct RendererPixelRect pixels;
+            RendererCompositionContract.aperture(canvas, layer->rect.x, layer->rect.y, layer->rect.width, layer->rect.height, &pixels);
+            placed[0] = (float)pixels.x;
+            placed[1] = (float)pixels.y;
+            placed[2] = (float)pixels.width;
+            placed[3] = (float)pixels.height;
+        }
+        return placed[2] > 0.0f && placed[3] > 0.0f;
+    }
+}
+
+class RendererRoomLight {
+    class int layer(struct RendererLayerConfig* layers, int count, int* loaded) {  // the light the lip stands in: the first multiply layer under the screens that loaded, else -1 (no scene light: the lip keeps its paint)
+        for (int index = 0; index < count && index < 8; index++) {
+            struct RendererLayerConfig* candidate = &layers[index];
+            if (candidate->blend == 2 && candidate->above == 0 && candidate->opacity > 0.0f && loaded[index] != 0) { return index; }
+        }
+        return -1;
+    }
+}

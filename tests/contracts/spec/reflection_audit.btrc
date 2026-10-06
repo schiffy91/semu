@@ -148,8 +148,10 @@ class ReflectionAuditChecks {
 
     class void sources(Contract contract, Fixture fixture) {
         string shader = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "render/compositor.frag"));
-        int first = ReflectionAuditChecks.count(shader, "reflectAt(uGame,uRaw,p,uTube,uRect,uRingOut,uFx,uRotation.x,uRingReflect)");
-        int second = ReflectionAuditChecks.count(shader, "reflectAt(uGame2,uRaw2,p,uTube2,uRect2,uRingOut2,uFx2,uRotation.y,uRingReflect2)");
+        int first = ReflectionAuditChecks.count(shader, "reflectAt(uGame,uRaw,p,uTube,uRect,uRingOut,uFx,uRotation.x,uRingReflect)")
+            + ReflectionAuditChecks.count(shader, "reflectEdge(uGame,uRaw,p,uTube,uRect,uRingOut,uFx,uRotation.x,uRingReflect)");  // the lip at the bent edge mirrors through reflectEdge (M16 item 10)
+        int second = ReflectionAuditChecks.count(shader, "reflectAt(uGame2,uRaw2,p,uTube2,uRect2,uRingOut2,uFx2,uRotation.y,uRingReflect2)")
+            + ReflectionAuditChecks.count(shader, "reflectEdge(uGame2,uRaw2,p,uTube2,uRect2,uRingOut2,uFx2,uRotation.y,uRingReflect2)");
         bool mirrored = shader.contains("vec2 src=e+(e-g)");  // across the bent edge: sharp there, never the edge pixel clamped outward
         contract.expect(first == 3 && second == 3 && mirrored, f"the fragment shader mirrors the picture onto each band it paints, for both screens: the lip at the bent edge, the ring over the screen and the ring over the chrome ({first} and {second} of 3), mirrored across the edge");
         string compositor = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_compositor.btrc"));

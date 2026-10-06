@@ -47,7 +47,7 @@
         "inner_radius": 10.677251204644167,
         "outer_radius": 12.683190659361145,
         "color": "#252525",
-        "bevel": 1
+        "bevel": 0
       },
       "aspect": 1.3332999999999999,
       "fit": "aspect",

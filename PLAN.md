@@ -2521,6 +2521,56 @@ Status: started 2026-10-06.
   saved in semu.json is a stale id and falls back to the default: `tests/contracts/spec/render_variants.btrc`
   launches it and requires exactly the environment of no choice (the DMG shell), Next Bezel starting on DMG of
   `dmg|none`, the gb page showing DMG and no diagnostic.
+- Item 10 (TV cutout): done on the Mac render host (M1 Max, the real renderer offscreen), the Deck check open.
+  Why, in plain words: the TV screen's frame (the lip between the curved picture and the TV's opening) was
+  painted on top of the TV after the room's night lighting had already dimmed the TV, so it stayed at full
+  brightness, and it had a lit edge drawn round it on top; together they read as a light bar round the screen.
+  The jagged curve came from how that frame meets the curved picture: the edge itself was antialiased, but the
+  colour it faded into was taken at each pixel's centre, and the frame's reflection of the picture switched on
+  only when a pixel's centre was outside the picture, so each edge pixel jumped between two colours as the curve
+  crossed pixel centres, a notch every few rows on every curved edge. Seen at 1280x800 and 1920x1080 on all 19 TV
+  variants (ps2, psx, n64, snes, nes, genesis, dreamcast, gc and wii with their alternates, the wii's 16:9 TV on
+  a 16:9 card) in the old fit, bezel and game, and again after the placement track's four Fit states landed, in
+  each of integer game, integer bezel, non-integer game and non-integer bezel, zoomed 4x and 5x with the test
+  card, a white card and Crash Bandicoot's
+  screenshot (from ES-DE's media, read-only): on the PS1 at 1280x800 the lip was #3C3E3A with a 3 px #6A6A68
+  outer line inside a #24221E TV (the lit chamfer, `ring.bevel` 1 on every TV, +0.22 over 1.5% of the lip's
+  half-size); an N64 column along the curved top edge ran 81 8A 93 9C A5 AE then 8E (the snap), likewise the
+  PS1's and SNES's NTSC fringe rows broke into dark segments. Not the cause: the plates are mip-mapped and
+  sampled trilinearly with explicit gradients at every scale, the opening mask is an analytic rounded-box
+  distance smoothed over 1.5 px, and the picture is sampled through the bend with four rotated taps. Fix: the
+  lip's paint stands in the scene's night light, the first multiply layer under the screens placed as the
+  layer pass places it (`src/renderer/renderer_room_light.btrc`, unit 9, `roomLight` in compositor.frag); no
+  TV draws the chamfer (`ring.bevel` 0 in all 13 TV packages; a new ring's default is 0, `semu bezel emit`);
+  a pixel centre inside the picture edge takes the mirror at its foot on the edge (`reflectEdge`, `edgeFoot`),
+  so the lip it blends toward is one colour either side of the edge; and the blend's coverage is the signed
+  distance over its own screen gradient (`edgeCover`, the bend's dFdx/dFdy taken before the screen pass's
+  discard), one device pixel wide however the bend stretches it, the picture carried a pixel past the edge so
+  the blend never reaches the surround. The painted-lens mirror (handhelds) uses the same coverage and foot.
+  After: the PS1's top lip #181714 beside the TV's #1C1B19, the left #2B2922 beside #25221F, the picture's
+  colours still mirrored on it; the N64 column runs 84 8D 95 9E A6 AE B6 BE C5 CD D4 DB E2, monotonic; every
+  curved edge and fringe line smooth at 4x on every TV variant at both sizes. Measured on a flat white card with
+  the shader off (the edge's sub-pixel row per column along the middle 80 % of the top edge, every TV variant
+  but the 16:9 Wii in the four states, 54 cells per size with the top edge on screen): before, every cell had
+  notches (455 jumps over 0.25 px at 1280x800, 695 at 1920x1080); after, none (the largest jump 0.08 and
+  0.19 px). Handheld edges sit on whole
+  pixels, so their output is unchanged. The bezel editor compiles the same compositor.frag and now binds the
+  same light (`config/editor/bezel-renderer.js`). Reversible defaults: the lip in the room's light (drop the
+  `roomLight(p)` factor to undo), `ring.bevel` 0 on every TV (1 brings the lit rim back per package). Contract
+  `tests/contracts/spec/tv_cutout.btrc`: the edge functions ported and run over the PS1's whole curved edge at
+  1280x800 and 1920x1080 (coverage within 0.08 of each pixel's true area past the edge away from the corners,
+  measured 0.031 and 0.030 over 6212 and 9004 edge pixels; every blended pixel mirroring from within a pixel of
+  the edge), the shader carrying exactly those functions where both lips and the painted lens blend, the
+  gradients taken before the discard, every TV variant's lip lit by its night plate with no chamfer and nothing
+  else lit, the compositor and the editor binding the light before the screen pass. Each fails under its
+  mutation (12 run, the file put back with cp and checked with cmp each time): the lip back on the pixel-centre
+  ramp, reflectAt in place of reflectEdge, edgeFoot returning its point, roomLight dropped from the lip, bend
+  without dFdx/dFdy, the gradients after the discard, the PS1's bevel back to 1, the compositor's or the
+  editor's light call removed, a new ring's bevel 1, and in the port a step for the coverage (worst 0.5) or no
+  foot (no mirror on 2184 blended pixels at 1280x800); item 3's studio variant restored fails six checks.
+  Deck checks: `tests/deck/m16-check.cases` cases T1 to T5 (PS1 in the integer and non-integer states, N64 on both TVs,
+  Genesis, GameCube in Dolphin, Dreamcast in Flycast) and G1 (GB, item 3). The Deck was unreachable from
+  the Mac all session (ssh to 10.241.117.98 timed out), so no Deck capture was read.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
@@ -3877,6 +3927,12 @@ Update this block whenever a milestone criterion changes state.
   system's declared scales, saved per system; Dolphin applies it live, the rest at Restart Game; the picture keeps
   its native placement. Open on the Deck: `tests/deck/m16-check.cases` S1-S4 and `radial-check.cases` case 18
   (pictures, receipts and full-speed rate lines at 2x), then the GPU load per system.
+- M16 items 3 and 10 (the GB studio bezel deleted; TV cutout: the lip stands in the room's night light with no
+  lit rim, and the curved picture edge blends over one device pixel toward a mirror that no longer snaps on at
+  pixel centres): done on the Mac render host, all 19 TV variants at 1280x800 and 1920x1080 in every Fit state,
+  the editor matching the renderer (MAE 0 on every variant at 1280x800, every TV at 1920x1080); contracts
+  tv_cutout.btrc and render_variants.btrc. Open on the Deck: `tests/deck/m16-check.cases` T1-T5 and G1 (the
+  Deck did not answer ssh this session).
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,

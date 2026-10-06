@@ -353,8 +353,8 @@ class BezelPackageWriter {
             ring.set("outer_radius", JSONValue.makeFloat(geometry.plateRadius(placed.bezelRadius)));
             bool painted = kept && SemuJson.textAt(previous, "color").equals("none");  // the art paints this bezel: a band for the reflection, no fill
             ring.set("color", JSONValue.makeString(painted ? "none" : geometry.placement.bezelColor()));
-            JSONValue bevel = kept ? previous.get("bevel") : null;  // the lip's lit chamfer is the package's, never the preset's
-            ring.set("bevel", bevel != null && bevel.isNumber() ? bevel : JSONValue.makeFloat(BezelPackageWriter.bevel(geometry.package)));
+            JSONValue bevel = kept ? previous.get("bevel") : null;  // the lip's lit chamfer is the package's, never the preset's; a new ring has none: every plate draws its own opening, and a lit rim on a TV read as a light bar (M16 item 10)
+            ring.set("bevel", bevel != null && bevel.isNumber() ? bevel : JSONValue.makeFloat(0.0));
             screen.set("ring", ring);
         } else if (screen.has("ring")) { screen.set("ring", JSONValue.makeNull()); }
         JSONValue reflection = screen.get("reflection");
@@ -401,10 +401,6 @@ class BezelPackageWriter {
         provenance.set("parameters", parameters);
         if (edited) { provenance.set("edited", saved.get("edited")); }  // the next emit still keeps the person's reflection
         screen.set("provenance", provenance);
-    }
-
-    class double bevel(JSONValue package) {  // a new ring's chamfer: Duimon's device lenses sit in a flat printed mask, a CRT bezel is chamfered
-        return SemuJson.textAt(package, "upstream.source").equals("duimon_mega_bezel") ? 0.0 : 1.0;
     }
 
     public void emitAll(Vector<string> wanted) {  // `semu bezel emit`: the wanted upstream packages, then every recolor and plain plate

@@ -429,7 +429,7 @@ const BezelRenderer = (() => {
       if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
       this.program = program; this.vertexArray = gl.createVertexArray(); this.uniforms = {};
       gl.useProgram(program);
-      const units = { uGame: 0, uBezel: 1, uGlass: 2, uMenu: 3, uGame2: 4, uGlass2: 5, uBackground: 6, uRaw: 7, uRaw2: 8 };  // bindSamplers
+      const units = { uGame: 0, uBezel: 1, uGlass: 2, uMenu: 3, uGame2: 4, uGlass2: 5, uBackground: 6, uRaw: 7, uRaw2: 8, uLight: 9 };  // bindSamplers
       for (const [name, unit] of Object.entries(units)) { const location = gl.getUniformLocation(program, name); if (location) gl.uniform1i(location, unit); }
       this.black = this.upload(null, new Uint8Array([0, 0, 0, 255]), 1, 1, false);
       return true;
@@ -521,6 +521,15 @@ const BezelRenderer = (() => {
       this.scissor(null);
       this.setRect("uBezelRect", canvas);
     }
+    light(variant, canvas, screen) {  // RendererCompositor.roomLight: the first multiply layer under the screens, on unit 9, so the screen pass lights the lip as the plastic round it
+      const layer = variant.layered ? variant.layers.find(candidate => candidate.blend === 2 && !candidate.above && candidate.opacity > 0 && this.textures.get("layer:" + candidate.id)) : null;
+      const entry = layer ? this.textures.get("layer:" + layer.id) : null;
+      const rect = entry ? (layer.extent === "cover" ? this.cover(screen, entry.width, entry.height) : CompositionContract.aperture(canvas, layer.extent)) : CompositionContract.empty();
+      const lit = !!entry && rect.width > 0 && rect.height > 0;
+      this.bind(9, lit ? entry : null);
+      this.setRect("uLightRect", lit ? rect : CompositionContract.empty());
+      this.set4("uLightLook", lit ? layer.lift : 0, lit ? 1 : 0, lit ? layer.opacity : 0, 0);
+    }
     paintedLens(variant, count) { return variant.screens.slice(0, Math.min(count, 2)).some(screen => screen && screen.lookSet && screen.ringSet && screen.ringOpacity <= 0 && screen.reflect > 0); }
     render(scene) {  // scene: width, height, clear, screen and canvas (bottom-up), variant, lanes, frames[] and glass[] texture keys, cutouts
       const gl = this.gl, { variant, lanes, canvas, screen } = scene, count = lanes.length, second = count > 1 ? 1 : 0;
@@ -553,6 +562,7 @@ const BezelRenderer = (() => {
         gl.uniform1f(this.uniform("uPass"), 5); gl.drawArrays(gl.TRIANGLES, 0, 3);
       }
       if (framed) this.pass(2, true);  // plate and frames first, so the screen edge blends over them
+      this.light(variant, canvas, screen);
       if (scene.cutouts) this.pass(1, true);  // alpha carries the screen shape mask
       if (variant.layered) this.layers(variant, canvas, screen, true);
       gl.disable(gl.BLEND);

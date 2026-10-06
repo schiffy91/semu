@@ -81,7 +81,7 @@ class FieldsReflectionsSpecChecks {
 
     class void reflections(Contract contract, Fixture fixture) {
         string source = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "render/compositor.frag"));
-        string mirror = FieldsReflectionsSpecChecks.shaderFunction(source, "vec3 reflectAt(");
+        string mirror = FieldsReflectionsSpecChecks.shaderFunction(source, "vec3 mirrorFrom(");  // reflectAt and reflectEdge both mirror through it
         bool sourcePixel = mirror.contains("vec2 cell=1.0/laneAxes(vec2(textureSize(raw,0)),rot);") && mirror.contains(",cell),1.0/rect.zw);");
         bool fifths = mirror.contains("vec2 stride=box*0.2;") && mirror.contains("for(int y=-2;y<=2;y++)for(int x=-2;x<=2;x++)") && mirror.contains("vec2(float(x),float(y))*stride");
         bool linear = mirror.contains("float lod=max(log2(max(max(reach.x,reach.y),1.0)),0.01);");

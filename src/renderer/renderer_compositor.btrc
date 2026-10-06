@@ -20,6 +20,7 @@ import ./renderer_dual_shell.btrc;
 import ./renderer_mirror.btrc;
 import ./renderer_scaled_lane.btrc;
 import ./renderer_scanline_pitch.btrc;
+import ./renderer_room_light.btrc;
 int RGL_VERTEX_SHADER = 0x8B31;
 int RGL_FRAGMENT_SHADER = 0x8B30;
 int RGL_LINK_STATUS = 0x8B82;
@@ -203,6 +204,9 @@ struct RendererGlResources {
     int uniform_layer;
     int uniform_layer_tint;
     int uniform_bulge;
+    int uniform_light;       // the room's multiplied light, on unit 9 for the screen pass: the lip stands in it
+    int uniform_light_rect;
+    int uniform_light_look;  // lift, on, opacity
     int uniform_rotation;
     int uniform_pass;
     int uniform_menu_on;
@@ -548,6 +552,7 @@ class RendererResources {
         if (resources->uniform_background >= 0) { gl->uniform_1i(resources->uniform_background, 6); }
         if (resources->uniform_raw >= 0) { gl->uniform_1i(resources->uniform_raw, 7); }
         if (resources->uniform_raw2 >= 0) { gl->uniform_1i(resources->uniform_raw2, 8); }
+        if (resources->uniform_light >= 0) { gl->uniform_1i(resources->uniform_light, 9); }
     }
 
     class void lookupUniforms(struct RendererGlApi* gl, struct RendererGlResources* resources) {
@@ -590,6 +595,9 @@ class RendererResources {
         resources->uniform_layer = RendererResources.uniform(gl, resources, "uLayer");
         resources->uniform_layer_tint = RendererResources.uniform(gl, resources, "uLayerTint");
         resources->uniform_bulge = RendererResources.uniform(gl, resources, "uBulge");
+        resources->uniform_light = RendererResources.uniform(gl, resources, "uLight");
+        resources->uniform_light_rect = RendererResources.uniform(gl, resources, "uLightRect");
+        resources->uniform_light_look = RendererResources.uniform(gl, resources, "uLightLook");
         resources->uniform_rotation = RendererResources.uniform(gl, resources, "uRotation");
         resources->uniform_pass = RendererResources.uniform(gl, resources, "uPass");
         resources->uniform_menu_on = RendererResources.uniform(gl, resources, "uMenuOn");
@@ -995,32 +1003,14 @@ class RendererCompositor {
             struct RendererLayerConfig* layer = &variant->layers[index];
             int slot = variantIndex * 8 + index;
             if ((layer->above != 0) != above || resources->layer_loaded[slot] == 0 || layer->opacity <= 0.0f) { continue; }
-            float x = 0.0f;
-            float y = 0.0f;
-            float width = 0.0f;
-            float height = 0.0f;
-            if (layer->cover != 0) {  // cover-fit like the background plate
-                float horizontal = (float)frame->framebuffer_width / (float)resources->layer_width[slot];
-                float vertical = (float)frame->framebuffer_height / (float)resources->layer_height[slot];
-                float scale = horizontal > vertical ? horizontal : vertical;
-                width = scale * (float)resources->layer_width[slot];
-                height = scale * (float)resources->layer_height[slot];
-                x = ((float)frame->framebuffer_width - width) * 0.5f;
-                y = ((float)frame->framebuffer_height - height) * 0.5f;
-            } else {
-                struct RendererPixelRect rect;
-                RendererCompositionContract.aperture(&canvas, layer->rect.x, layer->rect.y, layer->rect.width, layer->rect.height, &rect);
-                x = (float)rect.x;
-                y = (float)rect.y;
-                width = (float)rect.width;
-                height = (float)rect.height;
-            }
-            if (width <= 0.0f || height <= 0.0f) { continue; }
+            float placed[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            if (!RendererLayerPlacement.rect(layer, &canvas, frame->framebuffer_width, frame->framebuffer_height,
+                    resources->layer_width[slot], resources->layer_height[slot], placed)) { continue; }
             gl->active_texture((unsigned int)(RGL_TEXTURE0 + 1));
             gl->bind_sampler(1, 0);
             gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->layer_textures[slot]);
             gl->active_texture((unsigned int)RGL_TEXTURE0);
-            if (resources->uniform_bezel_rect >= 0) { gl->uniform_4f(resources->uniform_bezel_rect, x, y, width, height); }
+            if (resources->uniform_bezel_rect >= 0) { gl->uniform_4f(resources->uniform_bezel_rect, placed[0], placed[1], placed[2], placed[3]); }
             RendererCompositor.set4(gl, resources->uniform_layer, layer->opacity, (float)layer->blend, layer->lift, layer->room != 0 ? 1.0f : 0.0f);  // w: the room carries on past its rectangle
             RendererCompositor.set4(gl, resources->uniform_layer_tint, layer->tint[0], layer->tint[1], layer->tint[2], layer->tint[3]);
             gl->enable((unsigned int)RGL_BLEND);
@@ -1038,6 +1028,28 @@ class RendererCompositor {
         if (resources->uniform_bezel_rect >= 0) {
             gl->uniform_4f(resources->uniform_bezel_rect, geometry->bezel_x, geometry->bezel_y, geometry->bezel_width, geometry->bezel_height);
         }
+    }
+
+    class void roomLight(struct RendererGlApi* gl, struct RendererGlResources* resources,
+                         struct RendererVariantConfig* variant, struct RendererCompositionGeometry* geometry,
+                         int variantIndex, struct SemuRenderFrameGl* frame, bool layered) {  // the scene's multiplied light on unit 9, so the screen pass lights the lip as the layer pass lit the plastic round it
+        int index = layered ? RendererRoomLight.layer(variant->layers, variant->layer_count, &resources->layer_loaded[variantIndex * 8]) : -1;
+        float placed[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        struct RendererCanvasRect canvas;
+        canvas.x = geometry->bezel_x;
+        canvas.y = geometry->bezel_y;
+        canvas.width = geometry->bezel_width;
+        canvas.height = geometry->bezel_height;
+        int slot = variantIndex * 8 + (index < 0 ? 0 : index);
+        bool lit = index >= 0 && RendererLayerPlacement.rect(&variant->layers[index], &canvas, frame->framebuffer_width, frame->framebuffer_height,
+            resources->layer_width[slot], resources->layer_height[slot], placed);
+        gl->active_texture((unsigned int)(RGL_TEXTURE0 + 9));
+        gl->bind_sampler(9, 0);
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, lit ? resources->layer_textures[slot] : 0u);
+        gl->active_texture((unsigned int)RGL_TEXTURE0);
+        RendererCompositor.set4(gl, resources->uniform_light_rect, placed[0], placed[1], placed[2], placed[3]);
+        RendererCompositor.set4(gl, resources->uniform_light_look, lit ? variant->layers[index].lift : 0.0f, lit ? 1.0f : 0.0f,
+            lit ? variant->layers[index].opacity : 0.0f, 0.0f);
     }
 
     class bool paintedLens(struct RendererVariantConfig* variant, struct RendererCompositionGeometry* geometry) {  // a screen whose ring only marks a painted lens and reflects
@@ -1251,6 +1263,7 @@ class RendererCompositor {
             RendererCompositor.drawPass(gl, resources,
                 SEMU_RENDER_PASS_CHROME, true);  // plate and frames first, so the screen edge blends over them
         }
+        RendererCompositor.roomLight(gl, resources, variant, geometry, variantIndex, frame, layered);
         RendererCompositor.drawPass(gl, resources,
             SEMU_RENDER_PASS_GAME, true);  // alpha carries the screen shape mask
         if (layered) {

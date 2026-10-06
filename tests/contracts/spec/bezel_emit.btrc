@@ -110,7 +110,7 @@ class BezelEmitSpecContract {
         BezelEmitSpecContract.emit(contract, copy, root, fresher, "packages without a ring");
         string television = SemuJson.textAt(repository.package("tv-soqueroeu-nes"), "screens.0.ring.bevel");
         string handheld = SemuJson.textAt(repository.package("gb-dmg-shell"), "screens.0.ring.bevel");
-        contract.expect(television.equals("1") && handheld.equals("0"), "a new ring says its bevel: a chamfered CRT bezel 1, a Duimon lens's flat mask 0; wrote " + television + " and " + handheld);
+        contract.expect(television.equals("0") && handheld.equals("0"), "a new ring says its bevel, and it is 0 on a TV as on a Duimon lens: the plate draws its own opening, and the lit chamfer read as a light bar round the PS1's screen (M16 item 10); wrote " + television + " and " + handheld);
     }
 
     class string visibility(JSONValue package, string layerId) {  // "true", "false" or "missing"
