@@ -2540,6 +2540,16 @@ Status: started 2026-10-06.
     semu-scale.png (packaging/deck/install.sh prints the step; every case types the chord itself, so the cases pass
     without it); then check by eye that the settings radial shows the zoom-in Render Scale slot between Aspect and
     Controller Layout, and that Fit's binding reads Fit.
+  - On the Deck (2026-10-06): release af0470d8 installed (a delta of 9 store paths over the M15 release),
+    `semu-deck-cli prepare --target steam-deck` run, then Steam's controller templates republished with Steam
+    stopped (`~/.cache/semu-matrix/steam-input.sh`: Steam down in 4 s, `semu-deck-cli steam input` exit 0, Steam
+    back, the screen's brightness restored to the 1209 it found). The written profile carries the slot: the
+    owner's `Steam Controller Configs/<user>/config/semu/controller_neptune.vdf` (04:34) has the Semu Settings
+    radial's touch_menu_button_7 "Render Scale", Ctrl+Shift+N with `semu-scale.png`, between Aspect and
+    Controller Layout (the M15 file had no semu-scale at all), and the Fit slot reads Fit; the neptune-full
+    template carries it, `semu-scale.png` is in Steam's binding_icons, and the user's configset already loads
+    semu (autosave 1). Seeing it in the settings radial in Game Mode is the owner's (radial-check case 18 types
+    the chord off-screen).
 - Item 3 (GB studio): done on the Mac, the Deck check open. The owner asked for the deletion, so the `studio`
   variant left `config/systems/gb/bezels.json`, and `config/bezels/gb-studio/` and its render
   `config/assets/bezels/gb/classic.png` (nothing else used it) were removed with git rm, with the render's
@@ -2601,9 +2611,9 @@ Status: started 2026-10-06.
   Genesis, GameCube in Dolphin, Dreamcast in Flycast) and G1 (GB, item 3). The Deck was unreachable from
   the Mac all session (ssh to 10.241.117.98 timed out), so no Deck capture was read.
 
-- Items 4, 8 and 9 (the deck track, 2026-10-06): built and observed on the Mac and in the podman VM; every Deck
-  check is open (the Deck did not answer ssh from 00:55 on: `tests/deck/m16-check.cases` D1-D6 and
-  `tests/deck/boot-capture.cases`).
+- Items 4, 8 and 9 (the deck track, 2026-10-06): built and observed on the Mac and in the podman VM; item 4 was
+  then filmed on the Deck (`tests/deck/boot-capture.cases`, below); `tests/deck/m16-check.cases` D1-D6 are open
+  (the Deck did not answer ssh from 00:55 until the morning).
   - Item 4, why a game went from full size to a third of the screen in the top left and back, in plain words:
     Dolphin opens its game window at a small default size (640x480) and only asks for full screen once the game
     is running, and on Linux it draws into a separate inner window that it sizes once, from the outer window, when
@@ -2619,6 +2629,44 @@ Status: started 2026-10-06.
     window manager has made it the screen's size (at most a second), and the deferred toggle is skipped. Built in
     the VM (MainWindow.cpp compiles with it). Dolphin itself does not run under Rosetta in the VM (a bus error
     with the JIT and the cached interpreter alike), so the boot is filmed on the Deck only.
+  - Item 4 on the Deck (2026-10-06, `tests/deck/boot-capture.sh` over `boot-capture.cases`, off-screen in a
+    private headless gamescope at 1280x800, a screenshot every 0.25 s, judged by eye on the contact sheets).
+    Before, on the M15 release still installed: The Wind Waker showed Dolphin's 640x480 window stretched to
+    1066x800 (9.1-10.7 s), then at 10.95 s exactly the owner's symptom, the 640x480 picture in the top left of the
+    screen with black to the right and below (the X tree that instant: the outer window 1280x800, its inner GL
+    window still 640x480), then the whole TV room from 11.2 s; New Super Mario Bros. Wii the same at 12.6-12.9 s;
+    Dolphin's yellow messages ran over the picture. After, on release af0470d8 (2026-10-06, patch and Dolphin's
+    messages off): both Dolphin cases compose into 1280x800 from their first frame (one size line each,
+    "framebuffer 1280x800 (was 0x0) at frame 1"), the window and its inner GL window are 1280x800 from the first
+    sample that shows them, every lit shot is the full screen (81 of 86 and 81 of 85, the rest black before the
+    first frame), no shrink and no Dolphin text. Flycast, Azahar, PPSSPP, RetroArch (Beetle PSX) and melonDS
+    never showed a shrunken or misplaced frame, before or after: Flycast and RetroArch go from black to the full
+    picture, PPSSPP draws the PSP shell from its first shot, Azahar shows its own loading box centred, then the
+    shell (it composes one frame into a hidden 100x30 widget first, never seen).
+    Three emulators showed a window of their own before the game, which this item's done criterion covers too:
+    PCSX2 its game list (the 1050x666 main window scaled to 1261x800) for 2.7 s before and 0.5 s after, because
+    -batch still shows the main window at start (pcsx2-qt/QtHost.cpp:2428-2433 at v2.6.3) and
+    HideMainWindowWhenRunning hides it only once the VM runs; Cemu its 1280x720 window with the menu bar for
+    about 3.5 s, its first two shots 25 px down the screen, because CemuApp::OnInit shows the window normal
+    (CemuApp.cpp:335 at v2.6) and only MainWindow::FileLoad, after mounting the title from the SD card, makes it
+    full screen (MainWindow.cpp:586); and Ryujinx, in one shot of one film in four, its 1278x776 window with the
+    menu bar round the loading screen just before full screen, because with a game on the command line Ryujinx
+    1.3.3 goes full screen only when the game begins loading (ShowLoading, MainWindow.axaml.cs:247-256). Fixes:
+    PCSX2 starts with -nogui, which never shows the main window and implies batch mode (QtHost.cpp:2146-2150), and
+    Cemu carries `config/emulators/cemu/semu-fullscreen-at-boot.patch`, which shows the window full screen and
+    black from the start when a game is launched with -g and -f (9d52f6f); Ryujinx's Linux build carries
+    `config/emulators/ryujinx/semu-fullscreen-at-boot.patch`, which makes the window full screen in its
+    constructor when --fullscreen came with a game (a70ece76; macOS's build unchanged). Contract
+    boot_resize.btrc, twelve mutations killed. Filmed again on a70ece76, all ten cases (Ryujinx for 120 s): no
+    shot shrunk or misplaced and no emulator window of its own. PCSX2's X tree holds only its game window,
+    1280x800 from the first sample, and its shots go from black to the game; Cemu's are black from the first
+    until its own full-screen shader screen, then the game (1280x720 at 0,40, composed into 1280x800 from frame
+    1); Ryujinx's window is full screen 0.5 s after it takes its saved size (11.2 s, before its first painted
+    frame at 14.2 s; on 9d52f6f full screen came at 13.4-13.8 s, with the loading screen's first paint), its
+    loading screens full screen, then the game composed into 1280x800 from its first frame (50.5 s); its render
+    window sits at 1278x706, 35 px down, while the loading screen shows and is 1280x800 by the game's first frame,
+    so no frame is drawn into the small one. Dolphin's two cases, Flycast, Azahar, PPSSPP, RetroArch and melonDS as
+    before.
   - Tools for every Deck question here: the renderer logs, under SEMU_RENDER_DEBUG, each framebuffer size it
     composes into ("semu-renderer: framebuffer WxH (was ...) at frame N ms=") and every two seconds the frame
     rate, the longest gap and the game phase's CPU cost; SEMU_RENDER_GPU_TIME=1 adds its GPU time (GL_TIME_ELAPSED
@@ -2791,6 +2839,8 @@ Status: started 2026-10-06.
     S1-S7, C1-C5, T1-T5, G1, D1-D10); `SEMU_CHECK_SIZE=1920x1080` m16-docked.cases; system-matrix.cases' Sonic
     Adventure lines the four ways; read-only, the owner's semu.json: a Wii saved on `game` launches in
     non-integer game and gains `visual.fit_states` with the next save.
+  - Done of that list (2026-10-06, the Deck chain): the release (af0470d8, then 9d52f6f and a70ece76), prepare,
+    `semu-deck-cli steam input` with Steam stopped, and boot-capture.cases before and after (item 4 above).
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
@@ -4148,10 +4198,11 @@ Update this block whenever a milestone criterion changes state.
   on PCSX2 at 2x through Scale and Restart Game, The Wind Waker switched live on Dolphin); contract
   render_scale.btrc, 19 mutations killed. Scale (settings radial, menu SCALE row, SEMU SETTINGS) steps each
   system's declared scales, saved per system; Dolphin applies it live, the rest at Restart Game; the picture keeps
-  its native placement. Open on the Deck: `tests/deck/m16-check.cases` S1-S4 and `radial-check.cases` case 18
-  (pictures, receipts and full-speed rate lines at 2x) and the review round's S5-S7, then the GPU load per system; the
-  Render Scale slot reaches the radial only after the release is deployed and `semu-deck-cli steam input` runs with
-  Steam stopped (the eleventh settings slot and semu-scale.png).
+  its native placement. On the Deck (2026-10-06): release af0470d8 installed and `semu-deck-cli steam input` run
+  with Steam stopped; the owner's controller_neptune.vdf carries the eleventh settings slot, Render Scale
+  (Ctrl+Shift+N, semu-scale.png). Open on the Deck: `tests/deck/m16-check.cases` S1-S4 and `radial-check.cases`
+  case 18 (pictures, receipts and full-speed rate lines at 2x) and the review round's S5-S7, then the GPU load
+  per system, and the slot by eye in Game Mode.
 - M16 items 3 and 10 (the GB studio bezel deleted; TV cutout: the lip stands in the room's night light with no
   lit rim, and the curved picture edge blends over one device pixel toward a mirror that no longer snaps on at
   pixel centres): done on the Mac render host, all 19 TV variants at 1280x800 and 1920x1080 in every Fit state,
@@ -4164,10 +4215,13 @@ Update this block whenever a milestone criterion changes state.
   (patched); item 9's rule, Retro Crisis's GDV-NTSC on a CRT television console, holds for the 240-line consoles
   and the NES only (corrected in the review round: the 480-line four keep Sharp CRT, `gdv` one press away, so item
   9 stays open until measured), LCD on handhelds, none on HD consoles, with CRT scanlines on whole output rows at
-  every size; item 8 is open and its cause unknown. Open on the Deck (it did not answer ssh from 00:55):
-  `tests/deck/m16-check.cases` (deck cases D1-D6) and the review's D7-D10 (GDV-NTSC on the 480-line four),
-  `tests/deck/boot-capture.cases` before and after the release, and Sonic Adventure four ways
-  (`tests/deck/system-matrix.cases`, PLAN M16 item 8's decision table).
+  every size; item 8 is open and its cause unknown. Item 4 observed on the Deck (2026-10-06,
+  `tests/deck/boot-capture.cases` before and after the releases): the owner's shrink filmed on the M15 release in
+  both Dolphin cases and gone from af0470d8 on; the other emulators never shrank; PCSX2's game list, Cemu's
+  menu-bar window and a frame of Ryujinx's, also shown at boot, are gone too (9d52f6f: -nogui and Cemu's
+  full-screen-at-boot patch; a70ece76: Ryujinx's). Open on the Deck:
+  `tests/deck/m16-check.cases` (deck cases D1-D6) and the review's D7-D10 (GDV-NTSC on the 480-line four), and
+  Sonic Adventure four ways (`tests/deck/system-matrix.cases`, PLAN M16 item 8's decision table).
 - M16 items 1 and 6 (crosshair, the Wii's controller): built 2026-10-06 (51bcddb, 47c1303) and observed on the Mac
   render host and in the podman VM (RetroArch's DS and 3DS cores, standalone Azahar, Dolphin with Mario Kart Wii);
   contracts right_trackpad, standalone_cursor, controller_layouts, players, emulator_runtime, radial_render. DS and
@@ -4180,15 +4234,18 @@ Update this block whenever a milestone criterion changes state.
   a pre-M16 Fit: Screen read as it drew, whole toasts and a Fit label, Flycast's keys where Flycast reads them,
   Dolphin's typed keys off desktop shortcuts, the gallery measuring the placed canvas in the four states, the
   reflection audit for the four states, the Deck cases and a docked harness); answered in PLAN M16's review block
-  (docked TV sizes, other pointers, the docked render-scale list). Items 4 and 8 have no Deck observation and item
-  9 is open for the 480-line four. Observed on the Mac render host (the rounding swept over 424 cells at both
+  (docked TV sizes, other pointers, the docked render-scale list). Item 8 has no Deck observation (item 4 had none
+  either until the Deck films after this round, see the items 4, 8 and 9 line) and item 9 is open for the 480-line
+  four. Observed on the Mac render host (the rounding swept over 424 cells at both
   sizes before and after, the editor matching in the four states at both sizes, the gallery's 272 flat-card
   checks and the reflection audit's 308 rows in the four states passing); open on the Deck: everything in the
   block's list, `tests/deck/m16-docked.cases` with SEMU_CHECK_SIZE=1920x1080 among it.
 - M16 release for the Deck run: none installed by the review round (read-only on the Deck; the Deck chain builds
   and installs it); build it from origin/main at or after the commit that adds this line, which carries all ten
   items, the review's fixes and every case file named above, then run `semu-deck-cli steam input` with Steam
-  stopped.
+  stopped. Installed on the Deck 2026-10-06: af0470d8 (then `steam input` with Steam stopped), 9d52f6f and
+  a70ece76, the last after that commit; Steam's templates have not changed since af0470d8, so the radial is
+  current.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,
