@@ -167,7 +167,7 @@ class PlaylistSpecLaunch {  // exact argv per emulator over scratch multi-disc f
         string discTwo = name + " (Disc 2).iso";
         string folder = PlaylistSpecLaunch.writeFolder(bed, "ps2", name, "\xEF\xBB\xBF" + discOne + "\r\n" + discTwo + "\r\n", [discOne, discTwo]);
         SemuLaunchPlan launch = PlaylistSpecLaunch.launch(bed, "pcsx2", "ps2", "", name + ".m3u");
-        PlaylistSpecLaunch.expectArgv(contract, "pcsx2 DMC2 playlist with a BOM and CRLF", bed, launch, ["-batch", "-fullscreen", "--"], PathTools.join(folder, discOne));
+        PlaylistSpecLaunch.expectArgv(contract, "pcsx2 DMC2 playlist with a BOM and CRLF", bed, launch, ["-nogui", "-fullscreen", "--"], PathTools.join(folder, discOne));
         contract.lacks(launch.argv.join(" | "), "ContentPath", "pcsx2 takes no playlist arguments");
     }
 

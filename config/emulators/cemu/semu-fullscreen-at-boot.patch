@@ -1,0 +1,20 @@
+--- a/src/gui/CemuApp.cpp
++++ b/src/gui/CemuApp.cpp
+@@ -332,7 +332,16 @@
+ 	g_window_info.app_active = true;
+ 
+ 	SetTopWindow(m_mainFrame);
+-	m_mainFrame->Show();
++	// Semu: a game launched full screen from the command line (-g with -f) shows the window full screen, black and
++	// without its menu bar, from the start. Shown at 1280x720 with the menu bar, it stayed so until MainWindow::FileLoad
++	// had mounted the title and called SetFullScreen (MainWindow.cpp:586), seconds on the Deck's SD card.
++	if (LaunchSettings::GetLoadFile().has_value() && ActiveSettings::FullscreenEnabled())
++	{
++		m_mainFrame->SetBackgroundColour(*wxBLACK);
++		m_mainFrame->ShowFullScreen(true);
++	}
++	else
++		m_mainFrame->Show();
+ 
+ #if BOOST_OS_LINUX && HAS_WAYLAND
+ 	if (wxWlIsWaylandWindow(m_mainFrame))

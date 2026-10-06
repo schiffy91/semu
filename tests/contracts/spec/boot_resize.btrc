@@ -47,6 +47,26 @@ class BootResizeSpecContract {
         contract.contains(arguments, "Dolphin.Display.Fullscreen=True", "Linux launches Dolphin full screen, the setting the patch keys on");
     }
 
+    class void otherWindows(Contract contract, string project) {  // the Deck's boot films (2026-10-06): the two other emulator windows seen at boot
+        JSONValue pcsx2 = SemuJson.readFile(PathTools.join(project, "config/emulators/pcsx2/emulator.json"));
+        Vector<string> pcsx2Arguments = SemuJson.strings(SemuJson.get(pcsx2, "platforms.linux.args"));
+        contract.expect(pcsx2Arguments.contains("-nogui") && !pcsx2Arguments.contains("-batch"),
+            "PCSX2 starts in no-GUI mode, so its game list never shows before the game (under -batch it showed until the VM ran, QtHost.cpp:2428-2433)");
+        string flake = BootResizeSpecChecks.read(project, "config/emulators/cemu/flake.nix");
+        string patch = BootResizeSpecChecks.read(project, "config/emulators/cemu/semu-fullscreen-at-boot.patch");
+        contract.contains(flake, "patches = (previous.patches or [ ]) ++ [ ./semu-fullscreen-at-boot.patch ];", "Cemu is built with the full-screen-at-boot patch");
+        contract.contains(patch, "+++ b/src/gui/CemuApp.cpp", "the patch changes Cemu's start-up");
+        string launched = "+\tif (LaunchSettings::GetLoadFile().has_value() && ActiveSettings::FullscreenEnabled())";
+        contract.expect(BootResizeSpecChecks.before(patch, "-\tm_mainFrame->Show();", launched)
+            && BootResizeSpecChecks.before(patch, launched, "+\t\tm_mainFrame->SetBackgroundColour(*wxBLACK);")
+            && BootResizeSpecChecks.before(patch, "+\t\tm_mainFrame->SetBackgroundColour(*wxBLACK);", "+\t\tm_mainFrame->ShowFullScreen(true);")
+            && BootResizeSpecChecks.before(patch, "+\t\tm_mainFrame->ShowFullScreen(true);", "+\telse\n+\t\tm_mainFrame->Show();"),
+            "a game launched full screen shows Cemu's window full screen and black from the start, never the 1280x720 window with its menu bar");
+        JSONValue cemu = SemuJson.readFile(PathTools.join(project, "config/emulators/cemu/emulator.json"));
+        Vector<string> cemuArguments = SemuJson.strings(SemuJson.get(cemu, "platforms.linux.args"));
+        contract.expect(cemuArguments.contains("-f") && cemuArguments.contains("-g"), "Linux launches Cemu with -f and -g, the two the patch keys on");
+    }
+
     class void renderer(Contract contract, string project) {
         string entry = BootResizeSpecChecks.read(project, "src/renderer/libsemurenderer.btrc");
         string timing = BootResizeSpecChecks.read(project, "src/renderer/renderer_frame_timing.btrc");
@@ -116,6 +136,7 @@ class BootResizeSpecContract {
     class void run(Contract contract) {
         string project = Fixture("steam-deck").project;
         BootResizeSpecContract.dolphin(contract, project);
+        BootResizeSpecContract.otherWindows(contract, project);
         BootResizeSpecContract.renderer(contract, project);
         BootResizeSpecContract.film(contract, project);
         BootResizeSpecContract.plan(contract, project);

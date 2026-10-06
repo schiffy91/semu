@@ -423,7 +423,7 @@ class StandaloneSpecContract {
         string macosArguments = SemuJson.strings(SemuJson.get(bed.fixture.model.emulator("dolphin").platform("macos"), "outputs.wii.standard.args")).join(" | ");
         contract.contains(macosArguments, "--config | SYSCONF.IPL.AR=False", "dolphin macos turns the Wii widescreen answer off in the standard output");
         SemuLaunchPlan pcsx2 = bed.launch("pcsx2", "ps2", "Shadow.chd");
-        StandaloneSpecContract.expectArgv(contract, bed, pcsx2, ["-batch", "-fullscreen", "--"], bed.romPath("ps2", "Shadow.chd"));
+        StandaloneSpecContract.expectArgv(contract, bed, pcsx2, ["-nogui", "-fullscreen", "--"], bed.romPath("ps2", "Shadow.chd"));
         contract.expect(pcsx2.environment.contains("XDG_CONFIG_HOME=" + PathTools.join(bed.stateRoot("pcsx2"), "config")), "pcsx2 reads its config from the state root");
         SemuLaunchPlan ppsspp = bed.launch("ppsspp", "psp", "Lumines.iso");
         StandaloneSpecContract.expectArgv(contract, bed, ppsspp, ["--fullscreen"], bed.romPath("psp", "Lumines.iso"));

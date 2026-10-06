@@ -110,6 +110,7 @@
     "input": "controllerProfiles/controller0.xml is Cemu's automatically loaded player-one profile. It pins the Steam Virtual Gamepad through SDL and maps the complete Wii U GamePad surface. Ctrl+Q quits and Ctrl+Tab swaps the selected TV/GamePad view. Upstream Cemu 2.6 has no savestate implementation, so state.save and state.load are declared unsupported in profile.json rather than mapped to inert chords.",
     "rendering": "Vulkan is forced through settings.xml (api 1). VK_LAYER_SEMU_compositor (render_vulkan) composes Semu's bezel and shader into the swapchain image at present.",
     "display": "Cemu's wx/GTK window is blank under GDK's Wayland backend; GDK_BACKEND=x11 runs it on XWayland, where it renders.",
+    "boot": "semu-fullscreen-at-boot.patch: with -g and -f, CemuApp::OnInit shows the main window full screen and black (no menu bar) instead of at 1280x720 with the menu bar (CemuApp.cpp:335 at v2.6), which stayed on screen until MainWindow::FileLoad had mounted the title and called SetFullScreen (MainWindow.cpp:586): about 3.5 s of every boot on the Deck, its first frames 25 px down the screen (M16 item 4).",
     "content": "The title formats Cemu a6fb0a48 detects (src/Cafe/TitleList/TitleInfo.cpp:186-252: .rpx, .wud/.wux/.iso discs, .wua archives, .wuhb bundles); a loose .rpx also boots as a standalone title (src/Cafe/CafeSystem.cpp:798)."
   },
   "save_states": {
