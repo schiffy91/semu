@@ -38,7 +38,7 @@ class SemuSystemReset {
         SemuVariantChoice output = launch.variants.output;
         if (output.available() && output.defaultIndex >= 0 && output.index != output.defaultIndex) { SemuOutputSwitch.choose(launch, output, output.defaultIndex); }  // the default output, from the next boot
         SemuVariantChoice scale = launch.variants.scale;
-        if (scale.available() && scale.defaultIndex >= 0 && scale.index != scale.defaultIndex) { SemuScaleSwitch.choose(launch, scale, scale.defaultIndex); }  // the default render scale, from the next boot
+        if (scale.available() && scale.defaultIndex >= 0 && scale.index != scale.defaultIndex) { SemuScaleSwitch.apply(launch, scale, scale.defaultIndex); }  // the default render scale, live where the emulator steps it, else from the next boot
         SemuControllerLayouts.reset(launch);  // every player's layout, live where it can be
         SemuActionJournal.appendWith(launch, SemuActions.resetNotice(), 1, SemuGameRestart.waiting(launch) ? 1 : 0);
     }

@@ -63,6 +63,25 @@
             "-": "minus"
           }
         }
+      },
+      "scale_hotkeys": {
+        "rows": "scale_hotkeys",
+        "format": "${setting} = ${chord}",
+        "chord_encoding": {
+          "mode": "joined",
+          "separator": "+",
+          "format": "@(${value})",
+          "whole": {
+            "Esc": "Escape"
+          },
+          "keys": {
+            "Enter": "Return",
+            "Backspace": "BackSpace",
+            "Space": "space",
+            "+": "KP_Add",
+            "-": "minus"
+          }
+        }
       }
     }
   },
@@ -81,7 +100,8 @@
     "quit": "General/Stop is bound only on macOS: on Linux the supervisor reads every keyboard and quits the process group itself, so Ctrl+Q is Semu's alone there.",
     "wiimote": "The Wii Remote, Nunchuk and Classic Controller read their buttons, d-pad, sticks and triggers from the player's own SDL pad (${dolphin_pad}, the player row's identity), with Dolphin's SDL control names. Player 1 aims with the XInput2 pointer (wiimote_pointer_body: Device = ${dolphin_pointer}, every pad control qualified) and reads motion from ${dolphin_motion}, the Deck's own controller through Dolphin's SteamDeck backend, which opens hidraw (SteamDeck.cpp:143,175); players 2 to 4 aim with their right stick (wiimote_stick_body: Device = their pad, XInput-signed halves, Y+ up) and have no motion, so no profile of one player names another player's device. So the open Semu menu's EVIOCGRAB of the pads covers every Wii button, the Deck's grips (L4, R4, L5, R5), which Steam's template holds for its Hotkeys and Wii presets, reach no Wii control, and each name exists on the device it is read from (native_controls). The keyboard alternates on the XInput2 pointer device are written (`KEY` & !`Ctrl`): every Semu chord holds Ctrl, so a chord Steam types never also presses a Wii button. Keys are backticked: Dolphin lexes a bare digit as a number (ExpressionParser.cpp:172-181, 252-253), so the old Buttons/1 = 1|... and Buttons/2 = 2|... held 1 and 2 down for good.",
     "pointer": "The Wii Remote IR reads the X pointer the right trackpad moves (IR/Up/Down/Left/Right = `Cursor Y-/Y+/X-/X+` on ${pointer}), and libsemupreload hands Dolphin that pointer on the bezelled picture as the point Dolphin drew there (wii surface_mapping.pointer_screen), so the IR follows the finger. The IR keeps Dolphin's own defaults, chosen to reach the screen edges in most games (Cursor.cpp:34-62): Vertical Offset 10, Total Yaw 25, Total Pitch 20, Auto-Hide off; with Auto-Hide on the pointer vanished 2.5 s after it last moved and no button brought it back (Cursor.cpp:139-163). Dolphin.ini [Interface] CursorVisibility = 0 (ShowCursor::Never, MainSettings.h:255-260) blanks the X arrow over the render window, so the one pointer seen is the game's own; Semu draws no arrow on Wii (its cursor is for touch screens only).",
-    "layouts": "Layouts switch through Dolphin's own profile cycle: Hotkeys.ini binds Controller Profile N/Next Profile (HotkeyScheduler.cpp:303-321) to the layout_hotkeys chords, and a press loads the next file of Config/Profiles/Wiimote (DoFileSearch, sorted, recursive, FileSearch.cpp) into Wii Remote N with its Device line (UpdateToProfile, InputProfile.cpp:76-90), keeping one index for all four remotes (m_wiimote_profile_index). The GameCube layout disconnects the Wii Remote (WiimoteSource 0) and plays on the GameCube pad (SIDevice 6), which Dolphin reads at boot, so it applies by restarting the game. The Undo Load/Save State hotkeys are not bound: Dolphin matches superset modifiers, so a bare F12 fired on Steam's Ctrl+Shift+F12."
+    "layouts": "Layouts switch through Dolphin's own profile cycle: Hotkeys.ini binds Controller Profile N/Next Profile (HotkeyScheduler.cpp:303-321) to the layout_hotkeys chords, and a press loads the next file of Config/Profiles/Wiimote (DoFileSearch, sorted, recursive, FileSearch.cpp) into Wii Remote N with its Device line (UpdateToProfile, InputProfile.cpp:76-90), keeping one index for all four remotes (m_wiimote_profile_index). The GameCube layout disconnects the Wii Remote (WiimoteSource 0) and plays on the GameCube pad (SIDevice 6), which Dolphin reads at boot, so it applies by restarting the game. The Undo Load/Save State hotkeys are not bound: Dolphin matches superset modifiers, so a bare F12 fired on Steam's Ctrl+Shift+F12.",
+    "osd": "OnScreenDisplayMessages = False keeps every Dolphin OSD message (MAIN_OSD_MESSAGES, OnScreenDisplay.cpp:157 at c77bbaa0) off the composed picture, as PCSX2's OsdMessagesPos = 0 does: Internal Resolution: 2x at a live Render Scale, a controller profile loaded at a live layout switch, a state saved. Semu's own toasts announce each of them."
   },
   "blocks": {
     "gamecube_pad_body": [
@@ -268,7 +288,8 @@
         "[Interface]",
         "ConfirmStop = False",
         "UsePanicHandlers = False",
-        "CursorVisibility = 0"
+        "CursorVisibility = 0",
+        "OnScreenDisplayMessages = False"
       ]
     },
     {
@@ -342,6 +363,7 @@
         "Device = ${pointer}",
         "@lines:keymap_hotkeys",
         "@lines:layout_hotkeys",
+        "@lines:scale_hotkeys",
         "Emulation Speed/Disable Emulation Speed Limit = ${speed_limit_expression}"
       ]
     },
@@ -587,6 +609,16 @@
       "player": 4,
       "setting": "Controller Profile 4/Next Profile",
       "native_chord": "Alt+F8"
+    }
+  ],
+  "scale_hotkeys": [
+    {
+      "setting": "Internal Resolution/Increase IR",
+      "native_chord": "Alt+F9"
+    },
+    {
+      "setting": "Internal Resolution/Decrease IR",
+      "native_chord": "Alt+F10"
     }
   ]
 }

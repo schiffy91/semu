@@ -1,19 +1,28 @@
 // Scale: the render scale a system's emulator draws at (1x native, 2x, 3x), stepped by the settings
 // radial's Scale slot and the menu's SCALE row. Every press steps on and saves the choice for the
-// system (visual.systems.<id>.render_scale); the emulators Semu drives read it at boot, so it waits
-// for Restart Game and the toast says RESTART TO APPLY until the game runs at it. Journaled as 88:
-// the absolute index into the launch's scales, reserved 1 while it waits (0: the emulator draws at it).
+// system (visual.systems.<id>.render_scale), which the next boot reads. An emulator that steps its
+// own scale on a hotkey while running (Dolphin's Increase IR and Decrease IR) is typed there, paced,
+// as many presses as the steps between the scale it runs at and the chosen one, and then runs at it;
+// the others read it at boot, so it waits for Restart Game and the toast says RESTART TO APPLY.
+// Journaled as 88: the absolute index into the launch's scales, reserved 1 while it waits (0: the
+// emulator draws at it).
 
+#include <stdlib.h>
+
+import Library.Console;
 import Library.JSON;
+import Library.Strings;
 import ../lib/settings.btrc;
 import ../emit/render_choices.btrc;
 import ../emit/render_scale.btrc;
 import ../renderer/action_abi.btrc;
 import ./journal.btrc;
+import ./paced_keys.btrc;
 import ./plan.btrc;
+import ./input_state.btrc;
 
 class SemuScaleSwitch {
-    class bool pending(SemuVariantChoice choice) { return choice.available() && choice.index != choice.launched; }  // the chosen scale is not the one the game booted at
+    class bool pending(SemuVariantChoice choice) { return choice.available() && choice.index != choice.launched; }  // the chosen scale is not the one the game runs at
 
     class void choose(SemuLaunchPlan launch, SemuVariantChoice choice, int target) {  // follow TARGET in the launch and journal it
         choice.index = target;
@@ -21,10 +30,31 @@ class SemuScaleSwitch {
         SemuActionJournal.appendWith(launch, SemuActions.scaleSelect(), target, SemuScaleSwitch.pending(choice) ? 1 : 0);
     }
 
-    class void press(SemuLaunchPlan launch, SemuVariantChoice choice, int target) {  // saved for the system at once; the emulator renders at it from the next boot
+    class int presses(SemuVariantChoice choice, int target) {  // whole steps from the running scale to TARGET's: up positive, down negative
+        if (choice.launched < 0 || choice.launched >= choice.ids.size() || target < 0 || target >= choice.ids.size()) { return 0; }
+        return SemuRenderScale.parse(choice.ids.get(target)) - SemuRenderScale.parse(choice.ids.get(choice.launched));
+    }
+
+    class bool switchLive(SemuRenderScaleSpec spec, SemuVariantChoice choice, int target) {  // the emulator's own hotkey, typed as many times as the steps; true once it runs at TARGET
+        int steps = SemuScaleSwitch.presses(choice, target);
+        if (!spec.live() || !SemuPacedTyper.available()) { return false; }
+        if (steps == 0) { return true; }
+        string chord = steps > 0 ? spec.increase : spec.decrease;
+        int count = steps > 0 ? steps : -steps;
+        bool typed = SemuPacedTyper.play(SemuPacedTyper.steps(SemuKeyNames.chord(chord), count, spec.pressMs, spec.gapMs));
+        if (getenv("SEMU_RENDER_DEBUG") != null) { Console.error("semu: render scale " + choice.ids.get(target) + ": " + Strings.fromInt(count) + " press(es) of " + chord + " via " + SemuPacedTyper.route() + (typed ? "" : " failed")); }
+        return typed;
+    }
+
+    class void apply(SemuLaunchPlan launch, SemuVariantChoice choice, int target) {  // live where the emulator steps it, else from the next boot; journaled either way
+        if (SemuScaleSwitch.switchLive(launch.variants.scaleSpec, choice, target)) { choice.launched = target; }  // the emulator draws at it now: nothing waits
+        SemuScaleSwitch.choose(launch, choice, target);
+    }
+
+    class void press(SemuLaunchPlan launch, SemuVariantChoice choice, int target) {  // saved for the system at once
         if (!launch.semuHome.isEmpty() && !launch.system.isEmpty()) {
             SemuSettingsStore.put(launch.semuHome, SemuRenderScale.settingKey(launch.system), JSONValue.makeString(choice.ids.get(target)));
         }
-        SemuScaleSwitch.choose(launch, choice, target);
+        SemuScaleSwitch.apply(launch, choice, target);
     }
 }

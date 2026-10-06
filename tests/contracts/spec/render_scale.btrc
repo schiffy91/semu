@@ -25,6 +25,8 @@ import ../../../src/launch/actions.btrc;
 import ../../../src/launch/supervisor.btrc;
 import ../../../src/launch/game_restart.btrc;
 import ../../../src/launch/system_reset.btrc;
+import ../../../src/launch/paced_keys.btrc;
+import ../../../src/launch/input_state.btrc;
 import ../../../src/renderer/action_abi.btrc;
 import ../../../src/renderer/renderer_render_scale.btrc;
 import ../../../src/renderer/renderer_surface_crop.btrc;
@@ -144,17 +146,26 @@ class RenderScaleSpecProfiles {  // each standalone's own key at the system's sc
         contract.contains(RenderScaleSpecTools.profile(fixture, scaled, "dreamcast", "flycast", "emu.cfg"), "rend.Resolution = 960\n", "Flycast at 960 lines for 2x");
         contract.contains(RenderScaleSpecTools.profile(fixture, scaled, "n3ds", "azahar", "qt-config.ini"), "resolution_factor=2\nresolution_factor\\default=false\n", "Azahar at 2x, read over its default");
         contract.contains(RenderScaleSpecTools.profile(fixture, scaled, "nds", "melonds", "melonDS.toml"), "ScaleFactor = 2\n", "melonDS's OpenGL 3D at 2x");
+        string hotkeys = RenderScaleSpecTools.profile(fixture, native, "gc", "dolphin", "Hotkeys.ini");
+        contract.contains(RenderScaleSpecTools.profile(fixture, native, "gc", "dolphin", "Dolphin.ini"), "OnScreenDisplayMessages = False\n", "Dolphin draws no OSD message over the composed picture: no Internal Resolution: 2x at a live switch");
+        contract.expect(hotkeys.contains("Internal Resolution/Increase IR = @(Alt+F9)\n") && hotkeys.contains("Internal Resolution/Decrease IR = @(Alt+F10)\n"), "Dolphin binds Increase IR and Decrease IR to the chords Semu types for a live scale: " + hotkeys);
     }
 }
 
-class RenderScaleSpecSupervisor {  // Scale steps, saves for the system and waits for Restart Game; one choice says NATIVE ONLY
-    class void run(Contract contract, Fixture fixture) {
-        SemuLaunchPlan launch = RenderScaleSpecTools.launch(fixture, "gc", "gc", "dolphin");
-        contract.expect(launch.variants.scale.available() && launch.variants.scale.ids.join("|").equals("1x|2x") && launch.variants.scale.labels.join("|").equals("NATIVE|2X") && launch.variants.shown().contains("scales"), "gc on Dolphin offers NATIVE and 2X, and the menu shows its SCALE row");
+class RenderScaleSpecSupervisor {  // Scale steps and saves for the system: at Restart Game where the emulator reads it at boot, live on Dolphin's own hotkeys; one choice says NATIVE ONLY
+    class bool typedOnce(string chord, int pressMs) {  // the recording seam holds one paced press of CHORD: its modifier and key down, then up after PRESSMS
+        Vector<int> codes = SemuKeyNames.chord(chord);
+        return codes.size() == 2 && SemuTypedSteps.count == 4 && SemuTypedSteps.code[0] == codes.get(0) && SemuTypedSteps.code[1] == codes.get(1) && SemuTypedSteps.down[1] == 1
+            && SemuTypedSteps.code[2] == codes.get(1) && SemuTypedSteps.down[2] == 0 && SemuTypedSteps.offset_ms[2] == pressMs;
+    }
+
+    class void restart(Contract contract, Fixture fixture) {  // PCSX2 reads upscale_multiplier at boot
+        SemuLaunchPlan launch = RenderScaleSpecTools.launch(fixture, "ps2", "ps2", "pcsx2");
+        contract.expect(launch.variants.scale.available() && launch.variants.scale.ids.join("|").equals("1x|2x") && launch.variants.scale.labels.join("|").equals("NATIVE|2X") && launch.variants.shown().contains("scales") && !launch.variants.scaleSpec.live(), "ps2 on PCSX2 offers NATIVE and 2X at boot only, and the menu shows its SCALE row");
         SemuActionExecutor.execute(launch, "visual.scale.next", SEMU_SOURCE_X11);
         JSONValue saved = SemuJson.readFile(PathTools.join(launch.semuHome, "semu.json"));
         contract.expect(InputDeliveryTools.records(launch.stateDir) == 1 && InputDeliveryTools.record(launch.stateDir, 0, SemuActions.scaleSelect(), 1) && RenderScaleSpecTools.reserved(launch.stateDir, 0) == 1, "Render Scale journals 88 with index 1, reserved 1: it waits for Restart Game");
-        contract.expect(SemuJson.textAt(saved, "visual.systems.gc.render_scale").equals("2x") && SemuGameRestart.waiting(launch), "it saves visual.systems.gc.render_scale=2x at once, and Restart Game has it to apply");
+        contract.expect(SemuJson.textAt(saved, "visual.systems.ps2.render_scale").equals("2x") && SemuGameRestart.waiting(launch), "it saves visual.systems.ps2.render_scale=2x at once, and Restart Game has it to apply");
         SemuActionExecutor.execute(launch, "visual.scale.next", SEMU_SOURCE_X11);
         contract.expect(InputDeliveryTools.record(launch.stateDir, 1, SemuActions.scaleSelect(), 0) && RenderScaleSpecTools.reserved(launch.stateDir, 1) == 0 && !SemuGameRestart.waiting(launch), "a second press wraps to native, the scale the game runs at: nothing waits");
         SemuActionExecutor.execute(launch, "visual.scale.next", SEMU_SOURCE_X11);
@@ -165,6 +176,27 @@ class RenderScaleSpecSupervisor {  // Scale steps, saves for the system and wait
         bool defaulted = false;
         for (int index = 3; index < records; index++) { if (InputDeliveryTools.record(launch.stateDir, index, SemuActions.scaleSelect(), 0)) { defaulted = RenderScaleSpecTools.reserved(launch.stateDir, index) == 0; } }
         contract.expect(defaulted && launch.variants.scale.index == 0 && !SemuGameRestart.waiting(launch), "Reset to Default brings the default native back, which the game runs at: nothing waits");
+    }
+
+    class void live(Contract contract, Fixture fixture) {  // Dolphin steps its EFB scale on Increase IR and Decrease IR
+        SemuTypedSteps.recording = 1;
+        SemuTypedSteps.count = 0;
+        SemuLaunchPlan launch = RenderScaleSpecTools.launch(fixture, "gc", "gc", "dolphin");
+        SemuRenderScaleSpec spec = launch.variants.scaleSpec;
+        contract.expect(spec.live() && spec.increase.equals("Alt+F9") && spec.decrease.equals("Alt+F10"), "gc on Dolphin switches its scale live, on Alt+F9 and Alt+F10");
+        SemuActionExecutor.execute(launch, "visual.scale.next", SEMU_SOURCE_X11);
+        bool up = RenderScaleSpecSupervisor.typedOnce("Alt+F9", spec.pressMs);
+        contract.expect(up && InputDeliveryTools.record(launch.stateDir, 0, SemuActions.scaleSelect(), 1) && RenderScaleSpecTools.reserved(launch.stateDir, 0) == 0 && !SemuGameRestart.waiting(launch), "Render Scale types Increase IR once and journals 88/1 reserved 0: Dolphin draws at 2x now, nothing waits for Restart Game");
+        contract.expect(SemuJson.textAt(SemuJson.readFile(PathTools.join(launch.semuHome, "semu.json")), "visual.systems.gc.render_scale").equals("2x"), "and saves 2x for the next boot");
+        SemuTypedSteps.count = 0;
+        SemuActionExecutor.execute(launch, "visual.scale.next", SEMU_SOURCE_X11);
+        contract.expect(RenderScaleSpecSupervisor.typedOnce("Alt+F10", spec.pressMs) && InputDeliveryTools.record(launch.stateDir, 1, SemuActions.scaleSelect(), 0) && RenderScaleSpecTools.reserved(launch.stateDir, 1) == 0, "the wrap back to native types Decrease IR once, live too");
+        SemuTypedSteps.recording = 0;
+    }
+
+    class void run(Contract contract, Fixture fixture) {
+        RenderScaleSpecSupervisor.restart(contract, fixture);
+        RenderScaleSpecSupervisor.live(contract, fixture);
         SemuLaunchPlan none = RenderScaleSpecTools.launch(fixture, "n3ds-core", "n3ds", "retroarch");
         SemuActionExecutor.execute(none, "visual.scale.next", SEMU_SOURCE_X11);
         contract.expect(!none.variants.scale.available() && InputDeliveryTools.record(none.stateDir, 0, SemuActions.scaleSelect(), -1) && !FileSystem.isFile(PathTools.join(none.semuHome, "semu.json")), "the 3DS core on the Deck takes no scale: 88/-1 (SCALE: NATIVE ONLY), nothing saved");

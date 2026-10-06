@@ -17,19 +17,28 @@ import ../resolve.btrc;
 class SemuRenderScaleSpec {  // how one emulator (and RetroArch core) takes a scale; frame empty when it renders native only
     public string frame;  // "scaled": its frame is the picture at the scale, reported at that size; "declared": cut at the declared native size
     public bool fitsDisplay;  // the host draws whole steps of the frame: a frame past the screen is never offered
-    public string apply;  // "restart" (read at boot) or "live"
+    public string increase;  // live: the emulator's own hotkey one step up, as its profile binds it (Dolphin's Increase IR)
+    public string decrease;
+    public int pressMs;  // how long each press is held, and the gap after it, so the emulator counts every one
+    public int gapMs;
 
     public SemuRenderScaleSpec(JSONValue platform, string core) {
         JSONValue hosted = SemuJson.get(platform, "retroarch.render_scale");
         JSONValue own = hosted.isObject() ? hosted : SemuJson.get(platform, "render_scale");
         self.frame = hosted.isObject() ? SemuJson.textAt(hosted, "cores." + core) : SemuJson.textAt(own, "frame");
         self.fitsDisplay = SemuJson.textAt(own, "fit").equals("display");
-        self.apply = SemuJson.textAt(own, "apply").equals("live") ? "live" : "restart";
+        bool live = SemuJson.textAt(own, "apply").equals("live");
+        self.increase = live ? SemuJson.textAt(own, "live.increase") : "";
+        self.decrease = live ? SemuJson.textAt(own, "live.decrease") : "";
+        self.pressMs = SemuJson.intAt(own, "live.press_ms", 40);
+        self.gapMs = SemuJson.intAt(own, "live.gap_ms", 40);
     }
 
     public bool supported() { return self.frame.equals("scaled") || self.frame.equals("declared"); }
 
     public bool scaledFrames() { return self.frame.equals("scaled"); }
+
+    public bool live() { return self.supported() && !self.increase.isEmpty() && !self.decrease.isEmpty(); }  // the emulator steps its scale on its own hotkeys while running
 }
 
 class SemuRenderScale {

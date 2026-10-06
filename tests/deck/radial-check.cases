@@ -84,7 +84,7 @@ snes retroarch snes9x 30 key:ctrl+shift+c key:ctrl+shift+g key:ctrl+shift+u key:
 gba retroarch mgba 30 key:ctrl+b key:ctrl+shift+f key:ctrl+b key:ctrl+shift+r,ctrl+shift+r -- Legend of Zelda, The - The Minish Cap (USA).zip
 # 16. The Wii's own choices, none of which restarts the game by itself: Controller Layout steps P1
 #     from the default Nunchuk to Classic live (83/2, P1: CLASSIC, the log line "P1 layout classic: 1
-#     press(es) of Alt+F5 via X" and Dolphin's own "profile 'Semu' for device 'Wiimote1'" message),
+#     press(es) of Alt+F5 via X", and no Dolphin OSD message over the picture: OnScreenDisplayMessages off),
 #     then to GameCube, which Dolphin reads at boot (83/3/16, P1 GAMECUBE: RESTART TO APPLY, nothing
 #     typed, the game still moving), then on to Wii Remote, live again from the Classic still running
 #     (83/0, one more Alt+F5); Fit steps the placement live (81 and its FIT: toast); Players opens the

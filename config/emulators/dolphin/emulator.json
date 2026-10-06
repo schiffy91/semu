@@ -140,8 +140,14 @@
       },
       "render_scale": {
         "frame": "declared",
-        "apply": "restart",
-        "doc": "GFX.ini [Settings] InternalResolution is Dolphin's EFB scale (Config::GFX_EFB_SCALE; 1 native, 2 is 1280x1056 for a 640x528 EFB), read at boot. Dolphin draws the picture letterboxed into its window at the window's size whatever the scale, so the renderer cuts it at the declared native 640x480 as before and keeps the window's picture when the scale is above 1x."
+        "apply": "live",
+        "live": {
+          "increase": "Alt+F9",
+          "decrease": "Alt+F10",
+          "press_ms": 40,
+          "gap_ms": 40
+        },
+        "doc": "GFX.ini [Settings] InternalResolution is Dolphin's EFB scale (Config::GFX_EFB_SCALE; 1 native, 2 is 1280x1056 for a 640x528 EFB), read at boot. While a game runs Dolphin steps it on its own hotkeys, Internal Resolution/Increase IR and Decrease IR (HotkeyScheduler.cpp:386-398 at c77bbaa0: one step each, never below native from 2), which the profile binds to Alt+F9 and Alt+F10: Semu types the steps between the running scale and the chosen one, paced as Dolphin's 5 ms hotkey poll needs (press_ms, gap_ms), so a new scale applies live and is saved for the next boot. Dolphin draws the picture letterboxed into its window at the window's size whatever the scale, so the renderer cuts it at the declared native 640x480 and keeps the window's picture when the scale is above 1x."
       }
     },
     "macos": {
@@ -217,8 +223,14 @@
       },
       "render_scale": {
         "frame": "declared",
-        "apply": "restart",
-        "doc": "GFX.ini [Settings] InternalResolution is Dolphin's EFB scale (Config::GFX_EFB_SCALE; 1 native, 2 is 1280x1056 for a 640x528 EFB), read at boot. Dolphin draws the picture letterboxed into its window at the window's size whatever the scale, so the renderer cuts it at the declared native 640x480 as before and keeps the window's picture when the scale is above 1x."
+        "apply": "live",
+        "live": {
+          "increase": "Alt+F9",
+          "decrease": "Alt+F10",
+          "press_ms": 40,
+          "gap_ms": 40
+        },
+        "doc": "GFX.ini [Settings] InternalResolution is Dolphin's EFB scale (Config::GFX_EFB_SCALE; 1 native, 2 is 1280x1056 for a 640x528 EFB), read at boot. While a game runs Dolphin steps it on its own hotkeys, Internal Resolution/Increase IR and Decrease IR (HotkeyScheduler.cpp:386-398 at c77bbaa0: one step each, never below native from 2), which the profile binds to Alt+F9 and Alt+F10: Semu types the steps between the running scale and the chosen one, paced as Dolphin's 5 ms hotkey poll needs (press_ms, gap_ms), so a new scale applies live and is saved for the next boot. Dolphin draws the picture letterboxed into its window at the window's size whatever the scale, so the renderer cuts it at the declared native 640x480 and keeps the window's picture when the scale is above 1x."
       }
     }
   },

@@ -14,6 +14,7 @@ import ../model.btrc;
 import ../resolve.btrc;
 import ./rendering.btrc;
 import ./render_choices.btrc;
+import ./render_scale.btrc;
 import ./settings_ui.btrc;
 import ../renderer/action_abi.btrc;
 import ../renderer/variant_keys.btrc;
@@ -28,6 +29,7 @@ class SemuRenderVariantSet {  // the launch's five choices; all empty when no va
     public SemuVariantChoice placement;
     public SemuVariantChoice output;
     public SemuVariantChoice scale;
+    public SemuRenderScaleSpec scaleSpec;  // how the emulator takes a scale: at boot, or live on its own hotkeys
     public Vector<string> computed;  // the bezel ids drawn as a computed layout: no art, so Fit has nothing to place there
     public bool written;
     public string token;  // the header's token, handed to the renderer as SEMU_MENU_VARIANTS_TOKEN
@@ -38,6 +40,7 @@ class SemuRenderVariantSet {  // the launch's five choices; all empty when no va
         self.placement = SemuVariantChoice("placement");
         self.output = SemuVariantChoice("output");
         self.scale = SemuVariantChoice("scale");
+        self.scaleSpec = SemuRenderScaleSpec(JSONValue.makeNull(), "");
         self.computed = [];
         self.written = false;
         self.token = "";
@@ -131,6 +134,7 @@ class SemuRenderVariants {
         set.placement = SemuRenderChoices.placement(plan, system, set.bezel.available());
         set.output = SemuRenderChoices.output(plan, system);
         set.scale = SemuRenderChoices.scale(plan, system, emulatorId);  // the render scales this emulator takes
+        set.scaleSpec = SemuRenderScale.specFor(plan, system, emulatorId);
         for variantId in set.bezel.ids {  // the DS and 3DS layouts Semu works out from the screen draw no art
             if (!variantId.equals("none") && SemuBezelPackage.computed(SemuBezelPackage.load(plan, SemuRenderEnvironment.packageFor(plan, system, variantId)))) { set.computed.push(variantId); }
         }
