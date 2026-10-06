@@ -1,6 +1,14 @@
 --- a/Source/Core/DolphinQt/MainWindow.cpp
 +++ b/Source/Core/DolphinQt/MainWindow.cpp
-@@ -1231,7 +1231,7 @@
+@@ -17,6 +17,7 @@
+ #include <QStyleHints>
+ #include <QVBoxLayout>
+ #include <QWindow>
++#include <QScreen>
+ 
+ #include <fmt/format.h>
+ 
+@@ -1231,7 +1232,7 @@
      Discord::UpdateDiscordPresence();
  #endif
  
@@ -9,7 +17,7 @@
      m_fullscreen_requested = true;
  }
  
-@@ -1285,6 +1285,17 @@
+@@ -1285,6 +1286,23 @@
      // Otherwise, just show it.
      m_rendering_to_main = false;
  
@@ -21,6 +29,12 @@
 +    if (Config::Get(Config::MAIN_FULLSCREEN) && Core::IsUninitialized(m_system))
 +    {
 +      m_render_widget->showFullScreen();
++      // The window manager sizes the window once it maps: boot only when it has the screen's size (at
++      // most a second), so the backend never sizes its surface from the window's first, smaller size.
++      const QSize screen_size = m_render_widget->screen()->size();
++      const qint64 deadline = QDateTime::currentMSecsSinceEpoch() + 1000;
++      while (m_render_widget->size() != screen_size && QDateTime::currentMSecsSinceEpoch() < deadline)
++        QApplication::processEvents(QEventLoop::AllEvents, 10);
 +      return;
 +    }
 +#endif

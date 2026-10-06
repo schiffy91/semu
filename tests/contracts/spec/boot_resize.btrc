@@ -4,8 +4,9 @@
 // created at the render window's size when the backend starts (GLX11Window.cpp:35-50) and resized only by the next
 // presented frame (OGLGfx.cpp:475-485). Gamescope scaled the small window up to the screen, then made it full
 // screen at 1280x800 with the 640x480 child in its top left until the game drew again. Semu's patch shows the window
-// full screen before the core boots (X11 builds only). Every launch's renderer logs each framebuffer size it composes
-// into and the frame rate (SEMU_RENDER_DEBUG), which boot-capture.sh films and input-check.sh records.
+// full screen before the core boots and waits until the window manager has sized it (X11 builds only). Every
+// launch's renderer logs each framebuffer size it composes into and the frame rate (SEMU_RENDER_DEBUG), which
+// boot-capture.sh films and input-check.sh records.
 
 import Library.FileSystem;
 import Library.JSON;
@@ -39,6 +40,8 @@ class BootResizeSpecContract {
             && BootResizeSpecChecks.before(patch, "+      m_render_widget->showFullScreen();", "+#endif\n     m_render_widget->showNormal();"),
             "on X11, a game booting full screen shows its render window full screen before the core starts, instead of at 640x480");
         contract.contains(patch, "+  if (Config::Get(Config::MAIN_FULLSCREEN) && !m_render_widget->isFullScreen())", "and the deferred full-screen toggle is skipped when the window already is");
+        contract.contains(patch, "+      while (m_render_widget->size() != screen_size && QDateTime::currentMSecsSinceEpoch() < deadline)\n+        QApplication::processEvents(QEventLoop::AllEvents, 10);",
+            "and the core boots only once the window manager has made the window the screen's size, at most a second later");
         JSONValue emulator = SemuJson.readFile(PathTools.join(project, "config/emulators/dolphin/emulator.json"));
         string arguments = SemuJson.csv(SemuJson.get(emulator, "platforms.linux.args"));
         contract.contains(arguments, "Dolphin.Display.Fullscreen=True", "Linux launches Dolphin full screen, the setting the patch keys on");
