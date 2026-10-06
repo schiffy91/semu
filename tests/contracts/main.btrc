@@ -89,6 +89,7 @@ import ./spec/flycast_keys.btrc;
 import ./spec/flycast_pacing.btrc;
 import ./spec/picture_edges.btrc;
 import ./spec/m16_review.btrc;
+import ./spec/nominal_frame.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -1071,6 +1072,7 @@ int main() {
     FlycastPacingSpecContract.run(contract);
     PictureEdgesSpecContract.run(contract);
     M16ReviewSpecContract.run(contract);
+    NominalFrameSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);

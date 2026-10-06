@@ -166,6 +166,11 @@ function choosePreview(wanted) {  // ?preview=system:variant, else the one alrea
   const previews = previewsOf(state.current), key = preview => `${preview.system}:${preview.variant}`;
   state.preview = previews.find(preview => key(preview) === wanted) || previews.find(preview => state.preview && preview.system === state.preview.system) || previews[0];
   if (["game", "bezel", "game_fractional", "bezel_fractional"].includes(pageQuery.get("placement"))) state.preview = { ...state.preview, placement: pageQuery.get("placement") };  // ?placement= overrides the system's Fit state, as a setting would
+  const reported = /^(\d+)x(\d+)$/.exec(pageQuery.get("frame") || ""), only = state.preview.screens.length === 1 ? state.preview.screens[0] : null;
+  if (reported && only && only.w === (only.frame_w || only.w) && only.h === (only.frame_h || only.h)) {  // ?frame=WxH: the picture handed over at that size, as a core that changes resolution does (RENDER_HOST_NATIVE); the set keeps the declared lines (NominalFrame)
+    const w = Number(reported[1]), h = Number(reported[2]);
+    state.preview = { ...state.preview, screens: [{ ...only, nominal: only.h, w, h, frame_w: w, frame_h: h }] };
+  }
   const select = document.getElementById("preview");
   select.innerHTML = previews.map(preview => `<option value="${key(preview)}">${preview.label}</option>`).join("");
   select.value = key(state.preview);

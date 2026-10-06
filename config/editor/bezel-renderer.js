@@ -52,19 +52,51 @@ const BezelRenderer = (() => {
       return output;
     }
     static fitInside(canvas, hole, nativeWidth, nativeHeight, rotation, declaredAspect) {  // RendererCompositionContract.fitInside: the game at its aspect in the picture rectangle on the canvas, only its edges rounded
-      const output = CompositionContract.empty();
-      if (!hole || canvas.width <= 0 || canvas.height <= 0 || hole.width <= 0 || hole.height <= 0 || nativeWidth < 1 || nativeHeight < 1) return output;
+      return CompositionContract.edges(CompositionContract.fitInsideFrame(canvas, hole, nativeWidth, nativeHeight, rotation, declaredAspect));
+    }
+    static fitInsideFrame(canvas, hole, nativeWidth, nativeHeight, rotation, declaredAspect) {  // RendererCompositionContract.fitInsideFrame: fitInside's picture on the canvas, unrounded
+      const picture = { x: 0, y: 0, width: 0, height: 0 };
+      if (!hole || canvas.width <= 0 || canvas.height <= 0 || hole.width <= 0 || hole.height <= 0 || nativeWidth < 1 || nativeHeight < 1) return picture;
       const rotatedWidth = rotation === 90 || rotation === 270 ? nativeHeight : nativeWidth, rotatedHeight = rotation === 90 || rotation === 270 ? nativeWidth : nativeHeight;
       const aspect = declaredAspect > 0.01 ? declaredAspect : float(rotatedWidth / rotatedHeight);
       const left = float(canvas.x + float(hole.x * canvas.width)), bottom = float(canvas.y + float(float(float(1 - hole.y) - hole.height) * canvas.height));
       const areaWidth = float(hole.width * canvas.width), areaHeight = float(hole.height * canvas.height);
       let pictureHeight = areaHeight, pictureWidth = float(areaHeight * aspect);
       if (pictureWidth > areaWidth) { pictureWidth = areaWidth; pictureHeight = float(areaWidth / aspect); }
-      const pictureLeft = float(left + float(float(areaWidth - pictureWidth) * 0.5)), pictureBottom = float(bottom + float(float(areaHeight - pictureHeight) * 0.5));
-      output.x = CompositionContract.edge(pictureLeft); output.y = CompositionContract.edge(pictureBottom);
-      output.width = CompositionContract.edge(float(pictureLeft + pictureWidth)) - output.x; output.height = CompositionContract.edge(float(pictureBottom + pictureHeight)) - output.y;
+      return { x: float(left + float(float(areaWidth - pictureWidth) * 0.5)), y: float(bottom + float(float(areaHeight - pictureHeight) * 0.5)), width: pictureWidth, height: pictureHeight };
+    }
+    static edges(picture) {  // RendererCompositionContract.edges: an unrounded picture on whole pixels, each edge rounded once
+      const output = CompositionContract.empty();
+      if (!picture || picture.width <= 0 || picture.height <= 0) return output;
+      output.x = CompositionContract.edge(picture.x); output.y = CompositionContract.edge(picture.y);
+      output.width = CompositionContract.edge(float(picture.x + picture.width)) - output.x; output.height = CompositionContract.edge(float(picture.y + picture.height)) - output.y;
       return output;
     }
+  }
+
+  class NominalFrame {  // RendererNominalFrame, src/renderer/renderer_nominal_frame.btrc: a set sized for the system's nominal lines holds still; a picture of another height sits in that frame as a CRT draws it
+    static multiple(lines, nominal) {  // which multiple of the nominal frame a picture's lines are: half, one, or two and more
+      if (nominal < 1 || lines < 1) return 1;
+      if (lines < float(nominal * 0.75)) return 0.5;
+      const whole = integer(float(float(lines / nominal) + 0.5));
+      return whole > 1 ? whole : 1;
+    }
+    static inside(frame, lines, nominal, aspect, whole) {  // the picture of LINES in the nominal FRAME (unrounded, rows counted up); WHOLE: its border split on whole rows
+      if (nominal < 1 || lines < 1 || lines === nominal || frame.width <= 0 || frame.height <= 0 || aspect <= 0.01) return frame;
+      let height = float(float(lines * frame.height) / float(nominal * NominalFrame.multiple(lines, nominal)));
+      if (height >= frame.height) return frame;  // the frame's own lines, or more: fitted to the frame
+      let width = float(height * aspect);
+      if (width > frame.width) { width = frame.width; height = float(width / aspect); }
+      const border = float(float(frame.height - height) * 0.5);
+      return { x: float(frame.x + float(float(frame.width - width) * 0.5)), y: float(frame.y + (whole ? integer(border) : border)), width, height };
+    }
+    static framed(canvas, hole, nativeWidth, nativeHeight, rotation, aspect, nominal, whole) {  // a bezel's picture: the nominal frame fills its picture rectangle, the picture in it, its edges rounded once
+      const frame = CompositionContract.fitInsideFrame(canvas, hole, nativeWidth, nativeHeight, rotation, aspect);
+      const across = rotation === 90 || rotation === 270 ? nativeHeight : nativeWidth, lines = rotation === 90 || rotation === 270 ? nativeWidth : nativeHeight;
+      const shown = aspect > 0.01 ? aspect : (across > 0 && lines > 0 ? float(across / lines) : 0);
+      return CompositionContract.edges(NominalFrame.inside(frame, lines, nominal, shown, whole));
+    }
+    static lines(screen) { return screen && screen.nominal > 0 ? screen.nominal : (screen ? screen.h : 0); }  // a preview's nominal lines: the declared ones, which a ?frame= preview keeps while its picture changes size
   }
 
   class Environment {  // SemuRenderEnvironment as RendererConfiguration reads it back: %.6g text, then a float
@@ -375,7 +407,7 @@ const BezelRenderer = (() => {
       const dual = variant.layout === "fixed" ? Geometry.dualShell(variant, preview, areaWidth, areaHeight) : null;  // DS and 3DS shells: the shell always drawn, whole steps or the whole shell scaled
       if (dual) return dual.canvas;
       if (preview.screens.length === 1 && first && (first.image.set || first.tube.set)) {
-        canvas = Geometry.place(preview.screens[0].h, first, preview.placement, Geometry.singleAspect(preview), areaWidth, areaHeight, canvas, variant);
+        canvas = Geometry.place(NominalFrame.lines(preview.screens[0]), first, preview.placement, Geometry.singleAspect(preview), areaWidth, areaHeight, canvas, variant);
       }
       return canvas;
     }
@@ -398,7 +430,8 @@ const BezelRenderer = (() => {
         const native = preview.screens[index], aspect = preview.screens.length === 1 ? Geometry.singleAspect(preview) : 0;
         let output = Geometry.placeInTube(screen, tube, image, native.w, native.h, aspect);
         if (screen.image.set && screen.fit === 0) {  // as the renderer: the game at its aspect in the picture rectangle on the canvas, its edges rounded once
-          const picture = CompositionContract.fitInside(canvas, screen.image, native.w, native.h, 0, aspect);
+          const whole = preview.placement !== "game_fractional" && preview.placement !== "bezel_fractional", nominal = preview.screens.length === 1 ? NominalFrame.lines(native) : 0;
+          const picture = NominalFrame.framed(canvas, screen.image, native.w, native.h, 0, aspect, nominal, whole);  // one screen's in the nominal frame its set was sized for
           if (picture.width > 0 && picture.height > 0) output = picture;
         }
         return { tube, output, native };
@@ -592,5 +625,5 @@ const BezelRenderer = (() => {
     }
   }
 
-  return { CompositionContract, Environment, Geometry, TestCard, Compositor };
+  return { CompositionContract, NominalFrame, Environment, Geometry, TestCard, Compositor };
 })();

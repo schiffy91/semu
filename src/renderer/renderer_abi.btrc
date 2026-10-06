@@ -321,6 +321,25 @@ class RendererCompositionContract {
         output->y = 0;
         output->width = 0;
         output->height = 0;
+        struct RendererCanvasRect frame;
+        RendererCompositionContract.fitFrame(area, nativeWidth, nativeHeight, rotation, declaredAspect, integerScaling, &frame);
+        if (frame.width <= 0.0f || frame.height <= 0.0f) { return; }
+        output->x = (int)frame.x;  // centred, the corner rounded as RendererPlacement.wholeCorner rounds a bezel's picture and the far edges as fitInside does, so the bezel off sits exactly where the bezel on does
+        output->y = (int)frame.y;
+        output->width = RendererCompositionContract.edge((float)output->x + frame.width) - output->x;
+        output->height = RendererCompositionContract.edge((float)output->y + frame.height) - output->y;
+        if (output->x + output->width > area->x + area->width) { output->width = area->x + area->width - output->x; }
+        if (output->y + output->height > area->y + area->height) { output->height = area->y + area->height - output->y; }
+    }
+
+    class void fitFrame(struct RendererPixelRect* area,
+                        int nativeWidth, int nativeHeight, int rotation,
+                        float declaredAspect, int integerScaling,
+                        struct RendererCanvasRect* frame) {  // fit's picture before its far edges are rounded: its corner on a whole pixel, its size unrounded
+        frame->x = 0.0f;
+        frame->y = 0.0f;
+        frame->width = 0.0f;
+        frame->height = 0.0f;
         if (!RendererCompositionContract.valid(area)
                 || nativeWidth < 1 || nativeHeight < 1) { return; }
         int rotatedWidth = rotation == 90 || rotation == 270
@@ -345,22 +364,27 @@ class RendererCompositionContract {
                 height = (float)(rotatedHeight * scale);
             }
         }
-        output->x = area->x + RendererCompositionContract.edge(((float)area->width - width) * 0.5f);  // centred, the corner rounded as RendererPlacement.wholeCorner rounds a bezel's picture and the far edges as fitInside does, so the bezel off sits exactly where the bezel on does
-        output->y = area->y + RendererCompositionContract.edge(((float)area->height - height) * 0.5f);
-        output->width = RendererCompositionContract.edge((float)output->x + width) - output->x;
-        output->height = RendererCompositionContract.edge((float)output->y + height) - output->y;
-        if (output->x + output->width > area->x + area->width) { output->width = area->x + area->width - output->x; }
-        if (output->y + output->height > area->y + area->height) { output->height = area->y + area->height - output->y; }
+        frame->x = (float)(area->x + RendererCompositionContract.edge(((float)area->width - width) * 0.5f));
+        frame->y = (float)(area->y + RendererCompositionContract.edge(((float)area->height - height) * 0.5f));
+        frame->width = width;
+        frame->height = height;
     }
 
     class void fitInside(struct RendererCanvasRect* canvas, float x, float y, float width, float height,
                          int nativeWidth, int nativeHeight, int rotation, float declaredAspect,
                          struct RendererPixelRect* output) {  // the game at its aspect inside a normalized top-left rectangle of a bottom-up canvas, worked out on the canvas and only its edges rounded: a picture that spans the screen covers it exactly (the PSP shell's non-integer game drew 1279 of 1280 columns from a rectangle rounded first)
-        if (output == null) { return; }
-        output->x = 0;
-        output->y = 0;
-        output->width = 0;
-        output->height = 0;
+        struct RendererCanvasRect picture;
+        RendererCompositionContract.fitInsideFrame(canvas, x, y, width, height, nativeWidth, nativeHeight, rotation, declaredAspect, &picture);
+        RendererCompositionContract.edges(&picture, output);
+    }
+
+    class void fitInsideFrame(struct RendererCanvasRect* canvas, float x, float y, float width, float height,
+                              int nativeWidth, int nativeHeight, int rotation, float declaredAspect,
+                              struct RendererCanvasRect* picture) {  // fitInside's picture on the canvas, unrounded
+        picture->x = 0.0f;
+        picture->y = 0.0f;
+        picture->width = 0.0f;
+        picture->height = 0.0f;
         if (canvas == null || canvas->width <= 0.0f || canvas->height <= 0.0f || width <= 0.0f || height <= 0.0f || nativeWidth < 1 || nativeHeight < 1) { return; }
         int rotatedWidth = rotation == 90 || rotation == 270 ? nativeHeight : nativeWidth;
         int rotatedHeight = rotation == 90 || rotation == 270 ? nativeWidth : nativeHeight;
@@ -375,12 +399,23 @@ class RendererCompositionContract {
             pictureWidth = areaWidth;
             pictureHeight = areaWidth / aspect;
         }
-        float pictureLeft = left + (areaWidth - pictureWidth) * 0.5f;
-        float pictureBottom = bottom + (areaHeight - pictureHeight) * 0.5f;
-        output->x = RendererCompositionContract.edge(pictureLeft);
-        output->y = RendererCompositionContract.edge(pictureBottom);
-        output->width = RendererCompositionContract.edge(pictureLeft + pictureWidth) - output->x;
-        output->height = RendererCompositionContract.edge(pictureBottom + pictureHeight) - output->y;
+        picture->x = left + (areaWidth - pictureWidth) * 0.5f;
+        picture->y = bottom + (areaHeight - pictureHeight) * 0.5f;
+        picture->width = pictureWidth;
+        picture->height = pictureHeight;
+    }
+
+    class void edges(struct RendererCanvasRect* picture, struct RendererPixelRect* output) {  // an unrounded picture on whole pixels, each edge rounded once
+        if (output == null) { return; }
+        output->x = 0;
+        output->y = 0;
+        output->width = 0;
+        output->height = 0;
+        if (picture == null || picture->width <= 0.0f || picture->height <= 0.0f) { return; }
+        output->x = RendererCompositionContract.edge(picture->x);
+        output->y = RendererCompositionContract.edge(picture->y);
+        output->width = RendererCompositionContract.edge(picture->x + picture->width) - output->x;
+        output->height = RendererCompositionContract.edge(picture->y + picture->height) - output->y;
     }
 
 }

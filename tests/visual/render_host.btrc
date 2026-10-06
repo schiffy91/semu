@@ -8,6 +8,8 @@
 // the renderer a moving pointer there, as RetroArch's bridge does on a touch system.
 // RENDER_HOST_GPU_TIME=1 prints the renderer's GPU time per frame (median past ten warm-up frames) on stderr.
 // RENDER_HOST_PRODUCER=frame or window hands the card over as an emulator rendering at SEMU_RENDER_SCALE does.
+// RENDER_HOST_NATIVE=WxH hands the first screen over at that size instead of the declared one, as a core that
+// changes resolution does (the set stays sized for the declared lines, RendererNominalFrame).
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/gl3.h>
 #include <dlfcn.h>
@@ -373,10 +375,11 @@ class RenderHost {
 
     class int nativeHeight(int screen) { return RenderHost.nativePart(screen, 1); }
 
-    class int nativePart(int screen, int part) {  // SEMU_RENDER_SURFACE_<n>_NATIVE=WxH
+    class int nativePart(int screen, int part) {  // RENDER_HOST_NATIVE=WxH on one screen: the frame the emulator reports this time (Beetle PSX's 640x472 in the PS1's 240-line set), else SEMU_RENDER_SURFACE_<n>_NATIVE=WxH, the declared one
         char name[64];
         snprintf(name, sizeof(name), "SEMU_RENDER_SURFACE_%d_NATIVE", screen);
-        char* value = getenv(name);
+        char* reported = getenv("RENDER_HOST_NATIVE");
+        char* value = screen == 0 && reported != null && reported[0] != 0 ? reported : getenv(name);
         int width = 0;
         int height = 0;
         if (value == null || sscanf(value, "%dx%d", &width, &height) != 2) { return 0; }

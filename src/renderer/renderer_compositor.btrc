@@ -16,6 +16,7 @@ import ./renderer_file_hash.btrc;
 import ./renderer_layout.btrc;
 import ./renderer_config.btrc;
 import ./renderer_placement.btrc;
+import ./renderer_nominal_frame.btrc;
 import ./renderer_dual_shell.btrc;
 import ./renderer_mirror.btrc;
 import ./renderer_scaled_lane.btrc;
@@ -238,6 +239,20 @@ class RendererGeometry {
         lane->output_height = output.height;
     }
 
+    class void nominal(int areaX, int areaY, int areaWidth, int areaHeight, float declaredAspect, int integerScaling, int nominalLines, struct RendererLaneGeometry* lane) {  // one bare screen: RendererNominalFrame.bare
+        struct RendererPixelRect area;
+        area.x = areaX;
+        area.y = areaY;
+        area.width = areaWidth;
+        area.height = areaHeight;
+        struct RendererPixelRect output;
+        RendererNominalFrame.bare(&area, lane->native_width, lane->native_height, lane->rotation, declaredAspect, nominalLines, integerScaling, &output);
+        lane->output_x = output.x;
+        lane->output_y = output.y;
+        lane->output_width = output.width;
+        lane->output_height = output.height;
+    }
+
     class void placeInTube(struct RendererLaneGeometry* lane, struct RendererScreenConfig* screen,
                            struct RendererPixelRect* tube, struct RendererPixelRect* image,
                            float declaredAspect, int integerScaling) {  // the game inside the calibrated image rectangle, else inside the inset opening
@@ -351,11 +366,11 @@ class RendererGeometry {
                 }
                 RendererGeometry.placeInTube(&geometry->lanes[index], screen, &tube, &image,
                     frame->surface_count == 1 ? singleAspect : 0.0f, 0);  // a framed screen fills its picture rectangle; integer steps only without a bezel
-                if (screen->image.set != 0 && screen->fit == SEMU_FIT_ASPECT) {  // the game at its aspect in the picture rectangle, on the canvas, its edges rounded once
+                if (screen->image.set != 0 && screen->fit == SEMU_FIT_ASPECT) {  // the game at its aspect in the picture rectangle, on the canvas, its edges rounded once; one screen's in the nominal frame its set was sized for
                     struct RendererPixelRect picture;
-                    RendererCompositionContract.fitInside(&canvas, screen->image.x, screen->image.y, screen->image.width, screen->image.height,
+                    RendererNominalFrame.framed(&canvas, &screen->image,
                         geometry->lanes[index].native_width, geometry->lanes[index].native_height, geometry->lanes[index].rotation,
-                        frame->surface_count == 1 ? singleAspect : 0.0f, &picture);
+                        frame->surface_count == 1 ? singleAspect : 0.0f, frame->surface_count == 1 ? variant->nominal_lines : 0, whole, &picture);
                     if (picture.width > 0 && picture.height > 0) {
                         geometry->lanes[index].output_x = picture.x;
                         geometry->lanes[index].output_y = picture.y;
@@ -367,13 +382,10 @@ class RendererGeometry {
             return true;
         }
         if (frame->surface_count == 1) {
-            RendererGeometry.fit(0, 0, areaWidth, areaHeight,
-                geometry->lanes[0].native_width, geometry->lanes[0].native_height,
-                singleAspect, whole ? 1 : 0, &geometry->lanes[0]);
+            RendererGeometry.nominal(0, 0, areaWidth, areaHeight, singleAspect, whole ? 1 : 0, variant->nominal_lines, &geometry->lanes[0]);  // the nominal frame at the Fit state's step, the picture in it, as with a set round it
             if (bezel && variant->frame_set != 0) {  // a computed single screen keeps room for its drawn frame
-                RendererGeometry.fit(frameWidth, frameWidth, areaWidth - 2 * frameWidth, areaHeight - 2 * frameWidth,
-                    geometry->lanes[0].native_width, geometry->lanes[0].native_height,
-                    singleAspect, whole ? 1 : 0, &geometry->lanes[0]);
+                RendererGeometry.nominal(frameWidth, frameWidth, areaWidth - 2 * frameWidth, areaHeight - 2 * frameWidth,
+                    singleAspect, whole ? 1 : 0, variant->nominal_lines, &geometry->lanes[0]);
             }
             RendererLayout.tubeFromOutput(&geometry->lanes[0]);
             return true;

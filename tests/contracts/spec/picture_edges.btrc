@@ -77,8 +77,8 @@ class PictureEdgesSpecContract {
             f"a TV's non-integer bezel picture has its unrounded edges rounded once, as the render host draws it (m16-check.cases F1 and F2 name the first): the PS1 TV {deck} on the Deck and {docked} docked, the Dreamcast's speakers set {speakers}");
         string compositor = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_compositor.btrc"));
         string editor = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
-        contract.expect(compositor.contains("if (screen->image.set != 0 && screen->fit == SEMU_FIT_ASPECT) {") && compositor.contains("RendererCompositionContract.fitInside(&canvas, screen->image.x, screen->image.y, screen->image.width, screen->image.height,")
-            && editor.contains("if (screen.image.set && screen.fit === 0) {") && editor.contains("const picture = CompositionContract.fitInside(canvas, screen.image, native.w, native.h, 0, aspect);")
+        contract.expect(compositor.contains("if (screen->image.set != 0 && screen->fit == SEMU_FIT_ASPECT) {") && compositor.contains("RendererNominalFrame.framed(&canvas, &screen->image,")
+            && editor.contains("if (screen.image.set && screen.fit === 0) {") && editor.contains("const picture = NominalFrame.framed(canvas, screen.image, native.w, native.h, 0, aspect, nominal, whole);")
             && editor.contains("output.x = area.x + CompositionContract.edge(float(float(area.width - width) * 0.5));"),
             "the compositor and the editor fit a framed picture on the canvas and centre a bare one the same way, so the editor still shows what the renderer draws");
     }

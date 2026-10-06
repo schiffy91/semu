@@ -14,6 +14,7 @@ import ./renderer_variants.btrc;
 import ./variant_keys.btrc;
 import ./renderer_config_screen.btrc;
 import ./renderer_surface_crop.btrc;
+import ./renderer_nominal_frame.btrc;
 import ./renderer_render_scale.btrc;
 
 struct RendererVariantConfig {
@@ -35,6 +36,7 @@ struct RendererVariantConfig {
     float frame_g;
     float frame_b;
     struct RendererScreenConfig screens[2];
+    int nominal_lines;  // SEMU_RENDER_SURFACE_0_NATIVE's lines less its crop: the frame a single screen's set is sized for (RendererNominalFrame), 0 the reported height
     char shader_sha256[65];
     char art_sha256[65];
     int shader_available;
@@ -143,6 +145,7 @@ class RendererConfiguration {
         for (int index = 0; index < 2; index++) {
             RendererConfigKeys.loadScreen(&variant->screens[index], index, suffix);
         }
+        variant->nominal_lines = RendererNominalFrame.load();  // the system's, the same in every variant
         variant->shader_available = RendererFileHash.sha256(
             variant->shader_preset.value, variant->shader_sha256) ? 1 : 0;
         RendererFileHash.sha256(variant->art.value, variant->art_sha256);

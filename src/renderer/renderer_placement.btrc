@@ -5,7 +5,9 @@
 // the owner's bezel rule of 2026-07-07) with the picture at the largest whole step that allows it. Their two
 // non-integer states take the same rule without the whole step: the picture as large as the display holds at its
 // aspect, or the whole bezel as large as the display holds. A TV room's picture is centred down the screen in every
-// state, the room carried on past its edges, so a 448-line PS2 stands as centred as a 240-line PS1. Integer pictures
+// state, the room carried on past its edges, so a 448-line PS2 stands as centred as a 240-line PS1. The set is sized
+// for the system's nominal lines, never the frame's own height, so it holds still when a game changes resolution
+// (RendererNominalFrame places that picture inside it). Integer pictures
 // land on whole pixels, every native pixel k by k. Pure arithmetic over the renderer's records, no GL, so the
 // contracts place a package exactly as the compositor does.
 
@@ -44,7 +46,7 @@ class RendererPlacement {
         float pictureHeight = image->height * canvas->height;
         float shown = aspect > 0.01f ? aspect : pictureWidth / pictureHeight;
         if (pictureWidth / pictureHeight > shown) { pictureWidth = pictureHeight * shown; } else { pictureHeight = pictureWidth / shown; }  // the game inside its rectangle
-        float native = (float)frame->surfaces[0].native_height;  // the height the emulator reports for this frame (a core that crops its overscan reports the cropped height)
+        float native = variant->nominal_lines > 0 ? (float)variant->nominal_lines : (float)frame->surfaces[0].native_height;  // the system's nominal lines (RendererNominalFrame): a set never moves when the game's own height changes; undeclared, the height the emulator reports
         if (native < 1.0f || pictureHeight < 1.0f) { return; }
         bool carried = RendererPlacement.carried(variant);
         bool game = RendererConfiguration.pictureFirst(placement);

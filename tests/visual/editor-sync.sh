@@ -3,8 +3,10 @@
 # production is build/render-host fed by `semu render-env` with the shader off, the editor is `semu bezel edit` in its
 # capture mode (?capture=WxH, headless Chrome), both drawing the same card. Each pair becomes
 # OUT_DIR/<system>-<variant>-{editor,production,diff,side}.png, a row of OUT_DIR/metrics.tsv and OUT_DIR/index.html.
-# usage: editor-sync.sh [--card white|black|test] [--placement game|bezel|game_fractional|bezel_fractional] [--size WxH] OUT_DIR [system[:variant]...]
+# usage: editor-sync.sh [--card white|black|test] [--placement game|bezel|game_fractional|bezel_fractional] [--size WxH] [--frame WxH] OUT_DIR [system[:variant]...]
 # --card test draws the editor's test card on both sides (RENDER_HOST_CARD=editor). --placement overrides the system's.
+# --frame WxH hands the picture over at that size on both sides (RENDER_HOST_NATIVE, the editor's ?frame=), as a core that
+# changes resolution does: the set keeps the system's declared lines (RendererNominalFrame, the editor's NominalFrame).
 # Exits with the number of failing cells: a render or capture that failed, framing more than 1 px apart, or any pixel
 # whose largest channel differs by more than 10 % (the editor must show what the renderer draws).
 # Metric: the share of pixels whose largest channel differs by more than 10 % (and 3 %) once both sides are blurred by 1 px
@@ -21,16 +23,17 @@
 # package than the variant's own fails (PACKAGE DIFFERS): it would compare the editor against a state no launch reaches.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-card=white; placement=""; size=1280x800
+card=white; placement=""; size=1280x800; frame=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --card) card="$2"; shift 2 ;;
     --placement) placement="$2"; shift 2 ;;
     --size) size="$2"; shift 2 ;;
+    --frame) frame="$2"; shift 2 ;;
     *) break ;;
   esac
 done
-[ $# -ge 1 ] || { echo "usage: $0 [--card white|black|test] [--placement game|bezel|game_fractional|bezel_fractional] [--size WxH] OUT_DIR [system[:variant]...]" >&2; exit 64; }
+[ $# -ge 1 ] || { echo "usage: $0 [--card white|black|test] [--placement game|bezel|game_fractional|bezel_fractional] [--size WxH] [--frame WxH] OUT_DIR [system[:variant]...]" >&2; exit 64; }
 case "$card" in white|black|test) ;; *) echo "editor-sync: --card is white, black or test" >&2; exit 64 ;; esac
 out="$1"; shift
 width="${size%x*}"; height="${size#*x}"
@@ -70,7 +73,7 @@ environment() {  # SYSTEM VARIANT: the launcher's render environment with the sh
 production() {  # SYSTEM VARIANT OUT.png WIDE LOG: the real renderer, its debug line kept in LOG for the package and the canvas rectangle
   local hostCard=""; [ "$card" = test ] && hostCard=editor || hostCard="$card"
   ( while IFS= read -r line; do export "$line"; done < <(environment "$1" "$2")
-    SEMU_RENDER_DEBUG=1 RENDER_HOST_CARD="$hostCard" RENDER_HOST_ASPECT="$4" "$host" "$width" "$height" "$work/production.ppm" ) 2>"$5" \
+    SEMU_RENDER_DEBUG=1 RENDER_HOST_CARD="$hostCard" RENDER_HOST_ASPECT="$4" RENDER_HOST_NATIVE="$frame" "$host" "$width" "$height" "$work/production.ppm" ) 2>"$5" \
     && magick "$work/production.ppm" "PNG24:$3"
 }
 
@@ -171,7 +174,7 @@ for cell in "${cells[@]}"; do
     fi
     rendered="$(rendered_rect "$productionLog")"
     cardParameter=""; [ "$card" = test ] || cardParameter="&card=$card"
-    url="http://127.0.0.1:$port/?capture=${width}x${height}${cardParameter}&preview=$system:$variant${placement:+&placement=$placement}#$package"
+    url="http://127.0.0.1:$port/?capture=${width}x${height}${cardParameter}&preview=$system:$variant${placement:+&placement=$placement}${frame:+&frame=$frame}#$package"
     if ! capture "$url" "$work/editor.png"; then
       echo "$name: editor capture FAILED ($url)"; failures=$((failures + 1)); continue
     fi

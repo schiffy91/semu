@@ -1,0 +1,221 @@
+// Nominal frame spec (M16, the final Deck run's boot line 10): Beetle PSX reported its 256x240 placeholder, then
+// 640x472, then a 478-line blip, and the PS1's whole TV breathed 1.3 to 1.7% with it, because the set was sized
+// from the height of each frame. A real TV does not resize when the game changes resolution: the set is sized from
+// the system's nominal lines (the declared native height less its crop) at the Fit state's step, and a picture of
+// another height sits in that frame (RendererNominalFrame): an interlaced or hi-res multiple fills it, a shorter
+// picture is centred with whole black rows round it in the integer states, a taller one is fitted to it. The bezel
+// off keeps the same frame, and the editor's port does what the compositor does.
+
+#include <string.h>
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/renderer/renderer_abi.btrc;
+import ../../../src/renderer/renderer_config.btrc;
+import ../../../src/renderer/renderer_placement.btrc;
+import ../../../src/renderer/renderer_surface_crop.btrc;
+import ../../../src/renderer/renderer_nominal_frame.btrc;
+import ./placement.btrc;
+
+class NominalFrameSpecPlace {  // one launch's environment, placed as the compositor places a frame of any size in it
+    class string text(struct RendererPixelRect* rectangle) { return f"{rectangle->width}x{rectangle->height} at {rectangle->x},{rectangle->y}"; }
+
+    class string canvasText(struct RendererCanvasRect* canvas) { return f"{canvas->x},{canvas->y} {canvas->width}x{canvas->height}"; }
+
+    class void framed(Vector<string> environment, struct RendererVariantConfig* variant, int nativeWidth, int nativeHeight, int placement, int areaWidth, int areaHeight, struct RendererCanvasRect* canvas, struct RendererPixelRect* drawn) {  // the set and the picture with the bezel on
+        struct SemuRenderFrameGl frame;
+        memset(&frame, 0, sizeof(struct SemuRenderFrameGl));
+        frame.surface_count = 1;
+        frame.surfaces[0].native_width = nativeWidth;
+        frame.surfaces[0].native_height = nativeHeight;
+        frame.surfaces[0].width = nativeWidth;
+        frame.surfaces[0].height = nativeHeight;
+        struct RendererSurfaceCrop crops[2];
+        memset(crops, 0, sizeof(crops));
+        PlacementSpecGeometry.crops(environment, crops);
+        frame.presentation_aspect = PlacementSpecGeometry.aspect(environment, nativeWidth, nativeHeight);
+        RendererSurfaceCropping.apply(&frame, crops, frame.presentation_aspect);  // the renderer's own order: the crop, then the placement
+        RendererPlacement.canvas(&frame, variant, placement, frame.presentation_aspect, areaWidth, areaHeight, variant->canvas_width, variant->canvas_height, canvas);
+        RendererNominalFrame.framed(canvas, &variant->screens[0].image, frame.surfaces[0].native_width, frame.surfaces[0].native_height, 0, frame.presentation_aspect,
+            variant->nominal_lines, RendererConfiguration.wholeSteps(placement), drawn);
+    }
+
+    class void bare(struct RendererVariantConfig* variant, int nativeWidth, int nativeHeight, int placement, int areaWidth, int areaHeight, struct RendererPixelRect* drawn) {  // the bezel off, as RendererGeometry.resolve places one screen
+        struct RendererPixelRect area;
+        area.x = 0;
+        area.y = 0;
+        area.width = areaWidth;
+        area.height = areaHeight;
+        RendererNominalFrame.bare(&area, nativeWidth, nativeHeight, 0, 4.0f / 3.0f, variant->nominal_lines, RendererConfiguration.wholeSteps(placement) ? 1 : 0, drawn);
+    }
+
+    class bool near(struct RendererPixelRect* left, struct RendererPixelRect* right, int slack) {
+        int worst = 0;
+        int deltas[4] = {left->x - right->x, left->y - right->y, left->width - right->width, left->height - right->height};
+        for (int index = 0; index < 4; index++) { int delta = deltas[index] < 0 ? -deltas[index] : deltas[index]; if (delta > worst) { worst = delta; } }
+        return worst <= slack;
+    }
+}
+
+class NominalFrameSpecContract {
+    class void arithmetic(Contract contract) {
+        struct RendererSurfaceCrop crop;
+        RendererSurfaceCropping.parse(&crop, "4,0,3,3");
+        struct RendererSurfaceCrop none;
+        RendererSurfaceCropping.parse(&none, null);
+        contract.expect(RendererNominalFrame.lines("320x240", &none) == 240 && RendererNominalFrame.lines("320x240", &crop) == 237 && RendererNominalFrame.lines(null, &none) == 0 && RendererNominalFrame.lines("640x448", &none) == 448,
+            "the nominal lines are the declared native height less its crop: the PS1's 240, the N64's 237, the PS2's 448, none undeclared");
+        contract.expect(RendererNominalFrame.multiple(240, 240) == 1.0f && RendererNominalFrame.multiple(472, 240) == 2.0f && RendererNominalFrame.multiple(478, 240) == 2.0f && RendererNominalFrame.multiple(256, 240) == 1.0f
+            && RendererNominalFrame.multiple(224, 448) == 0.5f && RendererNominalFrame.multiple(480, 448) == 1.0f && RendererNominalFrame.multiple(1088, 272) == 4.0f,
+            "a picture's lines are a half, one, two or more of the nominal frame: 472 and 478 lines are the PS1's interlaced mode of its 240, 224 a PS2 field, 480 one PS2 frame");
+    }
+
+    class void steady(Contract contract, Fixture fixture) {  // the set never moves: every frame size, the same canvas
+        Vector<string> sizes = ["256x240", "320x240", "512x240", "640x480", "640x472", "640x478"];
+        int states[4] = {SEMU_PLACEMENT_GAME, SEMU_PLACEMENT_BEZEL, SEMU_PLACEMENT_GAME_FRACTIONAL, SEMU_PLACEMENT_BEZEL_FRACTIONAL};
+        int widths[2] = {1280, 1920};
+        int heights[2] = {800, 1080};
+        for variantId in ["", "speakers"] {
+            Vector<string> environment = PlacementSpecEnvironment.compile(fixture, "psx", variantId);
+            struct RendererVariantConfig variant;
+            PlacementSpecGeometry.load(environment, &variant);
+            int moved = 0;
+            string seen = "";
+            for (int size = 0; size < 2; size++) {
+                for (int state = 0; state < 4; state++) {
+                    struct RendererCanvasRect first;
+                    for (int index = 0; index < sizes.size(); index++) {
+                        Vector<string> parts = Strings.split(sizes[index], "x");
+                        struct RendererCanvasRect canvas;
+                        struct RendererPixelRect drawn;
+                        NominalFrameSpecPlace.framed(environment, &variant, atoi(parts[0]), atoi(parts[1]), states[state], widths[size], heights[size], &canvas, &drawn);
+                        if (index == 0) { first = canvas; continue; }
+                        if (canvas.x != first.x || canvas.y != first.y || canvas.width != first.width || canvas.height != first.height) { moved++; seen = sizes[index] + " " + NominalFrameSpecPlace.canvasText(&canvas) + " against " + NominalFrameSpecPlace.canvasText(&first); }
+                    }
+                }
+            }
+            string label = variantId.isEmpty() ? "tv" : variantId;
+            contract.expect(variant.nominal_lines == 240 && moved == 0, f"psx {label}: the TV stands still whatever size Beetle PSX reports (256x240, 320x240, 512x240, 640x480, 640x472, 640x478), in the four Fit states at 1280x800 and 1920x1080: nominal {variant.nominal_lines}, {moved} moved {seen}");
+        }
+    }
+
+    class void pictures(Contract contract, Fixture fixture) {  // the picture in the frame, with the bezel on and off
+        Vector<string> environment = PlacementSpecEnvironment.compile(fixture, "psx", "");
+        struct RendererVariantConfig variant;
+        PlacementSpecGeometry.load(environment, &variant);
+        struct RendererCanvasRect canvas;
+        struct RendererPixelRect drawn;
+        Vector<string> found = [];
+        Vector<string> sizes = ["256x240", "320x240", "512x240", "640x480"];
+        for size in sizes {
+            Vector<string> parts = Strings.split(size, "x");
+            NominalFrameSpecPlace.framed(environment, &variant, atoi(parts[0]), atoi(parts[1]), SEMU_PLACEMENT_BEZEL, 1280, 800, &canvas, &drawn);
+            found.push(NominalFrameSpecPlace.text(&drawn));
+        }
+        contract.expect(found.join("|").equals("640x480 at 320,160|640x480 at 320,160|640x480 at 320,160|640x480 at 320,160"),
+            "the PS1 at integer bezel on the Deck: the placeholder, the 320 and 512 modes and the 480-line interlaced mode all fill the same 640x480 frame at 320,160: " + found.join(", "));
+        NominalFrameSpecPlace.framed(environment, &variant, 640, 472, SEMU_PLACEMENT_BEZEL, 1280, 800, &canvas, &drawn);
+        string interlaced = NominalFrameSpecPlace.text(&drawn);
+        NominalFrameSpecPlace.framed(environment, &variant, 640, 478, SEMU_PLACEMENT_BEZEL, 1280, 800, &canvas, &drawn);
+        string blip = NominalFrameSpecPlace.text(&drawn);
+        contract.expect(interlaced.equals("630x472 at 325,164") && blip.equals("638x478 at 321,161"),
+            "Beetle's 640x472 sits in that frame at 1x, 4 black rows above and below as a CRT's border (630x472 at 325,164), the 478-line blip with one row each (638x478 at 321,161): " + interlaced + ", " + blip);
+        NominalFrameSpecPlace.framed(environment, &variant, 640, 480, SEMU_PLACEMENT_BEZEL, 1920, 1080, &canvas, &drawn);
+        string docked = NominalFrameSpecPlace.text(&drawn);
+        NominalFrameSpecPlace.framed(environment, &variant, 640, 472, SEMU_PLACEMENT_BEZEL, 1920, 1080, &canvas, &drawn);
+        string dockedShort = NominalFrameSpecPlace.text(&drawn);
+        NominalFrameSpecPlace.framed(environment, &variant, 640, 474, SEMU_PLACEMENT_BEZEL, 1920, 1080, &canvas, &drawn);
+        string halfRow = NominalFrameSpecPlace.text(&drawn);
+        contract.expect(docked.equals("960x720 at 480,180") && dockedShort.equals("944x708 at 488,186") && halfRow.equals("948x711 at 486,184"),
+            "docked the frame is 3x of 240 lines (960x720 at 480,180): the 480-line mode fills it at 1.5 rows a line, 472 lines are 708 rows with 6 black ones each side, and an odd border (711 of 720) splits on whole rows, 4 below: " + docked + ", " + dockedShort + ", " + halfRow);
+        int states[4] = {SEMU_PLACEMENT_GAME, SEMU_PLACEMENT_BEZEL, SEMU_PLACEMENT_GAME_FRACTIONAL, SEMU_PLACEMENT_BEZEL_FRACTIONAL};
+        Vector<string> outside = [];
+        for (int state = 0; state < 4; state++) {
+            for size in ["640x472", "640x478", "320x240"] {
+                Vector<string> parts = Strings.split(size, "x");
+                struct RendererPixelRect frameRect;
+                NominalFrameSpecPlace.framed(environment, &variant, 640, 480, states[state], 1280, 800, &canvas, &frameRect);
+                NominalFrameSpecPlace.framed(environment, &variant, atoi(parts[0]), atoi(parts[1]), states[state], 1280, 800, &canvas, &drawn);
+                bool within = drawn.x >= frameRect.x && drawn.y >= frameRect.y && drawn.x + drawn.width <= frameRect.x + frameRect.width && drawn.y + drawn.height <= frameRect.y + frameRect.height;
+                int left = drawn.x - frameRect.x;
+                int right = frameRect.x + frameRect.width - drawn.x - drawn.width;
+                int below = drawn.y - frameRect.y;
+                int above = frameRect.y + frameRect.height - drawn.y - drawn.height;
+                bool centred = left - right <= 1 && right - left <= 1 && below - above <= 1 && above - below <= 1;
+                if (!within || !centred) { outside.push(f"{size} in state {states[state]}: {NominalFrameSpecPlace.text(&drawn)} in {NominalFrameSpecPlace.text(&frameRect)}"); }
+            }
+        }
+        contract.expect(outside.isEmpty(), "in every Fit state a picture of another height is centred inside the frame the 480-line mode fills, never past it: " + outside.join("; "));
+        Vector<string> differing = [];
+        for (int state = 0; state < 4; state = state + 2) {
+            for size in ["640x480", "640x472", "640x474", "320x240"] {
+                Vector<string> parts = Strings.split(size, "x");
+                for (int screen = 0; screen < 2; screen++) {
+                    int width = screen == 0 ? 1280 : 1920;
+                    int height = screen == 0 ? 800 : 1080;
+                    struct RendererPixelRect off;
+                    NominalFrameSpecPlace.framed(environment, &variant, atoi(parts[0]), atoi(parts[1]), states[state], width, height, &canvas, &drawn);
+                    NominalFrameSpecPlace.bare(&variant, atoi(parts[0]), atoi(parts[1]), states[state], width, height, &off);
+                    int slack = RendererConfiguration.wholeSteps(states[state]) ? 0 : 1;
+                    if (!NominalFrameSpecPlace.near(&drawn, &off, slack)) { differing.push(f"{size} at {width}x{height} state {states[state]}: TV {NominalFrameSpecPlace.text(&drawn)}, off {NominalFrameSpecPlace.text(&off)}"); }
+                }
+            }
+        }
+        contract.expect(differing.isEmpty(), "with the bezel off the picture keeps the frame the set would hold: the same rectangle in integer game (a pixel at most in non-integer game), 480 and 472 lines alike at 1280x800 and 1920x1080: " + differing.join("; "));
+    }
+
+    class void others(Contract contract, Fixture fixture) {  // a crop, a taller picture, a field
+        Vector<string> sixtyFour = PlacementSpecEnvironment.compile(fixture, "n64", "");
+        struct RendererVariantConfig n64;
+        PlacementSpecGeometry.load(sixtyFour, &n64);
+        struct RendererCanvasRect canvas;
+        struct RendererPixelRect drawn;
+        NominalFrameSpecPlace.framed(sixtyFour, &n64, 320, 240, SEMU_PLACEMENT_BEZEL, 1280, 800, &canvas, &drawn);
+        string cropped = NominalFrameSpecPlace.text(&drawn);
+        contract.expect(n64.nominal_lines == 237 && cropped.equals("626x474 at 327,163"), "the N64's nominal frame is GLideN64's 237 cropped lines, so its TV keeps the picture it drew (626x474 at 327,163, as in the VM): " + cropped);
+        Vector<string> playStation2 = PlacementSpecEnvironment.compile(fixture, "ps2", "");
+        struct RendererVariantConfig ps2;
+        PlacementSpecGeometry.load(playStation2, &ps2);
+        Vector<string> found = [];
+        for size in ["640x448", "512x448", "640x480", "640x512", "640x224"] {
+            Vector<string> parts = Strings.split(size, "x");
+            NominalFrameSpecPlace.framed(playStation2, &ps2, atoi(parts[0]), atoi(parts[1]), SEMU_PLACEMENT_BEZEL, 1280, 800, &canvas, &drawn);
+            found.push(NominalFrameSpecPlace.text(&drawn));
+        }
+        bool same = true;
+        for entry in found { if (!entry.equals(found[0])) { same = false; } }
+        contract.expect(ps2.nominal_lines == 448 && same && found[0].equals("597x448 at 341,176"),
+            "the PS2's set holds its 448-line frame (597x448 at 341,176, S3's): a 480- or 512-line picture is fitted to the frame, never past the opening, and a 224-line field drawn twice fills it: " + found.join(", "));
+    }
+
+    class void wiring(Contract contract, Fixture fixture) {
+        string compositor = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_compositor.btrc"));
+        string placement = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_placement.btrc"));
+        string config = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_config.btrc"));
+        string editor = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-renderer.js"));
+        string page = FileSystem.readText(PathTools.join(fixture.plan.configRoot, "editor/bezel-editor.html"));
+        contract.expect(placement.contains("float native = variant->nominal_lines > 0 ? (float)variant->nominal_lines : (float)frame->surfaces[0].native_height;")
+            && config.contains("variant->nominal_lines = RendererNominalFrame.load();"),
+            "the set is sized for the launch's nominal lines (SEMU_RENDER_SURFACE_0_NATIVE less its crop), loaded into every variant");
+        contract.expect(compositor.contains("RendererNominalFrame.framed(&canvas, &screen->image,") && compositor.contains("frame->surface_count == 1 ? variant->nominal_lines : 0, whole, &picture);")
+            && compositor.contains("RendererGeometry.nominal(0, 0, areaWidth, areaHeight, singleAspect, whole ? 1 : 0, variant->nominal_lines, &geometry->lanes[0]);")
+            && compositor.contains("RendererNominalFrame.bare(&area, lane->native_width, lane->native_height, lane->rotation, declaredAspect, nominalLines, integerScaling, &output);"),
+            "the compositor draws one screen's picture in its nominal frame, with the bezel on and off");
+        contract.expect(editor.contains("class NominalFrame {") && editor.contains("if (lines < float(nominal * 0.75)) return 0.5;") && editor.contains("y: float(frame.y + (whole ? integer(border) : border))")
+            && editor.contains("canvas = Geometry.place(NominalFrame.lines(preview.screens[0]), first,") && editor.contains("nominal = preview.screens.length === 1 ? NominalFrame.lines(native) : 0;") && editor.contains("const picture = NominalFrame.framed(canvas, screen.image, native.w, native.h, 0, aspect, nominal, whole);")
+            && page.contains("state.preview = { ...state.preview, screens: [{ ...only, nominal: only.h, w, h, frame_w: w, frame_h: h }] };"),
+            "the editor's port sizes the set for the nominal lines and draws a picture of another size (?frame=WxH, editor-sync.sh --frame) in that frame as the compositor does");
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        NominalFrameSpecContract.arithmetic(contract);
+        NominalFrameSpecContract.steady(contract, fixture);
+        NominalFrameSpecContract.pictures(contract, fixture);
+        NominalFrameSpecContract.others(contract, fixture);
+        NominalFrameSpecContract.wiring(contract, fixture);
+    }
+}

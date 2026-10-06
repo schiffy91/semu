@@ -28,6 +28,7 @@ import ../../../src/renderer/renderer_menu.btrc;
 import ../../../src/renderer/renderer_menu_raster.btrc;
 import ../../../src/renderer/renderer_live_switch.btrc;
 import ../../../src/renderer/renderer_placement.btrc;
+import ../../../src/renderer/renderer_nominal_frame.btrc;
 import ./live_variants.btrc;
 import ./placement.btrc;
 import ./standalone.btrc;
@@ -98,15 +99,22 @@ class RadialRenderLive {  // records 81, 82 and 85 as the post-UI phase and the 
 }
 
 class RadialRenderGeometry {  // the 3D-era opt-in is gone: integer game is a whole step everywhere, non-integer game fills, and with the bezel off the picture follows the same Fit state
+    class int lines(Fixture fixture, string systemId) {  // the declared frame's lines less its crop, the nominal lines the renderer sizes a set for
+        JSONValue screen = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0");
+        return SemuJson.intAt(screen, "native.h", 0) - SemuJson.intAt(screen, "crop.top", 0) - SemuJson.intAt(screen, "crop.bottom", 0);
+    }
+
     class void run(Contract contract, Fixture fixture) {
         struct RendererCanvasRect canvas;
         struct RendererCanvasRect picture;
         for systemId in ["wii", "gc", "ps2", "dreamcast"] {
-            PlacementSpecGeometry.place(fixture, systemId, 640, 480, SEMU_PLACEMENT_GAME, 1280, 800, &canvas, &picture);
+            int lines = RadialRenderGeometry.lines(fixture, systemId);  // the declared frame: 480 lines, the PS2's 448
+            int across = lines * 4 / 3;
+            PlacementSpecGeometry.place(fixture, systemId, across, lines, SEMU_PLACEMENT_GAME, 1280, 800, &canvas, &picture);
             int game = PlacementSpecGeometry.rounded(picture.height);
-            PlacementSpecGeometry.place(fixture, systemId, 640, 480, SEMU_PLACEMENT_GAME_FRACTIONAL, 1280, 800, &canvas, &picture);
+            PlacementSpecGeometry.place(fixture, systemId, across, lines, SEMU_PLACEMENT_GAME_FRACTIONAL, 1280, 800, &canvas, &picture);
             int filled = PlacementSpecGeometry.rounded(picture.height);
-            PlacementSpecGeometry.place(fixture, systemId, 640, 480, SEMU_PLACEMENT_BEZEL, 1280, 800, &canvas, &picture);
+            PlacementSpecGeometry.place(fixture, systemId, across, lines, SEMU_PLACEMENT_BEZEL, 1280, 800, &canvas, &picture);
             int bezel = PlacementSpecGeometry.rounded(picture.height);
             struct RendererPixelRect area;
             area.x = 0;
@@ -115,9 +123,9 @@ class RadialRenderGeometry {  // the 3D-era opt-in is gone: integer game is a wh
             area.height = 800;
             struct RendererPixelRect whole;
             struct RendererPixelRect stretched;
-            RendererCompositionContract.fit(&area, 640, 480, 0, 4.0f / 3.0f, RendererConfiguration.wholeSteps(SEMU_PLACEMENT_GAME) ? 1 : 0, &whole);  // the bezel off, as RendererGeometry.resolve places one screen
-            RendererCompositionContract.fit(&area, 640, 480, 0, 4.0f / 3.0f, RendererConfiguration.wholeSteps(SEMU_PLACEMENT_GAME_FRACTIONAL) ? 1 : 0, &stretched);
-            contract.expect(game == 480 && filled == 800 && bezel == 480 && whole.height == game && stretched.height == filled, systemId + " at 1280x800: integer game and integer bezel 1x (480 lines), non-integer game the 800 lines, and with the bezel off the same Fit state draws the same size (480 and 800), never smaller: " + Strings.fromInt(game) + ", " + Strings.fromInt(filled) + ", " + Strings.fromInt(bezel) + ", off " + Strings.fromInt(whole.height) + " and " + Strings.fromInt(stretched.height));
+            RendererNominalFrame.bare(&area, across, lines, 0, 4.0f / 3.0f, lines, RendererConfiguration.wholeSteps(SEMU_PLACEMENT_GAME) ? 1 : 0, &whole);  // the bezel off, as RendererGeometry.resolve places one screen
+            RendererNominalFrame.bare(&area, across, lines, 0, 4.0f / 3.0f, lines, RendererConfiguration.wholeSteps(SEMU_PLACEMENT_GAME_FRACTIONAL) ? 1 : 0, &stretched);
+            contract.expect(game == lines && filled == 800 && bezel == lines && whole.height == game && stretched.height == filled, systemId + f" at 1280x800: integer game and integer bezel 1x ({lines} lines), non-integer game the 800 lines, and with the bezel off the same Fit state draws the same size ({lines} and 800), never smaller: " + Strings.fromInt(game) + ", " + Strings.fromInt(filled) + ", " + Strings.fromInt(bezel) + ", off " + Strings.fromInt(whole.height) + " and " + Strings.fromInt(stretched.height));
         }
         int widths[2] = {1280, 1920};
         int heights[2] = {800, 1080};
@@ -132,7 +140,7 @@ class RadialRenderGeometry {  // the 3D-era opt-in is gone: integer game is a wh
         }
         string compositor = FileSystem.readText(PathTools.join(fixture.project, "src/renderer/renderer_compositor.btrc"));
         string resolve = compositor.substring(Strings.find(compositor, "class bool resolve(", 0), 8000);
-        contract.expect(resolve.contains("bool whole = RendererConfiguration.wholeSteps(config->placement);") && resolve.contains("singleAspect, whole ? 1 : 0, &geometry->lanes[0]);") && resolve.contains("config->dual_screen_gap, !whole);") && !compositor.contains("integer_scaling"),
+        contract.expect(resolve.contains("bool whole = RendererConfiguration.wholeSteps(config->placement);") && resolve.contains("singleAspect, whole ? 1 : 0, variant->nominal_lines, &geometry->lanes[0]);") && resolve.contains("config->dual_screen_gap, !whole);") && !compositor.contains("integer_scaling"),
             "with no bezel to place the compositor takes whole steps or not from the Fit state (one screen and the DS layouts alike), never from a separate integer switch (M16 item 7)");
     }
 }

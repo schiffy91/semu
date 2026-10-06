@@ -11,7 +11,9 @@
 # RENDER_HOST_EMULATOR naming the emulator (its core the system's binding) render-env emits SEMU_RENDER_SCALE,
 # and RENDER_HOST_PRODUCER=frame (RetroArch, PCSX2: the picture drawn at the scale and reported at that size
 # where SEMU_RENDER_SURFACE_SCALED says so) or window (Dolphin, Flycast, PPSSPP: drawn at the scale and
-# presented letterboxed at the window's size) hands it over as that kind of emulator does.
+# presented letterboxed at the window's size) hands it over as that kind of emulator does. RENDER_HOST_NATIVE=640x472
+# hands the picture over at that size, as a core that changes resolution does (Beetle PSX's boot), the set still
+# sized for the system's declared lines; the cell's name ends -at-640x472.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 out="$1"; size="$2"; shift 2
@@ -39,7 +41,7 @@ for cell in "$@"; do
   switching=""; [ "$cell" != "${cell#*>}" ] && switching="${cell#*>}"
   fields="${bezel:+\"bezel_variant\":\"$bezel\",}${shader:+\"shader_variant\":\"$shader\",}${fit:+\"placement\":\"$fit\",}${RENDER_HOST_SCALE:+\"render_scale\":\"$RENDER_HOST_SCALE\",}"  # a fourth field is the saved Fit state the launch starts in; RENDER_HOST_SCALE=2x: the system's render scale
   settings="{\"visual\":{\"systems\":{\"$system\":{${fields%,}}}}}"
-  name="$system${bezel:+-$bezel}${shader:+-$shader}${fit:+-$fit}${RENDER_HOST_SCALE:+-$RENDER_HOST_SCALE}${RENDER_HOST_PRODUCER:+-$RENDER_HOST_PRODUCER}"
+  name="$system${bezel:+-$bezel}${shader:+-$shader}${fit:+-$fit}${RENDER_HOST_SCALE:+-$RENDER_HOST_SCALE}${RENDER_HOST_PRODUCER:+-$RENDER_HOST_PRODUCER}${RENDER_HOST_NATIVE:+-at-$RENDER_HOST_NATIVE}"
   state="$(mktemp -d "$scratch/state.XXXXXX")"
   [ -z "${RENDER_HOST_PLAYERS:-}" ] || printf "%s\n" "${RENDER_HOST_PLAYERS//|/$'\n'}" > "$state/semu-render-players.txt"
   pictures=("$name")
