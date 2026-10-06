@@ -274,7 +274,7 @@ wii dolphin - 60 key:ctrl+shift+v key:ctrl+shift+f key:ctrl+shift+f key:ctrl+shi
 #     per second with the longest gap under 25 ms), whose attract mode then plays Sonic's story scene against E-101
 #     (from about 65 s) and Speed Highway's demo (about 131 to 175 s), both drawn by the game at 30 frames a second:
 #     every line inside a scene at least 29.8 per second with the longest gap under 50 ms (a load between scenes
-#     reads lower). The game at full speed, not 75%: in the Speed Highway shots (about after-18 to after-24) the
+#     reads lower). The game at full speed, not 75%: in the Speed Highway shots (about after-17 to after-22) the
 #     HUD's TIME gains 6.00 s from one shot to the next, 6 s apart (crop the picture's top left at 4x). key:shift is a
 #     lone Shift, which neither Semu nor Flycast binds: a filler that keeps the case running with a shot every 6 s.
 #     Before the swap-interval patch (90 Hz, 2026-10-06): the scenes at 22.5 per second and the HUD gaining 1.87 s in

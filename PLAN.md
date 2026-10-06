@@ -2779,6 +2779,17 @@ Status: started 2026-10-06.
       cannot be read) and a case's result names it. Deck cases: `tests/deck/m16-check.cases` D3 (the movie, no
       input) and D11 (the attract mode on CRT Royale, with the HUD clock), `tests/deck/m16-docked.cases` K5 (a 60 Hz
       TV). Contract flycast_pacing.btrc.
+    - After, on release 6c40e186 (installed 2026-10-06 with `deploy.sh install-delta` and `prepare`; Steam's
+      templates unchanged, so no `steam input`), with the committed harnesses at Game Mode's refresh (90 Hz, read
+      from :0): D3's line (the movie, no input, Sharp CRT, a fresh home at integer bezel): the logo at 60.2 per
+      second (longest gap 22.1 ms), then the movie at 30.0-30.2 for 80 s (longest gaps 40.3-41.9 ms). D11's line,
+      its home seeded where D7 leaves the Dreamcast (gdv, integer bezel): 80/2, CRT Royale; the title at 60.2 (gaps
+      22 ms), the story scene and Speed Highway's demo at 29.9-30.3 (gaps 43.5-44.0 ms), and the HUD clock 0:79,
+      6:83, 12:86, 18:86, 24:89 and 30:93 in after-17 to after-22 (132 to 162 s, 6 s apart): 6.00-6.04 s a step, the
+      game at full speed (36:63 at 168 s as the demo ended, black at 174 s). `system-matrix.sh` on the owner's
+      semu.json (CRT Royale): the movie at 30.0-30.2, Flycast's emulator thread 68-72% of one core, the composition
+      2.5 ms of GPU time. K5 docked at 1920x1080 and 60 Hz (Sharp CRT, the picture 1x at 640,300 in the whole TV):
+      the logo at 60.0 (gaps 17.1-17.5 ms), the movie at 30.0 (gaps 34.6-40.7 ms): Flycast's own interval, as before.
 
 - Review round (2026-10-06, the M16 review): the reviewers' 30 findings on the five tracks, each checked by hand
   (on the Mac render host, in the source, at the pinned upstream), fixed in gated commits whose contracts fail
@@ -2884,7 +2895,10 @@ Status: started 2026-10-06.
     Adventure lines the four ways; read-only, the owner's semu.json: a Wii saved on `game` launches in
     non-integer game and gains `visual.fit_states` with the next save.
   - Done of that list (2026-10-06, the Deck chain): the release (af0470d8, then 9d52f6f and a70ece76), prepare,
-    `semu-deck-cli steam input` with Steam stopped, and boot-capture.cases before and after (item 4 above).
+    `semu-deck-cli steam input` with Steam stopped, and boot-capture.cases before and after (item 4 above); item 8
+    (Sonic Adventure at Game Mode's 90 Hz, release 6c40e186, its record above): the four-way table was not needed
+    past its first row, and m16-check.cases D3 and D11 and m16-docked.cases K5 ran on their own; the rest of
+    m16-check.cases and m16-docked.cases is still open.
 
 ## Gap review (2026-09-22) and its resolution (2026-09-23)
 
@@ -4266,13 +4280,16 @@ Update this block whenever a milestone criterion changes state.
   full-screen-at-boot patch; a70ece76: Ryujinx's). Open on the Deck:
   `tests/deck/m16-check.cases` (deck cases D1-D6) and the review's D7-D10 (GDV-NTSC on the 480-line four), and
   Sonic Adventure four ways (`tests/deck/system-matrix.cases`, PLAN M16 item 8's decision table).
-- M16 item 8 (Dreamcast speed): cause found on the Deck 2026-10-06. Game Mode runs the Deck OLED's screen at 90 Hz;
-  Flycast's swap interval (refresh / 60 times the game's, truncated) asked for 3 refreshes per 30-frame scene, the
-  swap took 4 under gamescope, so Sonic Adventure's 30-frame scenes drew 22.5 per second and the game ran at 75%
-  (measured off-screen at 90 Hz; full speed at 60 Hz, where every earlier check ran). Fixed by
-  `config/emulators/flycast/semu-swap-interval.patch` (the next refresh off a whole multiple of 60 Hz, Flycast's own
-  interval at 60 and 120 Hz); the Deck harnesses now run at Game Mode's refresh. Not the composition, the GPU, the
-  processor or the SD card (PLAN M16 item 8's record). Deck cases m16-check.cases D3 and D11, m16-docked.cases K5.
+- M16 item 8 (Dreamcast speed): done 2026-10-06, observed on the Deck off-screen at Game Mode's own refresh; the
+  owner's Game Mode by eye is the owner's. Game Mode runs the Deck OLED's screen at 90 Hz; Flycast's swap interval
+  (refresh / 60 times the game's, truncated) asked for 3 refreshes per 30-frame scene, the swap took 4 under
+  gamescope, so Sonic Adventure's 30-frame scenes drew 22.5 per second and the game ran at 75% (full speed at
+  60 Hz, where every earlier check ran). Fixed by `config/emulators/flycast/semu-swap-interval.patch` (the next
+  refresh off a whole multiple of 60 Hz, Flycast's own interval at 60 and 120 Hz; 6c40e18); the Deck harnesses now
+  run at Game Mode's refresh. On release 6c40e186 at 90 Hz: the 30-frame scenes at 30 per second, the 60-frame ones
+  at 60, the HUD clock gaining 6.00-6.04 s every 6 s, on Sharp CRT and on the owner's CRT Royale; docked at 60 Hz
+  unchanged. Not the composition, the GPU, the processor or the SD card (PLAN M16 item 8's record). Deck cases
+  m16-check.cases D3 and D11, m16-docked.cases K5.
 - M16 items 1 and 6 (crosshair, the Wii's controller): built 2026-10-06 (51bcddb, 47c1303) and observed on the Mac
   render host and in the podman VM (RetroArch's DS and 3DS cores, standalone Azahar, Dolphin with Mario Kart Wii);
   contracts right_trackpad, standalone_cursor, controller_layouts, players, emulator_runtime, radial_render. DS and
@@ -4296,7 +4313,7 @@ Update this block whenever a milestone criterion changes state.
   items, the review's fixes and every case file named above, then run `semu-deck-cli steam input` with Steam
   stopped. Installed on the Deck 2026-10-06: af0470d8 (then `steam input` with Steam stopped), 9d52f6f and
   a70ece76, the last after that commit; Steam's templates have not changed since af0470d8, so the radial is
-  current.
+  current. Then 6c40e186 (item 8's Flycast patch), installed with `install-delta` and `prepare`, no game running.
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,
