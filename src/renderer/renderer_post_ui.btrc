@@ -139,7 +139,9 @@ class RendererStateFiles {
                     lane->source_width, lane->source_height,
                     index, lane->output_x, lane->output_y,
                     lane->output_width, lane->output_height);
+                fprintf(file, " surface%d_scaled=%dx%d", index, lane->scaled_width, lane->scaled_height);  // the picture kept above native under a render scale, 0x0 when native is all
             }
+            if (config != null) { fprintf(file, " render_scale=%d frames_scaled=%d", config->render_scale.scale, config->render_scale.frames_scaled); }
         }
         if (extra != null) { fputs(extra, file); }
         fputc('\n', file);

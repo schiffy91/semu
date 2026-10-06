@@ -227,7 +227,12 @@
         "graphics_api": "2"
       },
       "render_frame_integer": true,
-      "render_vulkan": true
+      "render_vulkan": true,
+      "render_scale": {
+        "frame": "declared",
+        "apply": "restart",
+        "doc": "qt-config.ini [Renderer] resolution_factor is Azahar's render scale (settings.h:551, 1 native 400x240), read at boot; a title with a texture pack keeps its own per-title factor (custom/<TID>.ini, the composed scale). With use_integer_scaling Azahar draws both screens at whole steps of their native size in its window, so at the Deck's 800 lines it shows the scaled render at 1x (supersampled), and at 1080p at 2x."
+      }
     },
     "macos": {
       "executable": "${asset_root}/Applications/azahar.app/Contents/MacOS/azahar",
@@ -425,7 +430,12 @@
       },
       "window_shim": true,
       "render_frame_integer": true,
-      "render_vulkan": true
+      "render_vulkan": true,
+      "render_scale": {
+        "frame": "declared",
+        "apply": "restart",
+        "doc": "qt-config.ini [Renderer] resolution_factor is Azahar's render scale (settings.h:551, 1 native 400x240), read at boot; a title with a texture pack keeps its own per-title factor (custom/<TID>.ini, the composed scale). With use_integer_scaling Azahar draws both screens at whole steps of their native size in its window, so at the Deck's 800 lines it shows the scaled render at 1x (supersampled), and at 1080p at 2x."
+      }
     }
   },
   "doc": {

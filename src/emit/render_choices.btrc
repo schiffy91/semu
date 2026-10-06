@@ -1,7 +1,8 @@
-// The two choices beside the bezel and the shader: where the picture sits (placement, the Fit toggle
-// between the whole bezel and the whole-step screen) and which output the game draws (Aspect, 4:3 or
-// 16:9 where a system declares two). Each is an ordered list of ids with toast-safe labels, the
-// index the launch starts on and the one Reset to Default selects; the variants file carries them.
+// The choices beside the bezel and the shader: where the picture sits (placement, the Fit toggle
+// between the whole bezel and the whole-step screen), which output the game draws (Aspect, 4:3 or
+// 16:9 where a system declares two) and the render scale its emulator draws at (Scale, 1x native,
+// 2x, 3x). Each is an ordered list of ids with toast-safe labels, the index the launch starts on and
+// the one Reset to Default selects; the variants file carries them.
 
 import Library.JSON;
 import Library.Vector;
@@ -9,11 +10,12 @@ import ../lib/json.btrc;
 import ../model.btrc;
 import ../resolve.btrc;
 import ./rendering.btrc;
+import ./render_scale.btrc;
 
 #include <stdlib.h>
 
 class SemuVariantChoice {  // one kind's ordered ids, their labels and the live index
-    public string kind;  // "bezel", "shader", "placement" or "output", as in visual.systems.<id>.<kind>_variant
+    public string kind;  // "bezel", "shader", "placement", "output" or "scale", as in visual.systems.<id>.<kind>_variant
     public Vector<string> ids;
     public Vector<string> labels;
     public int index;
@@ -127,6 +129,23 @@ class SemuRenderChoices {
         result.index = result.ids.indexOf(SemuRenderEnvironment.outputId(plan, system));
         result.defaultIndex = result.ids.indexOf(SemuRenderEnvironment.defaultOutput(system));
         if (result.index < 0) { result.index = result.defaultIndex >= 0 ? result.defaultIndex : 0; }
+        result.launched = result.index;
+        result.lastReal = result.index;
+        return result;
+    }
+
+    class SemuVariantChoice scale(SemuPlan plan, SemuSystem system, string emulatorId) {  // the render scales EMULATOR takes for this system, on its own choice; none with one
+        SemuVariantChoice result = SemuVariantChoice("scale");
+        Vector<int> offered = SemuRenderScale.choices(plan, system, SemuRenderScale.specFor(plan, system, emulatorId));
+        if (offered.size() < 2) { return result; }
+        for scale in offered {
+            result.ids.push(SemuRenderScale.id(scale));
+            result.labels.push(SemuRenderScale.label(scale));
+        }
+        result.cycled = result.ids.size();
+        result.index = result.ids.indexOf(SemuRenderScale.id(SemuRenderScale.current(plan, system, offered)));
+        result.defaultIndex = result.ids.indexOf(SemuRenderScale.id(SemuRenderScale.defaultScale(system)));
+        if (result.defaultIndex < 0) { result.defaultIndex = 0; }  // a default the emulator cannot take here: native
         result.launched = result.index;
         result.lastReal = result.index;
         return result;

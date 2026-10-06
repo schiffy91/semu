@@ -14,6 +14,7 @@ import ./renderer_variants.btrc;
 import ./variant_keys.btrc;
 import ./renderer_config_screen.btrc;
 import ./renderer_surface_crop.btrc;
+import ./renderer_render_scale.btrc;
 
 struct RendererVariantConfig {
     int declared;
@@ -54,6 +55,7 @@ struct RendererConfig {
     struct RendererPath system_id;
     struct RendererPath emulator_id;
     struct RendererSurfaceCrop surface_crops[2];  // SEMU_RENDER_SURFACE_<n>_CROP: what the emulator hands over that is no picture
+    struct RendererRenderScale render_scale;  // SEMU_RENDER_SCALE and SEMU_RENDER_SURFACE_SCALED
     struct RendererVariantConfig variants[4];  // A and B are emitted; C and D stay undeclared
 };
 
@@ -247,6 +249,7 @@ class RendererConfiguration {
         RendererConfigKeys.copyEnvironment(&config->emulator_id,
             "SEMU_RENDER_EMULATOR_ID");
         RendererSurfaceCropping.load(config->surface_crops);
+        RendererRenderScaling.load(&config->render_scale);
         char* suffixes[2] = {"", "_B"};
         for (int index = 0; index < 2; index++) {
             RendererConfiguration.loadVariant(&config->variants[index],

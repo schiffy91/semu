@@ -126,7 +126,7 @@
         "EnableCardboardVR = False",
         "SoftwareRenderer = False",
         "SkipBufferEffects = False",
-        "InternalResolution = 0",
+        "InternalResolution = ${render_scale}",
         "InternalScreenRotation = 1",
         "DisplayOffsetX = 0.5",
         "DisplayOffsetY = 0.5",

@@ -16,7 +16,9 @@ class RendererVariantKeys {
     class string placementLabelsKey() { return "placement_labels"; }
     class string outputsKey() { return "outputs"; }  // the system's outputs, e.g. standard and widescreen; empty with one
     class string outputLabelsKey() { return "output_labels"; }
-    class string currentKey() { return "current"; }  // bezel,shader,placement,output indices the launch started on (-1: nothing to choose)
+    class string scalesKey() { return "scales"; }  // the render scales the launch's emulator takes, 1x first; empty with one
+    class string scaleLabelsKey() { return "scale_labels"; }
+    class string currentKey() { return "current"; }  // bezel,shader,placement,output,scale indices the launch started on (-1: nothing to choose)
     class string tokenKey() { return "token"; }  // equals the launch's SEMU_MENU_VARIANTS_TOKEN: another session's file is ignored
     class string tokenVariable() { return "SEMU_MENU_VARIANTS_TOKEN"; }
     class int labelCapacity() { return 31; }  // one toast line; the composed toast is cut to the toast's width

@@ -1,0 +1,95 @@
+// A lane rendered above native (a render scale): the frame's picture kept at its scaled size with a
+// full mip chain, and the native picture made from it. The native one is the scaled picture's last
+// mip still at least native (each level a 2x2 box average), blitted linearly down to native, so a
+// shader reading native lines sees the larger render averaged per game pixel, never one sample of it.
+// The kept picture filters linearly: exact where the screen draws it at its own size, bilinear where
+// larger, trilinear where smaller, never point-sampled shimmer.
+
+#include <stdio.h>
+#include <string.h>
+
+import ./renderer_abi.btrc;
+import ./renderer_gl_api.btrc;
+import ./renderer_render_scale.btrc;
+
+struct RendererScaledTextures {  // per lane: the kept picture, its size, and a read framebuffer for one of its levels
+    unsigned int textures[2];
+    unsigned int reader;
+    int width[2];
+    int height[2];
+};
+
+class RendererScaledLane {
+    class bool allocated(struct RendererGlApi* gl, struct RendererScaledTextures* scaled) {  // created on the first scaled frame of a context
+        if (scaled->textures[0] != 0u && scaled->textures[1] != 0u && scaled->reader != 0u) { return true; }
+        gl->gen_textures(2, scaled->textures);
+        gl->gen_framebuffers(1, &scaled->reader);
+        scaled->width[0] = 0;
+        scaled->width[1] = 0;
+        return scaled->textures[0] != 0u && scaled->textures[1] != 0u && scaled->reader != 0u;
+    }
+
+    class void discard(struct RendererGlApi* gl, struct RendererScaledTextures* scaled) {  // the context is current; a destroyed one only forgets them
+        if (gl->delete_textures != null) { gl->delete_textures(2, scaled->textures); }
+        if (gl->delete_framebuffers != null && scaled->reader != 0u) { gl->delete_framebuffers(1, &scaled->reader); }
+        memset(scaled, 0, sizeof(struct RendererScaledTextures));
+    }
+
+    class void texture(struct RendererGlApi* gl, unsigned int texture, int width, int height, bool resize) {  // linear both ways, its levels made after each copy
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, texture);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D, (unsigned int)RGL_TEXTURE_BASE_LEVEL, 0);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D, (unsigned int)RGL_TEXTURE_MAX_LEVEL, 0);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D, (unsigned int)RGL_TEXTURE_MIN_FILTER, RGL_LINEAR);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D, (unsigned int)RGL_TEXTURE_MAG_FILTER, RGL_LINEAR);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D, (unsigned int)RGL_TEXTURE_WRAP_S, RGL_CLAMP_TO_EDGE);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D, (unsigned int)RGL_TEXTURE_WRAP_T, RGL_CLAMP_TO_EDGE);
+        if (resize) { gl->texture_image_2d((unsigned int)RGL_TEXTURE_2D, 0, RGL_RGBA8, width, height, 0, (unsigned int)RGL_RGBA, (unsigned int)RGL_UNSIGNED_BYTE, null); }
+    }
+
+    class bool capture(struct RendererGlApi* gl, struct RendererScaledTextures* scaled, unsigned int drawFramebuffer,
+                    struct SemuRenderFrameGl* frame, struct RendererLaneGeometry* lane, int index) {  // the source rectangle at the scaled size, then its mips
+        if (!RendererScaledLane.allocated(gl, scaled)) { return false; }
+        unsigned int texture = scaled->textures[index];
+        bool resize = scaled->width[index] != lane->scaled_width || scaled->height[index] != lane->scaled_height;
+        RendererGlErrors.clear(gl);
+        RendererScaledLane.texture(gl, texture, lane->scaled_width, lane->scaled_height, resize);
+        if (!RendererGlErrors.none(gl)) { return false; }
+        scaled->width[index] = lane->scaled_width;
+        scaled->height[index] = lane->scaled_height;
+        gl->bind_framebuffer((unsigned int)RGL_READ_FRAMEBUFFER, frame->framebuffer);
+        gl->read_buffer(frame->color_buffer);
+        gl->bind_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER, drawFramebuffer);
+        gl->framebuffer_texture_2d((unsigned int)RGL_DRAW_FRAMEBUFFER, (unsigned int)RGL_COLOR_ATTACHMENT0, (unsigned int)RGL_TEXTURE_2D, texture, 0);
+        gl->draw_buffer((unsigned int)RGL_COLOR_ATTACHMENT0);
+        if (gl->check_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER) != (unsigned int)RGL_FRAMEBUFFER_COMPLETE) { return false; }
+        bool exact = lane->source_width == lane->scaled_width && lane->source_height == lane->scaled_height;  // RetroArch's 1x viewport, PCSX2's texel picture: copied as is
+        gl->blit_framebuffer(lane->source_x, lane->source_y, lane->source_x + lane->source_width, lane->source_y + lane->source_height,
+            0, 0, lane->scaled_width, lane->scaled_height, (unsigned int)RGL_COLOR_BUFFER_BIT, (unsigned int)(exact ? RGL_NEAREST : RGL_LINEAR));
+        if (!RendererGlErrors.none(gl)) { return false; }
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, texture);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D, (unsigned int)RGL_TEXTURE_MAX_LEVEL, 1000);
+        gl->texture_parameter((unsigned int)RGL_TEXTURE_2D, (unsigned int)RGL_TEXTURE_MIN_FILTER, RGL_LINEAR_MIPMAP_LINEAR);
+        gl->generate_mipmap((unsigned int)RGL_TEXTURE_2D);
+        return RendererGlErrors.none(gl);
+    }
+
+    class bool native(struct RendererGlApi* gl, struct RendererScaledTextures* scaled, unsigned int drawFramebuffer,
+                      unsigned int rawTexture, struct RendererLaneGeometry* lane, int index) {  // the native picture from the kept one's nearest level above it
+        int level = RendererRenderScaling.level(lane);
+        int width = RendererRenderScaling.levelSize(lane->scaled_width, level);
+        int height = RendererRenderScaling.levelSize(lane->scaled_height, level);
+        RendererGlErrors.clear(gl);
+        gl->bind_framebuffer((unsigned int)RGL_READ_FRAMEBUFFER, scaled->reader);
+        gl->framebuffer_texture_2d((unsigned int)RGL_READ_FRAMEBUFFER, (unsigned int)RGL_COLOR_ATTACHMENT0, (unsigned int)RGL_TEXTURE_2D, scaled->textures[index], level);
+        gl->read_buffer((unsigned int)RGL_COLOR_ATTACHMENT0);
+        gl->bind_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER, drawFramebuffer);
+        gl->framebuffer_texture_2d((unsigned int)RGL_DRAW_FRAMEBUFFER, (unsigned int)RGL_COLOR_ATTACHMENT0, (unsigned int)RGL_TEXTURE_2D, rawTexture, 0);
+        gl->draw_buffer((unsigned int)RGL_COLOR_ATTACHMENT0);
+        if (gl->check_framebuffer((unsigned int)RGL_READ_FRAMEBUFFER) != (unsigned int)RGL_FRAMEBUFFER_COMPLETE
+                || gl->check_framebuffer((unsigned int)RGL_DRAW_FRAMEBUFFER) != (unsigned int)RGL_FRAMEBUFFER_COMPLETE) { return false; }
+        bool exact = width == lane->native_width && height == lane->native_height;  // 2x and 4x: the level is native
+        gl->blit_framebuffer(0, 0, width, height, 0, 0, lane->native_width, lane->native_height,
+            (unsigned int)RGL_COLOR_BUFFER_BIT, (unsigned int)(exact ? RGL_NEAREST : RGL_LINEAR));
+        return RendererGlErrors.none(gl);
+    }
+}

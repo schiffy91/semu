@@ -46,7 +46,7 @@ class SemuCli {
         help.item("build configs --target T [--output DIR]", "Emit ES-DE documents and emulator profiles.");
         help.item("prepare --target T [--es-de-home DIR]", "Install ES-DE documents and settings into the ES-DE home.");
         help.item("launch EMULATOR --system S --rom PATH [--core C] [--print-plan]", "Launch a ROM; the configured quit chord ends it.");
-        help.item("render-env --system S [--emulator E] [--variants-file DIR]", "Print the SEMU_RENDER_* and SEMU_MENU_* environment the launcher would give the emulator (bezel package, shaders, screens, menu, toasts); with --variants-file, DIR is the state dir and gets every bezel x shader combination and its token.");
+        help.item("render-env --system S [--emulator E] [--core C] [--variants-file DIR]", "Print the SEMU_RENDER_* and SEMU_MENU_* environment the launcher would give the emulator (bezel package, shaders, screens, render scale, menu, toasts; the core defaults to the system's binding of E); with --variants-file, DIR is the state dir and gets every bezel x shader combination and its token.");
         help.item("doctor --target T", "Show resolved paths and what is missing.");
         help.item("path NAME --target T", "Print one resolved path (roms, bios, esde_home, state_root, ...).");
         help.item("settings get PATH | put PATH VALUE [--apply] | ui | reset", "Read, write, describe (ES-DE menu document) or reset $SEMU_HOME/semu.json.");
@@ -122,6 +122,9 @@ class SemuCli {
             return 1;
         }
         string emulatorId = self.option("emulator", "retroarch");
+        SemuSystemBinding bound = system.bindingFor(plan.platform, emulatorId, self.option("core", ""));
+        plan.tokens.put("emulator", emulatorId);  // the render scale is the emulator's and its core's
+        plan.tokens.put("core", bound == null ? self.option("core", "") : bound.core);
         string variants = self.option("variants-file", "");  // DIR: also every combination, DIR standing in as the state dir
         if (!self.option("rom", "").isEmpty()) { plan.tokens.put("rom", self.option("rom", "")); }  // a game's own choices, e.g. its Wii output
         string stateRoot = variants.isEmpty() ? PathTools.join(plan.stateRoot(), emulatorId) : FileSystem.absolutePath(variants);

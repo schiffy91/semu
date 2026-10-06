@@ -114,7 +114,7 @@
         "Renderer = ${renderer_value}",
         "",
         "[3D.GL]",
-        "ScaleFactor = 1",
+        "ScaleFactor = ${render_scale}",
         "BetterPolygons = false",
         "HiresCoordinates = true",
         "",

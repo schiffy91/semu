@@ -7,6 +7,7 @@
 // bezel and shader select and writes the toast frame and the switched one. RENDER_HOST_CURSOR=X,Y hands
 // the renderer a moving pointer there, as RetroArch's bridge does on a touch system.
 // RENDER_HOST_GPU_TIME=1 prints the renderer's GPU time per frame (median past ten warm-up frames) on stderr.
+// RENDER_HOST_PRODUCER=frame or window hands the card over as an emulator rendering at SEMU_RENDER_SCALE does.
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/gl3.h>
 #include <dlfcn.h>
@@ -214,10 +215,12 @@ class RenderHostTarget {  // the emulator's backbuffer: an FBO with the game dra
         glClear((unsigned int)GL_COLOR_BUFFER_BIT);
     }
 
-    public void paint(int x, int width, int height, int screen) {
+    public void paint(int x, int width, int height, int screen) { self.paintAt(x, 0, width, height, screen); }
+
+    public void paintAt(int x, int y, int width, int height, int screen) {  // the card drawn at WIDTH x HEIGHT, its bottom-left corner at x,y
         unsigned char* card = RenderHostTestCard.pixels(width, height, screen);
         glBindTexture((unsigned int)GL_TEXTURE_2D, self.color);
-        glTexSubImage2D((unsigned int)GL_TEXTURE_2D, 0, x, 0, width, height, (unsigned int)GL_RGBA, (unsigned int)GL_UNSIGNED_BYTE, card);
+        glTexSubImage2D((unsigned int)GL_TEXTURE_2D, 0, x, y, width, height, (unsigned int)GL_RGBA, (unsigned int)GL_UNSIGNED_BYTE, card);
         free((void*)card);
     }
 
@@ -241,6 +244,77 @@ class RenderHostTarget {  // the emulator's backbuffer: an FBO with the game dra
         fclose(file);
         free((void*)data);
         return true;
+    }
+}
+
+class RenderHostProducer {  // RENDER_HOST_PRODUCER: how the emulator hands its picture over under SEMU_RENDER_SCALE; unset, the card at native as before
+    class bool kind(char* expected) {  // RENDER_HOST_PRODUCER is EXPECTED
+        char* value = getenv("RENDER_HOST_PRODUCER");
+        return value != null && strcmp(value, expected) == 0;
+    }
+
+    class void nativeUnlessNamed() {  // no producer named: the card is the native picture, so the renderer is told no scale (the gallery, the editor and pixel checks compare native)
+        if (RenderHostProducer.kind("frame") || RenderHostProducer.kind("window")) { return; }
+        unsetenv("SEMU_RENDER_SCALE");
+        unsetenv("SEMU_RENDER_SURFACE_SCALED");
+    }
+
+    class int rendered() {  // the render scale the emulator draws at
+        char* value = getenv("SEMU_RENDER_SCALE");
+        int scale = value == null ? 1 : atoi(value);
+        return scale > 1 && scale <= 8 ? scale : 1;
+    }
+
+    class int scale() { return RenderHostProducer.kind("frame") ? RenderHostProducer.rendered() : 1; }  // frame: RetroArch's frame or PCSX2's texel picture, drawn at the render scale
+
+    class bool reportsScaled() {  // the producer reports that picture's size as its native one
+        char* value = getenv("SEMU_RENDER_SURFACE_SCALED");
+        return RenderHostProducer.scale() > 1 && value != null && strcmp(value, "1") == 0;
+    }
+
+    class bool window(RenderHostTarget target, int screens, int nativeWidth, int nativeHeight) {  // one screen letterboxed in the window: Dolphin, Flycast, PPSSPP, and PCSX2 when its scaled picture is past the window
+        if (screens != 1) { return false; }
+        if (RenderHostProducer.kind("window")) { return true; }
+        int scale = RenderHostProducer.scale();
+        return scale > 1 && (nativeWidth * scale > target.width || nativeHeight * scale > target.height);
+    }
+
+    class void resampled(RenderHostTarget target, int x, int y, int width, int height, int renderWidth, int renderHeight) {  // the card rendered at RENDER size, drawn into the window's rectangle linearly, as the emulator presents it
+        unsigned char* card = RenderHostTestCard.pixels(renderWidth, renderHeight, 0);
+        unsigned int texture = 0u;
+        unsigned int framebuffer = 0u;
+        glGenTextures(1, &texture);
+        glBindTexture((unsigned int)GL_TEXTURE_2D, texture);
+        glTexImage2D((unsigned int)GL_TEXTURE_2D, 0, (unsigned int)GL_RGBA8, renderWidth, renderHeight, 0, (unsigned int)GL_RGBA, (unsigned int)GL_UNSIGNED_BYTE, card);
+        free((void*)card);
+        glGenFramebuffers(1, &framebuffer);
+        glBindFramebuffer((unsigned int)GL_READ_FRAMEBUFFER, framebuffer);
+        glFramebufferTexture2D((unsigned int)GL_READ_FRAMEBUFFER, (unsigned int)GL_COLOR_ATTACHMENT0, (unsigned int)GL_TEXTURE_2D, texture, 0);
+        glBindFramebuffer((unsigned int)GL_DRAW_FRAMEBUFFER, target.framebuffer);
+        glBlitFramebuffer(0, 0, renderWidth, renderHeight, x, y, x + width, y + height, (unsigned int)GL_COLOR_BUFFER_BIT, (unsigned int)GL_LINEAR);
+        glBindFramebuffer((unsigned int)GL_FRAMEBUFFER, target.framebuffer);
+        glDeleteFramebuffers(1, &framebuffer);
+        glDeleteTextures(1, &texture);
+    }
+
+    class void letterbox(RenderHostTarget target, struct SemuRenderSurfaceGl* surface, int nativeWidth, int nativeHeight, float aspect) {  // the window's picture at the system aspect, centred, as SemuFrameLayout cuts it
+        float shape = aspect > 0.01f ? aspect : (float)nativeWidth / (float)nativeHeight;
+        int width = target.width;
+        int height = (int)((float)width / shape + 0.5f);
+        if (height > target.height) {
+            height = target.height;
+            width = (int)((float)height * shape + 0.5f);
+        }
+        int x = (target.width - width) / 2;
+        int y = (target.height - height) / 2;
+        RenderHostProducer.resampled(target, x, y, width, height, nativeWidth * RenderHostProducer.rendered(), nativeHeight * RenderHostProducer.rendered());
+        surface->x = x;
+        surface->y = y;
+        surface->width = width;
+        surface->height = height;
+        surface->native_width = RenderHostProducer.reportsScaled() ? nativeWidth * RenderHostProducer.rendered() : nativeWidth;  // PCSX2 reports its texels even where it fits the picture
+        surface->native_height = RenderHostProducer.reportsScaled() ? nativeHeight * RenderHostProducer.rendered() : nativeHeight;
+        surface->origin = 0;
     }
 }
 
@@ -355,15 +429,20 @@ class RenderHost {
             int width = RenderHost.nativeWidth(screen);
             int height = RenderHost.nativeHeight(screen);
             if (width < 1 || height < 1) { Console.error(f"render-host: no SEMU_RENDER_SURFACE_{screen}_NATIVE"); return 2; }
-            target.paint(x, width, height, screen);
+            if (RenderHostProducer.window(target, screens, width, height)) {  // a standalone's window: the game drawn letterboxed at the window's size
+                RenderHostProducer.letterbox(target, &frame.surfaces[0], width, height, RenderHost.aspect());
+                break;
+            }
+            int scale = RenderHostProducer.scale();  // a frame producer at a render scale: the picture drawn at the scale
+            target.paint(x, width * scale, height * scale, screen);
             frame.surfaces[screen].x = x;
             frame.surfaces[screen].y = 0;
-            frame.surfaces[screen].width = width;
-            frame.surfaces[screen].height = height;
-            frame.surfaces[screen].native_width = width;
-            frame.surfaces[screen].native_height = height;
+            frame.surfaces[screen].width = width * scale;
+            frame.surfaces[screen].height = height * scale;
+            frame.surfaces[screen].native_width = RenderHostProducer.reportsScaled() ? width * scale : width;  // RetroArch's single screen and PCSX2 report the frame's own size
+            frame.surfaces[screen].native_height = RenderHostProducer.reportsScaled() ? height * scale : height;
             frame.surfaces[screen].origin = 0;
-            x += width;
+            x += width * scale;
         }
         unsigned int query = RenderHostGpuClock.begin();
         int game = semu_render_game_gl(&frame);
@@ -455,6 +534,7 @@ int main(int argc, char** argv) {  // render_host WIDTH HEIGHT OUT.ppm [--reload
     if (argc < 4) { Console.error("usage: render_host WIDTH HEIGHT OUT.ppm [--reload SECOND.ppm | --switch BEZEL,SHADER TOAST.ppm AFTER.ppm]"); return 64; }
     int width = atoi(argv[1]);
     int height = atoi(argv[2]);
+    RenderHostProducer.nativeUnlessNamed();
     if (width < 16 || height < 16 || !RenderHostContext.create()) { Console.error("render-host: no OpenGL 4.1 core context"); return 1; }
     RenderHostTarget target = RenderHostTarget(width, height);
     if (!target.complete()) { Console.error("render-host: the framebuffer is incomplete"); return 1; }

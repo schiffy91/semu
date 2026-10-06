@@ -116,7 +116,12 @@
           "${bios}/ps2"
         ]
       },
-      "render_hook": true
+      "render_hook": true,
+      "render_scale": {
+        "frame": "scaled",
+        "apply": "restart",
+        "doc": "[EmuCore/GS] upscale_multiplier is PCSX2's render scale, read at boot. The render hook publishes the GS output's own texel size as native (semu_render_hook.patch), which is the native picture times the scale, so the renderer divides it back (SEMU_RENDER_SURFACE_SCALED); a picture larger than the window is published where PCSX2 drew it (CalculateDrawDstRect at bc8151d2: a scale above 1 is no whole step, so the aspect-fit rectangle)."
+      }
     }
   },
   "doc": {

@@ -96,7 +96,12 @@
           "doc": "Dormant until a pack is placed: the library is <paths.mods>/ppsspp/textures/<disc id>, one link per game folder into the memory stick's PSP/TEXTURES."
         }
       },
-      "render_preload": true
+      "render_preload": true,
+      "render_scale": {
+        "frame": "declared",
+        "apply": "restart",
+        "doc": "[Graphics] InternalResolution is PPSSPP's render scale (1 is 480x272, 0 the window's own size), read at boot. PPSSPP draws the picture letterboxed into its window, so the renderer cuts it at the declared native 480x272."
+      }
     }
   },
   "doc": {

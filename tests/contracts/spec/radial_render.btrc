@@ -43,7 +43,7 @@ class RadialRenderLive {  // records 81, 82 and 85 as the post-UI phase and the 
         struct RendererPostUiState post;
         memset(&post, 0, sizeof(struct RendererPostUiState));
         RendererMenuModel.initialize(&post);
-        contract.expect(post.catalog.placement_count == 3 && post.catalog.output_count == 2 && post.placement_shown == 2 && post.output_shown == 0 && post.item_count == 10, "the renderer reads wii's three placements and two outputs, starting on fit and 4:3, ten menu rows");
+        contract.expect(post.catalog.placement_count == 3 && post.catalog.output_count == 2 && post.placement_shown == 2 && post.output_shown == 0 && post.scale_shown == 0 && post.item_count == 11, "the renderer reads wii's three placements, two outputs and two render scales, starting on fit, 4:3 and native, eleven menu rows");
         long long now = RendererClock.milliseconds();
         struct SemuActionRecord record;
         LiveVariantTools.fill(&record, SemuActions.placementSelect(), 0, now, 1ULL);
@@ -63,7 +63,7 @@ class RadialRenderLive {  // records 81, 82 and 85 as the post-UI phase and the 
         config.placement = 0;  // a new context loads the launch's fit again
         RendererLiveSwitch.reapply(&config, &live);
         contract.expect(config.placement == 2, "a context reset starts on the live placement");
-        contract.expect(strcmp(RendererMenuRaster.rowValue(&post, 6), "BEZEL") == 0 && strcmp(RendererMenuRaster.rowValue(&post, 7), "4:3") == 0 && RendererMenuRaster.height(&post) == 72 + 10 * 43 + 52, "the FIT row reads BEZEL, the ASPECT row 4:3, and the ten-row menu draws taller than eight rows");
+        contract.expect(strcmp(RendererMenuRaster.rowValue(&post, 6), "BEZEL") == 0 && strcmp(RendererMenuRaster.rowValue(&post, 7), "4:3") == 0 && strcmp(RendererMenuRaster.rowValue(&post, 8), "NATIVE") == 0 && RendererMenuRaster.height(&post) == 72 + 11 * 43 + 52, "the FIT row reads BEZEL, the ASPECT row 4:3, the SCALE row NATIVE, and the eleven-row menu draws taller than eight rows");
         LiveVariantTools.fill(&record, SemuActions.outputSelect(), 1, now, 2ULL);
         record.reserved = 1;
         RendererMenuModel.apply(&post, &record, now);

@@ -80,7 +80,7 @@ class SteamInputSpecTable {  // every rendered template: semantic radials, isola
             "Save State, semu-save.png", "Load State, semu-load.png", "Quit Emulator, semu-quit.png", "Next Bezel, semu-bezel.png", "Next Shader, semu-shader.png",
             "Open Menu, semu-menu.png", "Take Screenshot, semu-screenshot.png", "Previous State Slot, semu-previous.png", "Next State Slot, semu-next.png", "Menu Up, semu-up.png",
             "Menu Down, semu-down.png", "Menu Confirm, semu-confirm.png", "Menu Back, semu-back.png", "Settings, semu-settings.png", "Close Settings, semu-close.png",
-            "Bezel On/Off, semu-bezel-toggle.png", "Shader On/Off, semu-shader-toggle.png", "Fit (Bezel/Screen), semu-fit.png", "Aspect (4:3/16:9), semu-aspect.png", "Controller Layout, semu-controller.png", "Players, semu-players.png", "Reset to Default, semu-reset.png", "Restart Game, semu-restart.png"
+            "Bezel On/Off, semu-bezel-toggle.png", "Shader On/Off, semu-shader-toggle.png", "Fit (Bezel/Screen), semu-fit.png", "Aspect (4:3/16:9), semu-aspect.png", "Render Scale, semu-scale.png", "Controller Layout, semu-controller.png", "Players, semu-players.png", "Reset to Default, semu-reset.png", "Restart Game, semu-restart.png"
         ];
         if (wii) { for binding in ["Wiimote, semu-wiimote.png", "Wiimote + Nunchuk, semu-wiimote-nunchuk.png", "Classic Controller, semu-classic-controller.png", "GameCube Controller, semu-gamecube-controller.png"] { bindings.push(binding); } }
         for binding in bindings { contract.contains(vdf, binding + ", #232323 #FFFFFF", "radial slot carries its semantic icon"); }

@@ -56,7 +56,8 @@ class SemuActions {
     // (reserved 1: something waits for Restart Game). 83 carries the player in reserved plus 16
     // times its kind (0 applied, 1 saved and waiting for Restart Game); 84 the player in reserved;
     // 86 slot 1 the players page (reserved 3 rows rewritten), 0 back to the menu; 87 slot 1
-    // restarting, 0 nothing to apply.
+    // restarting, 0 nothing to apply. 88 is the render scale's absolute index, reserved 1 while the
+    // chosen scale waits for Restart Game (0: the emulator renders at it).
     class int placementSelect() { return SemuActions.shaderSelect() + 1; }  // 81: the system's placements, bezel or screen
     class int outputSelect() { return SemuActions.shaderSelect() + 2; }  // 82: the system's outputs, 4:3 or 16:9
     class int layoutSelect() { return SemuActions.shaderSelect() + 3; }  // 83: a player's controller layout
@@ -64,6 +65,7 @@ class SemuActions {
     class int resetNotice() { return SemuActions.shaderSelect() + 5; }  // 85: slot 0 armed, 1 done
     class int menuPage() { return SemuActions.shaderSelect() + 6; }  // 86: the players page
     class int restartNotice() { return SemuActions.shaderSelect() + 7; }  // 87: Restart Game
+    class int scaleSelect() { return SemuActions.shaderSelect() + 8; }  // 88: the render scale, 1x native, 2x, 3x
 
     class void resetExtensions() {
         memset(SemuActionExtensionIds, 0,
@@ -119,6 +121,7 @@ class SemuActions {
         if (actionId.equals("player.assign")) { return SemuActions.playerAssign(); }
         if (actionId.equals("ui.players.page")) { return SemuActions.menuPage(); }
         if (actionId.equals("system.restart.notice")) { return SemuActions.restartNotice(); }
+        if (actionId.equals("visual.scale.select")) { return SemuActions.scaleSelect(); }
         if (actionId.equals("app.quit")) { return SemuActions.appQuit(); }
         if (actionId.equals("ui.screenshot")) { return SemuActions.screenshot(); }
         if (actionId.equals("ui.escape")) { return SemuActions.escape(); }
@@ -146,6 +149,7 @@ class SemuActions {
         if (action == SemuActions.playerAssign()) { return "player.assign"; }
         if (action == SemuActions.menuPage()) { return "ui.players.page"; }
         if (action == SemuActions.restartNotice()) { return "system.restart.notice"; }
+        if (action == SemuActions.scaleSelect()) { return "visual.scale.select"; }
         if (action == SemuActions.appQuit()) { return "app.quit"; }
         if (action == SemuActions.screenshot()) { return "ui.screenshot"; }
         if (action == SemuActions.escape()) { return "ui.escape"; }
@@ -161,6 +165,7 @@ class SemuActions {
         if (action == SemuActions.layoutSelect()) { return "controller.layout.next"; }
         if (action == SemuActions.playerAssign() || action == SemuActions.menuPage()) { return "ui.players"; }
         if (action == SemuActions.restartNotice()) { return "system.restart"; }
+        if (action == SemuActions.scaleSelect()) { return "visual.scale.next"; }
         return SemuActions.id(action);
     }
 
@@ -195,7 +200,8 @@ class SemuActions {
             || action == SemuActions.layoutSelect()
             || action == SemuActions.playerAssign()
             || action == SemuActions.menuPage()
-            || action == SemuActions.restartNotice();
+            || action == SemuActions.restartNotice()
+            || action == SemuActions.scaleSelect();
     }
 }
 

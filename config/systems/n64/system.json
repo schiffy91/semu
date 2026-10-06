@@ -69,7 +69,16 @@
       "fallback": "default_aspect",
       "switch_at": "frame_boundary"
     },
-    "refresh_hz": 60
+    "refresh_hz": 60,
+    "render_scale": {
+      "choices": [
+        1,
+        2,
+        3
+      ],
+      "default": 1,
+      "doc": "GLideN64 renders at 2x or 3x (640x480, 960x720) for a few percent of the Deck's GPU; 1x stays the default, the frame M14 measured. RetroArch draws the frame at whole steps, so a scale whose frame outgrows the screen is not offered (4x needs 960 lines)."
+    }
   },
   "doc": {
     "hardware": "consumer CRT over composite/S-Video",

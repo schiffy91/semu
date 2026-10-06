@@ -82,6 +82,7 @@
         "FetchBoxart = no",
         "rend.CustomTextures = ${mods.textures}",
         "rend.PreloadCustomTextures = no",
+        "rend.Resolution = ${render_scale_lines}",
         "",
         "[Dreamcast]",
         "AutoLoadState = no",

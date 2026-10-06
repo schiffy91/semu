@@ -1,0 +1,273 @@
+// Render scale spec (M16 item 2): each system's declared scales, the ones its emulator takes on the
+// target, the emulator configs and renderer environment at a scale, the settings radial's and the
+// menu's Scale (journal 88, saved per system, applied by Restart Game), and the renderer's arithmetic:
+// a scaled frame divided back to native before the crop, the picture above native kept beside the
+// native one, and the native one made from its nearest mip.
+
+#include <stdio.h>
+#include <string.h>
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/model.btrc;
+import ../../../src/resolve.btrc;
+import ../../../src/emit/profiles.btrc;
+import ../../../src/emit/rendering.btrc;
+import ../../../src/emit/render_scale.btrc;
+import ../../../src/emit/render_variants.btrc;
+import ../../../src/launch/plan.btrc;
+import ../../../src/launch/actions.btrc;
+import ../../../src/launch/supervisor.btrc;
+import ../../../src/launch/game_restart.btrc;
+import ../../../src/launch/system_reset.btrc;
+import ../../../src/renderer/action_abi.btrc;
+import ../../../src/renderer/renderer_render_scale.btrc;
+import ../../../src/renderer/renderer_surface_crop.btrc;
+import ../../../src/renderer/renderer_menu.btrc;
+import ../../../src/renderer/renderer_menu_raster.btrc;
+import ./input_delivery.btrc;
+import ./live_variants.btrc;
+
+class RenderScaleSpecTools {
+    class SemuPlan plan(Fixture fixture, string target, string overlay) {
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        return SemuResolver.plan(fixture.model, target, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
+    }
+
+    class string offered(SemuPlan plan, SemuSystem system, string emulatorId) {  // "1,2,3", "" where the emulator takes none
+        Vector<string> scales = [];
+        for scale in SemuRenderScale.choices(plan, system, SemuRenderScale.specFor(plan, system, emulatorId)) { scales.push(Strings.fromInt(scale)); }
+        return scales.join(",");
+    }
+
+    class string profile(Fixture fixture, SemuPlan plan, string systemId, string emulatorId, string ending) {  // the emulator's file whose path ends on ENDING, rendered for SYSTEMID's launch
+        plan.tokens.put("system", systemId);
+        plan.tokens.put("emulator", emulatorId);
+        plan.tokens.put("core", "");
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        for file in SemuProfiles.render(fixture.model, plan, fixture.model.emulator(emulatorId), diagnostics) {
+            if (file.path.endsWith(ending)) { return file.content; }
+        }
+        return "";
+    }
+
+    class int reserved(string stateDir, int index) {  // record INDEX's reserved field, -99 when it is not there
+        FILE* file = fopen(PathTools.join(stateDir, RendererActionJournal.fileName()), "rb");
+        if (file == null) { return -99; }
+        struct SemuActionRecord record;
+        memset(&record, 0, sizeof(record));
+        fseek(file, (long)((size_t)index * sizeof(struct SemuActionRecord)), SEEK_SET);
+        bool read = fread(&record, sizeof(record), 1, file) == (size_t)1;
+        fclose(file);
+        return read ? record.reserved : -99;
+    }
+
+    class SemuLaunchPlan launch(Fixture fixture, string name, string systemId, string emulatorId) {  // a Deck launch of SYSTEMID on EMULATOR: its own journal and semu.json
+        string root = PathTools.join(fixture.scratch, "render-scale/" + name);
+        InputDeliveryTools.fresh();
+        SemuLaunchPlan launch = InputDeliveryTools.launch(PathTools.join(root, "state"), InputDeliveryTools.none(), InputDeliveryTools.none());
+        launch.system = systemId;
+        launch.semuHome = PathTools.join(root, "home");
+        FileSystem.mkdirp(launch.semuHome);
+        SemuPlan plan = RenderScaleSpecTools.plan(fixture, "steam-deck", "{}");
+        launch.variants = SemuRenderVariants.chooseFor(plan, fixture.model.system(systemId), emulatorId);
+        launch.menuDrawn = true;
+        return launch;
+    }
+}
+
+class RenderScaleSpecData {  // every declared list starts native and rises; 2D systems and the Wii U declare none
+    class void run(Contract contract, Fixture fixture) {
+        for systemId in fixture.model.systemIds() {
+            SemuSystem system = fixture.model.system(systemId);
+            JSONValue choices = SemuJson.get(system.definition, "display.render_scale.choices");
+            if (!choices.isArray()) { continue; }
+            bool rising = choices.size() >= 1 && choices.at(0).isInt() && choices.at(0).asInt() == 1;
+            for (int index = 1; index < choices.size(); index++) { rising = rising && choices.at(index).isInt() && choices.at(index).asInt() > choices.at(index - 1).asInt(); }
+            bool listed = false;
+            for (int index = 0; index < choices.size(); index++) { if (choices.at(index).isInt() && choices.at(index).asInt() == SemuRenderScale.defaultScale(system)) { listed = true; } }
+            contract.expect(rising && listed && !SemuJson.textAt(system.definition, "display.render_scale.doc").isEmpty(), systemId + ": its render scales start at native and rise, its default among them, the GPU cost stated");
+        }
+        for systemId in ["gb", "gbc", "gba", "nes", "snes", "genesis", "wiiu"] { contract.expect(!SemuJson.get(fixture.model.system(systemId).definition, "display.render_scale").isObject(), systemId + " declares no render scale"); }
+    }
+}
+
+class RenderScaleSpecOffer {  // what each emulator takes on the Deck: RetroArch's whole steps keep its frame on the 800 lines, the standalones draw into their window
+    class void run(Contract contract, Fixture fixture) {
+        SemuPlan deck = RenderScaleSpecTools.plan(fixture, "steam-deck", "{}");
+        Vector<string> cases = ["n64 retroarch 1,2,3", "psx retroarch 1,2", "nds retroarch 1,2", "n3ds retroarch 1", "n3ds azahar 1,2", "dreamcast retroarch 1", "dreamcast flycast 1,2",
+            "gc dolphin 1,2", "wii dolphin 1,2", "ps2 pcsx2 1,2", "psp ppsspp 1,2,3", "psp retroarch 1,2", "switch ryujinx -", "wiiu cemu -", "gb retroarch -"];
+        for line in cases {
+            Vector<string> field = Strings.split(line, " ");
+            string expected = field.get(2).equals("-") ? "" : field.get(2);
+            string offered = RenderScaleSpecTools.offered(deck, fixture.model.system(field.get(0)), field.get(1));
+            contract.expect(offered.equals(expected), "on the Deck " + field.get(0) + " through " + field.get(1) + " offers " + (expected.isEmpty() ? "no scale" : expected) + ": " + offered);
+        }
+        SemuPlan desktop = RenderScaleSpecTools.plan(fixture, "linux-desktop", "{}");
+        contract.expect(RenderScaleSpecTools.offered(desktop, fixture.model.system("n3ds"), "retroarch").equals("1,2"), "a 4K screen holds the 3DS core's 2x frame (800x960)");
+    }
+}
+
+class RenderScaleSpecEnvironment {  // the renderer's two keys: the scale above native, and whether the frames carry it
+    class void run(Contract contract, Fixture fixture) {
+        SemuDiagnostics diagnostics = SemuDiagnostics();
+        SemuPlan scaled = RenderScaleSpecTools.plan(fixture, "steam-deck", "{\"visual\":{\"systems\":{\"n64\":{\"render_scale\":\"2x\"},\"gc\":{\"render_scale\":\"2x\"},\"ps2\":{\"render_scale\":\"2x\"}}}}");
+        Vector<string> n64 = SemuRenderEnvironment.compile(scaled, fixture.model.system("n64"), "retroarch", "/state", diagnostics);
+        Vector<string> gc = SemuRenderEnvironment.compile(scaled, fixture.model.system("gc"), "dolphin", "/state", diagnostics);
+        Vector<string> ps2 = SemuRenderEnvironment.compile(scaled, fixture.model.system("ps2"), "pcsx2", "/state", diagnostics);
+        contract.expect(n64.contains("SEMU_RENDER_SCALE=2") && n64.contains("SEMU_RENDER_SURFACE_SCALED=1") && n64.contains("SEMU_RENDER_SURFACE_0_NATIVE=320x240"), "the N64 core at 2x: the renderer divides its 640x480 frame back to the declared 320x240");
+        contract.expect(ps2.contains("SEMU_RENDER_SCALE=2") && ps2.contains("SEMU_RENDER_SURFACE_SCALED=1"), "PCSX2's hook reports the GS texels, the scaled picture: the renderer divides them back");
+        contract.expect(gc.contains("SEMU_RENDER_SCALE=2") && !gc.contains("SEMU_RENDER_SURFACE_SCALED=1"), "Dolphin's window picture is cut at the declared native: no division");
+        Vector<string> native = SemuRenderEnvironment.compile(fixture.plan, fixture.model.system("n64"), "retroarch", "/state", diagnostics);
+        bool unscaled = true;
+        for entry in native { if (entry.startsWith("SEMU_RENDER_SCALE=")) { unscaled = false; } }
+        contract.expect(unscaled && !SemuRenderEnvironment.compile(fixture.plan, fixture.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_SURFACE_SCALED=1"), "native emits no scale, and a core that takes none no division");
+    }
+}
+
+class RenderScaleSpecProfiles {  // each standalone's own key at the system's scale, native by default
+    class void run(Contract contract, Fixture fixture) {
+        SemuPlan native = RenderScaleSpecTools.plan(fixture, "steam-deck", "{}");
+        SemuPlan scaled = RenderScaleSpecTools.plan(fixture, "steam-deck", "{\"visual\":{\"systems\":{\"gc\":{\"render_scale\":\"2x\"},\"ps2\":{\"render_scale\":\"2x\"},\"psp\":{\"render_scale\":\"3x\"},\"dreamcast\":{\"render_scale\":\"2x\"},\"n3ds\":{\"render_scale\":\"2x\"},\"nds\":{\"render_scale\":\"2x\"}}}}");
+        contract.contains(RenderScaleSpecTools.profile(fixture, native, "gc", "dolphin", "GFX.ini"), "InternalResolution = 1\n", "Dolphin renders the GameCube at its native EFB by default");
+        contract.contains(RenderScaleSpecTools.profile(fixture, scaled, "gc", "dolphin", "GFX.ini"), "InternalResolution = 2\n", "and at 2x when chosen");
+        contract.contains(RenderScaleSpecTools.profile(fixture, native, "ps2", "pcsx2", "PCSX2.ini"), "upscale_multiplier = 1\n", "PCSX2 at native: one GS texel per game pixel");
+        contract.contains(RenderScaleSpecTools.profile(fixture, scaled, "ps2", "pcsx2", "PCSX2.ini"), "upscale_multiplier = 2\n", "PCSX2 at 2x");
+        contract.contains(RenderScaleSpecTools.profile(fixture, native, "psp", "ppsspp", "ppsspp.ini"), "InternalResolution = 2\n", "PPSSPP at the PSP's default 2x");
+        contract.contains(RenderScaleSpecTools.profile(fixture, scaled, "psp", "ppsspp", "ppsspp.ini"), "InternalResolution = 3\n", "PPSSPP at 3x: it draws into its window, so the Deck takes it");
+        contract.contains(RenderScaleSpecTools.profile(fixture, native, "dreamcast", "flycast", "emu.cfg"), "rend.Resolution = 480\n", "Flycast at 480 lines");
+        contract.contains(RenderScaleSpecTools.profile(fixture, scaled, "dreamcast", "flycast", "emu.cfg"), "rend.Resolution = 960\n", "Flycast at 960 lines for 2x");
+        contract.contains(RenderScaleSpecTools.profile(fixture, scaled, "n3ds", "azahar", "qt-config.ini"), "resolution_factor=2\nresolution_factor\\default=false\n", "Azahar at 2x, read over its default");
+        contract.contains(RenderScaleSpecTools.profile(fixture, scaled, "nds", "melonds", "melonDS.toml"), "ScaleFactor = 2\n", "melonDS's OpenGL 3D at 2x");
+    }
+}
+
+class RenderScaleSpecSupervisor {  // Scale steps, saves for the system and waits for Restart Game; one choice says NATIVE ONLY
+    class void run(Contract contract, Fixture fixture) {
+        SemuLaunchPlan launch = RenderScaleSpecTools.launch(fixture, "gc", "gc", "dolphin");
+        contract.expect(launch.variants.scale.available() && launch.variants.scale.ids.join("|").equals("1x|2x") && launch.variants.scale.labels.join("|").equals("NATIVE|2X") && launch.variants.shown().contains("scales"), "gc on Dolphin offers NATIVE and 2X, and the menu shows its SCALE row");
+        SemuActionExecutor.execute(launch, "visual.scale.next", SEMU_SOURCE_X11);
+        JSONValue saved = SemuJson.readFile(PathTools.join(launch.semuHome, "semu.json"));
+        contract.expect(InputDeliveryTools.records(launch.stateDir) == 1 && InputDeliveryTools.record(launch.stateDir, 0, SemuActions.scaleSelect(), 1) && RenderScaleSpecTools.reserved(launch.stateDir, 0) == 1, "Render Scale journals 88 with index 1, reserved 1: it waits for Restart Game");
+        contract.expect(SemuJson.textAt(saved, "visual.systems.gc.render_scale").equals("2x") && SemuGameRestart.waiting(launch), "it saves visual.systems.gc.render_scale=2x at once, and Restart Game has it to apply");
+        SemuActionExecutor.execute(launch, "visual.scale.next", SEMU_SOURCE_X11);
+        contract.expect(InputDeliveryTools.record(launch.stateDir, 1, SemuActions.scaleSelect(), 0) && RenderScaleSpecTools.reserved(launch.stateDir, 1) == 0 && !SemuGameRestart.waiting(launch), "a second press wraps to native, the scale the game runs at: nothing waits");
+        SemuActionExecutor.execute(launch, "visual.scale.next", SEMU_SOURCE_X11);
+        long long now = SemuClock.milliseconds();
+        SemuSystemReset.execute(launch, now);
+        SemuSystemReset.execute(launch, now + 100LL);
+        int records = InputDeliveryTools.records(launch.stateDir);
+        bool defaulted = false;
+        for (int index = 3; index < records; index++) { if (InputDeliveryTools.record(launch.stateDir, index, SemuActions.scaleSelect(), 0)) { defaulted = RenderScaleSpecTools.reserved(launch.stateDir, index) == 0; } }
+        contract.expect(defaulted && launch.variants.scale.index == 0 && !SemuGameRestart.waiting(launch), "Reset to Default brings the default native back, which the game runs at: nothing waits");
+        SemuLaunchPlan none = RenderScaleSpecTools.launch(fixture, "n3ds-core", "n3ds", "retroarch");
+        SemuActionExecutor.execute(none, "visual.scale.next", SEMU_SOURCE_X11);
+        contract.expect(!none.variants.scale.available() && InputDeliveryTools.record(none.stateDir, 0, SemuActions.scaleSelect(), -1) && !FileSystem.isFile(PathTools.join(none.semuHome, "semu.json")), "the 3DS core on the Deck takes no scale: 88/-1 (SCALE: NATIVE ONLY), nothing saved");
+        contract.expect(SemuActions.scaleSelect() == 88 && SemuActions.code("visual.scale.select") == 88 && SemuActions.id(88).equals("visual.scale.select") && SemuActions.toastAction(88).equals("visual.scale.next") && SemuActions.rendererOwned(88), "journal code 88 round-trips, toasts as Render Scale and reaches the renderer");
+        memset(&SemuSupervisorRuntime, 0, sizeof(SemuSupervisorRuntime));
+    }
+}
+
+class RenderScaleSpecArithmetic {  // native back from a scaled frame, the kept picture and the mip the native one comes from
+    class void surface(struct SemuRenderSurfaceGl* result, int width, int height) {  // a frame reporting its own size as native
+        memset(result, 0, sizeof(struct SemuRenderSurfaceGl));
+        result->width = width;
+        result->height = height;
+        result->native_width = width;
+        result->native_height = height;
+    }
+
+    class void lane(struct RendererLaneGeometry* result, int sourceWidth, int sourceHeight, int nativeWidth, int nativeHeight, int scale) {  // a lane resolved at SCALE
+        memset(result, 0, sizeof(struct RendererLaneGeometry));
+        result->source_width = sourceWidth;
+        result->source_height = sourceHeight;
+        result->native_width = nativeWidth;
+        result->native_height = nativeHeight;
+        RendererRenderScaling.scaled(result, scale);
+    }
+
+    class void run(Contract contract) {
+        struct SemuRenderFrameGl frame;
+        memset(&frame, 0, sizeof(frame));
+        frame.surface_count = 1;
+        RenderScaleSpecArithmetic.surface(&frame.surfaces[0], 640, 480);
+        struct RendererRenderScale scale;
+        scale.scale = 2;
+        scale.frames_scaled = 1;
+        RendererRenderScaling.normalize(&frame, &scale);
+        contract.expect(frame.surfaces[0].native_width == 320 && frame.surfaces[0].native_height == 240 && frame.surfaces[0].width == 640, "a 2x frame reported at 640x480 is 320x240 game pixels, its picture still the whole 640x480");
+        struct RendererSurfaceCrop crops[2];
+        memset(crops, 0, sizeof(crops));
+        RendererSurfaceCropping.parse(&crops[0], "4,0,3,3");
+        RendererSurfaceCropping.apply(&frame, crops, 0.0f);
+        contract.expect(frame.surfaces[0].native_width == 313 && frame.surfaces[0].native_height == 237 && frame.surfaces[0].width == 626 && frame.surfaces[0].height == 474, "the N64's crop counts game pixels after the division: 313x237, 626x474 of the 2x frame");
+        RenderScaleSpecArithmetic.surface(&frame.surfaces[0], 640, 480);
+        scale.frames_scaled = 0;
+        RendererRenderScaling.normalize(&frame, &scale);
+        contract.expect(frame.surfaces[0].native_width == 640, "a producer that reports the declared native is never divided");
+        struct RendererLaneGeometry exact;
+        RenderScaleSpecArithmetic.lane(&exact, 640, 480, 320, 240, 2);
+        struct RendererLaneGeometry window;
+        RenderScaleSpecArithmetic.lane(&window, 1067, 800, 640, 480, 2);
+        struct RendererLaneGeometry carried;
+        RenderScaleSpecArithmetic.lane(&carried, 640, 480, 320, 240, 3);
+        struct RendererLaneGeometry nearly;
+        RenderScaleSpecArithmetic.lane(&nearly, 660, 495, 640, 480, 2);
+        struct RendererLaneGeometry native;
+        RenderScaleSpecArithmetic.lane(&native, 1067, 800, 640, 480, 1);
+        contract.expect(exact.scaled_width == 640 && exact.scaled_height == 480 && window.scaled_width == 1067 && window.scaled_height == 800, "above native the lane keeps the picture as drawn: 640x480 of RetroArch's 2x, Dolphin's 1067x800 window");
+        contract.expect(carried.scaled_width == 640 && nearly.scaled_width == 0 && native.scaled_width == 0, "never more than the frame carries, nothing within a twentieth of native, nothing at 1x");
+        struct RendererLaneGeometry fourfold;
+        RenderScaleSpecArithmetic.lane(&fourfold, 1280, 960, 320, 240, 4);
+        struct RendererLaneGeometry threefold;
+        RenderScaleSpecArithmetic.lane(&threefold, 960, 720, 320, 240, 3);
+        contract.expect(RendererRenderScaling.level(&exact) == 1 && RendererRenderScaling.level(&threefold) == 1 && RendererRenderScaling.level(&fourfold) == 2 && RendererRenderScaling.level(&window) == 0, "the native picture comes from the last mip at least native: 2x and 3x their first, 4x its second, Dolphin's window its base");
+        contract.expect(SEMU_RENDER_MENU_ROWS == 14 && 72 + SEMU_RENDER_MENU_ROWS * 43 + 52 <= SEMU_RENDER_MENU_HEIGHT, "the menu texture holds fourteen rows: the Wii's every value row with SCALE");
+    }
+}
+
+class RenderScaleSpecMenu {  // the renderer's SCALE row and toasts from 88 records
+    class void run(Contract contract, Fixture fixture) {
+        string state = PathTools.join(fixture.scratch, "render-scale/menu");
+        FileSystem.mkdirp(state);
+        SemuPlan plan = RenderScaleSpecTools.plan(fixture, "linux-desktop", "{}");
+        SemuRenderVariantSet set = SemuRenderVariants.write(plan, fixture.model.system("nds"), "retroarch", state);
+        LiveVariantTools.environment(fixture, state, set.token);
+        struct RendererPostUiState ui;
+        memset(&ui, 0, sizeof(struct RendererPostUiState));
+        RendererMenuModel.initialize(&ui);
+        int row = RendererMenuModel.rowOf(&ui, "visual.scale.next");
+        contract.expect(ui.catalog.scale_count == 3 && ui.scale_shown == 0 && row > 0 && strcmp(RendererMenuRaster.rowValue(&ui, row), "NATIVE") == 0, "the SCALE row reads NATIVE from the launch's scales");
+        long long now = RendererClock.milliseconds();
+        struct SemuActionRecord record;
+        LiveVariantTools.fill(&record, SemuActions.scaleSelect(), 1, now, 1ULL);
+        record.reserved = 1;
+        RendererMenuModel.apply(&ui, &record, now);
+        contract.expect(ui.scale_shown == 1 && ui.scale_live == 0 && strcmp(ui.toast, "SCALE 2X: RESTART TO APPLY") == 0 && strcmp(RendererMenuRaster.rowValue(&ui, row), "2X") == 0, "88 waiting for Restart Game: the row reads 2X, the toast says RESTART TO APPLY, the picture stays as it runs");
+        LiveVariantTools.fill(&record, SemuActions.scaleSelect(), 2, now, 2ULL);
+        RendererMenuModel.apply(&ui, &record, now);
+        contract.expect(ui.scale_shown == 2 && ui.scale_live == 3 && strcmp(ui.toast, "SCALE: 3X") == 0, "88 applied (reserved 0): SCALE: 3X, and the game phase follows the emulator's new scale");
+        LiveVariantTools.fill(&record, SemuActions.scaleSelect(), -1, now, 3ULL);
+        RendererMenuModel.apply(&ui, &record, now);
+        contract.expect(strcmp(ui.toast, "SCALE: NATIVE ONLY") == 0, "88/-1 toasts SCALE: NATIVE ONLY");
+        LiveVariantTools.clear();
+    }
+}
+
+class RenderScaleSpecContract {
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("steam-deck");
+        RenderScaleSpecData.run(contract, fixture);
+        RenderScaleSpecOffer.run(contract, fixture);
+        RenderScaleSpecEnvironment.run(contract, fixture);
+        RenderScaleSpecProfiles.run(contract, fixture);
+        RenderScaleSpecSupervisor.run(contract, fixture);
+        RenderScaleSpecArithmetic.run(contract);
+        RenderScaleSpecMenu.run(contract, fixture);
+    }
+}

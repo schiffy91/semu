@@ -153,6 +153,8 @@ struct RendererLaneGeometry {
     int tube_height;
     int rotation;
     int origin;
+    int scaled_width;  // the picture above native the renderer keeps (a render scale), 0 when native is all
+    int scaled_height;
 };
 
 struct RendererCompositionGeometry {

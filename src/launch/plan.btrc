@@ -11,6 +11,7 @@ import ../resolve.btrc;
 import ../emit/profiles.btrc;
 import ../emit/rendering.btrc;
 import ../emit/render_variants.btrc;
+import ../emit/render_scale.btrc;
 import ../mods/install.btrc;
 import ../mods/report.btrc;
 import ./pad_roster.btrc;
@@ -136,39 +137,17 @@ class SemuLauncher {
         return "";
     }
 
-    class string renderSize(SemuPlan plan, SemuSystem system, JSONValue source) {  // WxH for a render_resolution option; "" keeps the core's default
-        string mode = SemuJson.textAt(plan.settings, "visual.render_resolution");
-        JSONValue screens = system == null ? null : SemuJson.get(system.definition, "display.screens");
-        if (mode.equals("native") || screens == null || !screens.isArray() || screens.size() == 0) { return ""; }
-        int width = 0;
-        int height = 0;
-        int count = SemuJson.textAt(source, "basis").equals("screen") ? 1 : screens.size();  // combined stacks the screens
-        for (int index = 0; index < count; index++) {
-            int screenWidth = SemuJson.intAt(screens.at(index), "native.w", 0);
-            if (screenWidth > width) { width = screenWidth; }
-            height += SemuJson.intAt(screens.at(index), "native.h", 0);
-        }
-        if (width < 1 || height < 1) { return ""; }
-        int scale = 1;
-        if (!mode.equals("1x")) {  // integer: the largest whole multiple the display holds
-            int across = SemuJson.intAt(plan.settings, "visual.display.width", 1280) / width;
-            int down = SemuJson.intAt(plan.settings, "visual.display.height", 800) / height;
-            scale = across < down ? across : down;
-            if (scale < 1) { scale = 1; }
-        }
-        return f"{width * scale}x{height * scale}";
-    }
-
-    class string coreOptions(SemuPlan plan, JSONValue platform, string core, SemuSystem system) {  // literals, display render sizes, then the drawn shader's own
+    class string coreOptions(SemuPlan plan, JSONValue platform, string core, SemuSystem system) {  // literals, the system's render scale, then the drawn shader's own
         Vector<string> keys = [];
         Vector<string> values = [];
         JSONValue options = SemuJson.get(platform, "retroarch.core_options." + core);
+        int scale = system == null ? 1 : SemuRenderScale.current(plan, system, SemuRenderScale.choices(plan, system, SemuRenderScaleSpec(platform, core)));  // 1 where the core takes none
         if (options != null && options.isArray()) {
             for (int index = 0; index < options.size(); index++) {
                 JSONValue option = options.at(index);
                 if (option.has("aspect") && !SemuJson.textAt(option, "aspect").equals("standard")) { continue; }
                 string kind = SemuJson.textAt(option, "source.kind");
-                string value = kind.equals("literal") ? SemuJson.textAt(option, "source.value") : (kind.equals("render_resolution") ? SemuLauncher.renderSize(plan, system, option.get("source")) : "");
+                string value = kind.equals("literal") ? SemuJson.textAt(option, "source.value") : (kind.equals("render_scale") && system != null ? SemuRenderScale.formatted(system, option.get("source"), scale) : "");
                 if (!value.isEmpty()) { SemuLauncher.setOption(keys, values, SemuJson.textAt(option, "key"), value); }
             }
         }

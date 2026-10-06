@@ -1,0 +1,138 @@
+// Render scale: how many times its native size a system's emulator renders the picture (1x native, 2x,
+// 3x). A system declares the scales the Deck's GPU affords it (display.render_scale.choices and
+// .default); an emulator declares how it takes one (platforms.<os>.render_scale, or RetroArch's
+// retroarch.render_scale per core beside the core options of kind render_scale). The choice is saved
+// per system (visual.systems.<id>.render_scale, "2x") and read at launch: the emulator's config renders
+// at it, and the renderer keeps placing by the native size. A frame host that draws whole steps of the
+// frame itself (RetroArch) offers only the scales whose frame fits the target's screen.
+
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../model.btrc;
+import ../resolve.btrc;
+
+class SemuRenderScaleSpec {  // how one emulator (and RetroArch core) takes a scale; frame empty when it renders native only
+    public string frame;  // "scaled": its frame is the picture at the scale, reported at that size; "declared": cut at the declared native size
+    public bool fitsDisplay;  // the host draws whole steps of the frame: a frame past the screen is never offered
+    public string apply;  // "restart" (read at boot) or "live"
+
+    public SemuRenderScaleSpec(JSONValue platform, string core) {
+        JSONValue hosted = SemuJson.get(platform, "retroarch.render_scale");
+        JSONValue own = hosted.isObject() ? hosted : SemuJson.get(platform, "render_scale");
+        self.frame = hosted.isObject() ? SemuJson.textAt(hosted, "cores." + core) : SemuJson.textAt(own, "frame");
+        self.fitsDisplay = SemuJson.textAt(own, "fit").equals("display");
+        self.apply = SemuJson.textAt(own, "apply").equals("live") ? "live" : "restart";
+    }
+
+    public bool supported() { return self.frame.equals("scaled") || self.frame.equals("declared"); }
+
+    public bool scaledFrames() { return self.frame.equals("scaled"); }
+}
+
+class SemuRenderScale {
+    class string settingKey(string systemId) { return "visual.systems." + systemId + ".render_scale"; }
+
+    class string id(int scale) { return Strings.fromInt(scale) + "x"; }
+
+    class string label(int scale) { return scale <= 1 ? "NATIVE" : Strings.fromInt(scale) + "X"; }  // the toast font's own letters
+
+    class int parse(string value) {  // "2x" or "2": 2; 0 for anything else
+        string digits = value.endsWith("x") ? value.substring(0, value.len() - 1) : value;
+        if (digits.isEmpty() || digits.len() > 2 || !Strings.isDigitStr(digits)) { return 0; }
+        return Strings.toInt(digits);
+    }
+
+    class JSONValue platform(SemuPlan plan, string emulatorId) {  // the emulator's slice for this target's platform; null for an unknown one
+        if (emulatorId.isEmpty()) { return JSONValue.makeNull(); }
+        JSONValue emulator = SemuJson.readFile(PathTools.join(plan.configRoot, "emulators/" + emulatorId + "/emulator.json"));
+        return emulator.isError() ? JSONValue.makeNull() : SemuJson.get(emulator, "platforms." + plan.platform);
+    }
+
+    class int defaultScale(SemuSystem system) {
+        int declared = SemuJson.intAt(system.definition, "display.render_scale.default", 1);
+        return declared < 1 ? 1 : declared;
+    }
+
+    class int frameWidth(SemuSystem system) {  // the stacked screens' frame: the widest screen across
+        JSONValue screens = SemuJson.get(system.definition, "display.screens");
+        int width = 0;
+        for (int index = 0; screens.isArray() && index < screens.size(); index++) {
+            int screen = SemuJson.intAt(screens.at(index), "native.w", 0);
+            if (screen > width) { width = screen; }
+        }
+        return width;
+    }
+
+    class int frameHeight(SemuSystem system) {  // and every screen's lines down
+        JSONValue screens = SemuJson.get(system.definition, "display.screens");
+        int height = 0;
+        for (int index = 0; screens.isArray() && index < screens.size(); index++) { height += SemuJson.intAt(screens.at(index), "native.h", 0); }
+        return height;
+    }
+
+    class bool fits(SemuPlan plan, SemuSystem system, int scale) {  // the scaled frame inside the target's screen
+        int width = SemuJson.intAt(plan.settings, "visual.display.width", 1280);
+        int height = SemuJson.intAt(plan.settings, "visual.display.height", 800);
+        return SemuRenderScale.frameWidth(system) * scale <= width && SemuRenderScale.frameHeight(system) * scale <= height;
+    }
+
+    class Vector<int> choices(SemuPlan plan, SemuSystem system, SemuRenderScaleSpec spec) {  // the declared scales this emulator takes here, in order; empty where it renders native only
+        Vector<int> result = [];
+        JSONValue declared = SemuJson.get(system.definition, "display.render_scale.choices");
+        if (!spec.supported() || !declared.isArray()) { return result; }
+        for (int index = 0; index < declared.size(); index++) {
+            JSONValue entry = declared.at(index);
+            int scale = entry.isInt() ? entry.asInt() : 0;
+            if (scale < 1 || scale > 8 || result.contains(scale)) { continue; }
+            if (scale > 1 && spec.fitsDisplay && !SemuRenderScale.fits(plan, system, scale)) { continue; }
+            result.push(scale);
+        }
+        return result;
+    }
+
+    class int current(SemuPlan plan, SemuSystem system, Vector<int> offered) {  // the saved scale when offered, else the system's default when offered, else native
+        int saved = SemuRenderScale.parse(SemuJson.textAt(plan.settings, SemuRenderScale.settingKey(system.id)));
+        if (saved > 0 && offered.contains(saved)) { return saved; }
+        int fallback = SemuRenderScale.defaultScale(system);
+        return offered.contains(fallback) ? fallback : 1;
+    }
+
+    class string coreFor(SemuPlan plan, SemuSystem system, string emulatorId) {  // the launch's core where it is this system's, else the system's first core for EMULATOR
+        if (system == null) { return ""; }
+        SemuSystemBinding binding = system.bindingFor(plan.platform, emulatorId, plan.tokens.get("core"));
+        if (binding == null) { binding = system.bindingFor(plan.platform, emulatorId, ""); }
+        return binding == null ? "" : binding.core;
+    }
+
+    class SemuRenderScaleSpec specFor(SemuPlan plan, SemuSystem system, string emulatorId) {
+        return SemuRenderScaleSpec(SemuRenderScale.platform(plan, emulatorId), SemuRenderScale.coreFor(plan, system, emulatorId));
+    }
+
+    class int launched(SemuPlan plan, SemuSystem system, string emulatorId) {  // the scale this launch renders at: 1 wherever the emulator takes none
+        if (system == null) { return 1; }
+        return SemuRenderScale.current(plan, system, SemuRenderScale.choices(plan, system, SemuRenderScale.specFor(plan, system, emulatorId)));
+    }
+
+    class string formatted(SemuSystem system, JSONValue source, int scale) {  // a render_scale option's value: native at 1x where the core spells it apart, else the format filled in
+        string native = SemuJson.textAt(source, "native");
+        if (scale <= 1 && !native.isEmpty()) { return native; }
+        JSONValue screen = SemuJson.get(system.definition, "display.screens.0");
+        bool combined = SemuJson.textAt(source, "basis").equals("combined");
+        int width = (combined ? SemuRenderScale.frameWidth(system) : SemuJson.intAt(screen, "native.w", 0)) * scale;
+        int height = (combined ? SemuRenderScale.frameHeight(system) : SemuJson.intAt(screen, "native.h", 0)) * scale;
+        return SemuJson.textAt(source, "format").replace("${scale}", Strings.fromInt(scale)).replace("${width}", Strings.fromInt(width)).replace("${height}", Strings.fromInt(height));
+    }
+
+    class Vector<string> environment(SemuPlan plan, SemuSystem system, string emulatorId) {  // what the renderer reads: the scale above 1x, and whether the frames carry it
+        Vector<string> result = [];
+        SemuRenderScaleSpec spec = SemuRenderScale.specFor(plan, system, emulatorId);
+        if (!spec.supported()) { return result; }
+        int scale = SemuRenderScale.current(plan, system, SemuRenderScale.choices(plan, system, spec));
+        if (scale > 1) { result.push("SEMU_RENDER_SCALE=" + Strings.fromInt(scale)); }
+        if (spec.scaledFrames()) { result.push("SEMU_RENDER_SURFACE_SCALED=1"); }  // the reported size is the scaled picture's: the renderer divides it back to native
+        return result;
+    }
+}

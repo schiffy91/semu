@@ -139,7 +139,12 @@
           "${bios}"
         ]
       },
-      "render_preload": true
+      "render_preload": true,
+      "render_scale": {
+        "frame": "declared",
+        "apply": "restart",
+        "doc": "[config] rend.Resolution is Flycast's rendered lines (480 native; core/cfg/option.cpp:105 at 5aa091fd), the scale times 480, read at boot. Flycast draws the picture letterboxed into its window, so the renderer cuts it at the declared native 640x480."
+      }
     }
   },
   "doc": {

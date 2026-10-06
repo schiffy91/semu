@@ -137,6 +137,11 @@
             ]
           }
         }
+      },
+      "render_scale": {
+        "frame": "declared",
+        "apply": "restart",
+        "doc": "GFX.ini [Settings] InternalResolution is Dolphin's EFB scale (Config::GFX_EFB_SCALE; 1 native, 2 is 1280x1056 for a 640x528 EFB), read at boot. Dolphin draws the picture letterboxed into its window at the window's size whatever the scale, so the renderer cuts it at the declared native 640x480 as before and keeps the window's picture when the scale is above 1x."
       }
     },
     "macos": {
@@ -209,6 +214,11 @@
             ]
           }
         }
+      },
+      "render_scale": {
+        "frame": "declared",
+        "apply": "restart",
+        "doc": "GFX.ini [Settings] InternalResolution is Dolphin's EFB scale (Config::GFX_EFB_SCALE; 1 native, 2 is 1280x1056 for a 640x528 EFB), read at boot. Dolphin draws the picture letterboxed into its window at the window's size whatever the scale, so the renderer cuts it at the declared native 640x480 as before and keeps the window's picture when the scale is above 1x."
       }
     }
   },

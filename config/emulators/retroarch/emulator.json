@@ -300,8 +300,9 @@
               "key": "mupen64plus-43screensize",
               "aspect": "standard",
               "source": {
-                "kind": "literal",
-                "value": "320x240"
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${width}x${height}"
               }
             },
             {
@@ -322,8 +323,9 @@
             {
               "key": "mupen64plus-EnableNativeResFactor",
               "source": {
-                "kind": "literal",
-                "value": "1"
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${scale}"
               }
             },
             {
@@ -362,6 +364,15 @@
                 "kind": "literal",
                 "value": "disabled"
               }
+            },
+            {
+              "key": "beetle_psx_internal_resolution",
+              "source": {
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${scale}x",
+                "native": "1x(native)"
+              }
             }
           ],
           "desmume": [
@@ -382,11 +393,9 @@
             {
               "key": "desmume_internal_resolution",
               "source": {
-                "kind": "render_resolution",
+                "kind": "render_scale",
                 "basis": "screen",
-                "screen": "top",
-                "display_aspect": "native",
-                "anchor": "width"
+                "format": "${width}x${height}"
               }
             },
             {
@@ -415,10 +424,9 @@
             {
               "key": "ppsspp_internal_resolution",
               "source": {
-                "kind": "render_resolution",
-                "basis": "combined",
-                "display_aspect": "native",
-                "anchor": "width"
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${width}x${height}"
               }
             }
           ],
@@ -454,8 +462,9 @@
             {
               "key": "citra_resolution_factor",
               "source": {
-                "kind": "literal",
-                "value": "1x"
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${scale}x"
               }
             },
             {
@@ -498,8 +507,9 @@
             {
               "key": "citra_resolution_factor",
               "source": {
-                "kind": "literal",
-                "value": "1x"
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${scale}"
               }
             },
             {
@@ -556,8 +566,10 @@
             {
               "key": "melonds_opengl_renderer",
               "source": {
-                "kind": "literal",
-                "value": "disabled"
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "enabled",
+                "native": "disabled"
               }
             },
             {
@@ -565,6 +577,24 @@
               "source": {
                 "kind": "literal",
                 "value": "Touch"
+              }
+            },
+            {
+              "key": "melonds_opengl_resolution",
+              "source": {
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${scale}x native (${width}x${height})"
+              }
+            }
+          ],
+          "flycast": [
+            {
+              "key": "reicast_internal_resolution",
+              "source": {
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${width}x${height}"
               }
             }
           ]
@@ -575,7 +605,22 @@
           }
         },
         "audio_driver": "pulse",
-        "joypad_driver": "sdl2"
+        "joypad_driver": "sdl2",
+        "render_scale": {
+          "fit": "display",
+          "apply": "restart",
+          "cores": {
+            "mupen64plus_next": "scaled",
+            "mednafen_psx": "scaled",
+            "ppsspp": "scaled",
+            "flycast": "scaled",
+            "desmume": "declared",
+            "melonds": "declared",
+            "citra": "declared",
+            "azahar": "declared"
+          },
+          "doc": "RetroArch reads core options only at load, so a new scale waits for Restart Game. Each core option of kind render_scale takes the chosen scale: ${scale} the factor, ${width}x${height} the first screen's native size times it, native the value at 1x where the core spells 1x apart (Beetle PSX, melonDS's software renderer). RetroArch draws the frame at whole steps of its own size (video_scale_integer), so fit display offers only the scales whose frame fits the target's screen: a larger frame would be drawn past the screen. A scaled core's frame is the picture at the scale and Semu's tap reports that size, so the renderer divides it back to native (SEMU_RENDER_SURFACE_SCALED); a declared core's two screens are cut at their declared native sizes already."
+        }
       },
       "render_hook": true
     },
@@ -705,8 +750,9 @@
               "key": "mupen64plus-43screensize",
               "aspect": "standard",
               "source": {
-                "kind": "literal",
-                "value": "320x240"
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${width}x${height}"
               }
             },
             {
@@ -727,8 +773,9 @@
             {
               "key": "mupen64plus-EnableNativeResFactor",
               "source": {
-                "kind": "literal",
-                "value": "1"
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${scale}"
               }
             },
             {
@@ -767,6 +814,15 @@
                 "kind": "literal",
                 "value": "disabled"
               }
+            },
+            {
+              "key": "beetle_psx_internal_resolution",
+              "source": {
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${scale}x",
+                "native": "1x(native)"
+              }
             }
           ],
           "desmume": [
@@ -787,11 +843,9 @@
             {
               "key": "desmume_internal_resolution",
               "source": {
-                "kind": "render_resolution",
+                "kind": "render_scale",
                 "basis": "screen",
-                "screen": "top",
-                "display_aspect": "native",
-                "anchor": "width"
+                "format": "${width}x${height}"
               }
             },
             {
@@ -820,10 +874,9 @@
             {
               "key": "ppsspp_internal_resolution",
               "source": {
-                "kind": "render_resolution",
-                "basis": "combined",
-                "display_aspect": "native",
-                "anchor": "width"
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${width}x${height}"
               }
             }
           ],
@@ -859,8 +912,9 @@
             {
               "key": "citra_resolution_factor",
               "source": {
-                "kind": "literal",
-                "value": "1x"
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${scale}x"
               }
             },
             {
@@ -903,8 +957,9 @@
             {
               "key": "citra_resolution_factor",
               "source": {
-                "kind": "literal",
-                "value": "1x"
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${scale}"
               }
             },
             {
@@ -961,8 +1016,10 @@
             {
               "key": "melonds_opengl_renderer",
               "source": {
-                "kind": "literal",
-                "value": "disabled"
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "enabled",
+                "native": "disabled"
               }
             },
             {
@@ -971,12 +1028,35 @@
                 "kind": "literal",
                 "value": "Touch"
               }
+            },
+            {
+              "key": "melonds_opengl_resolution",
+              "source": {
+                "kind": "render_scale",
+                "basis": "screen",
+                "format": "${scale}x native (${width}x${height})"
+              }
             }
           ]
         },
         "core_overrides": {},
         "audio_driver": "coreaudio",
-        "joypad_driver": "hid"
+        "joypad_driver": "hid",
+        "render_scale": {
+          "fit": "display",
+          "apply": "restart",
+          "cores": {
+            "mupen64plus_next": "scaled",
+            "mednafen_psx": "scaled",
+            "ppsspp": "scaled",
+            "flycast": "scaled",
+            "desmume": "declared",
+            "melonds": "declared",
+            "citra": "declared",
+            "azahar": "declared"
+          },
+          "doc": "RetroArch reads core options only at load, so a new scale waits for Restart Game. Each core option of kind render_scale takes the chosen scale: ${scale} the factor, ${width}x${height} the first screen's native size times it, native the value at 1x where the core spells 1x apart (Beetle PSX, melonDS's software renderer). RetroArch draws the frame at whole steps of its own size (video_scale_integer), so fit display offers only the scales whose frame fits the target's screen: a larger frame would be drawn past the screen. A scaled core's frame is the picture at the scale and Semu's tap reports that size, so the renderer divides it back to native (SEMU_RENDER_SURFACE_SCALED); a declared core's two screens are cut at their declared native sizes already."
+        }
       },
       "render_hook": true
     }

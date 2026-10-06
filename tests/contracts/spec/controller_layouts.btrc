@@ -266,8 +266,8 @@ class LayoutsRendererSpec {  // the renderer draws the page from the file and na
         LayoutsRendererSpec.apply(&ui, SemuActions.layoutSelect(), 3, 17);
         contract.expect(ui.layout_shown == 2 && strcmp(ui.toast, "P2 GAMECUBE: RESTART TO APPLY") == 0, "a layout waiting for Restart Game names the player and the layout; player 2's leaves the CONTROLLER row alone: ");
         LayoutsRendererSpec.apply(&ui, SemuActions.menuPage(), 0, 0);
-        contract.expect(ui.page == 0 && ui.item_count == 13 && ui.selected == RendererMenuModel.rowOf(&ui, "ui.players") && strcmp(RendererMenuRaster.rowValue(&ui, controller), "CLASSIC") == 0, "86 slot 0 brings the menu back on PLAYERS, CONTROLLER now CLASSIC, thirteen rows with RESTART GAME");
-        contract.expect(RendererMenuRaster.height(&ui) == 72 + 13 * 43 + 52 && RendererMenuRaster.height(&ui) <= SEMU_RENDER_MENU_HEIGHT && RendererMenuModel.rowOf(&ui, "system.restart") == 10, "the whole thirteen-row menu fits the texture, RESTART GAME after PLAYERS");
+        contract.expect(ui.page == 0 && ui.item_count == 14 && ui.selected == RendererMenuModel.rowOf(&ui, "ui.players") && strcmp(RendererMenuRaster.rowValue(&ui, controller), "CLASSIC") == 0, "86 slot 0 brings the menu back on PLAYERS, CONTROLLER now CLASSIC, fourteen rows with SCALE and RESTART GAME");
+        contract.expect(RendererMenuRaster.height(&ui) == 72 + 14 * 43 + 52 && RendererMenuRaster.height(&ui) <= SEMU_RENDER_MENU_HEIGHT && RendererMenuModel.rowOf(&ui, "system.restart") == 11 && RendererMenuModel.rowOf(&ui, "visual.scale.next") == 8, "the whole fourteen-row Wii menu fits the texture, SCALE after ASPECT, RESTART GAME after PLAYERS");
         LayoutsRendererSpec.apply(&ui, SemuActions.layoutSelect(), 3, 16);
         contract.expect(ui.layout_shown == 3 && strcmp(RendererMenuRaster.rowValue(&ui, controller), "GAMECUBE") == 0 && strcmp(ui.toast, "P1 GAMECUBE: RESTART TO APPLY") == 0, "player 1's waiting GameCube: the CONTROLLER row names the choice and the toast says it applies at Restart Game");
         LayoutsRendererSpec.apply(&ui, SemuActions.layoutSelect(), 0, 16);

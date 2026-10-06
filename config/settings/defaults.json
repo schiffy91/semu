@@ -14,7 +14,6 @@
     "crt_shaders": true,
     "bezels": true,
     "integer_scaling": true,
-    "render_resolution": "integer",
     "dual_screen_gap": 0.015625,
     "frame_width": 0.03,
     "display": {

@@ -279,6 +279,7 @@
         "CustomAspectRatioWidth = 4",
         "CustomAspectRatioHeight = 3",
         "ShaderCompilationMode = 2",
+        "InternalResolution = ${render_scale}",
         "ShowFPS = ${performance_overlay}",
         "ShowSpeed = ${performance_overlay}",
         "LogRenderTimeToFile = ${performance_overlay}",

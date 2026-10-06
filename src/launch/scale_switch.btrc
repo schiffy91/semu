@@ -1,0 +1,30 @@
+// Scale: the render scale a system's emulator draws at (1x native, 2x, 3x), stepped by the settings
+// radial's Scale slot and the menu's SCALE row. Every press steps on and saves the choice for the
+// system (visual.systems.<id>.render_scale); the emulators Semu drives read it at boot, so it waits
+// for Restart Game and the toast says RESTART TO APPLY until the game runs at it. Journaled as 88:
+// the absolute index into the launch's scales, reserved 1 while it waits (0: the emulator draws at it).
+
+import Library.JSON;
+import ../lib/settings.btrc;
+import ../emit/render_choices.btrc;
+import ../emit/render_scale.btrc;
+import ../renderer/action_abi.btrc;
+import ./journal.btrc;
+import ./plan.btrc;
+
+class SemuScaleSwitch {
+    class bool pending(SemuVariantChoice choice) { return choice.available() && choice.index != choice.launched; }  // the chosen scale is not the one the game booted at
+
+    class void choose(SemuLaunchPlan launch, SemuVariantChoice choice, int target) {  // follow TARGET in the launch and journal it
+        choice.index = target;
+        choice.lastReal = target;
+        SemuActionJournal.appendWith(launch, SemuActions.scaleSelect(), target, SemuScaleSwitch.pending(choice) ? 1 : 0);
+    }
+
+    class void press(SemuLaunchPlan launch, SemuVariantChoice choice, int target) {  // saved for the system at once; the emulator renders at it from the next boot
+        if (!launch.semuHome.isEmpty() && !launch.system.isEmpty()) {
+            SemuSettingsStore.put(launch.semuHome, SemuRenderScale.settingKey(launch.system), JSONValue.makeString(choice.ids.get(target)));
+        }
+        SemuScaleSwitch.choose(launch, choice, target);
+    }
+}

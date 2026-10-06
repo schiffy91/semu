@@ -70,7 +70,15 @@
     "doc": {
       "native": "Real 1x emulator output (was a 256x240 placeholder that corrupted integer placement)."
     },
-    "refresh_hz": 59.94
+    "refresh_hz": 59.94,
+    "render_scale": {
+      "choices": [
+        1,
+        2
+      ],
+      "default": 1,
+      "doc": "PCSX2 at 2x (1280x896) is the Deck's usual setting; 3x (1080p class, nine times the fill) drops most 3D games below full speed there."
+    }
   },
   "doc": {
     "hardware": "consumer CRT, component CRT, or early flat panel",

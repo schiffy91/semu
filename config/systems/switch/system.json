@@ -46,7 +46,14 @@
       "w": 16,
       "h": 9
     },
-    "refresh_hz": 60
+    "refresh_hz": 60,
+    "render_scale": {
+      "choices": [
+        1
+      ],
+      "default": 1,
+      "doc": "Ryujinx already runs the Switch at the Deck's limit at 1x (the game's own 720p handheld mode); its res_scale is left at 1, so nothing is offered."
+    }
   },
   "doc": {
     "hardware": "modern 16:9 handheld/docked display",

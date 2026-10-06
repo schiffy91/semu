@@ -10,6 +10,7 @@ import ../resolve.btrc;
 import ./key_collisions.btrc;
 import ../mods/kind.btrc;
 import ./players.btrc;
+import ./render_scale.btrc;
 
 class SemuChords {
     class Vector<string> known() { return ["Ctrl", "Alt", "Shift", "Meta"]; }
@@ -183,6 +184,14 @@ class SemuProfileContext {
 
     public string stateRoot() { return PathTools.join(self.plan.stateRoot(), self.emulator.id); }
 
+    public SemuSystem servedSystem() {  // the first system this emulator plays here, for a profile written with no system chosen
+        for identifier in self.model.systemIds() {
+            SemuSystem candidate = self.model.system(identifier);
+            for binding in candidate.bindingsFor(self.plan.platform) { if (binding.emulator.equals(self.emulator.id)) { return candidate; } }
+        }
+        return null;
+    }
+
     public string firmwareDirectory() {
         string declared = self.plan.tokens.resolve(SemuJson.textAt(self.platform, "firmware.dir"));
         if (!declared.isEmpty() && FileSystem.isDir(declared)) { return declared; }
@@ -230,6 +239,11 @@ class SemuProfileContext {
         result.put("asset_root", self.plan.assetRoot);
         result.put("content_root", self.plan.path("content_root"));
         for group in SemuModKind.settingGroups(self.plan, self.emulator) { result.put("mods." + group, SemuModKind.settingValue(self.plan, self.emulator, group)); }  // an installed kind switches its group on
+        SemuSystem system = self.model.system(self.plan.tokens.get("system"));  // none while emitting every profile at once: native
+        int scale = SemuRenderScale.launched(self.plan, system, self.emulator.id);
+        SemuSystem served = system == null ? self.servedSystem() : system;
+        result.put("render_scale", Strings.fromInt(scale));  // the system's render scale, 1 where this emulator takes none
+        result.put("render_scale_lines", Strings.fromInt(scale * (served == null ? 0 : SemuJson.intAt(served.definition, "display.screens.0.native.h", 0))));  // Flycast's rend.Resolution counts lines
         JSONValue definitions = SemuJson.get(self.emulator.profile, "compiler.bindings");
         if (!definitions.isObject()) { return result; }
         for name in definitions.keys().sorted() {

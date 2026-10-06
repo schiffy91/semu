@@ -1,6 +1,6 @@
 // Every bezel x shader combination a system offers, precomputed at launch into
 // $state/semu-render-variants.env: a header naming the choices and their labels (bezels, shaders,
-// placements and outputs), then one [bezel,shader] section per combination holding only the keys
+// placements, outputs and render scales), then one [bezel,shader] section per combination holding only the keys
 // that combination changes. The supervisor journals an absolute index into these lists; the
 // renderer applies that section, or the placement, live.
 
@@ -22,11 +22,12 @@ import ../renderer/variant_keys.btrc;
 #include <time.h>
 #include <unistd.h>
 
-class SemuRenderVariantSet {  // the launch's four choices; all empty when no variants file was written
+class SemuRenderVariantSet {  // the launch's five choices; all empty when no variants file was written
     public SemuVariantChoice bezel;
     public SemuVariantChoice shader;
     public SemuVariantChoice placement;
     public SemuVariantChoice output;
+    public SemuVariantChoice scale;
     public Vector<string> computed;  // the bezel ids drawn as a computed layout: no art, so Fit has nothing to place there
     public bool written;
     public string token;  // the header's token, handed to the renderer as SEMU_MENU_VARIANTS_TOKEN
@@ -36,6 +37,7 @@ class SemuRenderVariantSet {  // the launch's four choices; all empty when no va
         self.shader = SemuVariantChoice("shader");
         self.placement = SemuVariantChoice("placement");
         self.output = SemuVariantChoice("output");
+        self.scale = SemuVariantChoice("scale");
         self.computed = [];
         self.written = false;
         self.token = "";
@@ -45,6 +47,7 @@ class SemuRenderVariantSet {  // the launch's four choices; all empty when no va
         if (kind.equals("bezel")) { return self.bezel; }
         if (kind.equals("placement")) { return self.placement; }
         if (kind.equals("output")) { return self.output; }
+        if (kind.equals("scale")) { return self.scale; }
         return self.shader;
     }
 
@@ -54,6 +57,7 @@ class SemuRenderVariantSet {  // the launch's four choices; all empty when no va
         Vector<string> result = [];
         if (self.placement.cycled >= 2) { result.push("placements"); }
         if (self.output.cycled >= 2) { result.push("outputs"); }
+        if (self.scale.cycled >= 2) { result.push("scales"); }
         return result;
     }
 }
@@ -118,12 +122,15 @@ class SemuRenderVariants {
         return result;
     }
 
-    class SemuRenderVariantSet choose(SemuPlan plan, SemuSystem system) {  // every choice this launch offers, written or not
+    class SemuRenderVariantSet choose(SemuPlan plan, SemuSystem system) { return SemuRenderVariants.chooseFor(plan, system, plan.tokens.get("emulator")); }  // the launch's emulator, from the plan's tokens
+
+    class SemuRenderVariantSet chooseFor(SemuPlan plan, SemuSystem system, string emulatorId) {  // every choice this launch offers, written or not
         SemuRenderVariantSet set = SemuRenderVariantSet();
         set.bezel = SemuRenderVariants.choice(plan, system, "bezel");
         set.shader = SemuRenderVariants.choice(plan, system, "shader");
         set.placement = SemuRenderChoices.placement(plan, system, set.bezel.available());
         set.output = SemuRenderChoices.output(plan, system);
+        set.scale = SemuRenderChoices.scale(plan, system, emulatorId);  // the render scales this emulator takes
         for variantId in set.bezel.ids {  // the DS and 3DS layouts Semu works out from the screen draw no art
             if (!variantId.equals("none") && SemuBezelPackage.computed(SemuBezelPackage.load(plan, SemuRenderEnvironment.packageFor(plan, system, variantId)))) { set.computed.push(variantId); }
         }
@@ -146,9 +153,12 @@ class SemuRenderVariants {
         lines.push(RendererVariantKeys.placementLabelsKey() + "=" + set.placement.labels.join("|"));
         lines.push(RendererVariantKeys.outputsKey() + "=" + set.output.ids.join("|"));
         lines.push(RendererVariantKeys.outputLabelsKey() + "=" + set.output.labels.join("|"));
+        lines.push(RendererVariantKeys.scalesKey() + "=" + set.scale.ids.join("|"));
+        lines.push(RendererVariantKeys.scaleLabelsKey() + "=" + set.scale.labels.join("|"));
         int placement = set.placement.available() ? set.placement.index : -1;
         int output = set.output.available() ? set.output.index : -1;
-        lines.push(RendererVariantKeys.currentKey() + f"={set.bezel.index},{set.shader.index},{placement},{output}");
+        int scale = set.scale.available() ? set.scale.index : -1;
+        lines.push(RendererVariantKeys.currentKey() + f"={set.bezel.index},{set.shader.index},{placement},{output},{scale}");
         lines.push(RendererVariantKeys.tokenKey() + "=" + set.token);
         Vector<string> bezels = SemuRenderVariants.column(set.bezel, SemuRenderEnvironment.bezelVariantId(plan, system));
         Vector<string> shaders = SemuRenderVariants.column(set.shader, SemuRenderEnvironment.shaderVariantId(plan, system));
@@ -182,7 +192,7 @@ class SemuRenderVariants {
     }
 
     class SemuRenderVariantSet write(SemuPlan plan, SemuSystem system, string emulatorId, string stateRoot) {  // empty choices when the file could not be written: nothing to cycle
-        SemuRenderVariantSet set = SemuRenderVariants.choose(plan, system);
+        SemuRenderVariantSet set = SemuRenderVariants.chooseFor(plan, system, emulatorId);
         set.token = SemuRenderVariants.token();
         if (!SemuPaths.writeOwned(stateRoot, SemuRenderVariants.path(stateRoot), SemuRenderVariants.text(plan, system, emulatorId, stateRoot, set))) { return SemuRenderVariantSet(); }
         set.written = true;

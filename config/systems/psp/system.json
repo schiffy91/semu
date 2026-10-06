@@ -60,7 +60,16 @@
     "doc": {
       "aspect": "30:17 is the exact reduced ratio of the square-pixel 480x272 PSP LCD; it avoids the fractional horizontal distortion introduced by a nominal 16:9 override."
     },
-    "refresh_hz": 59.94
+    "refresh_hz": 59.94,
+    "render_scale": {
+      "choices": [
+        1,
+        2,
+        3
+      ],
+      "default": 2,
+      "doc": "PPSSPP draws the PSP's light 3D at 3x (1440x816) easily on the Deck. 2x is the default, the size the libretro path rendered on the Deck before (its whole step at 1280x800)."
+    }
   },
   "doc": {
     "hardware": "480x272 PSP LCD",

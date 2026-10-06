@@ -45,6 +45,7 @@ pipeline as the Lucide derivatives.
 | `semu-restart.png` | `refresh-cw` |
 | `semu-rewind.png` | `rewind` |
 | `semu-save.png` | `save` |
+| `semu-scale.png` | `zoom-in` |
 | `semu-screenshot.png` | `camera` |
 | `semu-settings.png` | `settings` |
 | `semu-shader-toggle.png` | `wand-sparkles` |

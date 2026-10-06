@@ -12,8 +12,8 @@ import ./renderer_variants.btrc;
 import ./action_abi.btrc;
 import ./renderer_players.btrc;
 int SEMU_RENDER_MENU_WIDTH = 384;
-int SEMU_RENDER_MENU_HEIGHT = 683;  // the texture: header, up to thirteen rows, slot line; RendererMenuRaster.height draws what a menu needs
-int SEMU_RENDER_MENU_ROWS = 13;  // the Wii menu: every value row, CONTROLLER, PLAYERS and RESTART GAME
+int SEMU_RENDER_MENU_HEIGHT = 726;  // the texture: header, up to fourteen rows, slot line; RendererMenuRaster.height draws what a menu needs
+int SEMU_RENDER_MENU_ROWS = 14;  // the Wii menu: every value row (SCALE among them), CONTROLLER, PLAYERS and RESTART GAME
 int SEMU_RENDER_MAX_CAPTURE_FRAME = 900;
 int SEMU_RENDER_MAX_CAPTURE_ATTEMPTS = 8;
 int SEMU_RENDER_ACTION_POLL_INTERVAL = 2;
@@ -43,8 +43,8 @@ struct RendererPostUiState {
     unsigned long long next_action_frame;
     long journal_offset;
     int item_count;
-    char labels[13 * 24];  // thirteen 24-byte labels
-    char actions[13 * 32];  // SEMU_MENU_ACTIONS: each row's action, so a value row (BEZEL, SHADER, FIT, ASPECT) shows its value
+    char labels[14 * 24];  // fourteen 24-byte labels
+    char actions[14 * 32];  // SEMU_MENU_ACTIONS: each row's action, so a value row (BEZEL, SHADER, FIT, ASPECT, SCALE) shows its value
     int bezels_toggles;  // requests the renderer applies to its config after consuming the journal
     int shaders_toggles;
     int bezel_request;  // a select's index for the game phase to apply; -1 while none waits
@@ -55,6 +55,8 @@ struct RendererPostUiState {
     int shader_shown;
     int placement_shown;
     int output_shown;  // the chosen output: a new one takes effect at Restart Game
+    int scale_shown;  // the chosen render scale, applied or waiting for Restart Game
+    int scale_live;  // a render scale the emulator now draws at (a live switch); 0 while none waits for the game phase
     int page;  // 1 while the players page replaces the menu's rows
     int layout_shown;  // player 1's layout, the CONTROLLER row's value; -1 without layouts
     int layout_count;
@@ -215,6 +217,7 @@ class RendererMenuModel {
         state->shader_shown = found ? state->catalog.current_shader : -1;
         state->placement_shown = found ? state->catalog.current_placement : -1;
         state->output_shown = found ? state->catalog.current_output : -1;
+        state->scale_shown = found ? state->catalog.current_scale : -1;
     }
 
     class void initialize(struct RendererPostUiState* state) {
@@ -265,8 +268,10 @@ class RendererMenuModel {
         }
         if (state->catalog.loaded == 0 || record->slot >= RendererVariantFile.count(&state->catalog, action)) { return; }
         char* label = RendererVariantFile.choiceLabel(&state->catalog, action, record->slot);
-        if (action == SemuActions.outputSelect()) {  // the game draws its output from boot: the row names the choice, the toast says when it waits for Restart Game
-            state->output_shown = record->slot;
+        if (action == SemuActions.outputSelect() || action == SemuActions.scaleSelect()) {  // drawn from boot (or switched live): the row names the choice, the toast says when it waits for Restart Game
+            if (action == SemuActions.outputSelect()) { state->output_shown = record->slot; }
+            if (action == SemuActions.scaleSelect()) { state->scale_shown = record->slot; }
+            if (action == SemuActions.scaleSelect() && record->reserved == 0) { state->scale_live = RendererVariantFile.scaleFactor(&state->catalog, record->slot); }  // the emulator draws at it now: the game phase follows
             if (fresh && record->reserved != 0) { RendererMenuModel.notice(state, action, "pending", label, now); }
             if (fresh && record->reserved == 0) { RendererToast.show(state, SemuActions.toastAction(action), "", label, now); }
             return;
@@ -313,7 +318,7 @@ class RendererMenuModel {
     }
 
     class void playersPage(struct RendererPostUiState* state) {  // the rows the supervisor wrote; the menu's stay when there are none
-        char rows[13 * 24];
+        char rows[14 * 24];
         int count = RendererPlayersPage.load(rows, 24, SEMU_RENDER_MENU_ROWS);
         if (count < 1) { return; }
         memcpy(state->labels, rows, sizeof(rows));
@@ -388,7 +393,7 @@ class RendererMenuModel {
         } else if (action == SemuActions.shadersToggle()) {
             state->shaders_toggles++;
         } else if (action == SemuActions.bezelSelect() || action == SemuActions.shaderSelect()
-                || action == SemuActions.placementSelect() || action == SemuActions.outputSelect()) {
+                || action == SemuActions.placementSelect() || action == SemuActions.outputSelect() || action == SemuActions.scaleSelect()) {
             RendererMenuModel.select(state, record, now);
         } else if (action == SemuActions.resetNotice()) {
             RendererMenuModel.reset(state, record, now);

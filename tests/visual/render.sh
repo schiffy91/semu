@@ -7,7 +7,11 @@
 # Each cell is `semu render-env --variants-file` against the bundle's data (build/asset-root: plates, presets,
 # layers) fed to build/render-host, its state in a fresh scratch directory. RENDER_HOST_ASPECT=1.7778 for 16:9 titles.
 # RENDER_HOST_PLAYERS="P1  PAD 1  NUNCHUK|P2  NO PAD|RESTART GAME|BACK" writes the players page's rows the
-# supervisor would (journal 86,1 shows them).
+# supervisor would (journal 86,1 shows them). RENDER_HOST_SCALE=2x sets the system's render scale; with
+# RENDER_HOST_EMULATOR naming the emulator (its core the system's binding) render-env emits SEMU_RENDER_SCALE,
+# and RENDER_HOST_PRODUCER=frame (RetroArch, PCSX2: the picture drawn at the scale and reported at that size
+# where SEMU_RENDER_SURFACE_SCALED says so) or window (Dolphin, Flycast, PPSSPP: drawn at the scale and
+# presented letterboxed at the window's size) hands it over as that kind of emulator does.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 out="$1"; size="$2"; shift 2
@@ -33,15 +37,16 @@ index() {  # VARIANTS_FILE KEY ID: ID's position in the header's KEY list, or th
 for cell in "$@"; do
   IFS=: read -r system bezel shader <<<"${cell%%>*}"
   switching=""; [ "$cell" != "${cell#*>}" ] && switching="${cell#*>}"
-  settings="{\"visual\":{\"systems\":{\"$system\":{${bezel:+\"bezel_variant\":\"$bezel\"}${bezel:+${shader:+,}}${shader:+\"shader_variant\":\"$shader\"}}}}}"
-  name="$system${bezel:+-$bezel}${shader:+-$shader}"
+  fields="${bezel:+\"bezel_variant\":\"$bezel\",}${shader:+\"shader_variant\":\"$shader\",}${RENDER_HOST_SCALE:+\"render_scale\":\"$RENDER_HOST_SCALE\",}"  # RENDER_HOST_SCALE=2x: the system's render scale
+  settings="{\"visual\":{\"systems\":{\"$system\":{${fields%,}}}}}"
+  name="$system${bezel:+-$bezel}${shader:+-$shader}${RENDER_HOST_SCALE:+-$RENDER_HOST_SCALE}${RENDER_HOST_PRODUCER:+-$RENDER_HOST_PRODUCER}"
   state="$(mktemp -d "$scratch/state.XXXXXX")"
   [ -z "${RENDER_HOST_PLAYERS:-}" ] || printf "%s\n" "${RENDER_HOST_PLAYERS//|/$'\n'}" > "$state/semu-render-players.txt"
   pictures=("$name")
   placement=""; [ "$switching" != "${switching#*@}" ] && { placement="${switching#*@}"; switching="${switching%%@*}"; [ -n "$switching" ] || switching=":"; }
   if [ -n "$switching" ]; then IFS=: read -r afterBezel afterShader <<<"$switching"; name="$name-to-${afterBezel:-same}-${afterShader:-same}${placement:+-at-$placement}"; pictures=("$name-before" "$name-toast" "$name-after"); fi
   (
-    while IFS= read -r line; do export "$line"; done < <("$root/build/semu" render-env --system "$system" --project "$root/config" \
+    while IFS= read -r line; do export "$line"; done < <("$root/build/semu" render-env --system "$system" ${RENDER_HOST_EMULATOR:+--emulator "$RENDER_HOST_EMULATOR"} --project "$root/config" \
       --asset-root "${SEMU_ASSET_ROOT:-$root/build/asset-root}" --settings-json "$settings" --variants-file "$state")
     if [ -z "$switching" ]; then
       "$root/build/render-host" "$width" "$height" "$scratch/$name.ppm"

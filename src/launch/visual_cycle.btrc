@@ -1,4 +1,5 @@
-// The radial's and the menu's visual choices: bezel, shader, placement (Fit) and output (Aspect).
+// The radial's and the menu's visual choices: bezel, shader, placement (Fit), output (Aspect) and the
+// render scale (Scale, saved for the system and applied at Restart Game: SemuScaleSwitch).
 // The supervisor journals the absolute index into the launch's variants file, which the renderer
 // applies live, and saves the choice for this system only: a system's own value beats the global
 // switch, which stays the default. An output is drawn from boot, so it is saved at once and waits
@@ -20,12 +21,13 @@ import ./journal.btrc;
 import ./plan.btrc;
 import ./process.btrc;
 import ./relaunch.btrc;
+import ./scale_switch.btrc;
 
 class SemuVisualCycle {
-    class string kind(string action) {  // visual.<kind>.next: bezel, shader, placement or output; "" for any other action
+    class string kind(string action) {  // visual.<kind>.next: bezel, shader, placement, output or scale; "" for any other action
         if (!action.startsWith("visual.") || !action.endsWith(".next") || action.len() < 13) { return ""; }
         string kind = action.substring(7, action.len() - 12);
-        return kind.equals("bezel") || kind.equals("shader") || kind.equals("placement") || kind.equals("output") ? kind : "";
+        return kind.equals("bezel") || kind.equals("shader") || kind.equals("placement") || kind.equals("output") || kind.equals("scale") ? kind : "";
     }
 
     class bool cycles(string action) { return !SemuVisualCycle.kind(action).isEmpty(); }
@@ -36,6 +38,7 @@ class SemuVisualCycle {
         if (kind.equals("bezel")) { return SemuActions.bezelSelect(); }
         if (kind.equals("placement")) { return SemuActions.placementSelect(); }
         if (kind.equals("output")) { return SemuActions.outputSelect(); }
+        if (kind.equals("scale")) { return SemuActions.scaleSelect(); }
         return SemuActions.shaderSelect();
     }
 
@@ -63,6 +66,10 @@ class SemuVisualCycle {
         }
         if (choice.kind.equals("output")) {
             SemuOutputSwitch.press(launch, choice, choice.next(delta));
+            return;
+        }
+        if (choice.kind.equals("scale")) {
+            SemuScaleSwitch.press(launch, choice, choice.next(delta));
             return;
         }
         SemuVisualCycle.select(launch, choice, choice.next(delta));
@@ -97,7 +104,7 @@ class SemuVisualCycle {
         }
     }
 
-    class bool menuStep(SemuLaunchPlan launch, int delta) {  // left and right on the selected value row: BEZEL, SHADER, FIT or ASPECT
+    class bool menuStep(SemuLaunchPlan launch, int delta) {  // left and right on the selected value row: BEZEL, SHADER, FIT, ASPECT or SCALE
         if (SemuSupervisorRuntime.menu_visible == 0 || SemuSupervisorRuntime.menu_selected >= launch.menuActions.size()) { return false; }
         string item = launch.menuActions.get(SemuSupervisorRuntime.menu_selected);
         if (!SemuVisualCycle.cycles(item)) { return false; }

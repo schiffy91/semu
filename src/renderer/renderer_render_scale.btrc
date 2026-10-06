@@ -1,0 +1,83 @@
+// The render scale as the renderer sees it: how many times its native size the emulator renders
+// (SEMU_RENDER_SCALE, 1 when unset) and whether its frames report the scaled picture's size
+// (SEMU_RENDER_SURFACE_SCALED=1: RetroArch's single-screen cores, PCSX2's hook). A scaled frame's
+// reported size is brought back to the game's own before anything crops or places it, so the whole
+// steps stay steps of the native picture. Above native the lane keeps the picture as the emulator
+// drew it (its scaled size) beside the native one: every shader reads native lines (scanlines, masks
+// and LCD cells are drawn per game pixel), now a box average of the larger render, and with no
+// shader the game pass draws the larger picture itself. No GL, so the contracts check the arithmetic.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+import ./renderer_abi.btrc;
+
+struct RendererRenderScale {
+    int scale;  // 1 native, 2, 3: what the emulator renders at now
+    int frames_scaled;  // 1 when the producer reports the scaled picture's size as the native one
+};
+
+class RendererRenderScaling {
+    class int clamped(int value) { return value < 1 ? 1 : (value > 8 ? 8 : value); }
+
+    class void load(struct RendererRenderScale* scale) {  // from the launch's environment
+        if (scale == null) { return; }
+        char* value = getenv("SEMU_RENDER_SCALE");
+        scale->scale = RendererRenderScaling.clamped(value == null ? 1 : atoi(value));
+        char* scaled = getenv("SEMU_RENDER_SURFACE_SCALED");
+        scale->frames_scaled = scaled != null && strcmp(scaled, "1") == 0 ? 1 : 0;
+    }
+
+    class int divided(int size, int scale) {  // a scaled size in game pixels, to the nearest
+        int native = (size + scale / 2) / scale;
+        return native < 1 ? 1 : native;
+    }
+
+    class void normalize(struct SemuRenderFrameGl* frame, struct RendererRenderScale* scale) {  // once per frame, before the crop: a scaled frame's size back to the game's
+        if (frame == null || scale == null || scale->frames_scaled == 0 || scale->scale < 2) { return; }
+        for (int index = 0; index < frame->surface_count && index < 2; index++) {
+            struct SemuRenderSurfaceGl* surface = &frame->surfaces[index];
+            surface->native_width = RendererRenderScaling.divided(surface->native_width, scale->scale);
+            surface->native_height = RendererRenderScaling.divided(surface->native_height, scale->scale);
+        }
+    }
+
+    class float factor(int sourceWidth, int sourceHeight, int nativeWidth, int nativeHeight, int scale) {  // game pixels' worth of picture per game pixel kept: the scale, never more than the frame carries
+        if (scale < 2 || nativeWidth < 1 || nativeHeight < 1) { return 1.0f; }
+        float across = (float)sourceWidth / (float)nativeWidth;
+        float down = (float)sourceHeight / (float)nativeHeight;
+        float carried = across < down ? across : down;
+        float kept = carried < (float)scale ? carried : (float)scale;
+        return kept > 1.0f ? kept : 1.0f;
+    }
+
+    class void scaled(struct RendererLaneGeometry* lane, int scale) {  // the lane's kept picture; zero where native is all there is
+        if (lane == null) { return; }
+        lane->scaled_width = 0;
+        lane->scaled_height = 0;
+        if (lane->rotation != 0) { return; }  // no rotated screen renders above native
+        float kept = RendererRenderScaling.factor(lane->source_width, lane->source_height, lane->native_width, lane->native_height, scale);
+        if (kept < 1.05f) { return; }  // within a twentieth of native: the native picture holds it
+        lane->scaled_width = (int)((float)lane->native_width * kept + 0.5f);
+        lane->scaled_height = (int)((float)lane->native_height * kept + 0.5f);
+    }
+
+    class int level(struct RendererLaneGeometry* lane) {  // the kept picture's last mip still at least native: each level a 2x2 box average
+        if (lane == null) { return 0; }
+        int level = 0;
+        int width = lane->scaled_width;
+        int height = lane->scaled_height;
+        while (width / 2 >= lane->native_width && height / 2 >= lane->native_height && level < 8) {
+            width = width / 2;
+            height = height / 2;
+            level++;
+        }
+        return level;
+    }
+
+    class int levelSize(int size, int level) {  // a mip level's size, as GL allocates it
+        int result = size >> level;
+        return result < 1 ? 1 : result;
+    }
+}

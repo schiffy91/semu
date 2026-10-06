@@ -88,7 +88,15 @@
       "history": "independent",
       "touch_screen": "bottom"
     },
-    "refresh_hz": 59.8261
+    "refresh_hz": 59.8261,
+    "render_scale": {
+      "choices": [
+        1,
+        2
+      ],
+      "default": 1,
+      "doc": "Azahar at 2x (800x480 top screen) runs most games on the Deck; 3x is past its GPU in the heavy ones."
+    }
   },
   "doc": {
     "hardware": "dual LCDs, 400x240 top and 320x240 bottom",

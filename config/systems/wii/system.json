@@ -107,7 +107,15 @@
         }
       }
     ],
-    "default_output": "standard"
+    "default_output": "standard",
+    "render_scale": {
+      "choices": [
+        1,
+        2
+      ],
+      "default": 1,
+      "doc": "Dolphin's 2x EFB (1280x1056) already passes the Deck's 800 lines and suits 1080p; 3x (nine times the fill) is past the Deck's GPU in most games."
+    }
   },
   "doc": {
     "hardware": "consumer CRT/component TV",

@@ -108,10 +108,10 @@ class SemuPlayerSet {
         return layout >= 0 && layout < self.layoutLabels.size() ? self.layoutLabels.get(layout) : "";
     }
 
-    public void show(Vector<string> shown) {  // the menu rows this launch adds: CONTROLLER where layouts apply, PLAYERS where the game takes more than one, RESTART GAME with either or a second output
+    public void show(Vector<string> shown) {  // the menu rows this launch adds: CONTROLLER where layouts apply, PLAYERS where the game takes more than one, RESTART GAME with either, a second output or a render scale
         if (self.layoutsAvailable()) { shown.push("layouts"); }
         if (self.playersAvailable()) { shown.push("players"); }
-        if (self.layoutsAvailable() || self.playersAvailable() || shown.contains("outputs")) { shown.push("restarts"); }  // RESTART GAME where some choice waits for it
+        if (self.layoutsAvailable() || self.playersAvailable() || shown.contains("outputs") || shown.contains("scales")) { shown.push("restarts"); }  // RESTART GAME where some choice waits for it
     }
 
     public Vector<string> environment() {  // the CONTROLLER row's value and the layout toasts

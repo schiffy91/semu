@@ -6,7 +6,7 @@
 # names are Steam's virtual pad (the replica). The chords are input.json's (config/input/
 # linux-desktop): Next Bezel Ctrl+Shift+B, Next Shader Ctrl+Shift+V, Next Slot Ctrl+K, Previous
 # Slot Ctrl+J, Menu Ctrl+M, Screenshot Ctrl+X, Shader On/Off Ctrl+H, Bezel On/Off Ctrl+B, Fit
-# Ctrl+Shift+F, Aspect Ctrl+Shift+G, Controller Layout Ctrl+Shift+C, Restart Game Ctrl+Shift+D,
+# Ctrl+Shift+F, Aspect Ctrl+Shift+G, Render Scale Ctrl+Shift+N, Controller Layout Ctrl+Shift+C, Restart Game Ctrl+Shift+D,
 # Players Ctrl+Shift+U, Reset to Default Ctrl+Shift+R, and the held menu ring's Up, Down, Confirm and
 # Back Ctrl+Up, Ctrl+Down, Ctrl+Space and Ctrl+Backspace. The quick ring's Settings slot and the
 # settings radial's Close are Steam preset switches, which only Game Mode can show; every slot of the
@@ -18,9 +18,9 @@
 # (result "journal", action/slot[/reserved]): 1 menu, 2 up, 3 down, 4 confirm, 5 back, 9 screenshot,
 # 77 next slot, 78 previous slot, 79 bezel (slot = the index into the variants file), 80 shader,
 # 81 fit, 82 aspect, 83 layout, 84 pad, 85 reset, 86 players page (slot 1 open, 0 back, -1 one
-# player), 87 restart (slot 1 restarting, 0 nothing to apply); a third number is the record's
+# player), 87 restart (slot 1 restarting, 0 nothing to apply), 88 render scale; a third number is the record's
 # reserved field: the player plus 16 while its layout waits for Restart Game (83), the player (84),
-# 1 while the output waits for Restart Game (82), 1 on Reset's prompt and on a Reset that leaves
+# 1 while the output (82) or the render scale (88) waits for Restart Game, 1 on Reset's prompt and on a Reset that leaves
 # something waiting (85).
 #
 # 1. "listening for keys on X display"; visual.bezel.next, visual.shader.next, state.next,
@@ -102,3 +102,11 @@ wii dolphin - 60 key:ctrl+shift+c key:ctrl+shift+c key:ctrl+shift+c key:ctrl+shi
 #     moved (both screens cannot be larger at the shell's spacing), the centre tap again about 128,96; choices
 #     nds {"bezel_variant":"vertical","placement":"game"}.
 nds retroarch melonds 40 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+b key:ctrl+shift+b key:ctrl+shift+b key:ctrl+shift+b key:ctrl+shift+f tap:0.5,0.5 -- Legend of Zelda, The - Phantom Hourglass*.zip
+# 18. Render Scale (M16 item 2) on the N64 through GLideN64: Ctrl+Shift+N steps the scale from NATIVE to 2X
+#     (88/1/1, SCALE 2X: RESTART TO APPLY), saves n64 {"render_scale":"2x"} and leaves the game running at
+#     native; Restart Game (87/1, RESTARTING GAME) restarts it once in the same launch (restarts=1). The
+#     relaunched retroarch-core-options.cfg holds mupen64plus-43screensize "640x480" and
+#     mupen64plus-EnableNativeResFactor "2"; the receipts after the restart read render_scale=2,
+#     surface0_native=313x237 and surface0_scaled=626x474 (the crop's picture at 2x), and the TV in after-2
+#     is the size and place it was in before (the placement counts native pixels), its edges smoother.
+n64 retroarch mupen64plus_next 40 key:ctrl+shift+n key:ctrl+shift+d -- Super Mario 64 (USA).zip

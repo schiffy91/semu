@@ -33,11 +33,15 @@ struct RendererVariantCatalog {  // the header: what each kind offers, in the su
     int output_count;
     int current_placement;  // -1 with nothing to choose
     int current_output;
+    int scale_count;  // the render scales: 1x first
+    int current_scale;  // -1 with nothing to choose, or a file written before scales
     char bezel_labels[10 * 32];
     char shader_labels[10 * 32];
     char placement_ids[10 * 32];  // bezel, game or fit: what RendererConfiguration.placementCode reads
     char placement_labels[10 * 32];
     char output_labels[10 * 32];
+    char scale_ids[10 * 32];  // 1x, 2x, 3x: the factor RendererRenderScaling reads
+    char scale_labels[10 * 32];
 };
 
 class RendererStatePaths {  // $SEMU_RENDER_STATE_DIR: the journal, the variants file and the evidence live there
@@ -135,9 +139,13 @@ class RendererVariantFile {
             int outputs = RendererVariantFile.labels(RendererVariantFile.field(text, RendererVariantKeys.outputsKey()), ids, &unused, false);
             catalog->placement_count = RendererVariantFile.labels(RendererVariantFile.field(text, RendererVariantKeys.placementLabelsKey()), catalog->placement_labels, &unused, false);
             catalog->output_count = RendererVariantFile.labels(RendererVariantFile.field(text, RendererVariantKeys.outputLabelsKey()), catalog->output_labels, &unused, false);
+            int scales = RendererVariantFile.labels(RendererVariantFile.field(text, RendererVariantKeys.scalesKey()), catalog->scale_ids, &unused, false);
+            catalog->scale_count = RendererVariantFile.labels(RendererVariantFile.field(text, RendererVariantKeys.scaleLabelsKey()), catalog->scale_labels, &unused, false);
             char* current = RendererVariantFile.field(text, RendererVariantKeys.currentKey());
-            if (current == null || sscanf(current, "%d,%d,%d,%d", &catalog->current_bezel, &catalog->current_shader, &catalog->current_placement, &catalog->current_output) != 4) { ours = false; }
-            ours = ours && bezels == catalog->bezel_count && shaders == catalog->shader_count && placements == catalog->placement_count && outputs == catalog->output_count;  // every id has its label
+            catalog->current_scale = -1;
+            int fields = current == null ? 0 : sscanf(current, "%d,%d,%d,%d,%d", &catalog->current_bezel, &catalog->current_shader, &catalog->current_placement, &catalog->current_output, &catalog->current_scale);
+            if (fields < 4) { ours = false; }  // a file from before the scale has four
+            ours = ours && bezels == catalog->bezel_count && shaders == catalog->shader_count && placements == catalog->placement_count && outputs == catalog->output_count && scales == catalog->scale_count;  // every id has its label
         }
         free(text);
         catalog->loaded = ours ? 1 : 0;
@@ -148,7 +156,14 @@ class RendererVariantFile {
         if (catalog == null || catalog->loaded == 0 || index < 0) { return ""; }
         if (action == SemuActions.placementSelect()) { return index < catalog->placement_count ? catalog->placement_labels + index * SEMU_RENDER_LABEL_WIDTH : ""; }
         if (action == SemuActions.outputSelect()) { return index < catalog->output_count ? catalog->output_labels + index * SEMU_RENDER_LABEL_WIDTH : ""; }
+        if (action == SemuActions.scaleSelect()) { return index < catalog->scale_count ? catalog->scale_labels + index * SEMU_RENDER_LABEL_WIDTH : ""; }
         return RendererVariantFile.label(catalog, action == SemuActions.bezelSelect(), index);
+    }
+
+    class int scaleFactor(struct RendererVariantCatalog* catalog, int index) {  // 2 for "2x"; 0 when unknown
+        if (catalog == null || catalog->loaded == 0 || index < 0 || index >= catalog->scale_count) { return 0; }
+        int factor = atoi(catalog->scale_ids + index * SEMU_RENDER_LABEL_WIDTH);
+        return factor >= 1 && factor <= 8 ? factor : 0;
     }
 
     class char* placementId(struct RendererVariantCatalog* catalog, int index) {  // bezel, game or fit; "" when unknown
@@ -161,6 +176,7 @@ class RendererVariantFile {
         if (action == SemuActions.bezelSelect()) { return catalog->bezel_count; }
         if (action == SemuActions.shaderSelect()) { return catalog->shader_count; }
         if (action == SemuActions.placementSelect()) { return catalog->placement_count; }
+        if (action == SemuActions.scaleSelect()) { return catalog->scale_count; }
         return action == SemuActions.outputSelect() ? catalog->output_count : 0;
     }
 

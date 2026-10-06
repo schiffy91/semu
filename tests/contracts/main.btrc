@@ -78,6 +78,7 @@ import ./spec/mods.btrc;
 import ./spec/audio.btrc;
 import ./spec/ps2_picture.btrc;
 import ./spec/m15_deck.btrc;
+import ./spec/render_scale.btrc;
 
 class ModelContract {
     class void run(Contract contract) {
@@ -667,28 +668,42 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
     }
 }
 
-class RenderResolutionContract {  // the upscaling 3D cores render at the largest whole multiple the display holds; the N64 stays at its native 320x240
+class RenderResolutionContract {  // the upscaling 3D cores render at the system's render scale (M16 item 2): native unless chosen, the PSP at 2x; a frame past the screen is never offered
     class string options(Fixture fixture, string overlay, string core, string systemId) {
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuPlan plan = SemuResolver.plan(fixture.model, fixture.plan.target.id, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
         return SemuLauncher.coreOptions(plan, fixture.model.emulator("retroarch").platform("linux"), core, fixture.model.system(systemId));
     }
 
+    class string scaled(string systemId, string scale) { return "{\"visual\":{\"systems\":{\"" + systemId + "\":{\"render_scale\":\"" + scale + "\"}}}}"; }
+
     class void run(Contract contract) {
         Fixture desktop = Fixture("linux-desktop");
         Fixture deck = Fixture("steam-deck");
-        contract.contains(RenderResolutionContract.options(desktop, "{}", "ppsspp", "psp"), "ppsspp_internal_resolution = \"3360x1904\"", "a 4K desktop renders the PSP at 7x");
-        contract.contains(RenderResolutionContract.options(deck, "{}", "ppsspp", "psp"), "ppsspp_internal_resolution = \"960x544\"", "the Deck renders the PSP at 2x");
-        contract.contains(RenderResolutionContract.options(desktop, "{\"visual\":{\"render_resolution\":\"1x\"}}", "ppsspp", "psp"), "ppsspp_internal_resolution = \"480x272\"", "1x keeps the native size");
-        contract.lacks(RenderResolutionContract.options(desktop, "{\"visual\":{\"render_resolution\":\"native\"}}", "ppsspp", "psp"), "internal_resolution", "native leaves the core its own default");
-        for overlay in ["{}", "{\"visual\":{\"render_resolution\":\"native\"}}"] {  // GLideN64 at native factor 1 hands 320x240, the frame Semu's whole steps and CRT shaders read
-            for fixture in [desktop, deck] {
-                string mupen = RenderResolutionContract.options(fixture, overlay, "mupen64plus_next", "n64");
-                contract.expect(mupen.contains("mupen64plus-43screensize = \"320x240\"") && mupen.contains("mupen64plus-EnableNativeResFactor = \"1\"") && mupen.contains("mupen64plus-rdp-plugin = \"gliden64\""),
-                    fixture.plan.target.id + " " + overlay + ": the N64 renders GLideN64 at its native 320x240, whatever render_resolution says: " + mupen);
-                contract.lacks(mupen, "169screensize", "the widescreen size stays unset for 4:3 play");
+        contract.contains(RenderResolutionContract.options(deck, "{}", "ppsspp", "psp"), "ppsspp_internal_resolution = \"960x544\"", "the PSP renders at its default 2x, the Deck's old whole step");
+        contract.contains(RenderResolutionContract.options(desktop, RenderResolutionContract.scaled("psp", "1x"), "ppsspp", "psp"), "ppsspp_internal_resolution = \"480x272\"", "1x keeps the native size");
+        contract.contains(RenderResolutionContract.options(desktop, RenderResolutionContract.scaled("psp", "3x"), "ppsspp", "psp"), "ppsspp_internal_resolution = \"1440x816\"", "3x where the screen holds the frame");
+        contract.contains(RenderResolutionContract.options(deck, RenderResolutionContract.scaled("psp", "3x"), "ppsspp", "psp"), "ppsspp_internal_resolution = \"960x544\"", "the Deck's 800 lines cannot hold a 3x PSP frame (816): the saved 3x falls back to the default 2x");
+        for fixture in [desktop, deck] {  // GLideN64 at native factor 1 hands 320x240, the frame Semu's whole steps and CRT shaders read
+            string mupen = RenderResolutionContract.options(fixture, "{}", "mupen64plus_next", "n64");
+            contract.expect(mupen.contains("mupen64plus-43screensize = \"320x240\"") && mupen.contains("mupen64plus-EnableNativeResFactor = \"1\"") && mupen.contains("mupen64plus-rdp-plugin = \"gliden64\""),
+                fixture.plan.target.id + ": the N64 renders GLideN64 at its native 320x240 by default: " + mupen);
+            contract.lacks(mupen, "169screensize", "the widescreen size stays unset for 4:3 play");
+            for scale in ["2", "3"] {
+                string higher = RenderResolutionContract.options(fixture, RenderResolutionContract.scaled("n64", scale + "x"), "mupen64plus_next", "n64");
+                string size = scale.equals("2") ? "640x480" : "960x720";
+                contract.expect(higher.contains("mupen64plus-43screensize = \"" + size + "\"") && higher.contains("mupen64plus-EnableNativeResFactor = \"" + scale + "\""), fixture.plan.target.id + " " + scale + "x: GLideN64 renders and hands over the frame at " + size + ": " + higher);
             }
         }
+        string beetle = RenderResolutionContract.options(deck, "{}", "mednafen_psx", "psx");
+        contract.expect(beetle.contains("beetle_psx_internal_resolution = \"1x(native)\"") && RenderResolutionContract.options(deck, RenderResolutionContract.scaled("psx", "2x"), "mednafen_psx", "psx").contains("beetle_psx_internal_resolution = \"2x\""), "Beetle PSX's software renderer at native, and at 2x when chosen");
+        string melon = RenderResolutionContract.options(deck, "{}", "melonds", "nds");
+        string melonScaled = RenderResolutionContract.options(deck, RenderResolutionContract.scaled("nds", "2x"), "melonds", "nds");
+        contract.expect(melon.contains("melonds_opengl_renderer = \"disabled\"") && melonScaled.contains("melonds_opengl_renderer = \"enabled\"") && melonScaled.contains("melonds_opengl_resolution = \"2x native (512x384)\""), "melonDS keeps its software renderer at native and takes its OpenGL renderer at 2x: " + melonScaled);
+        contract.expect(RenderResolutionContract.options(deck, "{}", "azahar", "n3ds").contains("citra_resolution_factor = \"1\"") && RenderResolutionContract.options(deck, "{}", "citra", "n3ds").contains("citra_resolution_factor = \"1x\""), "the Azahar core reads its factor as a number, the Citra core as 1x");
+        contract.contains(RenderResolutionContract.options(deck, RenderResolutionContract.scaled("n3ds", "2x"), "azahar", "n3ds"), "citra_resolution_factor = \"1\"", "the Deck cannot hold the 3DS core's 2x frame (800x960): native");
+        contract.contains(RenderResolutionContract.options(desktop, RenderResolutionContract.scaled("dreamcast", "2x"), "flycast", "dreamcast"), "reicast_internal_resolution = \"1280x960\"", "the Flycast core at 2x on a screen that holds 960 lines");
+        contract.contains(RenderResolutionContract.options(deck, RenderResolutionContract.scaled("dreamcast", "2x"), "flycast", "dreamcast"), "reicast_internal_resolution = \"640x480\"", "and native on the Deck's 800");
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuPlan fitted = SemuResolver.plan(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"systems\":{\"gb\":{\"placement\":\"fit\"}}}}", diagnostics);
         contract.expect(SemuRenderEnvironment.compile(deck.plan, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=game") && SemuRenderEnvironment.compile(deck.plan, deck.model.system("nes"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=fit"), "handhelds default to an integer picture, TVs fit");
@@ -1029,6 +1044,7 @@ int main() {
     AudioSpecContract.run(contract);
     Ps2PictureSpecContract.run(contract);
     M15DeckSpecContract.run(contract);
+    RenderScaleSpecContract.run(contract);
     ModelContract.run(contract);
     SettingsLadderContract.run(contract);
     EsDeContract.run(contract);

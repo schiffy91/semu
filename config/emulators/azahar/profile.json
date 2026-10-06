@@ -149,6 +149,8 @@
         "async_presentation\\default=false",
         "graphics_api=${graphics_api}",
         "graphics_api\\default=false",
+        "resolution_factor=${render_scale}",
+        "resolution_factor\\default=false",
         "use_integer_scaling=true",
         "use_integer_scaling\\default=false",
         "",

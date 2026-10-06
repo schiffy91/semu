@@ -6,6 +6,7 @@ import ../lib/json.btrc;
 import ../model.btrc;
 import ../resolve.btrc;
 import ../bezel/preset.btrc;
+import ./render_scale.btrc;
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -543,6 +544,7 @@ class SemuRenderEnvironment {
         env.set("SEMU_RENDER_FRAME_DELTA_MS", Strings.fromInt((int)(1000.0 / refresh + 0.5)));
         env.set("SEMU_RENDER_DUAL_GAP", SemuRenderEnvironment.numberOr(SemuJson.get(settings, "visual"), "dual_screen_gap", "0"));  // a fraction of the screen width
         SemuRenderEnvironment.surfaces(env, system, diagnostics);
+        for entry in SemuRenderScale.environment(plan, system, emulatorId) { env.entries.push(entry); }  // the render scale, and whether the frames carry it
         if (bezels || !shaderPath.isEmpty()) {
             SemuRenderEnvironment.variant(env, plan, system, "", bezels ? package : JSONValue.makeNull(), shaderPath, shaderId, diagnostics);
             string partner = outputId.isEmpty() || outputId.equals(SemuRenderEnvironment.defaultOutput(system)) ? SemuRenderEnvironment.partnerPackage(system, bezelId) : "";

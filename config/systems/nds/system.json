@@ -80,7 +80,16 @@
       "history": "independent",
       "touch_screen": "bottom"
     },
-    "refresh_hz": 59.8261
+    "refresh_hz": 59.8261,
+    "render_scale": {
+      "choices": [
+        1,
+        2,
+        3
+      ],
+      "default": 1,
+      "doc": "melonDS renders the DS's 3D at 2x or 3x on its OpenGL renderer for little GPU; the 2D layers stay native. RetroArch draws both screens at whole steps, so 3x (768x1152) is not offered at 800 lines."
+    }
   },
   "doc": {
     "hardware": "dual 256x192 resistive LCDs",

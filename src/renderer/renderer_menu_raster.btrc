@@ -116,6 +116,7 @@ class RendererMenuRaster {
         if (strcmp(action, "visual.shader.next") == 0) { return RendererVariantFile.label(&state->catalog, false, state->shader_shown); }
         if (strcmp(action, "visual.placement.next") == 0) { return RendererVariantFile.choiceLabel(&state->catalog, SemuActions.placementSelect(), state->placement_shown); }
         if (strcmp(action, "visual.output.next") == 0) { return RendererVariantFile.choiceLabel(&state->catalog, SemuActions.outputSelect(), state->output_shown); }
+        if (strcmp(action, "visual.scale.next") == 0) { return RendererVariantFile.choiceLabel(&state->catalog, SemuActions.scaleSelect(), state->scale_shown); }
         if (strcmp(action, "controller.layout.next") == 0 && state->layout_shown >= 0 && state->layout_shown < state->layout_count) { return state->layouts + state->layout_shown * 24; }  // player 1's
         return "";
     }

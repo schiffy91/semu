@@ -68,7 +68,7 @@
     "hotkeys": "The keymap is written into PCSX2.ini [Hotkeys], the only hotkeys PCSX2 reads without a per-game input profile, and into the Steam Deck input profile as well. Seen in the podman VM 2026-10-03: with the hotkeys only in the profile, Ctrl+P and Ctrl+S did nothing in PCSX2 2.6.3.",
     "keyboard": "Keyboard/Enter is Qt's keypad Enter (QtKeyCodes.cpp:75-76; the main key is Return), so Start keeps it everywhere. Ctrl++ is written Keyboard/NumpadPlus: Steam types its + as KEYPAD_PLUS, which Qt reports as Key_Plus with the keypad modifier, named NumpadPlus (QtKeyCodes.cpp:514-517, 540-541, 595); main-row Plus would never match.",
     "players": "One [PadN] per player (for_each players): player 1 keeps the keyboard alternates; player 2 reads only the SDL pad it holds (${pcsx2_pad}, SDL-<roster index>, PCSX2's order of opened pads), and a player without a pad is Type = None.",
-    "picture": "filter = 2 is Bilinear (PS2), upstream's default: textures filter as the game asks the GS to (0, Nearest, broke games that rely on it and drew PCSX2's Texture filtering is not set to Bilinear (PS2) notice over the composed TV at every boot). WarnAboutUnsafeSettings = false keeps PCSX2's unsafe-settings notice (integer scaling, the forced OpenGL renderer) off the composed frame (VMManager.cpp:3156-3290 at v2.6.3). OsdMessagesPos = 0 (OsdOverlayPos::None) drops every other OSD message before it is drawn (ImGuiManager.cpp:702 at v2.6.3), such as 'Controller SDL-0 connected.' at boot, seen over the TV in the Deck's frame-60 capture on 2026-10-05; Semu's own toasts announce saves, loads and choices. The render hook (semu_render_hook.patch) draws the GS output at its own size, one texel to one pixel, and publishes that for Semu's renderer to scale by whole steps and shade; IntegerScaling and AspectRatio give only the picture's shape there and PCSX2's own picture when Semu composes nothing."
+    "picture": "filter = 2 is Bilinear (PS2), upstream's default: textures filter as the game asks the GS to (0, Nearest, broke games that rely on it and drew PCSX2's Texture filtering is not set to Bilinear (PS2) notice over the composed TV at every boot). WarnAboutUnsafeSettings = false keeps PCSX2's unsafe-settings notice (integer scaling, the forced OpenGL renderer) off the composed frame (VMManager.cpp:3156-3290 at v2.6.3). OsdMessagesPos = 0 (OsdOverlayPos::None) drops every other OSD message before it is drawn (ImGuiManager.cpp:702 at v2.6.3), such as 'Controller SDL-0 connected.' at boot, seen over the TV in the Deck's frame-60 capture on 2026-10-05; Semu's own toasts announce saves, loads and choices. The render hook (semu_render_hook.patch) draws the GS output at its own size, one texel to one pixel, and publishes that for Semu's renderer to scale by whole steps and shade; upscale_multiplier is the system's render scale (visual.systems.ps2.render_scale, 1x by default, so one GS texel is one game pixel), and above 1x the published texel size is the scaled picture, which the renderer divides back to native; IntegerScaling and AspectRatio give only the picture's shape there and PCSX2's own picture when Semu composes nothing."
   },
   "blocks": {
     "pad_sections": [
@@ -294,7 +294,7 @@
         "AspectRatio = Auto 4:3/3:2",
         "IntegerScaling = true",
         "${renderer_key} = ${renderer_value}",
-        "upscale_multiplier = 1",
+        "upscale_multiplier = ${render_scale}",
         "filter = 2",
         "OsdMessagesPos = 0",
         "VsyncEnable = true",

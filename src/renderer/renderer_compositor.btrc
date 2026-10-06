@@ -18,6 +18,7 @@ import ./renderer_config.btrc;
 import ./renderer_placement.btrc;
 import ./renderer_dual_shell.btrc;
 import ./renderer_mirror.btrc;
+import ./renderer_scaled_lane.btrc;
 int RGL_VERTEX_SHADER = 0x8B31;
 int RGL_FRAGMENT_SHADER = 0x8B30;
 int RGL_LINK_STATUS = 0x8B82;
@@ -206,6 +207,7 @@ struct RendererGlResources {
     int uniform_menu_on;
     int variant_images;  // 1 once this context holds the config's bezel, layer, background and glass images
     int variant_images_stale;  // a live choice changed the config: reload those images, nothing else
+    struct RendererScaledTextures scaled;  // each lane's picture above native, under a render scale
 };
 
 SemuLibrashaderOpenGLChain RendererShaderLane0;
@@ -295,6 +297,7 @@ class RendererGeometry {
             lane->native_height = surface->native_height;
             lane->rotation = surface->rotation;
             lane->origin = surface->origin;
+            RendererRenderScaling.scaled(lane, config->render_scale.scale);  // above native, the picture the emulator drew is kept beside the native one
         }
 
         int areaWidth = frame->framebuffer_width;
@@ -411,6 +414,7 @@ class RendererResources {
             gl->delete_textures(32, resources->layer_textures);
             gl->delete_textures(1, &resources->menu_texture);
             gl->delete_textures(1, &resources->composition.texture);
+            RendererScaledLane.discard(gl, &resources->scaled);
         }
         if (gl->delete_framebuffers != null) {
             gl->delete_framebuffers(1, &resources->extraction_framebuffer);
@@ -806,6 +810,13 @@ class RendererShaderPasses {
         }
         gl->disable((unsigned int)RGL_SCISSOR_TEST);
         RendererGlErrors.clear(gl);
+        if (lane->scaled_width > 0) {  // a render scale: the picture kept at its own size, the native one its box average
+            if (!RendererScaledLane.capture(gl, &resources->scaled, resources->extraction_framebuffer, frame, lane, index)
+                || !RendererScaledLane.native(gl, &resources->scaled, resources->extraction_framebuffer, resources->raw_textures[index], lane, index)) { return false; }
+            gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->raw_textures[index]);
+            RendererResources.mipmap(gl);
+            return RendererGlErrors.none(gl);
+        }
         bool downscale = lane->source_width > lane->native_width || lane->source_height > lane->native_height;  // high-resolution emulators: average, never decimate
         gl->blit_framebuffer(lane->source_x, lane->source_y,
             lane->source_x + lane->source_width,
@@ -1121,15 +1132,20 @@ class RendererCompositor {
         int variantIndex = config->active_variant;
         struct RendererVariantConfig* variant = RendererConfiguration.active(config);
         int second = geometry->lane_count > 1 ? 1 : 0;
+        unsigned int pictures[2];  // what an unshaded lane draws and mirrors: the picture above native when one is kept, else the native one
+        for (int index = 0; index < 2; index++) {
+            int lane = index < geometry->lane_count ? index : second;
+            pictures[index] = geometry->lanes[lane].scaled_width > 0 ? resources->scaled.textures[lane] : resources->raw_textures[lane];
+        }
         RendererGlErrors.clear(gl);
         gl->active_texture((unsigned int)RGL_TEXTURE0);
         gl->bind_sampler(0, 0);
         gl->bind_texture((unsigned int)RGL_TEXTURE_2D, filtered[0] != 0
-            ? resources->shader_textures[0] : resources->raw_textures[0]);
+            ? resources->shader_textures[0] : pictures[0]);
         gl->active_texture((unsigned int)(RGL_TEXTURE0 + 4));
         gl->bind_sampler(4, 0);
         gl->bind_texture((unsigned int)RGL_TEXTURE_2D, filtered[second] != 0
-            ? resources->shader_textures[second] : resources->raw_textures[second]);
+            ? resources->shader_textures[second] : pictures[1]);
         gl->active_texture((unsigned int)(RGL_TEXTURE0 + 1));
         gl->bind_sampler(1, 0);
         gl->bind_texture((unsigned int)RGL_TEXTURE_2D,
@@ -1148,10 +1164,10 @@ class RendererCompositor {
             resources->background_textures[variantIndex]);
         gl->active_texture((unsigned int)(RGL_TEXTURE0 + 7));  // the raw frames give the source-pixel size: reflections mirror the shaded picture one source pixel wide, its colour without the mask and scanlines
         gl->bind_sampler(7, 0);
-        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->raw_textures[0]);
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, filtered[0] != 0 ? resources->raw_textures[0] : pictures[0]);  // an unshaded picture above native mirrors from its own pixels
         gl->active_texture((unsigned int)(RGL_TEXTURE0 + 8));
         gl->bind_sampler(8, 0);
-        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, resources->raw_textures[second]);
+        gl->bind_texture((unsigned int)RGL_TEXTURE_2D, filtered[second] != 0 ? resources->raw_textures[second] : pictures[1]);
 
         gl->disable((unsigned int)RGL_DEPTH_TEST);
         gl->disable((unsigned int)RGL_SCISSOR_TEST);
@@ -1234,12 +1250,12 @@ class RendererCompositor {
         bool drew = RendererGlErrors.none(gl);
         if (getenv("SEMU_RENDER_DEBUG") != null && (frame->frame_id % 120ULL) == 1ULL) {
             struct RendererLaneGeometry* lane0 = &geometry->lanes[0];
-            fprintf(stderr, "semu-renderer: frame %llu bezel %s fb %dx%d lane0 out %d,%d %dx%d tube %d,%d %dx%d native %dx%d art=%d bg=%d framed=%d bezelrect %.0f,%.0f %.0fx%.0f shaders=%d drew=%d\n",
+            fprintf(stderr, "semu-renderer: frame %llu bezel %s fb %dx%d lane0 out %d,%d %dx%d tube %d,%d %dx%d native %dx%d scaled %dx%d source %dx%d art=%d bg=%d framed=%d bezelrect %.0f,%.0f %.0fx%.0f shaders=%d drew=%d\n",
                 frame->frame_id, variant->bezel_id.value[0] != 0 ? variant->bezel_id.value : "none",
                 frame->framebuffer_width, frame->framebuffer_height,
                 lane0->output_x, lane0->output_y, lane0->output_width, lane0->output_height,
                 lane0->tube_x, lane0->tube_y, lane0->tube_width, lane0->tube_height,
-                lane0->native_width, lane0->native_height, art ? 1 : 0, background ? 1 : 0, framed ? 1 : 0,
+                lane0->native_width, lane0->native_height, lane0->scaled_width, lane0->scaled_height, lane0->source_width, lane0->source_height, art ? 1 : 0, background ? 1 : 0, framed ? 1 : 0,
                 geometry->bezel_x, geometry->bezel_y, geometry->bezel_width, geometry->bezel_height,
                 resources->shader_actual, drew ? 1 : 0);
             if (geometry->lane_count == 2) {  // the second screen: tests/visual/reflection-audit.sh measures each screen's mirror against its own picture

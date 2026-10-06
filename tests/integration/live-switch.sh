@@ -15,7 +15,8 @@
 # mounts a PS2 BIOS folder; SEMU_BIOS=DIR mounts a firmware folder read-only as paths.bios (the PS1 BIOS for
 # Beetle PSX); SIZE=WxH sizes the screen (default 1280x800, the Deck); CAPTURE_FRAME=N has the renderer save its Nth composed frame,
 # the emulator's own overlay included (OUT/<n>-<emulator>-<system>-semu-render-final.ppm, beside the launch's receipts and PCSX2's
-# emulog); WAIT seconds before the first chord (default 120); PLACEMENT=bezel
+# emulog); WAIT seconds before the first chord (default 120); SCALE=2x starts the system at that render scale (the
+# result's render_scales and scale_config lines: the receipts' native and scaled sizes, the emulator's own key); PLACEMENT=bezel
 # shows a handheld's whole shell instead of the cropped integer picture; CHORDS="ctrl+shift+f ctrl+shift+r,ctrl+shift+r"
 # presses more radial chords after the menu, each with its toast and picture (a,b: twice, a second apart). Each case writes
 # OUT/<n>-<emulator>.result (actions seen, journal records, switch receipts, saved choices) and
@@ -43,7 +44,7 @@ if [ "${1:-}" != "--inside" ] && [ "${1:-}" != "--build" ]; then
   [ -n "${SEMU_BIOS:-}" ] && mounts+=(-v "$SEMU_BIOS:/bios:ro")
   name="semu-live-switch-$(date +%Y%m%d%H%M%S)"  # left behind exited
   echo "container $name, results in $out"
-  environment=(-e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" -e CHORDS="${CHORDS:-}" -e SETTLE="${SETTLE:-}" -e PADS="${PADS:-0}" -e BASICS="${BASICS:-1}" -e SIZE="${SIZE:-1280x800}" -e CAPTURE_FRAME="${CAPTURE_FRAME:-}" -e FIRMWARE="${SEMU_BIOS:+/bios}")
+  environment=(-e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" -e SCALE="${SCALE:-}" -e CHORDS="${CHORDS:-}" -e SETTLE="${SETTLE:-}" -e PADS="${PADS:-0}" -e BASICS="${BASICS:-1}" -e SIZE="${SIZE:-1280x800}" -e CAPTURE_FRAME="${CAPTURE_FRAME:-}" -e FIRMWARE="${SEMU_BIOS:+/bios}")
   nixConfig="experimental-features = nix-command flakes
 filter-syscalls = false
 sandbox = false
@@ -119,7 +120,8 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
   label="$number-$emulator-$system"
   root="$(mktemp -d)"
   mkdir -p "$root/home" "$root/emulation"
-  visual=""; [ -n "${PLACEMENT:-}" ] && visual=",\"visual\":{\"systems\":{\"$system\":{\"placement\":\"$PLACEMENT\"}}}"
+  own="${PLACEMENT:+\"placement\":\"$PLACEMENT\",}${SCALE:+\"render_scale\":\"$SCALE\",}"  # the system's own choices: SCALE=2x starts at that render scale
+  visual=""; [ -n "$own" ] && visual=",\"visual\":{\"systems\":{\"$system\":{${own%,}}}}"
   settings="{\"paths\":{\"roms\":\"/roms\",\"state_root\":\"$root/state\",\"content_root\":\"$root/content\",\"emulation_root\":\"/emulation\",\"bios\":\"${FIRMWARE:-$root/emulation}\"}$visual}"
   pads=()
   if [ -n "$pad" ]; then
@@ -194,6 +196,8 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
     echo "remote2_device=$(grep -A 1 "^\[Wiimote2\]" "$root/state/$emulator/dolphin-user/Config/WiimoteNew.ini" 2>/dev/null | grep "^Device" | head -1)"
     echo "saved_input=$("$jq" -c ".input" "$root/home/semu/semu.json" 2>/dev/null || echo none)"
     echo "unsafe_settings_notices=$(grep -a -c "Unsafe Settings" "$out/$label-emulog.txt" 2>/dev/null || true) sources=$(grep -a -o "surface0_source=[^ ]* surface0_native=[^ ]*\|surface0_native=[^ ]* surface0_source=[^ ]*" "$out/$label-semu-render-evidence.log" 2>/dev/null | sort | uniq -c | tr -s " \n" " ;")"
+    echo "render_scales=$(grep -a -o "render_scale=[0-9]* frames_scaled=[0-9]*\|surface0_native=[^ ]*\|surface0_scaled=[^ ]*" "$out/$label-semu-render-evidence.log" 2>/dev/null | sort | uniq -c | tr -s " \n" " ;") debug_lanes=$(grep -a -o "native [0-9]*x[0-9]* scaled [0-9]*x[0-9]* source [0-9]*x[0-9]*" "$out/$label.log" | sort | uniq -c | tr -s " \n" " ;")"
+    echo "scale_config=$(find "$root/state/$emulator" \( -name retroarch-core-options.cfg -o -name PCSX2.ini -o -name GFX.ini -o -name ppsspp.ini -o -name emu.cfg \) -exec grep -a -h -E "43screensize|EnableNativeResFactor|internal_resolution|resolution_factor|^upscale_multiplier|^InternalResolution|^rend.Resolution" {} + 2>/dev/null | tr "\n" " ") scale_actions=$(grep -c 'semu: action visual.scale.next' "$out/$label.log" || true)"
   } > "$out/$label.result"
   cat "$out/$label.result"
 done < "$out/cases"

@@ -71,7 +71,15 @@
       "fallback": "default_aspect",
       "switch_at": "frame_boundary"
     },
-    "refresh_hz": 59.94
+    "refresh_hz": 59.94,
+    "render_scale": {
+      "choices": [
+        1,
+        2
+      ],
+      "default": 1,
+      "doc": "Beetle PSX's software renderer upscales on the CPU: 2x quadruples its rasterising, which the Deck's four cores carry; 4x (sixteen times) does not, and the core offers no 3x."
+    }
   },
   "doc": {
     "hardware": "consumer CRT over composite/S-Video",

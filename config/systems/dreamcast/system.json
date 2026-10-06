@@ -71,7 +71,15 @@
       "fallback": "default_aspect",
       "switch_at": "frame_boundary"
     },
-    "refresh_hz": 59.94
+    "refresh_hz": 59.94,
+    "render_scale": {
+      "choices": [
+        1,
+        2
+      ],
+      "default": 1,
+      "doc": "Flycast renders 960 lines at 2x, four times the fill of 480; the Deck's RDNA2 GPU carries it in most games, 3x (1440 lines, nine times) it does not."
+    }
   },
   "doc": {
     "hardware": "consumer CRT or VGA monitor",

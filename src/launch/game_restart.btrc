@@ -1,6 +1,6 @@
 // Restart Game: the settings radial's slot, the Wii layer's centre, its chord, the menu's RESTART GAME row
 // and the players page's. It is the one action that restarts the game, so the choices an emulator reads
-// only at boot (a Wii game's output, a GameCube pad on the Wii, a pad dealt to another player) are saved
+// only at boot (a Wii game's output, a render scale, a GameCube pad on the Wii, a pad dealt to another player) are saved
 // when chosen, say RESTART TO APPLY, and wait here. The action restarts once when something waits; a
 // layout already switched live waits for nothing, so a stray click on the Wii layer's centre after a live
 // switch never reboots the game. The players page's RESTART GAME also restarts after a layout switched
@@ -13,14 +13,15 @@ import ./journal.btrc;
 import ./plan.btrc;
 import ./player_set.btrc;
 import ./relaunch.btrc;
+import ./scale_switch.btrc;
 
 class SemuGameRestart {
-    class bool waiting(SemuLaunchPlan launch) {  // something only a restart applies: the chosen output, a pad dealt anew, a layout read at boot
-        return SemuOutputSwitch.pending(launch.variants.output) || launch.players.pending();
+    class bool waiting(SemuLaunchPlan launch) {  // something only a restart applies: the chosen output or render scale, a pad dealt anew, a layout read at boot
+        return SemuOutputSwitch.pending(launch.variants.output) || SemuScaleSwitch.pending(launch.variants.scale) || launch.players.pending();
     }
 
     class bool due(SemuLaunchPlan launch) {  // anything differs from the launch: what waits, or a layout already switched live
-        return SemuOutputSwitch.pending(launch.variants.output) || launch.players.changed();
+        return SemuOutputSwitch.pending(launch.variants.output) || SemuScaleSwitch.pending(launch.variants.scale) || launch.players.changed();
     }
 
     class void execute(SemuLaunchPlan launch) {  // the action (radial, Wii layer centre, chord, menu row): only what waits

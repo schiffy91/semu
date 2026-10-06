@@ -1,9 +1,9 @@
 // Reset to Default from the radial or the menu: a first press asks for a second within the confirm
 // window; the second removes this system's own choices from semu.json (its bezel, shader, placement,
-// each game's output, its players' pads and layouts), journals the defaults as absolute selects the
-// renderer applies live, and switches the players back to the default layout where the emulator can
-// do that live. It never restarts the game: what only a restart applies (the default output, a
-// layout read at boot, the default pads) waits for Restart Game, and the done notice says so
+// render scale, each game's output, its players' pads and layouts), journals the defaults as absolute
+// selects the renderer applies live, and switches the players back to the default layout where the
+// emulator can do that live. It never restarts the game: what only a restart applies (the default
+// output and scale, a layout read at boot, the default pads) waits for Restart Game, and the done notice says so
 // (85 slot 1, reserved 1).
 
 import Library.Vector;
@@ -13,6 +13,7 @@ import ./input_state.btrc;
 import ./journal.btrc;
 import ./plan.btrc;
 import ./relaunch.btrc;
+import ./scale_switch.btrc;
 import ./visual_cycle.btrc;
 import ./controller_layouts.btrc;
 import ./game_restart.btrc;
@@ -36,6 +37,8 @@ class SemuSystemReset {
         }
         SemuVariantChoice output = launch.variants.output;
         if (output.available() && output.defaultIndex >= 0 && output.index != output.defaultIndex) { SemuOutputSwitch.choose(launch, output, output.defaultIndex); }  // the default output, from the next boot
+        SemuVariantChoice scale = launch.variants.scale;
+        if (scale.available() && scale.defaultIndex >= 0 && scale.index != scale.defaultIndex) { SemuScaleSwitch.choose(launch, scale, scale.defaultIndex); }  // the default render scale, from the next boot
         SemuControllerLayouts.reset(launch);  // every player's layout, live where it can be
         SemuActionJournal.appendWith(launch, SemuActions.resetNotice(), 1, SemuGameRestart.waiting(launch) ? 1 : 0);
     }
