@@ -20,7 +20,7 @@ have=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --offline) offline="--offline"; archive="" ;;
-    --delta) have="$(cd "$(dirname "${2:?--delta needs the Deck's store-list}")" && pwd -P)/$(basename "$2")"; shift ;;
+    --delta) have="$(cd "$(dirname "${2:?--delta needs the Deck store-list}")" && pwd -P)/$(basename "$2")"; shift ;;
     *) echo "usage: build-release.sh [--offline] [--delta HAVE]" >&2; exit 64 ;;
   esac
   shift

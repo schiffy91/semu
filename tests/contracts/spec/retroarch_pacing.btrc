@@ -1,0 +1,105 @@
+// RetroArch pacing spec (M16's Deck probe, 2026-10-06). In the M16 runs every RetroArch case composed about 90 frames
+// a second at Game Mode's 90 Hz: the harnesses cut the sound, so RetroArch's audio_sync had nothing to wait on and its
+// cores ran at the screen's refresh. With the sound in a PipeWire null sink, as Game Mode's speakers pace it, the cores
+// run at their own speed, but RetroArch's own sync then hands frames over in bursts of the sound server's period (Super
+// Mario World: 44.8% frame time deviation). Semu's patch turns on Sync to Exact Content Framerate when the screen is not
+// a whole multiple of the content's rate (5.6% there, 60.10 frames a second) and keeps RetroArch's own sync on a whole
+// multiple, where it locks the game to the screen. The Deck harnesses play the sound into a null sink by default.
+
+import Library.FileSystem;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/paths.btrc;
+
+class RetroArchPacingSpecChecks {
+    class string read(string project, string relative) {
+        return FileSystem.readText(PathTools.join(project, relative));
+    }
+
+    class bool before(string text, string first, string second) {  // FIRST appears, and SECOND after it
+        int at = text.indexOf(first);
+        return at >= 0 && Strings.find(text, second, at + first.len()) >= 0;
+    }
+}
+
+class RetroArchPacingSpecContract {
+    class void patch(Contract contract, string project) {
+        string package = RetroArchPacingSpecChecks.read(project, "config/emulators/retroarch/package.nix");
+        string patch = RetroArchPacingSpecChecks.read(project, "config/emulators/retroarch/retroarch_exact_rate.patch");
+        contract.contains(package, "./retroarch_get_status_null_safety.patch ./retroarch_exact_rate.patch ];", "the Linux RetroArch (the Deck's) is built with the exact-rate patch");
+        contract.contains(patch, "+++ b/retroarch.c", "the patch changes drivers_init in retroarch.c, where RetroArch adjusts its rates");
+        string rule = "+   refreshes = (double)screen_rate / content_rate;\n+   whole     = (unsigned)(refreshes + 0.5);\n+   exact     = (whole < 1)\n"
+            + "+      || (fabs(1.0 - content_rate * (double)whole / (double)screen_rate)\n+            > (double)settings->floats.audio_max_timing_skew);\n"
+            + "+   settings->bools.vrr_runloop_enable = exact;\n";
+        contract.contains(patch, rule, "a screen off a whole multiple of the content's rate (90 Hz under 60 fps) times frames at the content's rate; a whole multiple within RetroArch's own skew keeps its sync");
+        contract.contains(patch, "+   float screen_rate   = video_driver_get_refresh_rate();", "the screen's rate is the one the video context reports");
+        contract.contains(patch, "+   if (content_rate <= 0.0 || screen_rate <= 0.0f)\n+      return;\n", "a screen whose rate the context cannot tell changes nothing");
+        contract.contains(patch, "+   fprintf(stderr, \"semu-retroarch: screen %.2f Hz, content %.2f fps, %.2f refreshes a frame: %s\\n\",", "the decision is logged, so a Deck run can read it");
+        contract.expect(RetroArchPacingSpecChecks.before(patch, "       runloop_st->frame_time_last = 0;\n    }\n", "+      semu_exact_rate_select(settings, video_st);")
+            && RetroArchPacingSpecChecks.before(patch, "+      semu_exact_rate_select(settings, video_st);", " /* Regular display refresh rate startup autoswitch based on content av_info. */"),
+            "the choice is made once the video driver is up and before RetroArch adjusts its audio and swap interval to it");
+    }
+
+    class void profile(Contract contract) {
+        for target in ["steam-deck", "linux-desktop", "macos"] {
+            string document = Fixture(target).profile("retroarch", "retroarch.cfg");
+            contract.expect(!document.isEmpty(), target + " renders retroarch.cfg");
+            contract.lacks(document, "vrr_runloop_enable", target + " retroarch.cfg leaves Sync to Exact Content Framerate to the screen it runs on");
+            contract.contains(document, "video_vsync = \"true\"", target + " RetroArch keeps vsync, which the patch's choice and RetroArch's own sync both rely on");
+        }
+    }
+
+    class void harness(Contract contract, string project) {
+        string check = RetroArchPacingSpecChecks.read(project, "tests/deck/input-check.sh");
+        string matrix = RetroArchPacingSpecChecks.read(project, "tests/deck/system-matrix.sh");
+        contract.contains(check, "sound=\"${SEMU_CHECK_SOUND:-sink}\"", "input-check.sh plays the sound into a null sink unless told to cut it");
+        contract.contains(matrix, "sound=\"${SEMU_MATRIX_SOUND:-sink}\"", "system-matrix.sh too");
+        for script in [check, matrix] {
+            contract.contains(script, "loaded=\"$(pactl load-module module-null-sink sink_name=\"$1\" sink_properties=device.description=\"$1\" 2>/dev/null)\" || return 1", "each case gets a null sink of its own");
+            contract.contains(script, "[ \"$(pactl get-default-sink 2>/dev/null)\" = \"$before\" ] || { pactl unload-module \"$loaded\" 2>/dev/null; return 1; }", "a sink that moved the default sink is unloaded at once and the case runs with the sound cut");
+            contract.contains(script, "audio=(PULSE_SINK=\"$sink\" PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=pulseaudio SDL_AUDIO_DRIVER=pulseaudio)", "only the emulator's pulse clients reach the sink, native PipeWire clients stay silent");
+            contract.contains(script, "\"${audio[@]}\" ALSA_CONFIG_PATH=\"$out/alsa-null.conf\"", "the launch takes that sound and keeps ALSA on its null device");
+            contract.contains(script, "trap sink_close EXIT", "the sink is unloaded on any exit");
+            contract.contains(script, "timeout 1 parec --latency-msec=50 -d \"$sink.monitor\"", "and its stream and loudest sample are read within the second (parec's own fragment is 2 s)");
+        }
+        contract.contains(check, "[ -n \"$module\" ] && { sink_close; note \"sound: the null sink unloaded, the default sink $(pactl get-default-sink 2>/dev/null)\"; }", "input-check.sh unloads each case's sink after its evidence");
+        contract.contains(matrix, "[ -n \"$module\" ] && { sink_close; note \"sound: the null sink unloaded, the default sink $(pactl get-default-sink 2>/dev/null)\"; }", "system-matrix.sh after its case");
+        contract.contains(matrix, "timeout 1 dd bs=4096 count=1 status=none <&3", "the counter takes RetroArch's reply in one read (a byte-wise read drops the rest of a datagram)");
+    }
+
+    class void cases(Contract contract, string project) {
+        string checks = RetroArchPacingSpecChecks.read(project, "tests/deck/m16-check.cases");
+        string docked = RetroArchPacingSpecChecks.read(project, "tests/deck/m16-docked.cases");
+        Vector<string> fillers = [];
+        for (int index = 0; index < 8; index++) { fillers.push("key:shift"); }
+        string line = "snes retroarch snes9x 30 " + fillers.join(" ") + " -- Super Mario World (USA).zip";
+        contract.contains(checks, "\n" + line + "\n", "m16-check.cases measures RetroArch's pace at Game Mode's refresh (R1)");
+        contract.contains(checks, "\n# R1. ", "and says what it must show");
+        contract.contains(checks, "frames timed at the content's own rate (Sync to Exact Content Framerate)", "R1 reads the patch's choice at 90 Hz");
+        contract.contains(docked, "\n" + line + "\n", "m16-docked.cases measures it at a 60 Hz TV (K6)");
+        contract.contains(docked, "RetroArch's own sync (a whole multiple)", "K6 reads the choice that keeps RetroArch's own sync there");
+    }
+
+    class void plan(Contract contract, string project) {
+        string text = RetroArchPacingSpecChecks.read(project, "PLAN.md");
+        int milestone = text.indexOf("### M16. ");
+        int gaps = text.indexOf("## Gap review");
+        string section = milestone > 0 && gaps > milestone ? text.substring(milestone, gaps - milestone) : "";
+        contract.contains(section, "\n  - M16's Deck probe (2026-10-06, ", "PLAN.md M16 records the Deck probe");
+        contract.expect(section.contains("44.8% deviation") && section.contains("Steam's per-game refresh, for the owner") && section.contains("is the game loading its next course from the SD card"),
+            "with RetroArch's pace, Steam's 60 Hz recommendation, and the Wii's slowdown answered");
+        int status = text.indexOf("\n## Status\n");
+        string live = status > 0 ? text.substring(status, text.len() - status) : "";
+        contract.contains(live, "\n- M16 Deck probe (2026-10-06, ", "the live Status block carries it");
+    }
+
+    class void run(Contract contract) {
+        string project = Fixture("steam-deck").project;
+        RetroArchPacingSpecContract.patch(contract, project);
+        RetroArchPacingSpecContract.profile(contract);
+        RetroArchPacingSpecContract.harness(contract, project);
+        RetroArchPacingSpecContract.cases(contract, project);
+        RetroArchPacingSpecContract.plan(contract, project);
+    }
+}

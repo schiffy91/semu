@@ -1,8 +1,8 @@
 #!/bin/bash
 # Every system on the Steam Deck, off-screen. Each case runs the installed release the way ES-DE
 # does (semu-deck-cli launch), inside a private headless gamescope at the Deck's 1280x800 with the
-# sound cut (SDL gets its silent dummy driver: Ryujinx refuses to start without an audio device),
-# so the Deck's own screen, Steam and Game Mode are left alone. A case is captured at each of its
+# sound in a silent null sink (below; cut, SDL gets its dummy driver, as Ryujinx refuses to start without an
+# audio device), so the Deck's own screen, speakers, Steam and Game Mode are left alone. A case is captured at each of its
 # waits (seconds after launch), with the emulator's state and bytes read, and then quit the way
 # Semu quits: SIGTERM to semu-btrc, which ends the emulator's whole process group. Everything is
 # tracked by PID. The script writes only below OUT and removes nothing.
@@ -28,8 +28,25 @@
 # as Dolphin skips duplicate frames).
 # The private gamescope runs at the refresh rate Game Mode's own display runs (xrandr on :0, rounded: 90 on
 # the Deck OLED), as input-check.sh does; SEMU_MATRIX_REFRESH=HZ sets it, and 60 when it cannot be read.
+# The sound plays as it does in Game Mode, through the session's PipeWire, but into a silent null sink made for each
+# case (pactl load-module module-null-sink), which the emulator alone reaches (PULSE_SINK, SDL on its pulse driver;
+# ALSA and native PipeWire clients stay silent) and which is unloaded after the case; the default sink never moves (a
+# sink that moved it is unloaded at once and the case runs with the sound cut) and nothing is unmuted. So an emulator
+# that paces itself by its sound runs at its Game Mode speed: RetroArch's audio_sync waits on the sink, and with the
+# sound cut RetroArch ran its cores at the screen's refresh (90 frames a second at 90 Hz, 1.5 times a 60 Hz game's
+# speed, M16's Deck probe). SEMU_MATRIX_SOUND=cut cuts it as every run before that did (SDL's dummy driver, a null
+# ALSA device, no pulse server). Each wait notes the case's streams into its sink and the loudest sample over one second.
+# SEMU_MATRIX_COUNTER='ADDRESS BYTES' (a RetroArch case) asks RetroArch's command port for those bytes of the
+# core's memory (READ_CORE_MEMORY, the core's own addresses) every second and notes the counter's rate against the
+# wall clock: a game's frame counter there is its speed (Super Mario 64's global timer, 8032d5d4 4 on
+# mupen64plus_next, counts 30 a second at full speed). Only a core that declares its memory map answers (mupen64plus_next
+# and mednafen_psx do; snes9x replies "no memory map defined").
 set -u
 cases="$1"; out="$2"
+sound="${SEMU_MATRIX_SOUND:-sink}"
+case "$sound" in sink|cut) ;; *) echo "system-matrix: SEMU_MATRIX_SOUND is sink or cut, not $sound" >&2; exit 64 ;; esac
+counter="${SEMU_MATRIX_COUNTER:-}"
+case "$counter" in ''|[0-9a-f]*' '[1-4]) ;; *) echo "system-matrix: SEMU_MATRIX_COUNTER is 'HEX-ADDRESS BYTES' (1 to 4), not $counter" >&2; exit 64 ;; esac
 refresh="${SEMU_MATRIX_REFRESH:-$(DISPLAY=:0 xrandr --current 2>/dev/null | awk '/\*/ { for (field = 2; field <= NF; field++) if ($field ~ /\*/) { sub(/[*+]+$/, "", $field); printf "%d", $field + 0.5; exit } }')}"
 case "$refresh" in '') refresh=60 ;; [1-9][0-9]|[1-9][0-9][0-9]) ;; *) echo "system-matrix: SEMU_MATRIX_REFRESH is whole hertz, not $refresh" >&2; exit 64 ;; esac
 roms=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs
@@ -61,6 +78,42 @@ record_argv() {  # $1 the emulator: its argv once it has exec'd, silently nothin
   [ -s "$dir/cmdline" ] && note "argv-last: $(tail -1 "$dir/cmdline")"  # the file the emulator was told to open
   return 0
 }
+module=""  # the null sink of the case running now, unloaded after it and on any exit
+sink_open() {  # NAME: loads a null sink, prints its module; fails (nothing left loaded) if pactl fails or the default sink moved
+  local before loaded
+  before="$(pactl get-default-sink 2>/dev/null)"
+  loaded="$(pactl load-module module-null-sink sink_name="$1" sink_properties=device.description="$1" 2>/dev/null)" || return 1
+  [ "$(pactl get-default-sink 2>/dev/null)" = "$before" ] || { pactl unload-module "$loaded" 2>/dev/null; return 1; }
+  echo "$loaded"
+}
+sink_close() { [ -n "$module" ] && pactl unload-module "$module" 2>/dev/null; module=""; return 0; }
+trap sink_close EXIT
+sound_line() {  # the streams playing into this case's sink and the loudest sample over one second (32767 full scale; parec's own 2 s fragment would hand over nothing)
+  local number streams peak
+  number="$(pactl list short sinks 2>/dev/null | awk -v name="$sink" '$2 == name { print $1 }')"
+  streams="$(pactl list sink-inputs 2>/dev/null | awk -v number="$number" '/^Sink Input #/ { into = 0 } /^[ \t]*Sink: / { into = ($2 == number) }
+    into && /application.name = / { sub(/.*application.name = /, ""); printf "%s%s", separator, $0; separator = ", "; count++ } END { printf " (%d)", count }')"
+  peak="$(timeout 1 parec --latency-msec=50 -d "$sink.monitor" --raw --format=s16le --rate=48000 --channels=2 2>/dev/null | od -A n -t d2 -v -w2 | awk '{ value = $1 < 0 ? -$1 : $1; if (value > loudest) loudest = value } END { print loudest + 0 }')"
+  echo "sound: streams $streams into $sink, peak $peak"
+}
+counter_samples() {  # every second until the case's semu-btrc ends: wall ms and the counter's bytes from RetroArch's command port
+  local reply
+  while kill -0 "$game" 2>/dev/null; do  # dd takes the reply in one read: bash's read takes a byte, and UDP drops the rest of the datagram
+    reply="$(exec 3<> /dev/udp/127.0.0.1/55355 && printf 'READ_CORE_MEMORY %s\n' "$counter" >&3 && timeout 1 dd bs=4096 count=1 status=none <&3 2>/dev/null)"
+    echo "$(date +%s%3N) ${reply:-no reply}"
+    sleep 1
+  done
+}
+counter_rate() {  # FROM_MS: the counter's mean rate per second over its samples from then on (wrapping at its width), and its slowest and fastest second
+  awk -v bytes="${counter#* }" -v from="$1" -v label="$counter" 'function byte(text) { return index("0123456789ABCDEF", substr(toupper(text), 1, 1)) * 16 + index("0123456789ABCDEF", substr(toupper(text), 2, 1)) - 17 }
+    $1 >= from && $2 == "READ_CORE_MEMORY" && NF == 3 + bytes && $4 ~ /^[0-9A-Fa-f][0-9A-Fa-f]$/ {
+      value = 0; for (field = 3 + bytes; field >= 4; field--) value = value * 256 + byte($field)  # little endian, as the core stores it
+      if (seen) { step = (value - last + 256 ^ bytes) % (256 ^ bytes); rate = step * 1000 / ($1 - when); total += step; span += $1 - when
+        if (!count || rate < slowest) slowest = rate; if (!count || rate > fastest) fastest = rate; count++ }
+      seen = 1; last = value; when = $1 }
+    END { if (count) printf "counter %s: %.2f per second over %d s from the first wait (each second %.1f to %.1f)\n", label, total * 1000 / span, span / 1000, slowest, fastest
+          else print "counter: no readable samples (no memory map at that address, or the command port was closed)" }' "$dir/counter.log"
+}
 
 before="$(emulator_pids)"
 while IFS= read -r line; do
@@ -83,8 +136,19 @@ while IFS= read -r line; do
   printf '#!/bin/sh\nexec "%s" launch %s --system %s %s %s ${SEMU_MATRIX_SETTINGS:+--settings-json "$SEMU_MATRIX_SETTINGS"} --rom "$SEMU_MATRIX_ROM"\n' "$cli" "$emulator" "$system" "$core_argument" "${SEMU_MATRIX_LAUNCH_ARGS:-}" > "$dir/inner.sh"  # SEMU_MATRIX_LAUNCH_ARGS: e.g. --project DIR for a trial config
   chmod +x "$dir/inner.sh"
 
+  audio=(PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy)  # the sound cut
+  sink=""
+  if [ "$sound" = sink ]; then
+    sink="semu_matrix_$$_$(date +%s)"
+    if module="$(sink_open "$sink")"; then
+      audio=(PULSE_SINK="$sink" PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=pulseaudio SDL_AUDIO_DRIVER=pulseaudio)  # only the pulse server's own clients reach the sink
+      note "sound: into the null sink $sink (module $module), the default sink $(pactl get-default-sink 2>/dev/null)"
+    else
+      module=""; sink=""; note "sound: cut (no null sink: pactl failed, or loading it moved the default sink)"
+    fi
+  fi
   start=$(date +%s)
-  PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy ALSA_CONFIG_PATH="$out/alsa-null.conf" SEMU_RENDER_GPU_TIME=1 SEMU_RENDER_DEBUG=1 SEMU_MATRIX_ROM="$rom" \
+  env "${audio[@]}" ALSA_CONFIG_PATH="$out/alsa-null.conf" SEMU_RENDER_GPU_TIME=1 SEMU_RENDER_DEBUG=1 SEMU_MATRIX_ROM="$rom" \
     gamescope --backend headless -W 1280 -H 800 -w 1280 -h 800 -r "$refresh" -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
   headless=$!
   game=""; display=""
@@ -105,6 +169,8 @@ while IFS= read -r line; do
     kill -0 "$game" 2>/dev/null || break
     sleep 0.1
   done
+  sampler=""
+  [ -n "$counter" ] && [ -n "$game" ] && { counter_samples > "$dir/counter.log" 2>&1 & sampler=$!; }
 
   first=""
   for wait in $waits; do
@@ -120,6 +186,7 @@ while IFS= read -r line; do
     io=""; [ -n "$leaf" ] && io="$(cat "/proc/$leaf/comm" 2>/dev/null) state $(awk '{print $3}' "/proc/$leaf/stat" 2>/dev/null), read $(( $(sed -n 's/^rchar: //p' "/proc/$leaf/io" 2>/dev/null || echo 0) / 1048576 )) MB, cpu $(ps -o pcpu= -p "$leaf" 2>/dev/null | tr -d ' ')%"
     note "t=$wait running=$running shot=$([ -s "$shot" ] && echo yes || echo no) $io"
     [ -n "$leaf" ] && note "  $(threads "$leaf"), disk read $(( $(sed -n 's/^read_bytes: //p' "/proc/$leaf/io" 2>/dev/null || echo 0) / 1048576 )) MB"
+    [ -n "$sink" ] && note "  $(sound_line)"
   done
   leaf="$(leaf_of "$game")"; record_argv "$leaf"
   [ -s "$dir/cmdline" ] || note "argv: the emulator was never seen"
@@ -149,6 +216,11 @@ while IFS= read -r line; do
     for pid in $orphans; do kill -TERM "$pid" 2>/dev/null; done; sleep 2
     for pid in $orphans; do kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null; done
   fi
+  if [ -n "$sampler" ]; then
+    kill -TERM "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null
+    note "$(counter_rate $(( (start + ${waits%% *}) * 1000 )))"
+  fi
+  [ -n "$module" ] && { sink_close; note "sound: the null sink unloaded, the default sink $(pactl get-default-sink 2>/dev/null)"; }
   if [ "$emulator" = dolphin ]; then  # Dolphin's frame logs, written only while the performance overlay is on
     for log in render_times vblank_times; do
       file="$state/dolphin/dolphin-user/Logs/$log.txt"

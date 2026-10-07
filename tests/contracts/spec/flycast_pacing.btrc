@@ -12,6 +12,7 @@ import Library.Strings;
 import Library.Vector;
 import ../support.btrc;
 import ../../../src/lib/paths.btrc;
+import ./emulator_osd.btrc;
 
 class FlycastPacingSpecChecks {
     class string read(string project, string relative) {
@@ -28,7 +29,7 @@ class FlycastPacingSpecContract {
     class void patch(Contract contract, string project) {
         string flake = FlycastPacingSpecChecks.read(project, "config/emulators/flycast/flake.nix");
         string patch = FlycastPacingSpecChecks.read(project, "config/emulators/flycast/semu-swap-interval.patch");
-        contract.contains(flake, "patches = (previous.patches or [ ]) ++ [ ./semu-swap-interval.patch ];", "Flycast is built with the swap-interval patch");
+        contract.expect(EmulatorOsdSpecChecks.patched(flake, "semu-swap-interval.patch"), "Flycast is built with the swap-interval patch");
         contract.contains(patch, "+++ b/core/wsi/sdl.cpp", "the patch changes Flycast's SDL OpenGL context, the one Semu's swap hook composes in");
         string rule = "+\tfloat multiple = settings.display.refreshRate / 60.f;\n+\tint whole = (int)std::lround(multiple);\n+\tif (whole < 1)\n+\t\treturn gameInterval;\n"
             + "+\tif (std::fabs(multiple - (float)whole) > 0.05f)\n+\t\treturn 1;\n+\treturn whole * gameInterval;\n";

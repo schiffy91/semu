@@ -37,3 +37,9 @@ wiiu cemu - 60 key:ctrl+shift+f -- MARIO KART 8 (US).wua
 #     apart, the movie's about 34 ms; off-screen on 2026-10-06 with vsync off instead they bunched to 22 and 44 ms).
 #     before: the movie inside the whole TV.
 dreamcast flycast - 90 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
+# K6. RetroArch at a 60 Hz TV (M16's Deck probe, R1's case docked): run.log "semu-retroarch: screen 60.00 Hz, content
+#     60.10 fps, 1.00 refreshes a frame: RetroArch's own sync (a whole multiple)" (any reading within a hertz of 60), which
+#     locks the game to the screen (every rate line 59.9 to 60.1 per second; the content's own rate there would drop a
+#     frame every 10 s, and a Game Boy's 59.73 repeat one every 4 s). result: "sound: into the null sink". Shots: the
+#     title, then the attract demo.
+snes retroarch snes9x 30 key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift -- Super Mario World (USA).zip

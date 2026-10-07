@@ -2976,6 +2976,73 @@ Status: started 2026-10-06.
     past its first row, and m16-check.cases D3 and D11 and m16-docked.cases K5 ran on their own; item 9 (the
     480-line four on GDV-NTSC against Sharp CRT, each in its own home, at 1280x800 and docked; its record above),
     whose cases are now D7-D10 and D12-D15; the rest of m16-check.cases and m16-docked.cases is still open.
+  - M16's Deck probe (2026-10-06, release 4770562e as installed, off-screen in private headless gamescopes at Game
+    Mode's 90 Hz unless named, the owner's games from the SD card; no release installed by this step):
+    - RetroArch at 90 Hz. Every RetroArch case of the M16 final run composed about 90 frames a second while PCSX2 and
+      Dolphin read 59.9. Measured with the sound in a silent PipeWire null sink made for each case (pactl load-module
+      module-null-sink, reached through PULSE_SINK by the emulator alone, unloaded after the case; the default sink
+      never moved and nothing was unmuted), the way Game Mode's speakers pace it: Super Mario World (snes9x) 60.16
+      composed frames a second, Super Mario 64 (mupen64plus_next) 60.12, its global timer read over RetroArch's command
+      port 27.4 a second over the attract loop (the same with the exact rate below), Crash Bandicoot (Beetle PSX) 59.6
+      with its loads. With the sound cut, the harnesses' way until now, Super Mario World read 90.01: RetroArch's pulse
+      driver found no server, so audio_sync had nothing to wait on and the core ran at the 90 Hz vsync, 1.5 times its
+      speed. So the owner's RetroArch does not run fast in Game Mode; the harness did.
+      Pacing: RetroArch's own sync leaves the pace to the audio, and each frame waits for room in PipeWire's buffer,
+      which frees one period at a time, so the frames come in bursts. RetroArch's own frame time statistics (its
+      "Average monitor Hz ... deviation" line at exit, with log_verbosity and frontend_log_level 0 in a trial config
+      tree) read 44.8% deviation for Super Mario World and 43.1% for Super Mario 64 at 90 Hz. Sync to Exact Content
+      Framerate (vrr_runloop_enable) times each frame at the content's own rate: 5.6% and 9.7%, the games at exactly
+      60.10 and 60.00 frames a second. At 60 Hz RetroArch's own sync is already even (7.3% for Super Mario World, 7.8%
+      for Tetris on gambatte, both locked at 60.00 with the audio resampled to the screen), while the exact rate drifts
+      against the screen there (60.10 and 59.73 frames a second: a dropped frame every 10 s, a repeated one every 4 s).
+      Fix, reversible: `config/emulators/retroarch/retroarch_exact_rate.patch` (the Linux build) turns Sync to Exact
+      Content Framerate on when the screen the video context reports is not a whole multiple of the content's rate
+      within RetroArch's own audio_max_timing_skew (90 Hz under 60 fps; also 75 or 144 Hz, or PAL on 60 Hz) and leaves
+      RetroArch's own sync on a whole multiple (60, 120 Hz); a screen whose rate the context cannot tell changes
+      nothing, and the choice is logged ("semu-retroarch: screen 90.00 Hz, content 60.10 fps, 1.50 refreshes a frame:
+      frames timed at the content's own rate (Sync to Exact Content Framerate)"). retroarch.cfg sets no
+      vrr_runloop_enable. Built for x86_64-linux in the podman VM before any release ("patching file retroarch.c",
+      exit 0; RetroArch's configure found xxf86vm, which its X11 context reads the screen's rate through). The Deck harnesses (input-check.sh, system-matrix.sh) now play the sound into such a null sink
+      by default (SEMU_CHECK_SOUND=cut and SEMU_MATRIX_SOUND=cut cut it as before), so a RetroArch case measures Game
+      Mode's pace, and system-matrix.sh's SEMU_MATRIX_COUNTER reads a core's memory over RetroArch's command port
+      (snes9x declares no memory map; mupen64plus_next and Beetle PSX do). The new input-check.sh ran R1 on the Deck
+      on this release: "sound: into the null sink", RetroArch's stream in it at a peak of 12328, the sink unloaded after
+      the case with the default sink unchanged and none left behind; its rate lines 59.8, 60.3, 60.3 and 59.9 a second
+      (RetroArch's own sync; no semu-retroarch line, the release predates the patch). Verify after the next install:
+      m16-check.cases R1 (90 Hz: the "frames timed at the content's own rate" line, every rate line 60.0-60.2 a second
+      with the longest gap under 26 ms) and m16-docked.cases K6 (60 Hz: "RetroArch's own sync (a whole multiple)"),
+      and RetroArch's own deviation with the trial tree's two lines (under 10% at 90 Hz). No line at all would mean the
+      context reports no rate under gamescope's Xwayland (RetroArch reads it through XF86VidMode), which leaves
+      RetroArch's own sync: the probe could not observe the patched build (no release installed in this step).
+      Steam's per-game refresh, for the owner: the Performance tab's Refresh Rate at 60 Hz for the Semu shortcut shows
+      every 60 Hz system with each frame held one refresh (RetroArch, Flycast, Dolphin and the rest alike), the
+      smoothest the panel can show them, for a little less battery than 90 Hz; at 90 Hz the best any emulator can do is
+      to hold frames one and two refreshes in turn, which the patch (and Flycast's) now does. It is Steam's setting and
+      the owner's call; Semu does not set it.
+    - Ryujinx's boot (boot line 7). Filmed for 130 s (boot-capture.sh, Animal Crossing): Ryujinx's own loading view
+      (grey, the box art and the PPTC progress, its content 778x256 at 252,273, centred) from 27.0 s, inside which the
+      render child is 1278x706+0+35; the game's first frame composed at 45.5 s, when Ryujinx made a new swapchain:
+      "semu-vulkan: swapchain 1280x800 format 44, 4 images, shared framebuffer complete", the child 1280x800+0+0 by
+      the next sample. The swapchain Ryujinx made at the child's 1278x706 (gamescope's WSI log: created at 15.3 s of
+      Ryujinx's clock, destroyed at 33.4 s) was never presented, so Semu's Vulkan layer composes against the whole
+      1280x800 screen: the picture 1280x720 at 0,40 (1x, centred, 40 px bars), the game's black first frames with its
+      island icon at the bottom right inside that lane, the full picture by 100 s; 164 shots analysed, none shrunk. No
+      fix needed. The final run's 40 s window ended before the game: with the translation cache warm its first frame
+      came at 45.5 s (113 s on a cold cache, an earlier run); boot-capture.cases line 7 films 70 s (the final run's track
+      moved it from 40 s), which holds a warm boot, and its comment says so. Open, the owner's call: the loading view
+      is Ryujinx's own interface for about 18 s before the game (not over a composed
+      picture); Ryujinx has no setting to hide it, so a black screen there needs a Ryujinx patch.
+    - The Wii link slowdown (C3). Reproduced: C3 again showed Dolphin's VI rate (its own vblank log, the performance
+      overlay on in the run's home) at 22-45 a second for 6 s, the longest VI 263 ms. Not Semu's keys and not Dolphin's
+      reconnect: the link alone (Alt+F11 typed with no profile change, 12 s apart) slowed nothing during a demo race,
+      and the same slowdown came with no input at all (boot-capture.sh for 220 s, a shot a second, a sampler of
+      Dolphin's threads and reads beside it): at Dolphin's 124-128 s the VI rate 49, 51, 42, 32 and 53 a second, the
+      longest VI 296 ms, exactly at the attract mode's white fade from the title to its next demo race, while Dolphin
+      read 4.1 MB from the SD card at about 1.4 MB/s and its emulated CPU thread idled (4-12% of a core, 30-45% in the
+      race), waiting on its DVD thread. The earlier fade, whose course was in the page cache, ran at 60. So the slowdown
+      is the game loading its next course from the SD card, and C3's link fell just before that fade; its last south
+      landed inside the load and was missed. Nothing Semu sets (a faster card, or the game on internal storage, would
+      shorten such loads). C3, which the final run's track rewrote with two fillers after the link, now names the load.
 
 - The final Deck run's steady track (2026-10-06; the run: 53 cases, 37 passed; this track takes the PS1 TV's breathing,
   standalone melonDS's render scale and seven case texts): built and contracted on the Mac (8415424, the nominal frame,
@@ -4500,6 +4567,15 @@ Update this block whenever a milestone criterion changes state.
   C5, D1, boot line 7). Observed on the Mac render host, in the editor (MAE 0) and in the podman VM; contracts
   nominal_frame.btrc and render_scale.btrc, 13 mutations killed. Open on the Deck, after a release with it: the
   reruns listed in PLAN M16's steady-track block.
+- M16 Deck probe (2026-10-06, release 4770562e, off-screen): RetroArch does not run fast in Game Mode (60.1 frames a
+  second at 90 Hz with the sound in a PipeWire null sink; the 90 a second of the M16 runs was the harnesses cutting
+  the sound, which they no longer do by default), but its own sync hands frames over in bursts at 90 Hz (44.8% frame
+  time deviation); `retroarch_exact_rate.patch` turns on Sync to Exact Content Framerate off a whole multiple of the
+  screen (5.6% in a trial tree), to verify after the next install (m16-check.cases R1, m16-docked.cases K6). Ryujinx's
+  boot: the picture 1280x720 at 0,40, composed into the 1280x800 swapchain Ryujinx presents (its 1278x706 render child
+  exists only behind its own loading view); boot-capture.cases line 7 films 70 s. The Wii's "link slowdown" is Mario
+  Kart Wii loading its next attract course from the SD card at 1.4 MB/s, with or without a link. Steam's per-game
+  60 Hz refresh is the owner's recommendation for the evenest 60 Hz games. Record: PLAN M16 "M16's Deck probe".
 - Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
   Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
   1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,

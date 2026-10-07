@@ -1,0 +1,23 @@
+--- a/src/Cafe/HW/Latte/Core/LatteShaderCache.cpp
++++ b/src/Cafe/HW/Latte/Core/LatteShaderCache.cpp
+@@ -525,6 +525,12 @@
+ 			// render background texture
+ 			LatteShaderCache_drawBackgroundImage(g_shaderCacheLoaderState.textureTVId, 1280, 720);
+ 
++			// Semu: the game's own boot image only. The progress box ("Loading cached shaders...", "Compiling cached shaders...",
++			// "Loading cached Vulkan pipelines...") and the shader counts drew over it, inside the picture Semu composes;
++			// the loading runs as before.
++			constexpr bool semuShowProgress = false;
++			if (semuShowProgress)
++			{
+ 			const auto progress_font = ImGui_GetFont(window_size.y / 32.0f); // = 24 by default
+ 			const auto shader_count_font = ImGui_GetFont(window_size.y / 48.0f); // = 16
+ 
+@@ -605,6 +611,7 @@
+ 				ImGui::PopStyleColor();
+ 				ImGui::PopFont();
+ 			}
++			}
+ 			g_renderer->ImguiEnd();
+ 			lastFrameUpdate = tick_cached();
+ 		}

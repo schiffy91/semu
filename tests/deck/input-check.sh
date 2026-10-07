@@ -1,7 +1,7 @@
 #!/bin/bash
 # Controller, radial and trackpad input on the Steam Deck, off-screen: each case launches a game the
-# way ES-DE does, inside a private headless gamescope at 1280x800 (SEMU_CHECK_SIZE=1920x1080: a docked TV) with the sound cut (as
-# system-matrix.sh), while a virtual gamepad on /dev/uinput (tests/visual/virtual_pad.btrc, built
+# way ES-DE does, inside a private headless gamescope at 1280x800 (SEMU_CHECK_SIZE=1920x1080: a docked TV) with the sound in a silent
+# null sink (as system-matrix.sh, below), while a virtual gamepad on /dev/uinput (tests/visual/virtual_pad.btrc, built
 # for x86_64-linux) presses the case's buttons and inject.sh types its radial chords and moves and
 # clicks its pointer. The pad is a replica of Steam's virtual pad (--steam-virtual-pad), and Steam's
 # own pad is hidden from the game (its device nodes covered by /dev/null in a bubblewrap around
@@ -23,7 +23,15 @@
 # (what Semu and the emulators write is under "Isolation") and removes nothing. The private gamescope
 # runs at the refresh rate Game Mode's own display runs (xrandr on :0, rounded: 90 on the Deck OLED's
 # 89.89 Hz), so an emulator that times its swaps by the screen (Flycast, M16 item 8) sees what it sees in
-# Game Mode; SEMU_CHECK_REFRESH=HZ sets it (60 for a docked 60 Hz TV), and 60 when it cannot be read.
+# Game Mode; SEMU_CHECK_REFRESH=HZ sets it (60 for a docked 60 Hz TV), and 60 when it cannot be read. The sound plays
+# as it does in Game Mode, through the session's PipeWire, but into a silent null sink made for each case (pactl
+# load-module module-null-sink), which the emulator alone reaches (PULSE_SINK, SDL on its pulse driver; ALSA and native
+# PipeWire clients stay silent) and which is unloaded after the case; the default sink never moves (a sink that moved
+# it is unloaded at once and the case runs with the sound cut) and nothing is unmuted. So an emulator that paces itself
+# by its sound runs at its Game Mode speed: RetroArch's audio_sync waits on the sink, and with the sound cut RetroArch
+# ran its cores at the screen's refresh (90 frames a second at 90 Hz, 1.5 times a 60 Hz game's speed, M16's Deck
+# probe). SEMU_CHECK_SOUND=cut cuts it as every run before that did (SDL's dummy driver, a null ALSA device, no pulse
+# server). The result notes the sink and, after the last capture, the streams in it and their loudest sample.
 #
 #   input-check.sh PAD CASES OUT
 #   input-check.sh --plan CASES      # each case's pad and injector timelines and captures; launches nothing (runs on a Mac)
@@ -159,6 +167,8 @@ done
 pad="$1"; cases="$2"; out="$(mkdir -p "$3" && cd "$3" && pwd -P)"
 refresh="${SEMU_CHECK_REFRESH:-$(DISPLAY=:0 xrandr --current 2>/dev/null | awk '/\*/ { for (field = 2; field <= NF; field++) if ($field ~ /\*/) { sub(/[*+]+$/, "", $field); printf "%d", $field + 0.5; exit } }')}"
 case "$refresh" in '') refresh=60 ;; [1-9][0-9]|[1-9][0-9][0-9]) ;; *) echo "input-check: SEMU_CHECK_REFRESH is whole hertz, not $refresh" >&2; exit 64 ;; esac
+sound="${SEMU_CHECK_SOUND:-sink}"
+case "$sound" in sink|cut) ;; *) echo "input-check: SEMU_CHECK_SOUND is sink or cut, not $sound" >&2; exit 64 ;; esac
 roms=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs
 cli="$HOME/Applications/Semu/bin/semu-deck-cli"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -170,6 +180,24 @@ mkdir -p "$home" "$content/saves" "$content/states" "$content/screenshots"
 [ -s "$home/semu.json" ] || jq -n --arg content "$content" '{paths: {content_root: $content}}' > "$home/semu.json"
 
 descendants() { local child; for child in $(pgrep -P "$1"); do echo "$child"; descendants "$child"; done; }
+module=""  # the null sink of the case running now, unloaded after it and on any exit
+sink_open() {  # NAME: loads a null sink, prints its module; fails (nothing left loaded) if pactl fails or the default sink moved
+  local before loaded
+  before="$(pactl get-default-sink 2>/dev/null)"
+  loaded="$(pactl load-module module-null-sink sink_name="$1" sink_properties=device.description="$1" 2>/dev/null)" || return 1
+  [ "$(pactl get-default-sink 2>/dev/null)" = "$before" ] || { pactl unload-module "$loaded" 2>/dev/null; return 1; }
+  echo "$loaded"
+}
+sink_close() { [ -n "$module" ] && pactl unload-module "$module" 2>/dev/null; module=""; return 0; }
+trap sink_close EXIT
+sound_line() {  # the streams playing into this case's sink and the loudest sample over one second (32767 full scale; parec's own 2 s fragment would hand over nothing)
+  local number streams peak
+  number="$(pactl list short sinks 2>/dev/null | awk -v name="$sink" '$2 == name { print $1 }')"
+  streams="$(pactl list sink-inputs 2>/dev/null | awk -v number="$number" '/^Sink Input #/ { into = 0 } /^[ \t]*Sink: / { into = ($2 == number) }
+    into && /application.name = / { sub(/.*application.name = /, ""); printf "%s%s", separator, $0; separator = ", "; count++ } END { printf " (%d)", count }')"
+  peak="$(timeout 1 parec --latency-msec=50 -d "$sink.monitor" --raw --format=s16le --rate=48000 --channels=2 2>/dev/null | od -A n -t d2 -v -w2 | awk '{ value = $1 < 0 ? -$1 : $1; if (value > loudest) loudest = value } END { print loudest + 0 }')"
+  echo "sound: streams $streams into $sink, peak $peak"
+}
 battery() { cat /sys/class/power_supply/BAT1/capacity 2>/dev/null || echo 100; }
 charging() { grep -q -E 'Charging|Full' /sys/class/power_supply/BAT1/status 2>/dev/null; }
 leaf_of() { local leaf="$1" child; while [ -n "$leaf" ] && child=$(pgrep -P "$leaf" | tail -1) && [ -n "$child" ]; do leaf=$child; done; echo "$leaf"; }
@@ -267,12 +295,25 @@ while IFS= read -r line; do
   done
   note "pad: replica of Steam's virtual pad; hidden:${cover:- nothing}"
   note "gamescope: $(pacman -Q gamescope 2>/dev/null) at ${width}x${height}, ${refresh} Hz"
+  audio=(PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy)  # the sound cut
+  sink=""
+  if [ "$sound" = sink ]; then
+    sink="semu_check_$$_$(date +%s)"
+    if module="$(sink_open "$sink")"; then
+      audio=(PULSE_SINK="$sink" PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=pulseaudio SDL_AUDIO_DRIVER=pulseaudio)  # only the pulse server's own clients reach the sink
+      note "sound: into the null sink $sink (module $module), the default sink $(pactl get-default-sink 2>/dev/null)"
+    else
+      module=""; sink=""; note "sound: cut (no null sink: pactl failed, or loading it moved the default sink)"
+    fi
+  else
+    note "sound: cut (SEMU_CHECK_SOUND=cut)"
+  fi
   steamlog="$HOME/.local/share/Steam/logs/controller.txt"
   logsize=$(stat -c %s "$steamlog" 2>/dev/null || echo 0)
   start_ms=$(date +%s%3N); start=$(( start_ms / 1000 ))  # the shared clock's zero
   "$pad" $replica $arguments > "$dir/pad.log" 2>&1 &  # present before the emulator starts, so no hotplug is needed
   padpid=$!
-  SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1 SDL_GAMECONTROLLER_IGNORE_DEVICES=0x28de/0x1205 SteamVirtualGamepadInfo="$out/steam-virtual-gamepad-info" PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=semu-none SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy ALSA_CONFIG_PATH="$out/alsa-null.conf" SEMU_MATRIX_ROM="$rom" \
+  env SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1 SDL_GAMECONTROLLER_IGNORE_DEVICES=0x28de/0x1205 SteamVirtualGamepadInfo="$out/steam-virtual-gamepad-info" "${audio[@]}" ALSA_CONFIG_PATH="$out/alsa-null.conf" SEMU_MATRIX_ROM="$rom" \
     SEMU_RENDER_GPU_TIME=1 SEMU_RENDER_DEBUG=1 SEMU_RENDER_CAPTURE_FRAME=60 SEMU_INJECT_START_MS="$start_ms" SEMU_INJECT_EVIDENCE="$evidence" SEMU_INJECT_EVIDENCE_FROM="$from" SEMU_INJECT_SCREEN="$size" \
     bwrap --dev-bind / / --tmpfs /tmp/.X11-unix $cover -- gamescope --backend headless -W "$width" -H "$height" -w "$width" -h "$height" -r "$refresh" --xwayland-count 2 --hide-cursor-delay 3000 -- "$dir/inner.sh" > "$dir/run.log" 2>&1 &
   headless=$!
@@ -318,6 +359,7 @@ while IFS= read -r line; do
   while read -r at kind shot type; do
     [ "$kind" = shot ] && capture "$shot" "$at" "$type"
   done < "$dir/schedule"
+  [ -n "$sink" ] && note "$(sound_line)"
 
   if [ -n "$game" ] && kill -0 "$game" 2>/dev/null; then
     kill -TERM "$game"
@@ -333,6 +375,7 @@ while IFS= read -r line; do
     kill -TERM "$injector"; note "inject: still running at the end, stopped (pid $injector)"
   fi
   evidence
+  [ -n "$module" ] && { sink_close; note "sound: the null sink unloaded, the default sink $(pactl get-default-sink 2>/dev/null)"; }
   { echo "== $name"; cat "$dir/result"; } >> "$out/summary"
 done < "$cases"
 date > "$out/done"

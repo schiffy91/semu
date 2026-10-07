@@ -29,7 +29,10 @@
           version = "2.6.3";
           src = source // { tag = "v2.6.3"; };  # the recipe stamps PCSX2_GIT_TAG from it
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
-          patches = (previous.patches or [ ]) ++ [ ./semu_render_hook.patch ];  # GSDeviceOGL publishes the presented frame to libsemurenderer (ABI 3)
+          patches = (previous.patches or [ ]) ++ [
+            ./semu_render_hook.patch  # GSDeviceOGL publishes the presented frame to libsemurenderer (ABI 3)
+            ./semu-quit-in-fullscreen.patch  # a quit that asks nothing stays full screen to the end (M16 OSD review)
+          ];
           buildInputs = (previous.buildInputs or [ ]) ++ [ semuRendererLoader ];
           # upstream's release flags (linux_build_qt.yml:136-147): Release, whole-program LTO, Multi-ISA (the AVX2 GS is picked at run time on the Deck)
           cmakeFlags = (previous.cmakeFlags or [ ]) ++ [ (lib.cmakeBool "CMAKE_INTERPROCEDURAL_OPTIMIZATION" true) ];

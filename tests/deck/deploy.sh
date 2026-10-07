@@ -12,7 +12,7 @@
 #   tests/deck/deploy.sh screenshot NAME    # gamescope screenshot type 3 into build/verification
 set -eu
 here="$(cd "$(dirname "$0")/../.." && pwd -P)"
-deck="${DECK_HOST:?set DECK_HOST to the Deck's ssh target}"
+deck="${DECK_HOST:?set DECK_HOST to the Deck SSH target}"
 release="$here/build/release"
 verification="$here/build/verification/steam-deck"
 ssh_opts="-o BatchMode=yes ${DECK_SSH_OPTS:-}"

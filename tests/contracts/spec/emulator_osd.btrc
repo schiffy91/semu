@@ -1,0 +1,123 @@
+// Emulator OSD spec (the M16 OSD review): no emulator draws its own UI or messages over the picture Semu composes;
+// Semu draws its own toasts and menu. The Deck's final M16 run (2026-10-06) showed five that did: RetroArch's paused
+// indicator under Semu's menu, its load-content banner at boot and "Core remap file loaded." after Restart Game;
+// Flycast's "Starting..." box inside the TV; PPSSPP's top-centre "Game controller connected"; Cemu's shader cache
+// progress box and shader counts over the boot image; and PCSX2 leaving full screen on its SIGINT teardown, so its
+// last frames were composed into a 640x480 window. RetroArch and PPSSPP have settings for theirs; Flycast, Cemu and
+// PCSX2 carry small patches.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+
+class EmulatorOsdSpecChecks {
+    class string read(string project, string relative) {
+        return FileSystem.readText(PathTools.join(project, relative));
+    }
+
+    class bool before(string text, string first, string second) {  // FIRST appears, and SECOND after it
+        int at = text.indexOf(first);
+        return at >= 0 && Strings.find(text, second, at + first.len()) >= 0;
+    }
+
+    class bool patched(string flake, string patchFile) {  // the file is an entry of the derivation's patches list
+        int start = flake.indexOf("patches = (previous.patches or [ ]) ++ [");
+        if (start < 0) { return false; }
+        int end = Strings.find(flake, "];", start);
+        int entry = Strings.find(flake, "./" + patchFile, start);
+        return entry > start && end > entry;
+    }
+
+    class string section(string document, string header) {  // the lines of one ini section, its header included
+        int start = document.indexOf(header + "\n");
+        if (start < 0) { return ""; }
+        int end = Strings.find(document, "\n[", start + header.len());
+        return end < 0 ? document.substring(start, document.len() - start) : document.substring(start, end - start + 1);
+    }
+}
+
+class EmulatorOsdSpecContract {
+    class void retroarch(Contract contract) {
+        for target in ["steam-deck", "linux-desktop"] {
+            string cfg = Fixture(target).profile("retroarch", "retroarch.cfg");
+            string label = target + " retroarch.cfg";
+            contract.contains(cfg, "\nvideo_font_enable = \"false\"\n", label + ": On-Screen Notifications off, so no widget starts and no message text draws (the paused II, Paused)");
+            contract.contains(cfg, "\nmenu_enable_widgets = \"false\"\n", label + ": no widgets");
+            contract.contains(cfg, "\nmenu_show_load_content_animation = \"false\"\n", label + ": no load-content banner naming the game and core at boot");
+            for kind in ["remap_load", "config_override_load", "set_initial_disk", "disk_control", "save_state", "fast_forward", "cheats_applied", "patch_applied", "screenshot", "refresh_rate", "netplay_extra", "when_menu_is_alive"] {
+                contract.contains(cfg, "\nnotification_show_" + kind + " = \"false\"\n", label + ": no " + kind + " message (Core remap file loaded. after Restart Game, Saved state to slot)");
+            }
+            contract.contains(cfg, "\nnotification_show_screenshot_flash = \"2\"\n", label + ": no white flash at a screenshot (2 is off)");
+            for counter in ["fps_show", "statistics_show", "framecount_show", "memory_show"] {
+                contract.contains(cfg, "\n" + counter + " = \"false\"\n", label + ": no " + counter + " counter");
+            }
+            contract.lacks(cfg, "video_font_enable = \"true\"", label + ": nothing turns the notifications back on");
+        }
+    }
+
+    class void ppsspp(Contract contract) {
+        for target in ["steam-deck", "linux-desktop"] {
+            string general = EmulatorOsdSpecChecks.section(Fixture(target).profile("ppsspp", "config/ppsspp/PSP/SYSTEM/ppsspp.ini"), "[General]");
+            contract.contains(general, "\nNotificationPos = -1\n",
+                target + " PPSSPP places its messages nowhere (None), so Game controller connected and the save-state messages never draw over the top of the picture");
+        }
+    }
+
+    class void flycast(Contract contract, string project) {
+        string flake = EmulatorOsdSpecChecks.read(project, "config/emulators/flycast/flake.nix");
+        string patch = EmulatorOsdSpecChecks.read(project, "config/emulators/flycast/semu-no-osd.patch");
+        contract.expect(EmulatorOsdSpecChecks.patched(flake, "semu-no-osd.patch"), "Flycast is built with the no-OSD patch");
+        contract.contains(patch, "+++ b/core/ui/gui.cpp", "the patch changes Flycast's ImGui front end, whose frames Semu's swap hook composes");
+        string states = "+\t\t\tif (NetworkHandshake::instance != nullptr)\n+\t\t\t{\n+\t\t\t\tnetworkStatus = NetworkHandshake::instance->start();\n"
+            + "+\t\t\t\tgui_setState(GuiState::NetworkStart);\n+\t\t\t}\n+\t\t\telse\n+\t\t\t\tgui_setState(GuiState::Closed);\n";
+        contract.expect(EmulatorOsdSpecChecks.before(patch, " static void gui_display_loadscreen()\n {\n", "+\t\tif (gameLoader.ready() && !custom_texture.isPreloading())\n+\t\t{\n" + states)
+            && EmulatorOsdSpecChecks.before(patch, states, "+\t\tgui_stop_game(ex.what());\n+\t}\n+\treturn;\n \tdrawBoxartBackground();\n"),
+            "the loading screen changes the loader's state as before and returns before the box art and the Loading... / Starting... box are drawn");
+        contract.expect(EmulatorOsdSpecChecks.before(patch, "-\t\ttoast.show(msg, details != nullptr ? details : \"\", durationMs);\n", "+\t\tNOTICE_LOG(COMMON, \"%s %s\", msg, details != nullptr ? details : \"\");\n"),
+            "an in-game notification (State saved, Save state slot N, Screenshot saved) goes to Flycast's log, never a toast over the game");
+    }
+
+    class void cemu(Contract contract, string project) {
+        string flake = EmulatorOsdSpecChecks.read(project, "config/emulators/cemu/flake.nix");
+        string patch = EmulatorOsdSpecChecks.read(project, "config/emulators/cemu/semu-no-shader-progress.patch");
+        contract.expect(EmulatorOsdSpecChecks.patched(flake, "semu-no-shader-progress.patch") && EmulatorOsdSpecChecks.patched(flake, "semu-fullscreen-at-boot.patch"),
+            "Cemu is built with the no-shader-progress patch beside the full-screen-at-boot one");
+        contract.contains(patch, "+++ b/src/Cafe/HW/Latte/Core/LatteShaderCache.cpp", "the patch changes the shader cache's loading screen");
+        string background = " \t\t\tLatteShaderCache_drawBackgroundImage(g_shaderCacheLoaderState.textureTVId, 1280, 720);\n";
+        string guard = "+\t\t\tconstexpr bool semuShowProgress = false;\n+\t\t\tif (semuShowProgress)\n+\t\t\t{\n \t\t\tconst auto progress_font";
+        contract.expect(EmulatorOsdSpecChecks.before(patch, background, guard)
+            && EmulatorOsdSpecChecks.before(patch, guard, " \t\t\t\tImGui::PopFont();\n \t\t\t}\n+\t\t\t}\n \t\t\tg_renderer->ImguiEnd();\n"),
+            "the game's boot image is drawn, then the progress box (shaders and Vulkan pipelines) and the shader counts are skipped as one block");
+    }
+
+    class void pcsx2(Contract contract, string project) {
+        string flake = EmulatorOsdSpecChecks.read(project, "config/emulators/pcsx2/flake.nix");
+        string patch = EmulatorOsdSpecChecks.read(project, "config/emulators/pcsx2/semu-quit-in-fullscreen.patch");
+        contract.expect(EmulatorOsdSpecChecks.patched(flake, "semu-quit-in-fullscreen.patch") && EmulatorOsdSpecChecks.patched(flake, "semu_render_hook.patch"),
+            "PCSX2 is built with the quit-in-full-screen patch beside the render hook");
+        contract.contains(patch, "+++ b/pcsx2-qt/MainWindow.cpp", "the patch changes MainWindow::requestShutdown, which PCSX2's SIGINT handler reaches through requestExit(false)");
+        string quiet = "+\tif (!semu_confirm && (!MemcardBusy::IsBusy() || GSDumpReplayer::IsReplayingDump()))\n";
+        contract.contains(patch, "+\tconst bool semu_confirm = !m_is_closing && allow_confirm && !GSDumpReplayer::IsReplayingDump() && Host::GetBoolSettingValue(\"UI\", \"ConfirmShutdown\", true);\n",
+            "a confirmation counts only where upstream would ask it");
+        contract.expect(EmulatorOsdSpecChecks.before(patch, quiet, "+\t\tg_emu_thread->shutdownVM(save_state);\n+\t\treturn true;\n+\t}\n")
+            && EmulatorOsdSpecChecks.before(patch, "+\t\treturn true;\n+\t}\n", " \tVMLock lock(pauseAndLockVM());\n"),
+            "a shutdown with no dialog to show stops the VM before pauseAndLockVM, which would leave full screen and show the main window");
+        for target in ["steam-deck", "linux-desktop"] {
+            string ini = Fixture(target).profile("pcsx2", "config/PCSX2/inis/PCSX2.ini");
+            contract.contains(ini, "\nConfirmShutdown = false\n", target + " PCSX2 asks nothing at shutdown, so Semu's quit and Restart Game take the patch's path");
+        }
+    }
+
+    class void run(Contract contract) {
+        string project = Fixture("steam-deck").project;
+        EmulatorOsdSpecContract.retroarch(contract);
+        EmulatorOsdSpecContract.ppsspp(contract);
+        EmulatorOsdSpecContract.flycast(contract, project);
+        EmulatorOsdSpecContract.cemu(contract, project);
+        EmulatorOsdSpecContract.pcsx2(contract, project);
+    }
+}

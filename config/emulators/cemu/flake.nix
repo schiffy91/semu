@@ -17,7 +17,10 @@
           version = "2.6";
           src = source;
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
-          patches = (previous.patches or [ ]) ++ [ ./semu-fullscreen-at-boot.patch ];  # a -g -f launch is full screen and black from the start, never the menu-bar window
+          patches = (previous.patches or [ ]) ++ [
+            ./semu-fullscreen-at-boot.patch  # a -g -f launch is full screen and black from the start, never the menu-bar window
+            ./semu-no-shader-progress.patch  # the shader cache's loading screen shows the game's boot image only (M16 OSD review)
+          ];
           # upstream's release is CMake's own Release flags, -O3 -DNDEBUG, with LTO (CMakeLists.txt:73-75, build.yml:69 at v2.6);
           # the nixpkgs recipe sets the Release flags to -DNDEBUG alone, which leaves the hardening wrapper's -O2
           cmakeFlags = lib.filter (flag: !(lib.hasInfix "_FLAGS_RELEASE" flag)) (previous.cmakeFlags or [ ]);

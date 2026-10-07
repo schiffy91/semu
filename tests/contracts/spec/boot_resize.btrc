@@ -17,6 +17,7 @@ import ../support.btrc;
 import ../../../src/lib/json.btrc;
 import ../../../src/lib/paths.btrc;
 import ./deck_harness.btrc;
+import ./emulator_osd.btrc;
 
 class BootResizeSpecChecks {
     class string read(string project, string relative) {
@@ -54,7 +55,7 @@ class BootResizeSpecContract {
             "PCSX2 starts in no-GUI mode, so its game list never shows before the game (under -batch it showed until the VM ran, QtHost.cpp:2428-2433)");
         string flake = BootResizeSpecChecks.read(project, "config/emulators/cemu/flake.nix");
         string patch = BootResizeSpecChecks.read(project, "config/emulators/cemu/semu-fullscreen-at-boot.patch");
-        contract.contains(flake, "patches = (previous.patches or [ ]) ++ [ ./semu-fullscreen-at-boot.patch ];", "Cemu is built with the full-screen-at-boot patch");
+        contract.expect(EmulatorOsdSpecChecks.patched(flake, "semu-fullscreen-at-boot.patch"), "Cemu is built with the full-screen-at-boot patch");
         contract.contains(patch, "+++ b/src/gui/CemuApp.cpp", "the patch changes Cemu's start-up");
         string launched = "+\tif (LaunchSettings::GetLoadFile().has_value() && ActiveSettings::FullscreenEnabled())";
         contract.expect(BootResizeSpecChecks.before(patch, "-\tm_mainFrame->Show();", launched)

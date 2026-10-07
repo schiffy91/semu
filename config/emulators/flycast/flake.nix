@@ -17,7 +17,10 @@
           version = "2.7";
           src = source;
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
-          patches = (previous.patches or [ ]) ++ [ ./semu-swap-interval.patch ];  # a screen that is not a whole multiple of 60 Hz swaps at the next refresh (M16 item 8)
+          patches = (previous.patches or [ ]) ++ [
+            ./semu-swap-interval.patch  # a screen that is not a whole multiple of 60 Hz swaps at the next refresh (M16 item 8)
+            ./semu-no-osd.patch  # no loading box or toast drawn into the frames Semu composes (M16 OSD review)
+          ];
         });
     in {
       semu = {

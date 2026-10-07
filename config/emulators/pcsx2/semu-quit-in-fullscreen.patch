@@ -1,0 +1,26 @@
+--- a/pcsx2-qt/MainWindow.cpp
++++ b/pcsx2-qt/MainWindow.cpp
+@@ -1373,6 +1373,23 @@
+ 	// If we don't have a crc, we can't save state.
+ 	allow_save_to_state &= (s_current_disc_crc != 0);
+ 	bool save_state = allow_save_to_state && default_save_to_state;
++
++	// Semu: a shutdown that shows no dialog (none asked for, the memory card idle) leaves the display as it is.
++	// pauseAndLockVM() takes a full-screen display out of full screen for a dialog, so Semu's quit and Restart
++	// Game (SIGINT, requestExit(false)) presented the last frames into the 640x480 window and showed the main
++	// window under -nogui, though no dialog came.
++	const bool semu_confirm = !m_is_closing && allow_confirm && !GSDumpReplayer::IsReplayingDump() && Host::GetBoolSettingValue("UI", "ConfirmShutdown", true);
++	if (!semu_confirm && (!MemcardBusy::IsBusy() || GSDumpReplayer::IsReplayingDump()))
++	{
++		if (!isRenderingToMain() && isHidden() && !Host::InBatchMode() && !g_emu_thread->isRunningFullscreenUI())
++			updateWindowState(true);
++		s_vm_valid = false;
++		updateEmulationActions(false, false, true);
++		updateDisplayRelatedActions(false, false, false);
++		g_emu_thread->shutdownVM(save_state);
++		return true;
++	}
++
+ 	VMLock lock(pauseAndLockVM());
+ 
+ 	// Check if memcard is busy, deny request if so.

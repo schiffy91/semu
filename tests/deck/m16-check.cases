@@ -82,6 +82,7 @@ n3ds azahar - 50 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0.5 key:c
 #     render_scale=2 frames_scaled=1 surface0_native=313x237 surface0_scaled=626x474;
 #     retroarch-core-options.cfg mupen64plus-43screensize "640x480" and mupen64plus-EnableNativeResFactor "2";
 #     rate lines at 60 per second. choices n64 {"render_scale":"2x"}.
+# OSD check: no RetroArch paused indicator under Semu’s menu or banner during restart.
 n64 retroarch mupen64plus_next 40 key:ctrl+shift+n key:ctrl+shift+d key:ctrl+m key:ctrl+m -- Super Mario 64 (USA).zip
 # S2. The GameCube on Dolphin, live. before: native, receipts surface0_native=640x480 surface0_scaled=0x0 (the
 #     case's one receipt is frame 60's, before the first press). after-1 (88/1/0, SCALE: 2X): the game keeps
@@ -105,6 +106,7 @@ gc dolphin - 50 key:ctrl+shift+n key:ctrl+shift+n -- Legend of Zelda, The - The 
 #     shape); a frame wider than 1067 texels (Def Jam's 1278) is fitted to the window, 1068x800. PCSX2.ini
 #     upscale_multiplier = 2; no PCSX2 text over the picture; rate lines at 59.94 per second. choices ps2
 #     {"render_scale":"2x"}.
+# OSD check: Restart Game keeps the framebuffer at 1280x800 through teardown.
 ps2 pcsx2 - 60 key:ctrl+shift+n key:ctrl+shift+d key:ctrl+m key:ctrl+m key:ctrl+m key:ctrl+m -- Devil May Cry (USA).iso
 # S4. The PSP on PPSSPP: 2x is now the default (ppsspp.ini InternalResolution = 2; it was 0, the window's own
 #     size, about 3x). before: the PSP shell and its picture as in M15. after-1 (88/2/1, SCALE 3X: RESTART TO
@@ -118,6 +120,7 @@ psp ppsspp - 45 key:ctrl+shift+n key:ctrl+shift+d key:ctrl+m key:ctrl+m -- Daxte
 #     "2x native (512x384)". after-3 (tap): both screens drawn in place, the same size as in before (F4 left
 #     integer game: 512x384 each in the whole shell), the touch screen's text smoother; touch.log "-> surface 1
 #     native" about 128,96. choices nds {"render_scale":"2x"}.
+# OSD check: no load-content banner or remap-loaded notice; black outside the shell stays black.
 nds retroarch melonds 40 key:ctrl+shift+n key:ctrl+shift+d tap:0.5,0.5 -- Legend of Zelda, The - Phantom Hourglass*.zip
 # S6. The 3DS on Azahar at 2x. after-1 (88/1/1, SCALE 2X: RESTART TO APPLY). after-2 (87/1): the game boots again;
 #     qt-config.ini resolution_factor=2. after-3 (tap): both screens the size and place F5 left (800x480 and
@@ -160,8 +163,11 @@ n3ds azahar - 50 move:0.5,0.5 tap:0.5,0.5 move:0.9,0.1 -- Legend of Zelda, The -
 #    unlink it via X"). The two souths are then the GameCube pad's A, the only input left (the Wii Remote is unbound
 #    and away): the first brings an intro or attract race back to the title (or leaves the title), the second
 #    leaves the title, so after-4 shows a screen past the title. The third Controller Layout steps to Wii Remote
-#    (83/0/0, P1: WII REMOTE, "... then Alt+F11 to link it"); the game pairs the remote again, which slowed it for
-#    about 6 s on 2026-10-06 (31-53 per second, a 431 ms gap), so two fillers wait that out; the last two souths are
+#    (83/0/0, P1: WII REMOTE, "... then Alt+F11 to link it"). About then the attract loop may load its next demo course
+#    from the SD card: the final run's "6 s at 31-53 per second, a 431 ms gap" after the link was that load, not the
+#    link (M16's Deck probe, 2026-10-06: the same slowdown with no input at all at the title's white fade, Dolphin's
+#    emulated CPU waiting on about 4 MB read at 1.4 MB/s while the course was not in the page cache; Alt+F11 alone
+#    during a demo race slowed nothing), so two fillers wait that out; the last two souths are
 #    the Wii Remote's A (and the pad's): after-8 and after-9 each show the game answering A, a screen after the
 #    one before it (the next prompt or menu), never the title loop again. One Dolphin process throughout (no
 #    "semu: restarting" in run.log), and no Dolphin message over the picture in any shot ("Wii Remote 1
@@ -263,6 +269,7 @@ wii dolphin - 30 -- New Super Mario Bros. Wii*.wbfs
 #     intres, so the renderer sets nothing). before: the movie inside the TV.
 dreamcast flycast - 90 -- Sonic Adventure (USA) (En,Ja,Fr,De,Es) (Rev A).chd
 # D4. Item 4, the PS2 (PCSX2): size: no line smaller than the last; before: Def Jam's boot at full size.
+# OSD check: no framebuffer shrink after PCSX2 receives SIGINT.
 ps2 pcsx2 - 40 -- Def Jam - Fight for NY (USA).iso
 # D5. Item 4, the 3DS (Azahar through the Vulkan layer): size: no line smaller than the last; before: both
 #     screens in the shell, never a smaller frame in a corner.
@@ -334,6 +341,7 @@ dreamcast flycast - 30 start key:ctrl+shift+r,ctrl+shift+r key:shift key:shift k
 # D13. The PS2 (Def Jam): S3 left it at render scale 2x, so Restart Game (87/1) follows Reset and the game boots again
 #     at 1x (receipts render_scale=1) on GDV-NTSC at integer bezel; the bar holds once it draws. Run in a fresh home
 #     (already 1x) nothing waits, so the press journals 87/0 and the game keeps running.
+# OSD check: reset and restart keep the framebuffer at 1280x800 through teardown.
 ps2 pcsx2 - 40 key:ctrl+shift+r,ctrl+shift+r key:ctrl+shift+d key:shift key:shift key:shift key:shift key:shift key:shift key:ctrl+shift+f key:shift key:shift key:shift key:shift key:ctrl+shift+v key:shift key:shift key:shift key:shift -- Def Jam - Fight for NY (USA).iso
 # D14. The GameCube (The Wind Waker): the title at 30 frames a second, its attract scenes after it.
 gc dolphin - 40 key:ctrl+shift+r,ctrl+shift+r key:shift key:shift key:shift key:shift key:ctrl+shift+f key:shift key:shift key:shift key:shift key:ctrl+shift+v key:shift key:shift key:shift key:shift -- Legend of Zelda, The - The Wind Waker (USA).rvz
@@ -341,3 +349,15 @@ gc dolphin - 40 key:ctrl+shift+r,ctrl+shift+r key:shift key:shift key:shift key:
 #     after a new release compiles Dolphin's shaders and stutters on either shader: 2026-10-06's first run on Sharp CRT
 #     missed 41 of 55 lines, the warm runs a handful at track changes).
 wii dolphin - 40 key:ctrl+shift+r,ctrl+shift+r key:shift key:shift key:shift key:shift key:ctrl+shift+f key:shift key:shift key:shift key:shift key:ctrl+shift+v key:shift key:shift key:shift key:shift -- Mario Kart Wii (USA)*.wbfs
+# R1. RetroArch's pace at Game Mode's refresh (M16's Deck probe; Super Mario World's title and its attract demo, no
+#     input). result: "sound: into the null sink" (input-check.sh's default since the probe: with the sound cut
+#     RetroArch had no audio device to wait on and drew 180 frames in 2 s, 90 a second, the game at 1.5 times its speed;
+#     every RetroArch case of the M16 final run read that). run.log: "semu-retroarch: screen 90.00 Hz, content 60.10
+#     fps, 1.50 refreshes a frame: frames timed at the content's own rate (Sync to Exact Content Framerate)" (any
+#     screen reading within a hertz of 90; no line at all: the video context reports no rate and RetroArch's own sync
+#     stays, the release before the patch). rate: every line from the title on 60.0 to 60.2 per second with the
+#     longest gap under 26 ms (measured with the setting in a trial tree: 121 frames in 2013 ms on every line, gaps
+#     17.5-25.6 ms; RetroArch's own sync read 59.8 to 60.4 with gaps to 29 ms, its frames in bursts of PipeWire's
+#     period). key:shift is a lone Shift, which neither Semu nor RetroArch binds (Select is the right Shift): a filler
+#     that keeps the case running with a shot every 6 s. Shots: the title, then Mario's attract demo, no RetroArch text.
+snes retroarch snes9x 30 key:shift key:shift key:shift key:shift key:shift key:shift key:shift key:shift -- Super Mario World (USA).zip

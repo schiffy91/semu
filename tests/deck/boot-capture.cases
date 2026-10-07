@@ -1,6 +1,9 @@
 # The first seconds of every emulator ES-DE launches on the Deck (M16 item 4), filmed by boot-capture.sh:
 # SYSTEM EMULATOR CORE|- SECONDS -- ROM-GLOB. The owner saw GameCube games start at the right size, drop to a
 # third of the screen in the top left, and come back; each standalone emulator and RetroArch is filmed once.
+# The OSD round (2026-10-06): no emulator's own box, toast or banner over the composed picture either: not
+# Flycast's Starting... box, Cemu's shader cache progress and counts (its boot image stays), PPSSPP's top-centre
+# toast or RetroArch's load-content banner; the picture black until the game draws.
 gc dolphin - 30 -- Legend of Zelda, The - The Wind Waker (USA).rvz
 wii dolphin - 30 -- New Super Mario Bros. Wii*.wbfs
 ps2 pcsx2 - 30 -- Def Jam - Fight for NY (USA).iso
@@ -10,6 +13,10 @@ wiiu cemu - 40 -- MARIO KART 8 (US).wua
 # Ryujinx films 70 s: on 2026-10-06 the Deck took 10 s to load the game from the SD card and 10.5 s to recompile its
 # PPTC cache, so the 40 s film ended on Ryujinx's loading view (PPTC 20987 of 22500) before the game's first frame,
 # where the size is judged; the window tree showed the Vulkan child at 1278x706+0+35 in the 1280x800 window there.
+# Filmed for 130 s on 2026-10-06 (M16's Deck probe): with the translation cache warm the game's first frame composed at
+# 45.5 s, when Ryujinx made the swapchain it presents (1280x800) and the child grew to 1280x800+0+0; the 1278x706 child
+# exists only behind Ryujinx's own loading view, and the picture is 1280x720 at 0,40. A cold cache (the first run after
+# Ryujinx changes) reached the game at 113 s: film that one for 130 s.
 switch ryujinx - 70 -- Animal Crossing New Horizons*.nsp
 psp ppsspp - 20 -- Ape Escape - On the Loose (USA).iso
 nds melonds - 20 -- Advance Wars - Dual Strike (USA, Australia).zip

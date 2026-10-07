@@ -118,6 +118,7 @@
         "DiscordRichPresence = False",
         "StateSlot = 0",
         "SaveStateSlotCount = 5",
+        "NotificationPos = -1",
         "",
         "[Graphics]",
         "GraphicsBackend = OPENGL",
@@ -185,6 +186,7 @@
     "rendering": "OpenGL, horizontal output, non-VR presentation, no stretch/crop/integer scaling, and an empty post-shader chain keep the managed presentation contract deterministic while PPSSPP's live rectangle still adapts to framebuffer size and aspect.",
     "storage": "Both generated INI files are deployed into the isolated XDG memstick. PPSSPP creates SAVEDATA, PPSSPP_STATE, screenshots, cache, and other writable content below that same Semu-owned root.",
     "save_states": "ppsspp.ini pins StateSlot = 0 and SaveStateSlotCount = 5 (Core/Config.cpp:268,274, the defaults), so each launch starts on the slot Semu's counter starts on; Next/Previous Slot wrap over those five (Core/SaveState.cpp:353-359) and PPSSPP shows slot + 1 (SaveState.cpp:822).",
+    "notifications": "NotificationPos = -1 is PPSSPP's Notification screen position None (UI/GameSettingsScreen.cpp:1246-1248 at v1.20.4): every message whose place is that setting (Game controller connected, the save-state and screenshot messages, warnings) is placed nowhere and never drawn (UI/OnScreenDisplay.cpp:151, 183 and 291). The fixed places stay: PPSSPP's progress bars, its centred errors and its fast-forward icon (lines 166-169). The default, top centre, drew Game controller connected over the top of the picture Semu composes at boot (the Deck's boot film, 2026-10-06); Semu shows its own toasts for the actions it sends.",
     "keypad_plus": "Ctrl++ (Fast-forward) is 1-113:1-157: Steam types its + as KEYPAD_PLUS, which SDL reports as SDLK_KP_PLUS and PPSSPP maps to NKCODE_NUMPAD_ADD 157 (SDL/NKCodeFromSDL.h:79 at v1.20.4); NKCODE_PLUS 81 is the main-row key and never arrived."
   },
   "actions": {

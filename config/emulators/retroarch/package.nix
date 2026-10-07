@@ -9,7 +9,7 @@ let
     inherit version;
     src = source;
     allowSubstitutes = false;  # compiled by Semu, never a cache binary
-    patches = (previous.patches or [ ]) ++ [ ./retroarch.patch ./retroarch_commands.patch ./retroarch_get_status_null_safety.patch ];
+    patches = (previous.patches or [ ]) ++ [ ./retroarch.patch ./retroarch_commands.patch ./retroarch_get_status_null_safety.patch ./retroarch_exact_rate.patch ];  # exact_rate: Sync to Exact Content Framerate off a whole multiple of the screen (the Deck OLED's 90 Hz)
     patchFlags = [ "-p1" "--fuzz=0" ];  # a patch that drifted from the pinned source fails instead of landing fuzzily
     nativeBuildInputs = (previous.nativeBuildInputs or [ ]) ++ [ btrcpy ];
     buildInputs = (previous.buildInputs or [ ]) ++ [ semuRendererLoader ];  # the loader: renderer changes never rebuild RetroArch

@@ -30,7 +30,11 @@
 # sleep:SECONDS waits; TARGET=steam-deck launches with the Deck's device identities, which name the replica as SDL does. DOLPHIN_LOG=1 has Dolphin log at INFO (Logger.ini: IOS_WIIMOTE, SI, CI) into
 # OUT/<n>-dolphin-wii-dolphin.log, and the result counts the Wii Remote links the game accepted (HCI_CMD_ACCEPT_CON) and
 # the GameCube pad's X+Y+Start held 3 s (PAD - COMBO_ORIGIN, SI_DeviceGCController.cpp:243-270), which only the
-# game's own polling of that pad logs.
+# game's own polling of that pad logs. FILM=SECONDS films each launch's first SECONDS before WAIT (the screen every
+# 0.25 s, OUT/<n>-<emulator>-<system>-film/<ms since launch>.png), and a CHORDS step film:SECONDS films that long at that
+# point (after a Restart Game, say); the result lists every framebuffer size the renderer composed into. SHARED_STATE=1
+# runs every case in the first case's state and home, so a later launch reads what an earlier one wrote (Cemu's
+# shader cache), and the same ROM may be listed twice.
 set -eu
 image=docker.io/nixos/nix:latest
 if [ "${1:-}" != "--inside" ] && [ "${1:-}" != "--build" ]; then
@@ -39,17 +43,18 @@ if [ "${1:-}" != "--inside" ] && [ "${1:-}" != "--build" ]; then
   repository="$(cd "$(dirname "$0")/../.." && pwd -P)"
   [ "$(podman machine inspect --format '{{.State}}')" = running ] || podman machine start
   mounts=()
-  : > "$out/cases"
+  : > "$out/cases"; : > "$out/mounted"
   for case in "$@"; do
     emulator="${case%%:*}"; rest="${case#*:}"; system="${rest%%:*}"; rom="${rest#*:}"
     printf '%s\t%s\t%s\n' "$emulator" "$system" "$(basename "$rom")" >> "$out/cases"
-    mounts+=(-v "$rom:/roms/$system/$(basename "$rom"):ro")
+    grep -q -x -F "$system/$(basename "$rom")" "$out/mounted" 2>/dev/null || mounts+=(-v "$rom:/roms/$system/$(basename "$rom"):ro")  # a ROM listed twice is mounted once
+    printf '%s\n' "$system/$(basename "$rom")" >> "$out/mounted"
   done
   [ -n "${SEMU_PS2_BIOS:-}" ] && mounts+=(-v "$SEMU_PS2_BIOS:/emulation/PCSX2/config/bios:ro")
   [ -n "${SEMU_BIOS:-}" ] && mounts+=(-v "$SEMU_BIOS:/bios:ro")
   name="semu-live-switch-$(date +%Y%m%d%H%M%S)"  # left behind exited
   echo "container $name, results in $out"
-  environment=(-e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" -e SCALE="${SCALE:-}" -e CHORDS="${CHORDS:-}" -e SETTLE="${SETTLE:-}" -e PADS="${PADS:-0}" -e BASICS="${BASICS:-1}" -e SIZE="${SIZE:-1280x800}" -e CAPTURE_FRAME="${CAPTURE_FRAME:-}" -e FIRMWARE="${SEMU_BIOS:+/bios}" -e DOLPHIN_LOG="${DOLPHIN_LOG:-}" -e SEMU_TARGET="${TARGET:-}")
+  environment=(-e SEMU_REV="${SEMU_REV:-}" -e WAIT="${WAIT:-120}" -e PLACEMENT="${PLACEMENT:-}" -e SCALE="${SCALE:-}" -e CHORDS="${CHORDS:-}" -e SETTLE="${SETTLE:-}" -e PADS="${PADS:-0}" -e BASICS="${BASICS:-1}" -e SIZE="${SIZE:-1280x800}" -e CAPTURE_FRAME="${CAPTURE_FRAME:-}" -e FIRMWARE="${SEMU_BIOS:+/bios}" -e DOLPHIN_LOG="${DOLPHIN_LOG:-}" -e SEMU_TARGET="${TARGET:-}" -e FILM="${FILM:-}" -e SHARED_STATE="${SHARED_STATE:-}")
   nixConfig="experimental-features = nix-command flakes
 filter-syscalls = false
 sandbox = false
@@ -117,6 +122,7 @@ press() {  # a key as Steam types it (XTest), pad:NAME (a press of player 1's re
     pad:*) token="${1#pad:}"; case "$token" in *:*) ;; *) token="press:$token" ;; esac  # pad:NAME presses, pad:hold:NAME and pad:release:NAME hold across steps
       if [ -n "$pad" ]; then echo "$token" >&7; echo "$token $(date +%s%3N)" >> "$root/pad-presses"; else echo "live-switch: $1 needs PADS=1 or more"; fi ;;
     sleep:*) sleep "${1#sleep:}" ;;  # sleep:SECONDS: let the game get somewhere before the next step
+    film:*) film "$out/$label-$step-film" "${1#film:}" ;;  # film:SECONDS: the screen every 0.25 s from here
     *) x key --delay 80 "$1" ;;
   esac
 }
@@ -126,12 +132,21 @@ burst() {  # PREFIX: the screen 0.3, 1 and 2 s after a chord, grabbed raw first 
   sleep 1.0; DISPLAY="$display" "$xwd/bin/xwd" -root -silent > "$1-c.xwd"
   for grab in a b c; do "$magick" "xwd:$1-$grab.xwd" "$1-$grab.png"; done
 }
+film() {  # DIRECTORY SECONDS: the screen every 0.25 s, grabbed raw and named by milliseconds since the start, converted after
+  mkdir -p "$1"
+  begin="$(date +%s%3N)"
+  while [ $(( $(date +%s%3N) - begin )) -lt $(( $2 * 1000 )) ]; do
+    DISPLAY="$display" "$xwd/bin/xwd" -root -silent > "$1/$(printf '%06d' $(( $(date +%s%3N) - begin ))).xwd" 2>> "$1/xwd-errors.log" || true  # a window mapped mid-grab fails it (BadDrawable): skip that shot
+    sleep 0.25
+  done
+  for grab in "$1"/*.xwd; do "$magick" "xwd:$grab" "${grab%.xwd}.png" && : > "$grab"; done  # emptied, never removed
+}
 
 number=0
 while IFS="$(printf '\t')" read -r emulator system rom; do
   number=$((number + 1))
   label="$number-$emulator-$system"
-  root="$(mktemp -d)"
+  if [ -n "${SHARED_STATE:-}" ] && [ -n "${shared:-}" ]; then root="$shared"; else root="$(mktemp -d)"; shared="$root"; fi  # SHARED_STATE=1: the first case's state and home
   mkdir -p "$root/home" "$root/emulation"
   own="${PLACEMENT:+\"placement\":\"$PLACEMENT\",}${SCALE:+\"render_scale\":\"$SCALE\",}"  # the system's own choices: SCALE=2x starts at that render scale
   visual=""; [ -n "$own" ] && visual=",\"visual\":{\"systems\":{\"$system\":{${own%,}}}}"
@@ -162,6 +177,7 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
   launcher=$!
   profiles="$root/state/$emulator/dolphin-user/Config/Profiles"
   ( for second in $(seq 1 60); do [ -d "$profiles" ] && break; sleep 1; done; exec "$inotify/bin/inotifywait" -m -r -e open --timefmt %T --format "%T %w%f %e" "$profiles" ) > "$out/$label.profile-opens" 2>&1 & watcher=$!
+  [ -z "${FILM:-}" ] || film "$out/$label-film" "$FILM"  # the launch's first seconds, before WAIT
   sleep "${WAIT:-120}"
   focus
   sleep 3
@@ -211,6 +227,7 @@ while IFS="$(printf '\t')" read -r emulator system rom; do
     echo "placements=$(grep -c 'semu-renderer: placement' "$out/$label.log" || true) reset_actions=$(grep -c 'semu: action system.reset' "$out/$label.log" || true) fit_actions=$(grep -c 'semu: action visual.placement.next' "$out/$label.log" || true)"
     echo "switches=$(grep -o 'phase=switch.*' "$root/state/$emulator/semu-render-evidence.log" 2>/dev/null | grep -o 'bezel_art=[^ ]*\|shader_preset=[^ ]*\|layout=[^ ]*\|bezel_index=[^ ]*\|shader_index=[^ ]*\|reload_ms=[^ ]*\|frame_ms=[^ ]*' | tr '\n' ' ')"
     echo "renderer_switch_lines=$(grep -c 'semu-renderer: switched to' "$out/$label.log" || true)"
+    echo "framebuffers=$(grep -a -o 'semu-renderer: framebuffer [0-9]*x[0-9]* (was [0-9]*x[0-9]*) at frame [0-9]*' "$out/$label.log" | cut -c28- | tr '\n' ';')"  # every size composed into, the quit and Restart Game included
     echo "saved=$("$jq" -c '.visual' "$root/home/semu/semu.json" 2>/dev/null || echo none)"
     echo "players=$(grep -a -o "semu: player .*" "$out/$label.log" | cut -c14- | tr "\n" ";")"
     echo "layout_switches=$(grep -a -E "semu: P[0-9] layout" "$out/$label.log" | tr "\n" ";")"

@@ -1,0 +1,55 @@
+--- a/retroarch.c
++++ b/retroarch.c
+@@ -1507,6 +1507,41 @@
+       : audio_st->chunk_block_size;
+ }
+ 
++/* Semu: on a screen that is not a whole multiple of the content's rate (the
++ * Steam Deck OLED's 90 Hz in Game Mode under a 60 Hz game) no cadence shows the
++ * frames evenly, and RetroArch's own sync leaves the pace to the audio: each
++ * frame waits for room in the sound server's buffer, which frees one period at
++ * a time, so frames reach the screen in bursts (Super Mario World at 90 Hz:
++ * 44.8% frame time deviation, 60.15 frames a second). Sync to Exact Content
++ * Framerate times every frame at the content's own rate instead (5.6%, 60.10),
++ * so it is chosen there. On a whole multiple (60 or 120 Hz, within RetroArch's
++ * own audio_max_timing_skew) RetroArch's own sync stays: it locks the game to
++ * the screen, where the content's own rate would drop or repeat a frame every
++ * few seconds. A screen whose rate the context cannot tell changes nothing. */
++static void semu_exact_rate_select(settings_t *settings,
++      video_driver_state_t *video_st)
++{
++   double content_rate = video_st->av_info.timing.fps;
++   float screen_rate   = video_driver_get_refresh_rate();
++   double refreshes    = 0.0;
++   unsigned whole      = 0;
++   bool exact          = false;
++
++   if (content_rate <= 0.0 || screen_rate <= 0.0f)
++      return;
++
++   refreshes = (double)screen_rate / content_rate;
++   whole     = (unsigned)(refreshes + 0.5);
++   exact     = (whole < 1)
++      || (fabs(1.0 - content_rate * (double)whole / (double)screen_rate)
++            > (double)settings->floats.audio_max_timing_skew);
++   settings->bools.vrr_runloop_enable = exact;
++   fprintf(stderr, "semu-retroarch: screen %.2f Hz, content %.2f fps, %.2f refreshes a frame: %s\n",
++         screen_rate, content_rate, refreshes, exact
++         ? "frames timed at the content's own rate (Sync to Exact Content Framerate)"
++         : "RetroArch's own sync (a whole multiple)");
++}
++
+ void drivers_init(
+       settings_t *settings,
+       int flags,
+@@ -1569,6 +1604,10 @@
+       runloop_st->frame_time_last = 0;
+    }
+ 
++   /* Semu: the screen's rate is known once the video driver is up. */
++   if (flags & (DRIVER_VIDEO_MASK | DRIVER_AUDIO_MASK))
++      semu_exact_rate_select(settings, video_st);
++
+    /* Regular display refresh rate startup autoswitch based on content av_info. */
+    if (     flags & (DRIVER_VIDEO_MASK | DRIVER_AUDIO_MASK)
+          && !(runloop_st->flags & RUNLOOP_FLAG_IS_INITED))
