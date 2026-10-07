@@ -3696,6 +3696,30 @@ Still open on the Mac:
 
 Update this block whenever a milestone criterion changes state.
 
+- Smash intro, ES-DE 3.5.0 and Horizon (2026-10-07): installed release 4573f263 from runtime commit
+  6a1008fc on deck@steamdeck.local. The owner reported that Smash Wii U's opening movie stalled with
+  repeating sound, while menus and matches played normally. Reproduced on 707659f7 with real-time audio
+  in a private null sink: the picture stopped, Cemu logged H264 buffer/picture-size errors, and sampled
+  audio repeated exactly every 1280 ms (correlation 1.0 at 20, 40 and 60 seconds). Backported upstream
+  Cemu 0e1c927's stream-interruption recovery to the pinned 2.6, including the missing buffer clear and
+  omitting per-frame force logging (9345f44b). The decoder now retains its session across Begin/End,
+  releases flushed display buffers and waits for an IDR frame when recovering. A 100-second candidate
+  run and a 180-second installed-release run advanced without decoder errors. Reviewed the full final
+  contact sheet: opening movie, title screen, then attract-mode tutorial; the repeated audio is absent
+  (sampled correlations 0.15-0.40, not 1.0). Both runs quit cleanly. The reproducible case is
+  `tests/deck/video-playback.cases`; screenshots and real-time audio must accompany it.
+  ES-DE is pinned to official v3.5.0 commit 50e4b600, with the Semu settings and late-controller patches.
+  Horizon is bundled from e9eb7324 and is the default in config and the settings UI (6a1008fc). The Deck
+  had no theme override. `prepare` emitted horizon-es-de; `doctor` passed all nine emulator paths.
+  ES-DE's log confirms 3.5.0 and Horizon loaded. The off-screen frontend tour showed the system carousel,
+  game list, Ace Combat on 3DS, clean quit back to Horizon, and responsive navigation afterward.
+  `make build && make test` passed 9904 checks; Mac flake evaluation passed with eval-cache disabled
+  after refreshing a stale local source-cache entry. Linux release builds and install checks passed.
+  Shader/pipeline caches are present and growing, and Cemu already enables Vulkan async compilation;
+  there is no setting that discovers all unseen shaders ahead of gameplay. No shader-cache download
+  or change to those settings was made. Evidence is under `build/verification/steam-deck/smash-intro/`,
+  linked outside Google Drive to `~/.cache/semu-verification/4573f263/`. The build VM is stopped.
+
 - M16 recovery and Deck delivery (2026-10-07): recovered the unfinished OSD and RetroArch pacing work
   from two temporary Claude clones, combined it with 84154240 and 91baadb6, and committed/pushed cc90deed.
   `make build && make test` passed 9904 checks; the Mac flake evaluation passed. Fixed the apostrophes
