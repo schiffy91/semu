@@ -119,7 +119,7 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
     class Vector<string> themes(SemuPlan plan) {
         Vector<string> result = [];
         for name in SemuModel.sortedEntries(PathTools.join(plan.assetRoot, "share/es-de/themes")) { result.push(name); }
-        if (result.isEmpty()) { result = ["slate-es-de", "linear-es-de", "modern-es-de"]; }
+        if (result.isEmpty()) { result = ["horizon-es-de", "slate-es-de", "linear-es-de", "modern-es-de"]; }
         return result;
     }
 
@@ -150,7 +150,7 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
             if (page != null) { systems.push(page); }
         }
         JSONValue interfaceFields = JSONValue.makeArray();
-        interfaceFields.push(SemuSettingsUi.choice(settings, "ui.theme", "THEME", SemuSettingsUi.themes(plan), "slate-es-de"));
+        interfaceFields.push(SemuSettingsUi.choice(settings, "ui.theme", "THEME", SemuSettingsUi.themes(plan), "horizon-es-de"));
         interfaceFields.push(SemuSettingsUi.integer(settings, "ui.display_index", "DISPLAY INDEX", 0));
         JSONValue library = JSONValue.makeArray();  // where the games and firmware live; a link to an external drive is fine
         library.push(SemuSettingsUi.field("paths.roms", "ROM FOLDER", "path", JSONValue.makeString(plan.romsRoot())));

@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "horizon": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1765904442,
+        "narHash": "sha256-URv3AzgPoMGzZqiBE0Vy659TSBgjgUNhUeymlSqhkVI=",
+        "owner": "RobZombie9043",
+        "repo": "horizon-es-de",
+        "rev": "e9eb73248a5da046da9e01e0b755dc762fea86c8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "RobZombie9043",
+        "repo": "horizon-es-de",
+        "rev": "e9eb73248a5da046da9e01e0b755dc762fea86c8",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1767313136,
@@ -18,6 +35,7 @@
     },
     "root": {
       "inputs": {
+        "horizon": "horizon",
         "nixpkgs": "nixpkgs",
         "source": "source"
       }

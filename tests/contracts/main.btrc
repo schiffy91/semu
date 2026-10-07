@@ -149,7 +149,7 @@ class EsDeContract {
         string settings = SemuEsDeDocuments.settings("", fixture.plan);
         contract.contains(settings, "<string name=\"ROMDirectory\" value=\"" + fixture.plan.romsRoot() + "\" />", "es_settings ROM directory");
         contract.contains(settings, "<bool name=\"CreatePlaceholderSystemDirectories\" value=\"false\" />", "no placeholder directories");
-        contract.contains(settings, "<string name=\"Theme\" value=\"slate-es-de\" />", "default theme");
+        contract.contains(settings, "<string name=\"Theme\" value=\"horizon-es-de\" />", "default theme");
         string merged = SemuEsDeDocuments.settings("<?xml version=\"1.0\"?>\n<string name=\"ROMDirectory\" value=\"/old\" />\n<bool name=\"ShowHiddenFiles\" value=\"true\" />\n", fixture.plan);
         contract.lacks(merged, "/old", "existing ROM directory is replaced");
         contract.contains(merged, "<bool name=\"ShowHiddenFiles\" value=\"true\" />", "unrelated settings survive a merge");
