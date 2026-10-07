@@ -3696,6 +3696,23 @@ Still open on the Mac:
 
 Update this block whenever a milestone criterion changes state.
 
+- Copyright remediation (2026-10-07): audited both published branches and 6202 distinct blobs.
+  Removed the committed PSP plate and unused font atlas; bezel recipes still fetch pinned inputs
+  for personal builds. Horizon is no longer a flake input or bundled asset. The Deck already has
+  a clean, separate local Horizon checkout under its ES-DE data directory; the frontend log
+  confirms it is loaded. The installed 4573f263 release was left intact. Theme choices now include
+  valid local themes as well as bundled themes, without duplicates. Added the Semu MIT licence,
+  upstream emulator/ES-DE licence texts, patch licence notices, and packaging/LICENSES.md.
+  Bundles carry an explicit personal-installation distribution notice; no public binary licence
+  clearance is claimed. The content guard checks indexed files or supplied Git history against
+  the 34 reviewed icon blobs, and rejects other media and generated payloads. Negative checks
+  rejected screenshots, a substituted icon, pixel dumps and generated executables.
+  `make build && make test` passed 9906 checks; Nix evaluation passed for both supported systems;
+  all 20 emulator/ES-DE patch files remain syntactically valid. History cleanup recovery material
+  is private under ~/.local/share/semu-recovery/copyright-20261007-114601. Do not merge old branches
+  back after rewriting: that can restore removed artwork. GitHub caches and external copies are
+  outside ordinary Git history rewriting and need separate removal handling if still accessible.
+
 - Smash intro, ES-DE 3.5.0 and Horizon (2026-10-07): installed release 4573f263 from runtime commit
   6a1008fc on deck@steamdeck.local. The owner reported that Smash Wii U's opening movie stalled with
   repeating sound, while menus and matches played normally. Reproduced on 707659f7 with real-time audio

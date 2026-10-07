@@ -1,3 +1,6 @@
+License: MPL-2.0; see LICENSE.upstream and packaging/LICENSES.md.
+Upstream file-specific notices remain applicable.
+
 Backport Cemu 0e1c927d5962b3d2b5c5aaf53668b0ae032ea95c.
 Preserve decoder state after stream interruptions; release flushed buffers.
 Includes the buffer clear missing in v2.6; omits per-frame force logging.

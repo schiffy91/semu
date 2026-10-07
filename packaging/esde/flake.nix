@@ -5,10 +5,9 @@
     # ES-DE still depends on FreeImage, which current nixpkgs removed; this pin keeps its toolchain.
     nixpkgs.url = "github:NixOS/nixpkgs/ac62194c3917d5f474c1a844b6fd6da2db95077d";
     source = { url = "gitlab:es-de/emulationstation-de/50e4b600ae533d772bae3ff880d11a09b05dbe84"; flake = false; };
-    horizon = { url = "github:RobZombie9043/horizon-es-de/e9eb73248a5da046da9e01e0b755dc762fea86c8"; flake = false; };
   };
 
-  outputs = { self, nixpkgs, source, horizon }:
+  outputs = { self, nixpkgs, source }:
     let
       lib = nixpkgs.lib;
       platforms = { linux = true; macos = true; windows = "planned"; };  # macOS builds an ES-DE.app against Nix libraries (darwin.nix)
@@ -19,15 +18,7 @@
             inherit system;
             config.allowInsecurePredicate = package: lib.hasPrefix "freeimage" (lib.getName package);
           };
-        in (esDePackages.callPackage (if lib.hasSuffix "darwin" system then ./darwin.nix else ./package.nix) { inherit esDePackages source; }).overrideAttrs (previous: {
-          postInstall = (previous.postInstall or "") + ''
-            cp -R ${horizon} "$out/share/es-de/themes/horizon-es-de"
-          '';
-          installCheckPhase = previous.installCheckPhase + ''
-            test -s "$out/share/es-de/themes/horizon-es-de/theme.xml"
-            test -s "$out/share/es-de/themes/horizon-es-de/capabilities.xml"
-          '';
-        });
+        in esDePackages.callPackage (if lib.hasSuffix "darwin" system then ./darwin.nix else ./package.nix) { inherit esDePackages source; };
     in {
       semu = {
         id = "es-de";

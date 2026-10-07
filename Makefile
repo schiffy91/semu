@@ -14,7 +14,7 @@ CONTRACTS_BIN := $(BUILD)/contracts
 TARGET ?= linux-desktop
 ASSET_ROOT ?= $(BUILD)/nix/result
 
-.PHONY: all build test bezel-tree render-host configs nix nix-check nix-eval prepare doctor clean help
+.PHONY: all build test repository-check bezel-tree render-host configs nix nix-check nix-eval prepare doctor clean help
 
 all: build ## Build the semu CLI
 
@@ -40,7 +40,10 @@ bezel-tree: ## Link the pinned Mega Bezel tree (slang shaders and packs) at buil
 	@mkdir -p "$(BUILD)"
 	nix build --no-warn-dirty --out-link "$(BEZEL_TREE)" ".#bezel-tree"
 
-test: $(CONTRACTS_BIN) bezel-tree ## Run the contract tests against the real config tree
+repository-check: ## Reject unreviewed media and generated files in the Git index
+	tests/integration/repository-content.sh
+
+test: $(CONTRACTS_BIN) bezel-tree repository-check ## Run the contract tests against the real config tree
 	SEMU_PROJECT="$(CURDIR)" SEMU_BEZEL_TREE="$(CURDIR)/$(BEZEL_TREE)/share/semu/bezel/shaders" "$(CURDIR)/$(CONTRACTS_BIN)"
 
 configs: $(SEMU_BIN) ## Emit ES-DE documents and emulator profiles for TARGET

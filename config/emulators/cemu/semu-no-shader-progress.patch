@@ -1,3 +1,6 @@
+License: MPL-2.0; see LICENSE.upstream and packaging/LICENSES.md.
+Upstream file-specific notices remain applicable.
+
 --- a/src/Cafe/HW/Latte/Core/LatteShaderCache.cpp
 +++ b/src/Cafe/HW/Latte/Core/LatteShaderCache.cpp
 @@ -525,6 +525,12 @@

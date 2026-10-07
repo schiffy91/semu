@@ -1,3 +1,6 @@
+License: GPL-3.0-or-later; see LICENSE.upstream and packaging/LICENSES.md.
+Upstream file-specific notices remain applicable.
+
 --- a/retroarch.c
 +++ b/retroarch.c
 @@ -1507,6 +1507,41 @@

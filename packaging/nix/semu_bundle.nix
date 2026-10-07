@@ -81,11 +81,11 @@ symlinkJoin {
     DESKTOP
   '';
 
-  passthru = { inherit platformEmulators; };
+  passthru = { inherit platformEmulators; redistributable = false; };
 
   meta = {
     description = "Semu with ES-DE and every selected emulator";
-    license = lib.licenses.mit;
+    # This aggregate includes restricted third-party artwork.
     mainProgram = "semu";
   };
 }

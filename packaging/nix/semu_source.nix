@@ -21,6 +21,6 @@ stdenvNoCC.mkDerivation {
 
   meta = {
     description = "Semu declarative configuration and assets";
-    license = lib.licenses.mit;
+    license = with lib.licenses; [ mit isc gpl2Plus gpl3Plus mpl20 ];
   };
 }

@@ -153,6 +153,20 @@ class EsDeContract {
         string merged = SemuEsDeDocuments.settings("<?xml version=\"1.0\"?>\n<string name=\"ROMDirectory\" value=\"/old\" />\n<bool name=\"ShowHiddenFiles\" value=\"true\" />\n", fixture.plan);
         contract.lacks(merged, "/old", "existing ROM directory is replaced");
         contract.contains(merged, "<bool name=\"ShowHiddenFiles\" value=\"true\" />", "unrelated settings survive a merge");
+        string localTheme = PathTools.join(fixture.scratch, "frontend/ES-DE/themes/horizon-es-de");
+        fixture.plan.tokens.put("esde_home", PathTools.join(fixture.scratch, "frontend"));
+        string bundledTheme = PathTools.join(fixture.plan.assetRoot, "share/es-de/themes/slate-es-de");
+        FileSystem.mkdirp(localTheme);
+        FileSystem.mkdirp(bundledTheme);
+        FileSystem.writeText(PathTools.join(localTheme, "theme.xml"), "<theme />");
+        FileSystem.writeText(PathTools.join(bundledTheme, "theme.xml"), "<theme />");
+        FileSystem.mkdirp(PathTools.join(fixture.plan.assetRoot, "share/es-de/themes/download-incomplete"));
+        Vector<string> themes = SemuSettingsUi.themes(fixture.plan);
+        contract.expect(themes.contains("horizon-es-de") && themes.contains("slate-es-de") && themes.size() == 2, "local themes remain selectable alongside bundled themes; incomplete directories are excluded");
+        string duplicate = PathTools.join(fixture.plan.assetRoot, "share/es-de/themes/horizon-es-de");
+        FileSystem.mkdirp(duplicate);
+        FileSystem.writeText(PathTools.join(duplicate, "theme.xml"), "<theme />");
+        contract.expect(SemuSettingsUi.themes(fixture.plan).size() == 2, "a local theme with the same name is listed once");
         contract.expect(fixture.diagnostics.ok(), "ES-DE emit has no diagnostics: " + fixture.diagnostics.render());
     }
 }

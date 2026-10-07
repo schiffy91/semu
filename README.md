@@ -172,3 +172,23 @@ config/settings/defaults.json
 `$SEMU_HOME` defaults to `~/.config/semu`. Generated emulator state lives under
 `paths.state_root` (default `~/.local/share/semu/<emulator>`), saves and states
 under `paths.content_root` (default `~/Games/Emulation/Semu`).
+
+## Licensing and distribution
+
+Semu-owned code is [MIT licensed](LICENSE). Third-party code and assets retain
+separate licences, including the emulator patches; see
+[packaging/LICENSES.md](packaging/LICENSES.md) and
+[the artwork notice](config/assets/NOTICE.md).
+
+The composed bundle and `release` outputs are for personal installation. They
+contain locally generated artwork that is not cleared for redistribution; do
+not upload those outputs to GitHub Releases, Packages, or a public Nix cache.
+Horizon remains a selectable preference for a separately installed local theme,
+but is not fetched or bundled by Semu while its redistribution permission is
+unresolved. Existing local installations are unaffected.
+
+`make test` checks tracked media against the reviewed icon manifest. Before a
+push, run `tests/integration/repository-content.sh HEAD` to check reachable
+history too. Keep recordings, game screenshots, ROMs, BIOS, firmware and keys
+outside the repository. After the October 2026 history cleanup, use a fresh
+clone or the rewritten branch; merging an old clone can restore removed files.

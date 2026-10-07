@@ -1,3 +1,6 @@
+License: GPL-3.0-or-later; see LICENSE.upstream and packaging/LICENSES.md.
+Upstream file-specific notices remain applicable.
+
 Semu's macOS launch transition. RetroArch entered fullscreen with a native
 fullscreen Space: its 480x360 nib window appeared first, then macOS slid to
 a black Space while the window grew. The frontend (ES-DE) is a borderless

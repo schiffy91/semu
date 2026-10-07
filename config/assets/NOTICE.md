@@ -1,12 +1,18 @@
 # Third-party art in Semu
 
-Semu's code is MIT. The bezel art it draws is not Semu's and keeps its authors' terms.
-The repository carries recipes and pins, never the art itself or anything adapted from it:
-the build fetches each pinned upstream, copies the plates it draws verbatim into the bundle
-(`share/semu/assets/bezels/layers`, with each upstream's own licence file beside them), and
-bakes the few flattened, recoloured and night-lit plates on the machine that builds Semu,
-for that machine's own use. Recolours and the night light in the live renderer are drawn at
-run time over the unmodified plates.
+Semu-owned code is covered by the repository's MIT LICENSE. Third-party code,
+patches, icons, shaders and artwork retain their own terms; see
+`packaging/LICENSES.md`. The MIT grant does not relicense them.
+
+The repository contains bezel recipes and upstream pins, not bezel artwork.
+Personal builds fetch the pinned originals and generate local adaptations.
+Neither those adaptations nor a bundle containing them is cleared for public
+distribution. Keeping generated files out of Git does not make a tarball or Nix
+binary cache redistributable. Upstream licences accompany the staged layers.
+Runtime colour and lighting effects do not change the source artwork's licence.
+
+The unused menu-font atlas was removed because its provenance could not be
+established. Current menu text does not use that atlas.
 
 ## Duimon Mega Bezel graphics
 

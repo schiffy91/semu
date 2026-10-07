@@ -58,6 +58,9 @@ let
     dontUnpack = true;
     buildPhase = ''
       mkdir -p stage/bin
+      cp ${../LICENSES.md} stage/LICENSES.md
+      cp ${../../LICENSE} stage/LICENSE
+      printf '%s\n' 'Personal installation only; not cleared for redistribution. See LICENSES.md.' > stage/DISTRIBUTION.txt
       cat > stage/bin/semu-deck-run <<'RUN'
       ${launcher}
       RUN
@@ -102,6 +105,6 @@ stdenvNoCC.mkDerivation {
     cp ${repositoryRoot + "/packaging/deck/install.sh"} "$out/install.sh"
   '';
 
-  passthru = { inherit tree; };
-  meta.description = "Semu relocatable release for the Steam Deck";
+  passthru = { inherit tree; redistributable = false; };
+  meta.description = "Semu personal-installation bundle for the Steam Deck";
 }

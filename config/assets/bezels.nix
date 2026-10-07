@@ -1,25 +1,17 @@
 # The bezel-art asset tree for Semu, driven by config/assets/bezels.json (recipe types copy,
-# local, flatten, recolor, glass, scene).
+# flatten, recolor, glass, scene).
 #
 # (default / `semu-bezels`) bakes every recipe here, on the machine that builds Semu: verbatim
-#   `copy` files and Semu's own `local` files are byte-checked against their pinned hashes;
+#   `copy` files are byte-checked against their pinned hashes;
 #   plates derived from the Duimon and Soqueroeu packs are rendered with imagemagick over the
 #   pinned upstreams and checked for their declared size and PNG type only. The repository
-#   carries no derived art (the packs' licences forbid sharing adapted material, see NOTICE.md).
+#   carries no bezel art. Duimon's licence forbids sharing adaptations; see NOTICE.md.
 #
 # Output layout: share/semu/<asset key> (what the launcher joins "assets/..." onto).
 { lib, stdenvNoCC, fetchFromGitHub, imagemagick }:
 
 let
-  repoRoot = ../..;
-  assetSource = lib.fileset.toSource {
-    root = repoRoot;
-    fileset = lib.fileset.unions [
-      ./bezels.json
-      ./bezels
-    ];
-  };
-  sources = lib.importJSON (assetSource + "/config/assets/bezels.json");
+  sources = lib.importJSON ./bezels.json;
 
   githubTrees = lib.mapAttrs
     (_: spec: fetchFromGitHub {
@@ -28,7 +20,7 @@ let
     })
     (lib.filterAttrs (_: spec: spec.kind == "github") sources.upstreams);
 
-  imageTypes = [ "copy" "local" "flatten" "recolor" "glass" "scene" ];
+  imageTypes = [ "copy" "flatten" "recolor" "glass" "scene" ];
   imageAssets = lib.filterAttrs (_: recipe: lib.elem recipe.type imageTypes)
     sources.assets;
 
@@ -123,9 +115,6 @@ let
       mkdir -p "$(dirname "$out/share/semu/${key}")"
     '' + ({
       copy = copyUpstreamFile key recipe;
-      local = ''
-        cp "${assetSource + "/${recipe.path}"}" ${outFile key}
-      '';
       # -flatten merges the whole layer stack; pairwise -composite would only
       # merge the last two layers (the GBC LED-layer regression). A layer set
       # may include its own screen-lens/glass layer (e.g. GBC_Glass with the

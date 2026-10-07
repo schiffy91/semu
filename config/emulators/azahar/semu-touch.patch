@@ -1,3 +1,6 @@
+License: GPL-2.0-or-later; see LICENSE.upstream and packaging/LICENSES.md.
+Upstream file-specific notices remain applicable.
+
 Semu composes Azahar's picture itself (VK_LAYER_SEMU_compositor): the 3DS bezel places the
 bottom screen where Azahar's own layout does not. A touch on the composed picture is mapped back
 through the layer's semu_touch_unmap to the point Azahar's layout drew there, so a click lands

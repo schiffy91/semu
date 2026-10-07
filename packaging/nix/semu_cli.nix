@@ -14,7 +14,7 @@ symlinkJoin {
 
   meta = {
     description = "Semu CLI";
-    license = lib.licenses.mit;
+    license = semuSource.meta.license;
     mainProgram = "semu";
   };
 }

@@ -1,3 +1,6 @@
+License: MIT; see LICENSE.upstream.
+Upstream: ES-DE contributors; Semu changes: Semu contributors.
+
 diff --git a/es-app/CMakeLists.txt b/es-app/CMakeLists.txt
 index 772b306..454bfd0 100644
 --- a/es-app/CMakeLists.txt

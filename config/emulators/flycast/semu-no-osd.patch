@@ -1,3 +1,6 @@
+License: GPL-2.0-or-later; see LICENSE.upstream and packaging/LICENSES.md.
+Upstream file-specific notices remain applicable.
+
 --- a/core/ui/gui.cpp
 +++ b/core/ui/gui.cpp
 @@ -779,7 +779,9 @@

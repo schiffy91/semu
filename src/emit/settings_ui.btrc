@@ -118,7 +118,11 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
 
     class Vector<string> themes(SemuPlan plan) {
         Vector<string> result = [];
-        for name in SemuModel.sortedEntries(PathTools.join(plan.assetRoot, "share/es-de/themes")) { result.push(name); }
+        for root in [PathTools.join(plan.assetRoot, "share/es-de/themes"), PathTools.join(plan.path("esde_home"), "ES-DE/themes")] {
+            for name in SemuModel.sortedEntries(root) {
+                if (FileSystem.isFile(PathTools.join(PathTools.join(root, name), "theme.xml")) && !result.contains(name)) { result.push(name); }
+            }
+        }
         if (result.isEmpty()) { result = ["horizon-es-de", "slate-es-de", "linear-es-de", "modern-es-de"]; }
         return result;
     }

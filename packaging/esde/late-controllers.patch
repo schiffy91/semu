@@ -1,3 +1,6 @@
+License: MIT; see LICENSE.upstream.
+Upstream: ES-DE contributors; Semu changes: Semu contributors.
+
 --- a/es-app/src/main.cpp
 +++ b/es-app/src/main.cpp
 @@ -1221,6 +1221,7 @@
