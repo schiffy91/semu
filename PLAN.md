@@ -3696,6 +3696,33 @@ Still open on the Mac:
 
 Update this block whenever a milestone criterion changes state.
 
+- M16 recovery and Deck delivery (2026-10-07): recovered the unfinished OSD and RetroArch pacing work
+  from two temporary Claude clones, combined it with 84154240 and 91baadb6, and committed/pushed cc90deed.
+  `make build && make test` passed 9904 checks; the Mac flake evaluation passed. Fixed the apostrophes
+  in the build/deploy scripts' required-argument diagnostics, which Bash parsed as unmatched quotes.
+  Built the x86_64 release with the existing Nix VM and installed release 707659f7 on deck@steamdeck.local;
+  4770562e is retained for rollback. `prepare` and `doctor` passed, all nine emulator paths resolve, and
+  all 238 tracked config files match the installed payload by SHA-256. Steam's templates did not change.
+  Observed off-screen on the physical Deck: 11 selected input cases at 1280x800/90 Hz (R1, F2, S1, S2,
+  S3, S5, C3, C4, C5, D1, D4), K1 and K6 at 1920x1080/60 Hz, and ten boot recordings; every process
+  exited cleanly, with no emulator or test audio sink left behind. RetroArch selects exact content pacing
+  at 89.89 Hz (Super Mario World 60.1 fps, typical gaps 17.5-17.9 ms) and its normal sync at 59.96 Hz
+  (about 60 fps). PS1's TV holds its nominal frame through the boot resolution changes and all four Fit
+  states; N64 and PS2 restart at 2x, GameCube switches scale live, and PCSX2 never drops to a 640x480
+  framebuffer at restart or quit. The DS core's crosshair matches the injected touch and hides when idle;
+  standalone melonDS creates an OpenGL context with Renderer=1 and ScaleFactor=2. Mario Kart Wii accepts
+  the GameCube pad, then the relinked Wii Remote, without restarting; its own pointer moves with no second
+  cursor. RetroArch's messages, Flycast's starting box and Cemu's shader-progress overlay are absent in
+  the inspected captures. Ryujinx presents a 1280x800 swapchain with a 1280x720 game lane at 0,40.
+  Azahar and Ryujinx still have their own pre-game loading screens; the published shader colour-fringe
+  values are unchanged. This is focused recovery verification, not a repeat of all 53 M16 cases, a
+  physical dock test, an audio-by-ear check, or manual Steam-radial acceptance.
+  Evidence: `build/verification/steam-deck/707659f7/` links to `~/.cache/semu-verification/707659f7/`
+  so the large captures stay outside Google Drive. Recovery patches, build/test/install logs and a Git
+  bundle are in `build/recovery/2026-10-07/`. Removed the two clean July sibling worktrees after archiving
+  their ignored build output, retained their branches, and pruned missing worktree registrations: this
+  checkout is now the only Semu worktree. The release-build VM was stopped after use.
+
 - M1 reset: met on the Mac 2026-09-23 except the one-minute bound (G1, G2: spec tests ported, 2601 checks, no skips; `make -j2 build test` from a touched source takes 61 s, all of it BTRC transpiling; the contracts alone take 2 s). Was: done 2026-09-19 (`make build && make test` pass in about ten
   seconds with 79 checks; `build configs --target linux-desktop` emits ES-DE
   and RetroArch files with no Deck path; `nix flake check --no-build` passes;
