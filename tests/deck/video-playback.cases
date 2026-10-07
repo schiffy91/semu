@@ -1,0 +1,4 @@
+# Smash's opening movie must advance with continuous audio for the full wait.
+# Record during the wait: a final menu alone cannot prove movie playback.
+# The final direction input confirms the game still responds without saving.
+wiiu cemu - 100 dpad_down -- Super Smash Bros. (US) (v304).wua

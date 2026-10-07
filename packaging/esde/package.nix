@@ -2,7 +2,7 @@
 { lib, stdenv, esDePackages, source }:
 
 let
-  version = "3.4.1";
+  version = "3.5.0";
 in
 assert lib.assertMsg (stdenv.hostPlatform.system == "x86_64-linux") "ES-DE: only x86_64-linux is packaged";
 esDePackages.emulationstation-de.overrideAttrs (previous: {

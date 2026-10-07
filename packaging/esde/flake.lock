@@ -25,17 +25,17 @@
     "source": {
       "flake": false,
       "locked": {
-        "lastModified": 1775822834,
-        "narHash": "sha256-MVmJIdxwEG3wgvwbhuIEYCxKaYss/3hq9xszGLjZ1Xw=",
+        "lastModified": 1790758751,
+        "narHash": "sha256-MFCLE8RnpvSAYY4UhJ+uwdIlhlyJsiLjSUUAJrNgd1c=",
         "owner": "es-de",
         "repo": "emulationstation-de",
-        "rev": "5db4e2a32bd5852cc7a3dbeb298d85de86a536d7",
+        "rev": "50e4b600ae533d772bae3ff880d11a09b05dbe84",
         "type": "gitlab"
       },
       "original": {
         "owner": "es-de",
         "repo": "emulationstation-de",
-        "rev": "5db4e2a32bd5852cc7a3dbeb298d85de86a536d7",
+        "rev": "50e4b600ae533d772bae3ff880d11a09b05dbe84",
         "type": "gitlab"
       }
     }

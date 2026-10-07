@@ -1,0 +1,165 @@
+Backport Cemu 0e1c927d5962b3d2b5c5aaf53668b0ae032ea95c.
+Preserve decoder state after stream interruptions; release flushed buffers.
+Includes the buffer clear missing in v2.6; omits per-frame force logging.
+
+diff --git a/src/Cafe/OS/libs/h264_avc/H264Dec.cpp b/src/Cafe/OS/libs/h264_avc/H264Dec.cpp
+index ec88af7..5422943 100644
+--- a/src/Cafe/OS/libs/h264_avc/H264Dec.cpp
++++ b/src/Cafe/OS/libs/h264_avc/H264Dec.cpp
+@@ -49,6 +49,8 @@ namespace H264
+ 		struct
+ 		{
+ 			uint32 numFramesInFlight{0};
++			bool isFirstBegin{true};
++			bool isTryingToRecover{false};
+ 		}decoderState;
+ 	};
+ 
+@@ -430,8 +432,14 @@ namespace H264
+ 			cemuLog_log(LogType::Force, "H264DECBegin(): Invalid session");
+ 			return 0;
+ 		}
+-		session->Init(ctx->Param.outputPerFrame == 0);
+-		ctx->decoderState.numFramesInFlight = 0;
++		if (ctx->decoderState.isFirstBegin)
++		{
++			session->Init(ctx->Param.outputPerFrame == 0);
++			ctx->decoderState.isFirstBegin = false;
++		}
++		else
++			ctx->decoderState.isTryingToRecover = true;
++		//ctx->decoderState.numFramesInFlight = 0;
+ 		_ReleaseDecoderSession(session);
+ 		return 0;
+ 	}
+@@ -462,6 +470,7 @@ namespace H264
+ 		}
+ 		cemu_assert_debug(ctx->decoderState.numFramesInFlight == 0); // no frames should be in flight anymore. Exact behavior is not well understood but we may have to output dummy frames if necessary
+ 		_ReleaseDecoderSession(session);
++		// does not destroy decoder session, keeps it mostly intact so playback can resume after the next H264DECBegin call (potentially at a different location in the stream)
+ 		return H264DEC_STATUS::SUCCESS;
+ 	}
+ 
+@@ -598,8 +607,34 @@ namespace H264
+ 		}
+ 	}
+ 
++	// find the first framedata slice (if there is any) and check if the type is idr
++	bool IsIDRSlice(uint8* streamData, sint32 length)
++	{
++		NALInputBitstream nalStream(streamData, length);
++		RBSPInputBitstream rbspStream;
++		while (nalStream.getNextRBSP(rbspStream))
++		{
++			// parse NAL header
++			uint8 nalHeaderByte = rbspStream.readU8();
++			if ((nalHeaderByte & 0x80) == 0)
++			{
++				uint8 nal_unit_type = (nalHeaderByte >> 0) & 0x1f;
++				if (nal_unit_type == 1) // non-idr
++					return false;
++				else if (nal_unit_type == 5) // idr
++					return true;
++			}
++			else
++			{
++				cemu_assert_suspicious();
++				return false; // corrupted stream?
++			}
++		}
++		return false;
++	}
++
+ 	uint32 H264DECExecute(void* workMemory, void* imageOutput)
+ 	{
+ 		BenchmarkTimer bt;
+ 		bt.Start();
+ 		H264Context* ctx = (H264Context*)workMemory;
+@@ -609,6 +645,19 @@ namespace H264
+ 			cemuLog_log(LogType::Force, "H264DECExecute(): Invalid session");
+ 			return 0;
+ 		}
++		// if in recovery mode then return an error until we reach a IDR frame
++		if (ctx->decoderState.isTryingToRecover)
++		{
++			bool isIDR = IsIDRSlice((uint8*)ctx->BitStream.ptr.GetPtr(), ctx->BitStream.length);
++			if (isIDR)
++			{
++				ctx->decoderState.isTryingToRecover = false;
++			}
++			else
++			{
++				return 0x400; // error (figure out exact error code. Bit 0x80 indicates presence of frame?)
++			}
++		}
+ 		// feed data to backend
+ 		session->QueueForDecode((uint8*)ctx->BitStream.ptr.GetPtr(), ctx->BitStream.length, ctx->BitStream.timestamp, imageOutput);
+ 		ctx->decoderState.numFramesInFlight++;
+diff --git a/src/Cafe/OS/libs/h264_avc/H264DecBackendAVC.cpp b/src/Cafe/OS/libs/h264_avc/H264DecBackendAVC.cpp
+index bf99f23..821fe8a 100644
+--- a/src/Cafe/OS/libs/h264_avc/H264DecBackendAVC.cpp
++++ b/src/Cafe/OS/libs/h264_avc/H264DecBackendAVC.cpp
+@@ -179,6 +179,7 @@ namespace H264
+ 				// resolution change
+ 				ResetDecoder();
+ 				m_hasBufferSizeInfo = false;
++				cemuLog_log(LogType::H264, "H264: Resolution change detected");
+ 				Decode(decodedSlice);
+ 				return;
+ 			}
+@@ -255,6 +256,19 @@ namespace H264
+ 
+ 		void Flush()
+ 		{
++			auto releaseDisplayFrame = [this](uint32 displayBufferId)
++			{
++				ivd_rel_display_frame_ip_t s_video_rel_disp_ip{ 0 };
++				ivd_rel_display_frame_op_t s_video_rel_disp_op{ 0 };
++				s_video_rel_disp_ip.e_cmd = IVD_CMD_REL_DISPLAY_FRAME;
++				s_video_rel_disp_ip.u4_size = sizeof(ivd_rel_display_frame_ip_t);
++				s_video_rel_disp_op.u4_size = sizeof(ivd_rel_display_frame_op_t);
++				s_video_rel_disp_ip.u4_disp_buf_id = displayBufferId;
++
++				WORD32 status = ih264d_api_function(m_codecCtx, &s_video_rel_disp_ip, &s_video_rel_disp_op);
++				cemu_assert(!status);
++			};
++
+ 			// set flush mode
+ 			ivd_ctl_flush_ip_t s_video_flush_ip{ 0 };
+ 			ivd_ctl_flush_op_t s_video_flush_op{ 0 };
+@@ -290,7 +304,12 @@ namespace H264
+ 						s_dec_op.s_disp_frm_buf.u4_y_ht = 1080;
+ 				}
+ 				PushDecodedFrame(s_dec_op);
++				releaseDisplayFrame(s_dec_op.u4_disp_buf_id);
+ 			}
++
++			// release display buffers
++			for (size_t i = 0; i < m_displayBuf.size(); i++)
++				releaseDisplayFrame((uint32)i);
+ 		}
+ 
+ 		void CopyImageToResultBuffer(uint8* yIn, uint8* uvIn, uint8* bufOut, ivd_video_decode_op_t& decodeInfo)
+@@ -366,7 +385,6 @@ namespace H264
+ 		{
+ 			ivd_ctl_getbufinfo_ip_t s_ctl_ip{ 0 };
+ 			ivd_ctl_getbufinfo_op_t s_ctl_op{ 0 };
+-			WORD32 outlen = 0;
+ 
+ 			s_ctl_ip.e_cmd = IVD_CMD_VIDEO_CTL;
+ 			s_ctl_ip.e_sub_cmd = IVD_CMD_CTL_GETBUFINFO;
+@@ -376,5 +394,6 @@ namespace H264
+ 			WORD32 status = ih264d_api_function(m_codecCtx, &s_ctl_ip, &s_ctl_op);
+ 			cemu_assert(!status);
+ 
++			m_displayBuf.clear();
+ 			// allocate
+ 			for (uint32 i = 0; i < s_ctl_op.u4_num_disp_bufs; i++)
+@@ -408,7 +425,6 @@ namespace H264
+ 			status = ih264d_api_function(m_codecCtx, &s_set_display_frame_ip, &s_set_display_frame_op);
+ 			cemu_assert(!status);
+ 
+-
+ 			// mark all as released (available)
+ 			for (uint32 i = 0; i < s_ctl_op.u4_num_disp_bufs; i++)
+ 			{
