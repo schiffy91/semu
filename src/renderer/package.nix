@@ -19,7 +19,14 @@ stdenv.mkDerivation {
   nativeBuildInputs = [ btrcpy ];
   buildInputs = [ librashader vulkan-headers ] ++ lib.optionals stdenv.hostPlatform.isLinux [ libglvnd ] ++ lib.optionals stdenv.hostPlatform.isDarwin [ moltenvk ];
 
+  # btrc's typed header reader resolves the declared native bindings before $CC
+  # runs, so it needs the include paths too, not just the compile flags below.
+  CPATH = lib.makeSearchPathOutput "dev" "include" ([ librashader vulkan-headers ]
+    ++ lib.optionals stdenv.hostPlatform.isLinux [ libglvnd ]
+    ++ lib.optionals stdenv.hostPlatform.isDarwin [ moltenvk ]);
+
   buildPhase = ''
+    export HOME="$TMPDIR"  # btrcpy writes its cache under $HOME
     btrcpy libsemurenderer.btrc -o semu_renderer.c --strict-imports --no-cache --no-stdlib --no-dce
     $CC -c semu_renderer.c -o semu_renderer.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function \
       -DLIBRA_RUNTIME_OPENGL=1 -DSTB_IMAGE_IMPLEMENTATION -DSTBI_ONLY_PNG -DSTBI_ONLY_JPEG -I${librashader}/include -I.

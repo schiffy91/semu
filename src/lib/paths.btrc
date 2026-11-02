@@ -34,8 +34,8 @@ class SemuPaths {
     }
 
     class bool fileInside(string root, string path) {  // a real file under root's real path
-        string realRoot = UnixFileSystem.realPath(root);
-        string realPath = UnixFileSystem.realPath(path);
+        string realRoot = FileSystem.realPath(root);
+        string realPath = FileSystem.realPath(path);
         if (realRoot.isEmpty() || realPath.isEmpty() || !SemuPaths.inside(realRoot, realPath)) { return false; }
         return FileSystem.isFile(realPath);
     }
@@ -95,7 +95,7 @@ class SemuPaths {
     class bool removeFile(string path) { return !FileSystem.isFile(path) || unlink(path) == 0; }  // missing counts as removed
 
     class Bytes readBytes(string path) {  // the stdlib reads only regular files, and a Nix bundle links its files into the store
-        string real = UnixFileSystem.realPath(path);
+        string real = FileSystem.realPath(path);
         return FileSystem.readBytes(real.isEmpty() ? path : real);
     }
 

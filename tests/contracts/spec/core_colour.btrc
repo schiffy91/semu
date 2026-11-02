@@ -25,7 +25,7 @@ class CoreColourSpecCorrections {  // RetroArch cores that correct colour themse
 }
 
 class CoreColourSpecPipeline {  // the passes a Semu screen preset runs, as paths inside the pinned slang tree
-    class bool shaderKey(string key) { return key.startsWith("shader") && key.len() > 6 && Strings.isDigitStr(key.substring(6, key.len() - 6)); }
+    class bool shaderKey(string key) { return key.startsWith("shader") && key.len() > 6 && key.substring(6, key.len() - 6).isDigit(); }
 
     class void add(JSONValue manifest, string slang, string logical, Vector<string> into) {  // a pipeline's own passes, or a wrapper's upstream preset and its #reference chain
         JSONValue assets = manifest.get("assets");

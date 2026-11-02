@@ -16,6 +16,7 @@
 #include <string.h>
 
 import ./renderer_abi.btrc;
+import ./renderer_config_screen.btrc;  // struct RendererNormalizedHole
 import ./renderer_surface_crop.btrc;
 
 class RendererNominalFrame {

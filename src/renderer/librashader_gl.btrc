@@ -30,7 +30,9 @@ class SemuLibrashaderError {
 
     public void clear() {
         if ((void*)self.handle != (void*)0) {
-            libra_error_free(&self.handle);
+            libra_error_t error = self.handle;
+            libra_error_free(&error);
+            self.handle = error;
         }
     }
 
@@ -60,7 +62,11 @@ class SemuLibrashaderPreset {
     public bool load(const char* path, bool originalAspectUniforms,
                      bool frametimeUniforms, SemuLibrashaderError error) {
         if ((void*)self.handle != (void*)0) {
-            libra_error_t closeError = libra_preset_free(&self.handle);
+            /* btrc will not hand out a pointer into a managed field, so the
+               handle round-trips through a local for calls that write it. */
+            libra_shader_preset_t preset = self.handle;
+            libra_error_t closeError = libra_preset_free(&preset);
+            self.handle = preset;
             if ((void*)closeError != (void*)0) {
                 libra_error_free(&closeError);
             }
@@ -71,8 +77,11 @@ class SemuLibrashaderPreset {
         options.version = LIBRASHADER_CURRENT_VERSION;
         options.original_aspect_uniforms = originalAspectUniforms;
         options.frametime_uniforms = frametimeUniforms;
-        return error.capture(libra_preset_create_with_options(
-            path, (libra_preset_ctx_t*)0, &options, &self.handle));
+        libra_shader_preset_t created = self.handle;
+        var createdOk = error.capture(libra_preset_create_with_options(
+            path, (libra_preset_ctx_t*)0, &options, &created));
+        self.handle = created;
+        return createdOk;
     }
 
     public bool consumeIntoOpenGL(
@@ -80,9 +89,14 @@ class SemuLibrashaderPreset {
         struct filter_chain_gl_opt_t* options,
         libra_gl_filter_chain_t* chain,
         SemuLibrashaderError error) {
-        libra_gl_loader_t glLoader = (libra_gl_loader_t)loader;
+        /* Strict C11 does not allow casting an object pointer to a function
+           pointer, so copy the representation instead — the same idiom POSIX
+           prescribes for dlsym results. */
+        libra_gl_loader_t glLoader;
+        memcpy(&glLoader, &loader, sizeof(glLoader));
+        libra_shader_preset_t consumed = self.handle;
         libra_error_t createError = libra_gl_filter_chain_create(
-            &self.handle, glLoader, options, chain);
+            &consumed, glLoader, options, chain);
         // ABI 2 consumes the preset even when filter-chain creation fails.
         self.handle = (libra_shader_preset_t)0;
         return error.capture(createError);
@@ -90,7 +104,9 @@ class SemuLibrashaderPreset {
 
     public void __del__() {
         if ((void*)self.handle != (void*)0) {
-            libra_error_t closeError = libra_preset_free(&self.handle);
+            libra_shader_preset_t preset = self.handle;
+            libra_error_t closeError = libra_preset_free(&preset);
+            self.handle = preset;
             if ((void*)closeError != (void*)0) {
                 libra_error_free(&closeError);
             }
@@ -227,10 +243,13 @@ class SemuLibrashaderOpenGLChain {
         options.frames_per_second = framesPerSecond;
         options.frametime_delta = frametimeDeltaMs;
 
-        if (!self.error.capture(libra_gl_filter_chain_frame(
-                &self.handle, frameCount, input, output,
+        libra_gl_filter_chain_t framed = self.handle;
+        var frameOk = self.error.capture(libra_gl_filter_chain_frame(
+                &framed, frameCount, input, output,
                 (const struct libra_viewport_t*)0, (const float*)0,
-                &options))) {
+                &options));
+        self.handle = framed;
+        if (!frameOk) {
             self.failure = SEMU_LIBRASHADER_FAILURE_LIBRARY;
             return SEMU_LIBRASHADER_PASSTHROUGH;
         }
@@ -241,7 +260,9 @@ class SemuLibrashaderOpenGLChain {
     // parameter by that name, which leaves the chain as it was.
     public bool setParameter(const char* name, float value) {
         if ((void*)self.handle == (void*)0 || name == (const char*)0) { return false; }
-        libra_error_t result = libra_gl_filter_chain_set_param(&self.handle, name, value);
+        libra_gl_filter_chain_t chain = self.handle;
+        libra_error_t result = libra_gl_filter_chain_set_param(&chain, name, value);
+        self.handle = chain;
         if ((void*)result == (void*)0) { return true; }
         libra_error_free(&result);
         return false;
@@ -259,7 +280,10 @@ class SemuLibrashaderOpenGLChain {
             self.failure = SEMU_LIBRASHADER_FAILURE_WRONG_CONTEXT;
             return false;
         }
-        if (!self.error.capture(libra_gl_filter_chain_free(&self.handle))) {
+        libra_gl_filter_chain_t freed = self.handle;
+        var freeOk = self.error.capture(libra_gl_filter_chain_free(&freed));
+        self.handle = freed;
+        if (!freeOk) {
             self.failure = SEMU_LIBRASHADER_FAILURE_LIBRARY;
             return false;
         }

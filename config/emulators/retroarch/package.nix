@@ -14,8 +14,14 @@ let
     nativeBuildInputs = (previous.nativeBuildInputs or [ ]) ++ [ btrcpy ];
     buildInputs = (previous.buildInputs or [ ]) ++ [ semuRendererLoader ];  # the loader: renderer changes never rebuild RetroArch
     postPatch = (previous.postPatch or "") + ''
-      btrcpy ${bridgeSource}/runtime_bridge.btrc -o gfx/semu_retroarch.c \
-        --strict-imports --no-cache --no-stdlib --no-dce
+      export HOME="$TMPDIR"  # btrcpy writes its cache under $HOME
+      # btrc resolves the package manifest beside the sources and needs the
+      # directory writable, so the bridge is transpiled from a copy rather than
+      # from its read-only store path.
+      cp -r --no-preserve=mode,ownership ${bridgeSource} "$TMPDIR/semu-bridge"
+      CPATH="${semuRendererLoader}/include''${CPATH:+:$CPATH}" \
+        btrcpy "$TMPDIR/semu-bridge/runtime_bridge.btrc" -o gfx/semu_retroarch.c \
+          --strict-imports --no-cache --no-stdlib --no-dce
       test -s gfx/semu_retroarch.c
       # Software cores get a 3.2 core context by default; the renderer and librashader need 3.3 / GLSL 330.
       sed -i '/major = 3;/{n;s/minor = 2;/minor = 3;/}' gfx/drivers/gl3.c

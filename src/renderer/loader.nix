@@ -6,7 +6,11 @@
 let
   loaderSource = lib.fileset.toSource {
     root = rendererRoot;
-    fileset = rendererRoot + "/loader/semu_renderer_loader.btrc";
+    # btrc resolves the declared native bindings from the package manifest, so
+    # it and the binding headers it names travel with the loader source.
+    # loader/ is its own btrc package: its manifest declares the dynamic-linker
+    # binding, so a renderer binding change never rebuilds this derivation.
+    fileset = rendererRoot + "/loader";
   };
   rendererHeader = import (rendererRoot + "/semu_render_header.nix") { inherit writeText; };
 in
@@ -18,6 +22,7 @@ stdenv.mkDerivation {
   allowSubstitutes = false;  # compiled by Semu, never a cache binary
   nativeBuildInputs = [ btrcpy ];
   buildPhase = ''
+    export HOME="$TMPDIR"  # btrcpy writes its cache under $HOME
     btrcpy loader/semu_renderer_loader.btrc -o semu_renderer_loader.c --strict-imports --no-cache --no-stdlib --no-dce
     $CC -c semu_renderer_loader.c -o semu_renderer_loader.o -std=c11 -O2 -fPIC -Wall -Wno-unused-function
     $AR rcs libsemurendererloader.a semu_renderer_loader.o

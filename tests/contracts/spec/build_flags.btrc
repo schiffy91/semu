@@ -88,7 +88,7 @@ class BuildFlagsSpecContract {
     }
 
     class void run(Contract contract) {
-        string project = Environment.get("SEMU_PROJECT", FileSystem.currentDirectory());
+        string project = Environment.get("SEMU_PROJECT", Platform.currentDirectory());
         BuildFlagsSpecContract.pcsx2(contract, project);
         BuildFlagsSpecContract.cemu(contract, project);
         BuildFlagsSpecContract.azahar(contract, project, "azahar");

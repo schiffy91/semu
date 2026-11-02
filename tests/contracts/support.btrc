@@ -64,7 +64,7 @@ class Fixture {
     public SemuPlan plan;
 
     public Fixture(string target) {
-        self.project = Environment.get("SEMU_PROJECT", FileSystem.currentDirectory());
+        self.project = Environment.get("SEMU_PROJECT", Platform.currentDirectory());
         self.scratch = FileSystem.tempDir("semu-contract");
         self.diagnostics = SemuDiagnostics();
         self.model = SemuModel.load(PathTools.join(self.project, "config"), self.diagnostics);

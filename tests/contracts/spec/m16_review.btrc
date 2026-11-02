@@ -100,7 +100,7 @@ class M16ReviewSpecContract {
     }
 
     class void run(Contract contract) {
-        string project = Environment.get("SEMU_PROJECT", FileSystem.currentDirectory());
+        string project = Environment.get("SEMU_PROJECT", Platform.currentDirectory());
         M16ReviewSpecContract.cases(contract, project);
         M16ReviewSpecContract.tools(contract, project);
         M16ReviewSpecContract.plan(contract, project);

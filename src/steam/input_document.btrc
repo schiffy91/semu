@@ -161,6 +161,6 @@ class SteamInputController {  // one controller_type: its Steam names and Semu l
         string prefix = "touch_menu_button_";
         if (!kind.equals("inputs") || !name.startsWith(prefix) || name.len() == prefix.len()) { return false; }
         string number = name.substring(prefix.len(), name.len() - prefix.len());
-        return Strings.isDigitStr(number) && Strings.toInt(number) <= SemuJson.intAt(self.vocabulary, "radial_buttons", 0);
+        return number.isDigit() && Strings.toInt(number) <= SemuJson.intAt(self.vocabulary, "radial_buttons", 0);
     }
 }

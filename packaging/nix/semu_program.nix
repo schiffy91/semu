@@ -21,6 +21,7 @@ stdenv.mkDerivation {
   dontConfigure = true;
 
   buildPhase = ''
+    export HOME="$TMPDIR"  # btrcpy writes its cache under $HOME
     btrcpy src/semu.btrc -o semu.c --strict-imports --no-cache --no-stdlib
     $CC semu.c -std=c11 -O2 -Isrc/launch ${xcbDefines} -o semu-btrc -lm
   '';

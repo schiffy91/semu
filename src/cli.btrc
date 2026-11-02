@@ -71,7 +71,7 @@ class SemuCli {
 
     public string configRoot() {
         string declared = self.option("project", Environment.get("SEMU_SOURCE_ROOT", ""));
-        if (declared.isEmpty()) { declared = PathTools.join(FileSystem.currentDirectory(), "config"); }
+        if (declared.isEmpty()) { declared = PathTools.join(Platform.currentDirectory(), "config"); }
         if (PathTools.basename(declared).equals("config") || !FileSystem.isDir(PathTools.join(declared, "config"))) { return FileSystem.absolutePath(declared); }
         return PathTools.join(FileSystem.absolutePath(declared), "config");
     }

@@ -186,7 +186,9 @@ class SemuRenderVariants {
         clock_gettime(CLOCK_REALTIME, &now);
         char* buffer = (char*)malloc((size_t)48);
         snprintf(buffer, (size_t)48, "%lld%09ld-%d", (long long)now.tv_sec, (long)now.tv_nsec, (int)getpid());
-        return __btrc_str_track(buffer);
+        string tracked = Strings.copy(buffer);  // btrc no longer adopts a C allocation
+        free(buffer);
+        return tracked;
     }
 
     class Vector<string> environment(SemuRenderVariantSet set) {  // what the renderer needs to trust the file; nothing when none was written

@@ -82,7 +82,7 @@ class CrtRuleSpec {
         int pitched = compositor.indexOf("            RendererShaderPasses.scanlines(chain, lane);");
         contract.expect(created > 0 && pitched > created, "every new shader chain gets its scanline pitch for its lane's size");
         contract.contains(compositor, "if (chain.setParameter(\"intres\", divider)", "as guest's intres, which presets without it ignore");
-        contract.contains(binding, "libra_gl_filter_chain_set_param(&self.handle, name, value)", "through librashader's runtime parameters");
+        contract.contains(binding, "libra_gl_filter_chain_set_param(&chain, name, value)", "through librashader's runtime parameters");
     }
 
     class void plan(Contract contract, string project) {  // PLAN M16 keeps the Deck measurement that moved the 480-line four, the plain answer and the Status line

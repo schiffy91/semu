@@ -50,7 +50,7 @@ class SemuRenderScale {
 
     class int parse(string value) {  // "2x" or "2": 2; 0 for anything else
         string digits = value.endsWith("x") ? value.substring(0, value.len() - 1) : value;
-        if (digits.isEmpty() || digits.len() > 2 || !Strings.isDigitStr(digits)) { return 0; }
+        if (digits.isEmpty() || digits.len() > 2 || !digits.isDigit()) { return 0; }
         return Strings.toInt(digits);
     }
 

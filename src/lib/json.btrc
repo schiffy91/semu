@@ -19,7 +19,7 @@ class SemuJson {
             if (current == null) { return JSONValue.makeNull(); }
             if (current.isObject()) {
                 current = current.get(segment);
-            } else if (current.isArray() && Strings.isDigitStr(segment)) {
+            } else if (current.isArray() && segment.isDigit()) {
                 current = current.at(Strings.toInt(segment));
             } else {
                 return JSONValue.makeNull();

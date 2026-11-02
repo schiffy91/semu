@@ -174,7 +174,9 @@ class SemuRenderEnvironment {
         double parsed = atof(value.stringify());
         char* buffer = (char*)malloc(32);
         snprintf(buffer, 32, "%.6g", parsed);
-        return __btrc_str_track(buffer);
+        string tracked = Strings.copy(buffer);  // btrc no longer adopts a C allocation
+        free(buffer);
+        return tracked;
     }
 
     class string numberOr(JSONValue object, string key, string fallback) {
@@ -185,7 +187,9 @@ class SemuRenderEnvironment {
     class string fraction(double value) {
         char* buffer = (char*)malloc(32);
         snprintf(buffer, 32, "%.6g", value);
-        return __btrc_str_track(buffer);
+        string tracked = Strings.copy(buffer);  // btrc no longer adopts a C allocation
+        free(buffer);
+        return tracked;
     }
 
     class string rect(JSONValue rect, JSONValue canvas) {  // canvas pixels -> normalized top-left rectangle

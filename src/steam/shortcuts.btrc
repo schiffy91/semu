@@ -94,7 +94,9 @@ class SteamShortcut {
     public string launchUrl() {  // Steam's 64-bit shortcut id: appid in the high word plus the non-Steam flag
         char* buffer = (char*)malloc(48);
         snprintf(buffer, 48, "steam://rungameid/%llu", (unsigned long long)(((unsigned long long)self.appid << 32) | 0x02000000ULL));
-        return __btrc_str_track(buffer);
+        string tracked = Strings.copy(buffer);  // btrc no longer adopts a C allocation
+        free(buffer);
+        return tracked;
     }
 }
 
@@ -117,7 +119,9 @@ class SteamShortcutsFile {
         while (end < self.size && self.data[end] != 0) { end++; }
         if (end >= self.size) { return ""; }
         char* copy = strdup((char*)(self.data + offset));
-        return __btrc_str_track(copy);
+        string tracked = Strings.copy(copy);  // btrc no longer adopts a C allocation
+        free(copy);
+        return tracked;
     }
 
     public long u32(int offset) {
@@ -307,7 +311,7 @@ class SteamShortcuts {
         string home = SemuPaths.home();
         for candidate in [".steam/steam", ".local/share/Steam", ".var/app/com.valvesoftware.Steam/.local/share/Steam"] {
             string root = PathTools.join(home, candidate);
-            string real = UnixFileSystem.realPath(root);
+            string real = FileSystem.realPath(root);
             if (!real.isEmpty() && FileSystem.isDir(PathTools.join(real, "userdata")) && !roots.contains(real)) { roots.push(real); }
         }
         return roots;

@@ -1,0 +1,81 @@
+manifest-version = 1
+
+[package]
+name = "semu_renderer"
+
+# btrc after c959dd0e resolves C declarations only through a declared native
+# binding; an #include alone no longer surfaces the header's symbols. Macros
+# (uppercase) are listed alongside functions and types.
+[[native.bindings]]
+module = "librashader_gl"
+header = "librashader_abi.h"
+language = "c"
+standard = "c11"
+symbols = [
+	"libra_error_t", "libra_error_errno", "libra_error_free", "libra_error_print",
+	"libra_shader_preset_t", "libra_preset_ctx_t", "libra_preset_opt_t",
+	"libra_preset_create_with_options", "libra_preset_free",
+	"libra_gl_filter_chain_t", "libra_gl_loader_t", "libra_gl_filter_chain_create",
+	"libra_gl_filter_chain_frame", "libra_gl_filter_chain_free", "libra_gl_filter_chain_set_param",
+	"libra_image_gl_t", "libra_viewport_t",
+	"filter_chain_gl_opt_t", "frame_gl_opt_t",
+	"LIBRASHADER_CURRENT_VERSION"
+]
+
+[[native.bindings]]
+module = "preload.semu_preload"
+header = "dlfcn_abi.h"
+language = "c"
+standard = "c11"
+symbols = ["dlsym", "RTLD_DEFAULT", "RTLD_NEXT"]
+
+[[native.bindings]]
+module = "preload.semu_window"
+header = "dlfcn_abi.h"
+language = "c"
+standard = "c11"
+symbols = ["dlsym", "RTLD_DEFAULT"]
+
+[[native.bindings]]
+module = "vulkan.semu_vulkan_layer"
+header = "dlfcn_abi.h"
+language = "c"
+standard = "c11"
+symbols = ["dlopen", "dlsym", "RTLD_DEFAULT", "RTLD_NOLOAD"]
+
+[[native.bindings]]
+module = "vulkan.semu_vulkan_metal"
+header = "dlfcn_abi.h"
+language = "c"
+standard = "c11"
+symbols = ["dlopen", "dlsym", "dladdr", "Dl_info", "RTLD_DEFAULT", "RTLD_NOLOAD", "RTLD_NOW"]
+
+[[native.bindings]]
+module = "vulkan.semu_vulkan_core"
+header = "vulkan_abi.h"
+language = "c"
+standard = "c11"
+symbols = [
+	"VK_COMMAND_BUFFER_LEVEL_PRIMARY",
+	"VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT",
+	"VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT",
+	"VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT",
+	"VK_IMAGE_ASPECT_COLOR_BIT",
+	"VK_IMAGE_LAYOUT_UNDEFINED",
+	"VK_IMAGE_TILING_OPTIMAL",
+	"VK_IMAGE_TYPE_2D",
+	"VK_SAMPLE_COUNT_1_BIT",
+	"VK_SHARING_MODE_EXCLUSIVE",
+	"VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO",
+	"VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO",
+	"VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO",
+	"VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO",
+	"VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO",
+	"VK_STRUCTURE_TYPE_FENCE_CREATE_INFO",
+	"VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO",
+	"VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER",
+	"VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO",
+	"VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO",
+	"VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR",
+	"VK_STRUCTURE_TYPE_SUBMIT_INFO"
+]

@@ -3,7 +3,7 @@
 // into every recolor that inherits its geometry). Loopback only, one request at a time.
 import Library.Bytes;
 import Library.Console;
-import Library.Datetime;
+import Library.DateTime;
 import Library.FileSystem;
 import Library.HTTP;
 import Library.JSON;
@@ -62,7 +62,7 @@ class BezelEditor {
 
     public HTTPResponse route(HTTPRequest request) {
         if (!self.trusted(request)) { return HTTPResponse.error(403, "the bezel editor answers only its own page on loopback"); }
-        string path = HTTPServer.urlDecode(request.path);
+        string path = HTTPUrl.decode(request.path);
         if (request.isPost() && path.equals("/api/save")) { return self.save(request.body); }
         if (request.isPost() && path.equals("/api/production")) { return self.production.render(request.body); }
         if (path.equals("/")) { return FileSystem.isFile(self.pagePath) ? HTTPResponse.html(FileSystem.readText(self.pagePath)) : HTTPResponse.error(500, "no editor page at " + self.pagePath); }
@@ -459,7 +459,7 @@ class BezelProductionRender {  // the real renderer on this machine (a checkout'
         JSONValue overlay = JSONValue.makeObject();
         overlay.set("visual", visual);
         string settings = overlay.stringify();
-        ExecResult environment = ChildProcess.run(semu, ["render-env", "--system", system, "--project", config, "--asset-root", self.assetRoot, "--settings-json", settings], "", CommandEnvironment.empty(), CommandEnvironment.empty(), 60000);
+        ExecResult environment = ChildProcess.run(semu, ["render-env", "--system", system, "--project", config, "--asset-root", self.assetRoot, "--settings-json", settings], "", [], [], 60000);
         if (!environment.ok()) { return HTTPResponse.error(500, "semu render-env: " + environment.stderr()); }
         Vector<string> entries = [];
         for line in Strings.split(environment.stdout(), "\n") { if (line.contains("=") && !line.startsWith("SEMU_RENDER_COMPOSITOR_DIR=")) { entries.push(line); } }
@@ -468,7 +468,7 @@ class BezelProductionRender {  // the real renderer on this machine (a checkout'
         double aspect = BezelNumber.of(request.get("aspect"));
         if (aspect > 0.1) { entries.push(f"RENDER_HOST_ASPECT={aspect}"); }
         string frame = PathTools.join(self.scratch, "production.ppm");
-        ExecResult drawn = ChildProcess.run(host, [f"{width}", f"{height}", frame], "", entries, CommandEnvironment.empty(), 120000);
+        ExecResult drawn = ChildProcess.run(host, [f"{width}", f"{height}", frame], "", entries, [], 120000);
         if (!drawn.ok()) { return HTTPResponse.error(500, "render-host: " + drawn.stderr()); }
         Bytes data = SemuPaths.readBytes(frame);
         if (data.len == 0) { return HTTPResponse.error(500, "render-host wrote nothing"); }

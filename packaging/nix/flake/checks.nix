@@ -11,12 +11,13 @@ forAllSystems (system:
       name = "semu-contracts";
       src = lib.fileset.toSource {
         root = repositoryRoot;
-        fileset = lib.fileset.unions [ ../../../src ../../../tests/contracts ../../../tests/deck ../../../tests/integration/menu-modal.sh ../../../config ../../../packaging ];  # the specs read the ES-DE patch and package, run the Deck scripts' plan and display rule, and match the modal harness's log lines
+        fileset = lib.fileset.unions [ ../../../btrc.toml ../../../input_codes_abi.h ../../../src ../../../tests/contracts ../../../tests/deck ../../../tests/integration/menu-modal.sh ../../../config ../../../packaging ];  # the specs read the ES-DE patch and package, run the Deck scripts' plan and display rule, and match the modal harness's log lines
       };
       nativeBuildInputs = [ packages.btrcpy ];
       SEMU_BEZEL_TREE = "${packages.bezel-tree}/share/semu/bezel/shaders";  # the placement and layer contracts run from pinned inputs
       dontConfigure = true;
       buildPhase = ''
+        export HOME="$TMPDIR"  # btrcpy writes its cache under $HOME
         btrcpy tests/contracts/main.btrc -o contracts.c --strict-imports --no-cache --no-stdlib
         $CC contracts.c -std=c11 -O1 -Isrc/launch -o contracts -lm
       '';
@@ -36,6 +37,7 @@ forAllSystems (system:
       nativeBuildInputs = [ packages.btrcpy ];
       dontConfigure = true;
       buildPhase = ''
+        export HOME="$TMPDIR"  # btrcpy writes its cache under $HOME
         btrcpy tests/integration/synthetic_core.btrc -o core.c --strict-imports --no-cache --no-stdlib --no-dce
         $CC core.c -std=gnu11 -O2 -shared -fPIC -I${retroarch.sourceTree}/libretro-common/include -o synthetic_libretro.so
       '';

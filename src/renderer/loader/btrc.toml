@@ -1,0 +1,13 @@
+manifest-version = 1
+
+[package]
+name = "semu_renderer_loader"
+
+# The loader is built on its own, from this file and the renderer header alone,
+# so it carries the dynamic-linker binding rather than sharing the renderer's.
+[[native.bindings]]
+module = "semu_renderer_loader"
+header = "dlfcn_abi.h"
+language = "c"
+standard = "c11"
+symbols = ["dlopen", "dlsym", "dlerror", "RTLD_NOW", "RTLD_LOCAL"]

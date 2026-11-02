@@ -90,7 +90,7 @@ class SemuPadRoster {
     class int steamSlot(string evdevName, string prefix) {  // the N of "Microsoft X-Box 360 pad N", -1 for any other pad
         if (prefix.isEmpty() || !evdevName.startsWith(prefix) || evdevName.len() == prefix.len()) { return -1; }
         string rest = evdevName.substring(prefix.len(), evdevName.len() - prefix.len());
-        return Strings.isDigitStr(rest) ? Strings.toInt(rest) : -1;
+        return rest.isDigit() ? Strings.toInt(rest) : -1;
     }
 
     class string sdlName(JSONValue sdlNames, int vendor, int product, string evdevName) {  // SDL's gamepad name for a pad its mapping database renames (players.sdl_names), else the evdev name
@@ -165,7 +165,7 @@ class SemuPadRoster {
         string except = Environment.get("SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT", "");
         Vector<JSONValue> found = [];
         for node in FileSystem.listDir(classes) {
-            if (!node.startsWith("event") || !Strings.isDigitStr(node.substring(5, node.len() - 5))) { continue; }
+            if (!node.startsWith("event") || !node.substring(5, node.len() - 5).isDigit()) { continue; }
             string device = PathTools.join(PathTools.join(classes, node), "device");
             string evdevName = FileSystem.isFile(PathTools.join(device, "name")) ? FileSystem.readText(PathTools.join(device, "name")).trim() : "";
             int vendor = SemuPadRoster.hex(FileSystem.isFile(PathTools.join(device, "id/vendor")) ? FileSystem.readText(PathTools.join(device, "id/vendor")) : "");

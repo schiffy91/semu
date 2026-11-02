@@ -1,0 +1,297 @@
+manifest-version = 1
+
+[package]
+name = "semu"
+
+# The kernel input codes are macros, so every module that names one declares
+# the binding here.
+
+[[native.bindings]]
+module = "src.launch.gamepad"
+header = "input_codes_abi.h"
+language = "c"
+standard = "c11"
+symbols = [
+	"BTN_DPAD_LEFT",
+	"BTN_DPAD_RIGHT",
+	"BTN_NORTH",
+	"BTN_SELECT",
+	"BTN_SOUTH",
+	"BTN_WEST",
+	"KEY_B",
+	"KEY_EQUAL",
+	"KEY_F13",
+	"KEY_F24",
+	"KEY_F9",
+	"KEY_K",
+	"KEY_KPMINUS",
+	"KEY_KPPLUS",
+	"KEY_LEFTCTRL",
+	"KEY_LEFTSHIFT",
+	"KEY_M",
+	"KEY_RIGHT",
+	"KEY_RIGHTCTRL",
+	"KEY_RIGHTSHIFT",
+	"KEY_S"
+]
+
+[[native.bindings]]
+module = "src.launch.input_devices"
+header = "input_codes_abi.h"
+language = "c"
+standard = "c11"
+symbols = [
+	"BTN_DPAD_LEFT",
+	"BTN_DPAD_RIGHT",
+	"BTN_NORTH",
+	"BTN_SELECT",
+	"BTN_SOUTH",
+	"BTN_WEST",
+	"KEY_B",
+	"KEY_EQUAL",
+	"KEY_F13",
+	"KEY_F24",
+	"KEY_F9",
+	"KEY_K",
+	"KEY_KPMINUS",
+	"KEY_KPPLUS",
+	"KEY_LEFTCTRL",
+	"KEY_LEFTSHIFT",
+	"KEY_M",
+	"KEY_RIGHT",
+	"KEY_RIGHTCTRL",
+	"KEY_RIGHTSHIFT",
+	"KEY_S"
+]
+
+[[native.bindings]]
+module = "src.launch.input_state"
+header = "input_codes_abi.h"
+language = "c"
+standard = "c11"
+symbols = [
+	"BTN_DPAD_LEFT",
+	"BTN_DPAD_RIGHT",
+	"BTN_NORTH",
+	"BTN_SELECT",
+	"BTN_SOUTH",
+	"BTN_WEST",
+	"KEY_B",
+	"KEY_EQUAL",
+	"KEY_F13",
+	"KEY_F24",
+	"KEY_F9",
+	"KEY_K",
+	"KEY_KPMINUS",
+	"KEY_KPPLUS",
+	"KEY_LEFTCTRL",
+	"KEY_LEFTSHIFT",
+	"KEY_M",
+	"KEY_RIGHT",
+	"KEY_RIGHTCTRL",
+	"KEY_RIGHTSHIFT",
+	"KEY_S"
+]
+
+[[native.bindings]]
+module = "src.launch.supervisor"
+header = "input_codes_abi.h"
+language = "c"
+standard = "c11"
+symbols = [
+	"BTN_DPAD_LEFT",
+	"BTN_DPAD_RIGHT",
+	"BTN_NORTH",
+	"BTN_SELECT",
+	"BTN_SOUTH",
+	"BTN_WEST",
+	"KEY_B",
+	"KEY_EQUAL",
+	"KEY_F13",
+	"KEY_F24",
+	"KEY_F9",
+	"KEY_K",
+	"KEY_KPMINUS",
+	"KEY_KPPLUS",
+	"KEY_LEFTCTRL",
+	"KEY_LEFTSHIFT",
+	"KEY_M",
+	"KEY_RIGHT",
+	"KEY_RIGHTCTRL",
+	"KEY_RIGHTSHIFT",
+	"KEY_S"
+]
+
+[[native.bindings]]
+module = "src.launch.pad_roster"
+header = "input_codes_abi.h"
+language = "c"
+standard = "c11"
+symbols = [
+	"BTN_DPAD_LEFT",
+	"BTN_DPAD_RIGHT",
+	"BTN_NORTH",
+	"BTN_SELECT",
+	"BTN_SOUTH",
+	"BTN_WEST",
+	"KEY_B",
+	"KEY_EQUAL",
+	"KEY_F13",
+	"KEY_F24",
+	"KEY_F9",
+	"KEY_K",
+	"KEY_KPMINUS",
+	"KEY_KPPLUS",
+	"KEY_LEFTCTRL",
+	"KEY_LEFTSHIFT",
+	"KEY_M",
+	"KEY_RIGHT",
+	"KEY_RIGHTCTRL",
+	"KEY_RIGHTSHIFT",
+	"KEY_S"
+]
+
+[[native.bindings]]
+module = "tests.contracts.main"
+header = "input_codes_abi.h"
+language = "c"
+standard = "c11"
+symbols = [
+	"BTN_DPAD_LEFT",
+	"BTN_DPAD_RIGHT",
+	"BTN_NORTH",
+	"BTN_SELECT",
+	"BTN_SOUTH",
+	"BTN_WEST",
+	"KEY_B",
+	"KEY_EQUAL",
+	"KEY_F13",
+	"KEY_F24",
+	"KEY_F9",
+	"KEY_K",
+	"KEY_KPMINUS",
+	"KEY_KPPLUS",
+	"KEY_LEFTCTRL",
+	"KEY_LEFTSHIFT",
+	"KEY_M",
+	"KEY_RIGHT",
+	"KEY_RIGHTCTRL",
+	"KEY_RIGHTSHIFT",
+	"KEY_S"
+]
+
+[[native.bindings]]
+module = "tests.contracts.spec.input_delivery"
+header = "input_codes_abi.h"
+language = "c"
+standard = "c11"
+symbols = [
+	"BTN_DPAD_LEFT",
+	"BTN_DPAD_RIGHT",
+	"BTN_NORTH",
+	"BTN_SELECT",
+	"BTN_SOUTH",
+	"BTN_WEST",
+	"KEY_B",
+	"KEY_EQUAL",
+	"KEY_F13",
+	"KEY_F24",
+	"KEY_F9",
+	"KEY_K",
+	"KEY_KPMINUS",
+	"KEY_KPPLUS",
+	"KEY_LEFTCTRL",
+	"KEY_LEFTSHIFT",
+	"KEY_M",
+	"KEY_RIGHT",
+	"KEY_RIGHTCTRL",
+	"KEY_RIGHTSHIFT",
+	"KEY_S"
+]
+
+[[native.bindings]]
+module = "tests.contracts.spec.input_devices"
+header = "input_codes_abi.h"
+language = "c"
+standard = "c11"
+symbols = [
+	"BTN_DPAD_LEFT",
+	"BTN_DPAD_RIGHT",
+	"BTN_NORTH",
+	"BTN_SELECT",
+	"BTN_SOUTH",
+	"BTN_WEST",
+	"KEY_B",
+	"KEY_EQUAL",
+	"KEY_F13",
+	"KEY_F24",
+	"KEY_F9",
+	"KEY_K",
+	"KEY_KPMINUS",
+	"KEY_KPPLUS",
+	"KEY_LEFTCTRL",
+	"KEY_LEFTSHIFT",
+	"KEY_M",
+	"KEY_RIGHT",
+	"KEY_RIGHTCTRL",
+	"KEY_RIGHTSHIFT",
+	"KEY_S"
+]
+
+[[native.bindings]]
+module = "tests.contracts.spec.menu_modal"
+header = "input_codes_abi.h"
+language = "c"
+standard = "c11"
+symbols = [
+	"BTN_DPAD_LEFT",
+	"BTN_DPAD_RIGHT",
+	"BTN_NORTH",
+	"BTN_SELECT",
+	"BTN_SOUTH",
+	"BTN_WEST",
+	"KEY_B",
+	"KEY_EQUAL",
+	"KEY_F13",
+	"KEY_F24",
+	"KEY_F9",
+	"KEY_K",
+	"KEY_KPMINUS",
+	"KEY_KPPLUS",
+	"KEY_LEFTCTRL",
+	"KEY_LEFTSHIFT",
+	"KEY_M",
+	"KEY_RIGHT",
+	"KEY_RIGHTCTRL",
+	"KEY_RIGHTSHIFT",
+	"KEY_S"
+]
+
+[[native.bindings]]
+module = "tests.contracts.spec.visual_cycle"
+header = "input_codes_abi.h"
+language = "c"
+standard = "c11"
+symbols = [
+	"BTN_DPAD_LEFT",
+	"BTN_DPAD_RIGHT",
+	"BTN_NORTH",
+	"BTN_SELECT",
+	"BTN_SOUTH",
+	"BTN_WEST",
+	"KEY_B",
+	"KEY_EQUAL",
+	"KEY_F13",
+	"KEY_F24",
+	"KEY_F9",
+	"KEY_K",
+	"KEY_KPMINUS",
+	"KEY_KPPLUS",
+	"KEY_LEFTCTRL",
+	"KEY_LEFTSHIFT",
+	"KEY_M",
+	"KEY_RIGHT",
+	"KEY_RIGHTCTRL",
+	"KEY_RIGHTSHIFT",
+	"KEY_S"
+]

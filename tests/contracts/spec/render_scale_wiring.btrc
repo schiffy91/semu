@@ -91,6 +91,6 @@ class RenderScaleWiringSource {  // where the renderer calls them: before the cr
 class RenderScaleWiringSpecContract {
     class void run(Contract contract) {
         RenderScaleWiringBehaviour.run(contract);
-        RenderScaleWiringSource.run(contract, Environment.get("SEMU_PROJECT", FileSystem.currentDirectory()));
+        RenderScaleWiringSource.run(contract, Environment.get("SEMU_PROJECT", Platform.currentDirectory()));
     }
 }
