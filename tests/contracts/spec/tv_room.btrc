@@ -89,12 +89,12 @@ class TvRoomSpecChecks {
         Vector<string> failures = [];
         int pictures = 0;
         for systemId in fixture.model.systemIds() {
-            JSONValue screen = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0");
+            JSONValue screen = SemuJson.get(fixture.systemOf(systemId).definition, "display.screens.0");
             int nativeWidth = SemuJson.intAt(screen, "native.w", 0);
             int nativeHeight = SemuJson.intAt(screen, "native.h", 0);
             int lines = nativeHeight - SemuJson.intAt(screen, "crop.top", 0) - SemuJson.intAt(screen, "crop.bottom", 0);
             Vector<string> variants = [""];
-            JSONValue declared = fixture.model.system(systemId).bezels.get("variants");
+            JSONValue declared = fixture.systemOf(systemId).bezels.get("variants");
             for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) { variants.push(SemuJson.textAt(declared.at(index), "id")); }
             for variant in variants {
                 Vector<string> room = PlacementSpecEnvironment.layers(PlacementSpecEnvironment.compile(fixture, systemId, variant), "/background.png");
@@ -154,7 +154,7 @@ class TvRoomSpecChecks {
         Vector<string> failures = [];
         int cells = 0;
         for systemId in ["wii", "gc", "ps2", "dreamcast"] {
-            JSONValue screen = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0");
+            JSONValue screen = SemuJson.get(fixture.systemOf(systemId).definition, "display.screens.0");
             int nativeWidth = SemuJson.intAt(screen, "native.w", 0);
             int nativeHeight = SemuJson.intAt(screen, "native.h", 0);
             int lines = nativeHeight - SemuJson.intAt(screen, "crop.top", 0) - SemuJson.intAt(screen, "crop.bottom", 0);

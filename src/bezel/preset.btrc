@@ -50,7 +50,7 @@ class MegaBezelTree {  // the pinned slang tree and packs, as the bezel-tree pac
         self.failure = "";
         if (root.isEmpty() || !FileSystem.isDir(root)) { self.failure = "no bezel tree (build it with `make bezel-tree` or set SEMU_BEZEL_TREE)"; return; }
         JSONValue manifest = JSONValue.readFile(PathTools.join(configRoot, "assets/bezels.json"));
-        JSONValue sources = manifest == null ? null : manifest.get("upstreams");
+        JSONValue? sources = manifest == null ? null : manifest.get("upstreams");
         if (sources == null || !sources.isObject()) { self.failure = "config/assets/bezels.json has no upstreams"; return; }
         for name in sources.keys() {
             string pack = SemuJsonText.at(sources.get(name), "pack");
@@ -76,7 +76,7 @@ class MegaBezelTree {  // the pinned slang tree and packs, as the bezel-tree pac
 
     class string packFile(string configRoot, string treeRoot, string upstream, string relative) {  // one upstream file, for callers without a loaded tree
         JSONValue manifest = JSONValue.readFile(PathTools.join(configRoot, "assets/bezels.json"));
-        JSONValue sources = manifest == null ? null : manifest.get("upstreams");
+        JSONValue? sources = manifest == null ? null : manifest.get("upstreams");
         string pack = sources == null ? "" : SemuJsonText.at(sources.get(upstream), "pack");
         if (treeRoot.isEmpty() || pack.isEmpty()) { return ""; }
         string path = PathTools.join(PathTools.join(PathTools.join(treeRoot, "Mega_Bezel_Packs"), pack), relative);
@@ -86,7 +86,7 @@ class MegaBezelTree {  // the pinned slang tree and packs, as the bezel-tree pac
     public string presetPath(string source, string preset) { return self.upstreams.has(source) ? PathTools.join(self.upstreams.get(source), preset) : ""; }
 
     public string packagePreset(JSONValue package) {  // upstream.source names the pack, upstream.preset the file inside it
-        JSONValue upstream = package == null ? null : package.get("upstream");
+        JSONValue? upstream = package == null ? null : package.get("upstream");
         return self.presetPath(SemuJsonText.at(upstream, "source"), SemuJsonText.at(upstream, "preset"));
     }
 
@@ -140,8 +140,8 @@ class MegaBezelTree {  // the pinned slang tree and packs, as the bezel-tree pac
 }
 
 class SemuJsonText {
-    class string at(JSONValue object, string key) {
-        JSONValue value = object == null ? null : object.get(key);
+    class string at(JSONValue? object, string key) {
+        JSONValue? value = object == null ? null : object.get(key);
         return value != null && value.isString() ? value.asString() : "";
     }
 }

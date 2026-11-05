@@ -77,8 +77,8 @@ class SemuRenderLabels {
 
 class SemuRenderChoices {
     class string placementLabel(SemuPlan plan, string placement) {  // input.json's visual.placement.next choices: INTEGER GAME for game
-        JSONValue actions = plan.input == null ? null : plan.input.definition.get("actions");
-        JSONValue action = actions != null && actions.isObject() && actions.has("visual.placement.next") ? actions.get("visual.placement.next") : null;
+        JSONValue? actions = plan.input == null ? null : plan.input.definition.get("actions");
+        JSONValue? action = actions != null && actions.isObject() && actions.has("visual.placement.next") ? actions.get("visual.placement.next") : null;
         string label = SemuJson.textAt(action, "choices." + placement);
         return SemuRenderLabels.toastSafe(label.isEmpty() ? placement : label, 31);
     }

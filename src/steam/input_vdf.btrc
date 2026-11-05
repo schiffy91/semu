@@ -21,7 +21,7 @@ class SteamInputVdf {  // one template's controller_mappings, walked from declar
     }
 
     class void switches(Vector<string> lines, SteamInputDocument document, SteamInputController controller, Vector<SteamInputPreset> presets, SteamInputPreset preset, string identifier) {
-        JSONValue plain = controller.layout.get("switches");  // input -> the xinput button it passes through
+        JSONValue plain = SemuJson.get(controller.layout, "switches");  // input -> the xinput button it passes through
         Vector<string> plainInputs = [];
         if (plain != null && plain.isObject()) { plainInputs = plain.keys(); }
         SteamInputGroups.head(lines, identifier, "switches", "");
@@ -46,7 +46,7 @@ class SteamInputVdf {  // one template's controller_mappings, walked from declar
         SteamInputGroups.tail(lines, "");
     }
 
-    class void group(Vector<string> lines, SteamInputDocument document, SteamInputController controller, JSONValue template, Vector<SteamInputPreset> presets, SteamInputPreset preset, string kind, string identifier) {
+    class void group(Vector<string> lines, SteamInputDocument document, SteamInputController controller, JSONValue? template, Vector<SteamInputPreset> presets, SteamInputPreset preset, string kind, string identifier) {
         if (kind.equals("face") || kind.equals("hotkey_face")) { SteamInputGroups.buttons(lines, document, identifier, "four_buttons", SteamInputButtons.face(), kind.equals("hotkey_face")); }
         if (kind.equals("dpad") || kind.equals("hotkey_dpad")) { SteamInputGroups.buttons(lines, document, identifier, "dpad", SteamInputButtons.dpad(), kind.equals("hotkey_dpad")); }
         if (kind.equals("left_stick")) { lines.push(SteamInputGroups.single(identifier, "joystick_move", SteamInputBindings.xinput("JOYSTICK_LEFT"), "")); }
@@ -71,7 +71,7 @@ class SteamInputVdf {  // one template's controller_mappings, walked from declar
         }
     }
 
-    class string render(SteamInputDocument document, JSONValue template) {
+    class string render(SteamInputDocument document, JSONValue? template) {
         SteamInputController controller = SteamInputController(document, SemuJson.textAt(template, "controller"));
         Vector<string> lines = [];
         lines.push("\"controller_mappings\"");

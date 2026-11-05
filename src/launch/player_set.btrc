@@ -143,14 +143,14 @@ class SemuPlayerSet {
 }
 
 class SemuPlayerSets {
-    class Vector<string> nativeChords(SemuEmulator emulator, string group) {  // per player: the native_chord of each row of profile.json GROUP
+    class Vector<string> nativeChords(SemuEmulator? emulator, string group) {  // per player: the native_chord of each row of profile.json GROUP
         Vector<string> result = [];
-        JSONValue rows = emulator == null ? null : SemuJson.get(emulator.profile, group);
+        JSONValue? rows = emulator == null ? null : SemuJson.get(emulator.profile, group);
         for (int index = 0; rows != null && rows.isArray() && index < rows.size(); index++) { result.push(SemuJson.textAt(rows.at(index), "native_chord")); }
         return result;
     }
 
-    class SemuPlayerSet from(SemuPlan plan, SemuSystem system, SemuEmulator emulator) {  // the launch's players, from the same rows the profiles were rendered from
+    class SemuPlayerSet from(SemuPlan plan, SemuSystem? system, SemuEmulator? emulator) {  // the launch's players, from the same rows the profiles were rendered from
         SemuPlayerSet set = SemuPlayerSet();
         JSONValue rows = SemuPlayers.rows(plan, system, emulator);
         set.pads = [];
@@ -160,7 +160,8 @@ class SemuPlayerSets {
         set.runningLayouts = [];
         set.linked = [];
         set.count = rows.size();
-        set.padCount = SemuPlayers.known(plan) ? plan.pads.size() : 0;
+        JSONValue? roster = plan.pads;
+        set.padCount = roster != null && roster.isArray() ? roster.size() : 0;
         for (int index = 0; index < rows.size(); index++) {
             JSONValue row = rows.at(index);
             set.pads.push(Strings.toInt(SemuJson.textAt(row, "pad")));
@@ -174,7 +175,7 @@ class SemuPlayerSets {
         JSONValue declared = SemuPlayers.layouts(system);
         for (int index = 0; index < declared.size(); index++) {
             string layout = SemuJson.textAt(declared.at(index), "id");
-            JSONValue fields = SemuPlayers.layoutRow(emulator, layout);
+            JSONValue? fields = SemuPlayers.layoutRow(emulator, layout);
             set.layoutIds.push(layout);
             set.layoutLabels.push(SemuJson.textAt(declared.at(index), "label"));
             set.layoutApply.push(fields == null ? "" : SemuJson.textAt(fields, "apply"));
@@ -183,7 +184,7 @@ class SemuPlayerSets {
         }
         set.chords = SemuPlayerSets.nativeChords(emulator, "layout_hotkeys");
         set.linkChords = SemuPlayerSets.nativeChords(emulator, "connection_hotkeys");
-        JSONValue controllers = emulator == null ? null : SemuJson.get(emulator.definition, "controllers");
+        JSONValue? controllers = emulator == null ? null : SemuJson.get(emulator.definition, "controllers");
         if (controllers != null && controllers.isObject() && SemuJson.textAt(controllers, "switch").equals("profile_cycle")) {
             set.directory = plan.tokens.resolve(SemuJson.textAt(controllers, "directory"));
             set.active = SemuJson.textAt(controllers, "active");

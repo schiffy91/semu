@@ -51,7 +51,7 @@ class GameBoySpecJson {
     }
 
     class JSONValue variant(JSONValue manifest, string id) {
-        JSONValue variants = manifest == null ? null : manifest.get("variants");
+        JSONValue? variants = manifest == null ? null : manifest.get("variants");
         if (variants == null || !variants.isArray()) { return JSONValue.makeNull(); }
         for (int index = 0; index < variants.size(); index++) {
             if (SemuJson.textAt(variants.at(index), "id").equals(id)) { return variants.at(index); }
@@ -133,7 +133,7 @@ class GameBoySpecDefinition {
 class GameBoySpecBezels {
     class JSONValue picture(JSONValue package) {  // the calibrated picture rectangle, else the opening
         JSONValue screen = SemuBezelPackage.screen(package, "main");
-        JSONValue image = screen.isObject() ? screen.get("image") : null;
+        JSONValue? image = screen.isObject() ? screen.get("image") : null;
         return image != null && image.isObject() ? image : (screen.isObject() ? screen.get("tube") : JSONValue.makeNull());
     }
 
@@ -180,7 +180,7 @@ class GameBoySpecInput {
         contract.expect(!FileSystem.isFile(PathTools.join(input, "systems/gb.json")), "gb has no per-system Deck input file: its actions are RetroArch's");
         JSONValue global = SemuJson.readFile(PathTools.join(fixture.project, "config/input/steam/steam_input.json"));
         JSONValue autoconfig = SemuJson.readFile(PathTools.join(input, "retroarch_autoconfig.json"));
-        JSONValue emulatorActions = SemuJson.get(fixture.model.emulator("retroarch").definition, "input.actions");
+        JSONValue emulatorActions = SemuJson.get(fixture.emulatorOf("retroarch").definition, "input.actions");
         Vector<string> actions = ["ui.pause", "ui.screenshot", "ui.fullscreen", "ui.escape", "app.quit", "state.prev", "state.next", "state.load", "state.save", "speed.rewind", "speed.fast"];
         Vector<string> bindings = ["input_up_btn", "input_down_btn", "input_left_btn", "input_right_btn", "input_b_btn", "input_a_btn", "input_start_btn", "input_select_btn"];
         SteamInputDocument document = SteamInputDocument(global);
@@ -232,7 +232,7 @@ class GameBoySpecMatrix {
             for bezel in bezels {
                 for integer in [true, false] {
                     string cell = f"{shader}/{bezel}/{integer ? "integer" : "fractional"}";
-                    SemuPlan plan = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, GameBoySpecMatrix.overlay(shader, bezel, integer), diagnostics);
+                    SemuPlan plan = Fixture.resolved(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, GameBoySpecMatrix.overlay(shader, bezel, integer), diagnostics);
                     Vector<string> environment = SemuRenderEnvironment.compile(plan, system, "retroarch", "/state/retroarch", diagnostics);
                     string preset = shader.equals("dmg") ? PathTools.join(shaderRoot, "screen.slangp") : (shader.equals("pocket") ? PathTools.join(shaderRoot, "pocket.slangp") : "");
                     string package = bezel.equals("dmg") ? "gb-dmg-shell" : "";
@@ -254,7 +254,7 @@ class GameBoySpecMatrix {
             if (!repeated) { distinct++; }
         }
         contract.expect(seen.size() == 12 && distinct == 12, f"the gb matrix has 12 distinct cells: {distinct} of {seen.size()}");
-        SemuPlan switchedOff = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false,\"systems\":{\"gb\":{\"shader_variant\":\"pocket\",\"bezel_variant\":\"dmg\"}}}}", diagnostics);
+        SemuPlan switchedOff = Fixture.resolved(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false,\"systems\":{\"gb\":{\"shader_variant\":\"pocket\",\"bezel_variant\":\"dmg\"}}}}", diagnostics);
         Vector<string> offEnvironment = SemuRenderEnvironment.compile(switchedOff, system, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(offEnvironment.contains("SEMU_RENDER_SHADERS=1") && offEnvironment.contains("SEMU_RENDER_BEZELS=1"), "gb's own variant choices beat the global switches, which are only the default");
         contract.expect(diagnostics.ok(), "the gb matrix compiles without diagnostics: " + diagnostics.render());
@@ -264,7 +264,7 @@ class GameBoySpecMatrix {
 class GameBoySpecContract {
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
-        SemuSystem system = fixture.model.system("gb");
+        SemuSystem system = fixture.systemOf("gb");
         GameBoySpecDefinition.display(contract, system);
         GameBoySpecDefinition.shaders(contract, fixture, system);
         GameBoySpecBezels.run(contract, fixture, system);

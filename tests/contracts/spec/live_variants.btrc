@@ -47,9 +47,9 @@ class LiveVariantTools {
         setenv("SEMU_RENDER_STATE_DIR", state, 1);
         setenv("SEMU_RENDER_SYSTEM_ID", "nds", 1);
         setenv(RendererVariantKeys.tokenVariable(), token, 1);
-        setenv("SEMU_MENU_ITEMS", fixture.plan.input.menuItems("label").join("|"), 1);
-        setenv("SEMU_MENU_ACTIONS", fixture.plan.input.menuItems("action").join("|"), 1);
-        setenv("SEMU_MENU_TOASTS", fixture.plan.input.toasts(), 1);
+        setenv("SEMU_MENU_ITEMS", fixture.input().menuItems("label").join("|"), 1);
+        setenv("SEMU_MENU_ACTIONS", fixture.input().menuItems("action").join("|"), 1);
+        setenv("SEMU_MENU_TOASTS", fixture.input().toasts(), 1);
         setenv("SEMU_MENU_SLOTS", "10", 1);
         setenv("SEMU_MENU_FIRST_SLOT", "0", 1);
     }
@@ -309,7 +309,7 @@ class LiveVariantSources {  // the GL-bound wiring the contracts cannot run: kep
 
 class LiveVariantLaunchSpec {  // the token and the templates reach the renderer through the launch and render-env
     class void run(Contract contract, Fixture fixture) {
-        string toasts = fixture.plan.input.toasts();
+        string toasts = fixture.input().toasts();
         contract.contains(toasts, "visual.shader.next:loading=LOADING {label}", "live: the loading toast is input.json data");
         SemuLaunchPlan launch = LaunchSpecTools.retroarchPlan(fixture);
         contract.expect(launch.variants.written && !launch.variants.token.isEmpty() && launch.environment.contains("SEMU_MENU_VARIANTS_TOKEN=" + launch.variants.token), "live: the launch hands the renderer its variants file's token");
@@ -331,13 +331,13 @@ class LiveVariantSpecContract {
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
         for systemId in fixture.model.systemIds() {
-            SemuSystem system = fixture.model.system(systemId);
+            SemuSystem system = fixture.systemOf(systemId);
             RenderEnvSpecAssets.walk(fixture.plan.assetRoot, system.shaders);
             RenderEnvSpecAssets.walk(fixture.plan.assetRoot, system.bezels);
         }
         RenderEnvSpecAssets.packages(fixture.plan.assetRoot, fixture.plan.configRoot);
         string state = PathTools.join(fixture.scratch, "live/nds");
-        SemuRenderVariantSet set = SemuRenderVariants.write(fixture.plan, fixture.model.system("nds"), "retroarch", state);
+        SemuRenderVariantSet set = SemuRenderVariants.write(fixture.plan, fixture.systemOf("nds"), "retroarch", state);
         string path = SemuRenderVariants.path(state);
         contract.expect(set.written && !set.token.isEmpty(), "live: the nds variants file is written with a token");
         LiveVariantTools.environment(fixture, state, set.token);

@@ -35,7 +35,7 @@ class SemuSettingsStore {  // $SEMU_HOME/semu.json: the one user-owned settings 
     class bool readable(string semuHome) {  // absent, or a JSON object; malformed files are never replaced
         string file = PathTools.join(semuHome, "semu.json");
         if (!FileSystem.exists(file)) { return true; }
-        JSONValue current = FileSystem.isFile(file) ? SemuJson.readFile(file) : null;
+        JSONValue? current = FileSystem.isFile(file) ? SemuJson.readFile(file) : null;
         return current != null && !current.isError() && current.isObject();
     }
 

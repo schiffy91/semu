@@ -35,7 +35,7 @@ class DualFitSpecGeometry {
         PlacementSpecGeometry.load(PlacementSpecEnvironment.compile(fixture, systemId, variantId), &variant);
         memset(geometry, 0, sizeof(struct RendererCompositionGeometry));
         geometry->lane_count = 2;
-        JSONValue screens = SemuJson.get(fixture.model.system(systemId).definition, "display.screens");
+        JSONValue screens = SemuJson.get(fixture.systemOf(systemId).definition, "display.screens");
         for (int index = 0; index < 2; index++) {
             geometry->lanes[index].native_width = SemuJson.intAt(screens.at(index), "native.w", 0);
             geometry->lanes[index].native_height = SemuJson.intAt(screens.at(index), "native.h", 0);
@@ -147,10 +147,10 @@ class DualFitSpecWiring {  // the compositor's two-screen shells and the interna
         contract.contains(shell.substring(Strings.find(shell, "class void opening(", 0), 900), "RendererLayout.carry(&tube, &picture, lane);", "a two-screen shell's opening is carried out with its whole-step picture as the lip is, so the lip is never masked off");
         string settings = "{\"visual\":{\"display\":{\"width\":1280,\"height\":800},\"systems\":{\"nds\":{\"bezel_variant\":\"vertical\"}}}}";
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuPlan plan = SemuResolver.plan(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, settings, diagnostics);
-        int deck = SemuComposedScale.of(plan, fixture.model.system("nds"), "retroarch");
-        plan = SemuResolver.plan(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"visual\":{\"display\":{\"width\":3840,\"height\":2160},\"systems\":{\"nds\":{\"placement\":\"game\"}}}}", diagnostics);
-        int wide = SemuComposedScale.of(plan, fixture.model.system("nds"), "retroarch");
+        SemuPlan plan = Fixture.resolved(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, settings, diagnostics);
+        int deck = SemuComposedScale.of(plan, fixture.systemOf("nds"), "retroarch");
+        plan = Fixture.resolved(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"visual\":{\"display\":{\"width\":3840,\"height\":2160},\"systems\":{\"nds\":{\"placement\":\"game\"}}}}", diagnostics);
+        int wide = SemuComposedScale.of(plan, fixture.systemOf("nds"), "retroarch");
         contract.expect(deck == 1 && wide == 7, f"the internal resolution follows the shell's whole step: the DS vertical shell 1x at 1280x800 ({deck}), the DS shell's screen placement 7x at 4K where its bezel is 6x ({wide})");
     }
 }
@@ -180,7 +180,7 @@ class DualFitSpecNotice {  // FIT: INTEGER GAME (SAME) once the geometry shows t
 
     class void toast(Contract contract, Fixture fixture) {
         string state = PathTools.join(fixture.scratch, "dual-fit/nds");
-        SemuRenderVariantSet set = SemuRenderVariants.write(fixture.plan, fixture.model.system("nds"), "retroarch", state);
+        SemuRenderVariantSet set = SemuRenderVariants.write(fixture.plan, fixture.systemOf("nds"), "retroarch", state);
         LiveVariantTools.environment(fixture, state, set.token);
         struct RendererPostUiState post;
         memset(&post, 0, sizeof(struct RendererPostUiState));
@@ -224,7 +224,7 @@ class DualFitSpecNotice {  // FIT: INTEGER GAME (SAME) once the geometry shows t
         bool premise = !RendererPlacementNotice.same(&bezel, &game) && game.lanes[0].output_height == 896 && bezel.lanes[0].output_height == 448;
         bool deckPremise = RendererPlacementNotice.same(&deckBezel, &deckGame) && deckGame.lanes[0].output_height == 448 && deckFill.lanes[0].output_height == 800;
         string state = PathTools.join(fixture.scratch, "dual-fit/ps2");
-        SemuRenderVariantSet set = SemuRenderVariants.write(fixture.plan, fixture.model.system("ps2"), "pcsx2", state);
+        SemuRenderVariantSet set = SemuRenderVariants.write(fixture.plan, fixture.systemOf("ps2"), "pcsx2", state);
         LiveVariantTools.environment(fixture, state, set.token);
         setenv("SEMU_RENDER_SYSTEM_ID", "ps2", 1);  // the catalog answers for the system it was written for (game|bezel|game_fractional|bezel_fractional)
         struct RendererPostUiState post;

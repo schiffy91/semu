@@ -102,7 +102,7 @@ class FrameLayoutSpecContract {
             f"Dolphin's GFX.ini pins AspectRatio = 5, CustomStretch, the one mode that draws its custom ratio without the VI's analog aspect: mode {mode}, {customWidth}:{customHeight}");
         Vector<string> systems = [];
         for systemId in fixture.model.systemIds() {
-            SemuSystem system = fixture.model.system(systemId);
+            SemuSystem system = fixture.systemOf(systemId);
             for binding in system.bindings {
                 if (!binding.emulator.equals("dolphin") || systems.contains(systemId)) { continue; }
                 systems.push(systemId);
@@ -149,7 +149,7 @@ class FrameLayoutSpecContract {
         contract.expect(top.width < 400 && top.height + bottom.height <= 400, "integer scaling never floors below 1x: a small window still fits both screens");
 
         Fixture fixture = Fixture("steam-deck");
-        SemuEmulator azahar = fixture.model.emulator("azahar");
+        SemuEmulator azahar = fixture.emulatorOf("azahar");
         for platform in ["linux", "macos"] {
             JSONValue settings = azahar.platform(platform);
             bool pinned = false;
@@ -166,7 +166,7 @@ class FrameLayoutSpecContract {
         // PPSSPP letterboxes 480x272 in the Deck's 1280x800; the renderer then shows it at a whole 2x.
         // The lane's width comes from the presentation aspect, which must be the declared one: the
         // cut's rounded 1280x724 made the lane 962 wide and beat the LCD grid (seen on the Deck).
-        JSONValue display = fixture.model.system("psp").definition.get("display");
+        JSONValue display = fixture.systemOf("psp").definition.get("display");
         float pspAspect = (float)SemuJson.intAt(display, "aspect.w", 0) / (float)SemuJson.intAt(display, "aspect.h", 1);
         struct SemuComposeRect picture;
         SemuFrameLayout.letterboxed(1280, 800, pspAspect, &picture);

@@ -29,7 +29,7 @@ class CoreColourSpecPipeline {  // the passes a Semu screen preset runs, as path
 
     class void add(JSONValue manifest, string slang, string logical, Vector<string> into) {  // a pipeline's own passes, or a wrapper's upstream preset and its #reference chain
         JSONValue assets = manifest.get("assets");
-        JSONValue recipe = assets == null ? null : assets.get(logical);
+        JSONValue? recipe = assets == null ? null : assets.get(logical);
         if (recipe == null || !recipe.isObject()) { return; }
         JSONValue passes = recipe.get("passes");
         if (passes != null && passes.isArray()) {
@@ -66,8 +66,8 @@ class CoreColourSpecPipeline {  // the passes a Semu screen preset runs, as path
 class CoreColourSpecContract {
     class string options(Fixture fixture, string systemId, string core, string overlay) {
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuPlan plan = SemuResolver.plan(fixture.model, fixture.plan.target.id, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
-        return SemuLauncher.coreOptions(plan, fixture.model.emulator("retroarch").platform("linux"), core, fixture.model.system(systemId));
+        SemuPlan plan = Fixture.resolved(fixture.model, fixture.plan.target.id, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
+        return SemuLauncher.coreOptions(plan, fixture.emulatorOf("retroarch").platform("linux"), core, fixture.systemOf(systemId));
     }
 
     class void bundle(Fixture fixture, string logical) {  // a stand-in preset, so the variant counts as drawn
@@ -80,7 +80,7 @@ class CoreColourSpecContract {
         JSONValue manifest = SemuJson.readFile(PathTools.join(fixture.project, "config/assets/shaders.json"));
         int matrices = 0;
         for systemId in fixture.model.systemIds() {
-            SemuSystem system = fixture.model.system(systemId);
+            SemuSystem system = fixture.systemOf(systemId);
             JSONValue variants = system.shaders.get("variants");
             for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
                 JSONValue variant = variants.at(index);
@@ -123,7 +123,7 @@ class CoreColourSpecContract {
         contract.contains(CoreColourSpecContract.options(fixture, "gba", "mgba", "{}"), "mgba_color_correction = \"OFF\"", "the default GBA preset's NSO matrix pins mGBA's correction off");
         contract.lacks(CoreColourSpecContract.options(fixture, "gba", "mgba", "{\"visual\":{\"systems\":{\"gba\":{\"shader_variant\":\"agb001\"}}}}"), "mgba_color_correction", "the AGB-001 preset has no colour matrix, so mGBA keeps its own setting");
         JSONValue platform = JSONValue.parse("{\"retroarch\":{\"core_options\":{\"gambatte\":[{\"key\":\"gambatte_gbc_color_correction\",\"source\":{\"kind\":\"literal\",\"value\":\"GBC only\"}},{\"key\":\"gambatte_gb_colorization\",\"source\":{\"kind\":\"literal\",\"value\":\"auto\"}}]}}}");
-        string merged = SemuLauncher.coreOptions(fixture.plan, platform, "gambatte", fixture.model.system("gbc"));
+        string merged = SemuLauncher.coreOptions(fixture.plan, platform, "gambatte", fixture.systemOf("gbc"));
         contract.expect(merged.equals("gambatte_gbc_color_correction = \"disabled\"\ngambatte_gb_colorization = \"auto\"\n"), "the drawn variant's value replaces an emulator literal for the same key in place: " + merged);
     }
 

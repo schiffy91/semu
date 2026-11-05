@@ -37,7 +37,7 @@ class EmulatorRuntimeSpecTools {
 
     class SemuPlan plan(Fixture fixture, string targetId, string extraSettings) {  // the fixture's scratch paths plus extra settings
         string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(fixture.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(fixture.scratch, "content") + "\",\"mods\":\"" + PathTools.join(fixture.scratch, "mods") + "\"}" + extraSettings + "}";
-        return SemuResolver.plan(fixture.model, targetId, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, fixture.diagnostics);
+        return Fixture.resolved(fixture.model, targetId, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, fixture.diagnostics);
     }
 
     class JSONValue seed(string target, Vector<string> sources) {  // one complete seed declaration
@@ -130,7 +130,7 @@ class EmulatorRuntimeSpecControllerModes {
         Vector<string> modes = ["wiimote", "nunchuk", "classic", "gamecube"];
         Vector<string> sources = ["1", "1", "1", "1"];  // M16 item 6: GameCube unbinds the remote and unlinks it live, never WiimoteSource 0, which Dolphin reads only at boot
         Vector<string> extensions = ["None", "Nunchuk", "Classic", "None"];
-        SemuEmulator dolphin = fixture.model.emulator("dolphin");
+        SemuEmulator dolphin = fixture.emulatorOf("dolphin");
         for (int index = 0; index < modes.size(); index++) {
             string mode = modes.get(index);
             SemuDiagnostics diagnostics = SemuDiagnostics();
@@ -172,25 +172,25 @@ class EmulatorRuntimeSpecInput {
         contract.expect(fixture.plan.emulators.size() == 9, f"{targetId}: nine linux emulators, found {fixture.plan.emulators.size()}");
         contract.expect(fixture.plan.input != null, f"{targetId}: input definition resolves");
         if (fixture.plan.input == null) { return; }
-        Vector<string> quit = fixture.plan.input.quitChord().sorted();
+        Vector<string> quit = fixture.input().quitChord().sorted();
         int declared = 0;
-        JSONValue actions = fixture.plan.input.definition.get("actions");
+        JSONValue actions = fixture.input().definition.get("actions");
         for action in actions.keys() { if (!SemuJson.textAt(actions.get(action), "chord").isEmpty()) { declared++; } }
         for emulatorId in fixture.plan.emulators {
-            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            SemuEmulator emulator = fixture.emulatorOf(emulatorId);
             SemuLaunchPlan launch = SemuLaunchPlan();
             SemuLauncher.inputContracts(launch, fixture.plan, emulator.platform(fixture.plan.platform), PathTools.join(fixture.plan.stateRoot(), emulatorId), emulator);
             string label = f"{targetId} {emulatorId}";
             contract.expect(emulator.actions.contains("app.quit"), label + ": declares app.quit");
             contract.expect(!EmulatorRuntimeSpecTools.environment(launch.environment, "SEMU_MENU_ITEMS").isEmpty(), label + ": supervisor input is configured");
-            contract.expect(fixture.plan.input.chordWindowMs() == 250, label + ": quit chord window is 250 ms");
+            contract.expect(fixture.input().chordWindowMs() == 250, label + ": quit chord window is 250 ms");
             contract.expect(quit.size() == 2 && quit.get(0).equals("select") && quit.get(1).equals("start"), label + ": quit chord is select and start");
             contract.expect(launch.actionChords.size() == declared, label + ": supervisor bindings are the declared chords");
             contract.expect(launch.actionChords.contains("state.save=Ctrl+S") && launch.actionChords.contains("state.load=Ctrl+A") && launch.actionChords.contains("app.quit=Ctrl+Q"), label + ": save, load and quit chords");
             contract.expect(launch.emulatorActions.size() == emulator.actions.size() && launch.emulatorActions.contains("app.quit"), label + ": the supervisor knows what the emulator declares, so nothing else reaches it");
             contract.expect(launch.xpadLayoutIds.contains("28de:11ff") && launch.xpadLayoutIds.contains("045e:*"), label + ": Steam's virtual pad and Microsoft pads are xpad-ordered");
         }
-        JSONValue directories = SemuJson.get(fixture.model.emulator("retroarch").platform("linux"), "core_loader.directories");
+        JSONValue directories = SemuJson.get(fixture.emulatorOf("retroarch").platform("linux"), "core_loader.directories");
         contract.expect(directories.isArray() && directories.size() == 1 && SemuJson.text(directories.at(0)).equals("${asset_root}/lib/retroarch/cores"), f"{targetId}: retroarch cores load only from the bundle");
     }
 }
@@ -206,7 +206,7 @@ class EmulatorRuntimeSpecGeneric {
         contract.expect(fixture.plan.tokens.resolve("${bios}").equals(fixture.plan.path("bios")) && !fixture.plan.path("bios").isEmpty(), "the bios token resolves to the configured BIOS root");
         contract.expect(fixture.plan.tokens.resolve("${semu_home}").equals(fixture.plan.semuHome), "the semu_home token resolves to the settings home");
         string overrideBios = PathTools.join(fixture.scratch, "override-bios");
-        SemuPlan overridden = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"paths\":{\"bios\":\"" + overrideBios + "\"}}", SemuDiagnostics());
+        SemuPlan overridden = Fixture.resolved(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"paths\":{\"bios\":\"" + overrideBios + "\"}}", SemuDiagnostics());
         contract.expect(overridden.path("bios").equals(overrideBios), "a settings overlay overrides the BIOS root");
         string outside = PathTools.join(fixture.scratch, "outside-home");
         string linked = PathTools.join(fixture.scratch, "linked-home");
@@ -253,7 +253,7 @@ class EmulatorRuntimeSpecLaunch {
         contract.expect(!FileSystem.exists(missingBios), label + ": a missing BIOS root is never created");
         SemuLaunchPlan outside = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "gambatte", PathTools.join(fixture.scratch, "outside.gb"), SemuDiagnostics());
         contract.expect(!outside.ok(), label + ": a ROM outside the system root is rejected");
-        JSONValue platform = fixture.model.emulator("retroarch").platform("linux");
+        JSONValue platform = fixture.emulatorOf("retroarch").platform("linux");
         platform.get("args").push(JSONValue.makeString("${missing}"));
         SemuLaunchPlan unresolvedArgument = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "gambatte", "game.gb", SemuDiagnostics());
         contract.expect(!unresolvedArgument.ok(), label + ": an unresolved launch argument fails closed");
@@ -271,20 +271,20 @@ class EmulatorRuntimeSpecOwnership {
     class void run(Contract contract) {  // profiles never land outside the emulator's state root
         Fixture escaped = Fixture("steam-deck");
         string escapedRoot = PathTools.join(escaped.scratch, "escaped-profile-root");
-        escaped.model.emulator("dolphin").platform("linux").get("state").set("profile_config_dir", JSONValue.makeString(escapedRoot));
+        escaped.emulatorOf("dolphin").platform("linux").get("state").set("profile_config_dir", JSONValue.makeString(escapedRoot));
         SemuDiagnostics escapedDiagnostics = SemuDiagnostics();
-        SemuProfiles.render(escaped.model, escaped.plan, escaped.model.emulator("dolphin"), escapedDiagnostics);
+        SemuProfiles.render(escaped.model, escaped.plan, escaped.emulatorOf("dolphin"), escapedDiagnostics);
         contract.expect(!escapedDiagnostics.ok(), "a profile directory outside the state root is refused");
         Fixture traversal = Fixture("steam-deck");
-        traversal.model.emulator("ppsspp").profile.get("files").at(0).set("path", JSONValue.makeString("../escape.ini"));
+        traversal.emulatorOf("ppsspp").profile.get("files").at(0).set("path", JSONValue.makeString("../escape.ini"));
         SemuDiagnostics traversalDiagnostics = SemuDiagnostics();
-        SemuProfiles.render(traversal.model, traversal.plan, traversal.model.emulator("ppsspp"), traversalDiagnostics);
+        SemuProfiles.render(traversal.model, traversal.plan, traversal.emulatorOf("ppsspp"), traversalDiagnostics);
         contract.expect(!traversalDiagnostics.ok(), "a traversing profile path is refused");
         Fixture token = Fixture("steam-deck");
-        token.model.emulator("dolphin").profile.get("controller_layouts").at(0).set("profile", JSONValue.makeString("../../../../escaped-profile"));  // a stored layout profile's name
+        token.emulatorOf("dolphin").profile.get("controller_layouts").at(0).set("profile", JSONValue.makeString("../../../../escaped-profile"));  // a stored layout profile's name
         token.plan.tokens.put("system", "wii");
         SemuDiagnostics tokenDiagnostics = SemuDiagnostics();
-        Vector<SemuProfileFile> files = SemuProfiles.render(token.model, token.plan, token.model.emulator("dolphin"), tokenDiagnostics);
+        Vector<SemuProfileFile> files = SemuProfiles.render(token.model, token.plan, token.emulatorOf("dolphin"), tokenDiagnostics);
         string stateRoot = PathTools.join(token.plan.stateRoot(), "dolphin");
         SemuProfiles.write(stateRoot, files, SemuDiagnostics());
         contract.expect(!tokenDiagnostics.ok(), "a profile token that escapes is refused");

@@ -35,7 +35,7 @@ class FieldsReflectionsSpecChecks {
         Vector<string> failures = [];
         Vector<string> covered = [];
         for systemId in fixture.model.systemIds() {
-            JSONValue variants = fixture.model.system(systemId).shaders.get("variants");
+            JSONValue variants = fixture.systemOf(systemId).shaders.get("variants");
             for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
                 string logical = SemuJson.textAt(variants.at(index), "screen");
                 JSONValue recipe = manifest.get("assets").get(logical);
@@ -58,7 +58,7 @@ class FieldsReflectionsSpecChecks {
         Vector<string> failures = [];
         int checked = 0;
         for systemId in fixture.model.systemIds() {
-            JSONValue variants = fixture.model.system(systemId).shaders.get("variants");
+            JSONValue variants = fixture.systemOf(systemId).shaders.get("variants");
             for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
                 string logical = SemuJson.textAt(variants.at(index), "screen");
                 JSONValue recipe = manifest.get("assets").get(logical);

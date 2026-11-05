@@ -58,7 +58,7 @@ class BezelLayer {  // one layer of a package: a texture the preset draws, or th
     public bool viewport;    // follows the viewport (Mega Bezel FOLLOW_LAYER 0): covers the canvas wherever the viewport sits
     public string blend;     // normal | add | multiply, Mega Bezel's BLEND_MODE
     public double opacity;
-    public BezelRect rect;   // viewport fractions; null for the screens
+    public BezelRect? rect;   // viewport fractions; null for the screens
 
     public BezelLayer(string id, string texture, string prefix) {
         self.id = id;
@@ -75,7 +75,7 @@ class BezelLayer {  // one layer of a package: a texture the preset draws, or th
         self.rect = null;
     }
 
-    public JSONValue toJson(BezelRect frame, int canvasWidth, int canvasHeight) {
+    public JSONValue toJson(BezelRect? frame, int canvasWidth, int canvasHeight) {
         JSONValue value = JSONValue.makeObject();
         value.set("id", JSONValue.makeString(self.id));
         if (!self.texture.isEmpty()) { value.set("texture", JSONValue.makeString(self.texture)); }
@@ -103,7 +103,7 @@ class BezelRepository {  // the packages and the systems that bind them
 
     public string packagePath(string id) { return PathTools.join(PathTools.join(PathTools.join(self.configRoot, "bezels"), id), "bezel.json"); }
 
-    public JSONValue package(string id) {
+    public JSONValue? package(string id) {
         if (id.isEmpty() || id.contains("/") || id.contains("..") || !FileSystem.isFile(self.packagePath(id))) { return null; }
         return JSONValue.readFile(self.packagePath(id));
     }
@@ -114,7 +114,7 @@ class BezelRepository {  // the packages and the systems that bind them
         return ids;
     }
 
-    public JSONValue system(string id) {
+    public JSONValue? system(string id) {
         string path = PathTools.join(PathTools.join(PathTools.join(self.configRoot, "systems"), id), "system.json");
         return FileSystem.isFile(path) ? JSONValue.readFile(path) : null;
     }
@@ -138,7 +138,7 @@ class BezelRepository {  // the packages and the systems that bind them
 
     public Vector<string> upstreamIds() {
         Vector<string> ids = [];
-        for id in self.packageIds() { JSONValue package = self.package(id); if (package != null && package.get("upstream") != null && package.get("upstream").isObject()) { ids.push(id); } }
+        for id in self.packageIds() { JSONValue? package = self.package(id); if (package != null && package.get("upstream") != null && package.get("upstream").isObject()) { ids.push(id); } }
         return ids;
     }
 
@@ -149,17 +149,17 @@ class BezelGeometry {  // one package: its preset, screens, layers and the canva
     public MegaBezelTree tree;
     public string packageId;
     public JSONValue package;
-    public JSONValue system;
+    public JSONValue? system;  // the bound system's definition, null when no system binds the package
     public MegaBezelPreset preset;
     public MegaBezelParams params;
     public MegaBezelPlacement placement;
     public int count;
     public Vector<MegaBezelScreen> screens;
     public Vector<BezelLayer> layers;
-    public BezelLayer canvasLayer;
+    public BezelLayer? canvasLayer;
     public string failure;
 
-    public BezelGeometry(MegaBezelTree tree, string packageId, JSONValue package, JSONValue system) {
+    public BezelGeometry(MegaBezelTree tree, string packageId, JSONValue package, JSONValue? system) {
         self.tree = tree;
         self.packageId = packageId;
         self.package = package;
@@ -227,8 +227,8 @@ class BezelGeometry {  // one package: its preset, screens, layers and the canva
     }
 
     public void stack() {  // the textures the preset draws, placed like bezel-images.inc places them, ordered like its LAYER_ORDER parameters
-        MegaBezelLayerRect background = null;
-        MegaBezelLayerRect device = null;
+        MegaBezelLayerRect? background = null;
+        MegaBezelLayerRect? device = null;
         Vector<BezelLayer> found = [];
         for texture in BezelGeometry.textureKeys() {
             string path = self.preset.texture(texture);
@@ -267,13 +267,21 @@ class BezelGeometry {  // one package: its preset, screens, layers and the canva
         if (self.canvasLayer == null) { self.failure = "the preset draws no background or device layer to hold the canvas"; }
     }
 
-    public BezelRect frame() { return self.canvasLayer.rect; }
+    public int canvasWidth() { BezelLayer? canvas = self.canvasLayer; return canvas == null ? 0 : canvas.width; }
+    public int canvasHeight() { BezelLayer? canvas = self.canvasLayer; return canvas == null ? 0 : canvas.height; }
+    public string canvasLayerId() { BezelLayer? canvas = self.canvasLayer; return canvas == null ? "" : canvas.id; }
 
-    public BezelRect plateRect(BezelRect rect) { return rect.mapped(self.frame(), (double)self.canvasLayer.width, (double)self.canvasLayer.height); }
+    public BezelRect frame() {  // the canvas layer's rect; the whole viewport when the preset drew none
+        BezelLayer? canvas = self.canvasLayer;
+        BezelRect? rect = canvas == null ? null : canvas.rect;
+        return rect == null ? BezelRect(0.0, 0.0, 1.0, 1.0) : rect;
+    }
 
-    public double plateRadius(double fraction) { return fraction * (double)self.canvasLayer.height / self.frame().h; }
+    public BezelRect plateRect(BezelRect rect) { return rect.mapped(self.frame(), (double)self.canvasWidth(), (double)self.canvasHeight()); }
 
-    public BezelLayer layer(string id) {
+    public double plateRadius(double fraction) { return fraction * (double)self.canvasHeight() / self.frame().h; }
+
+    public BezelLayer? layer(string id) {
         for layer in self.layers { if (layer.id.equals(id)) { return layer; } }
         return null;
     }
@@ -304,22 +312,22 @@ class BezelPackageWriter {
     }
 
     public string emit(string packageId) {  // "" on success, else why
-        JSONValue package = self.repository.package(packageId);
+        JSONValue? package = self.repository.package(packageId);
         if (package == null) { return "no such package"; }
         Map<string, Vector<string>> bindings = self.repository.bindings();
         if (!bindings.has(packageId)) { return "bound by no system"; }
-        JSONValue system = self.repository.system(bindings.get(packageId)[0]);
+        JSONValue? system = self.repository.system(bindings.get(packageId)[0]);
         BezelGeometry geometry = BezelGeometry(self.tree, packageId, package, system);
         if (!geometry.failure.isEmpty()) { return geometry.failure; }
         JSONValue canvas = JSONValue.makeObject();
-        canvas.set("w", JSONValue.makeInt(geometry.canvasLayer.width));
-        canvas.set("h", JSONValue.makeInt(geometry.canvasLayer.height));
+        canvas.set("w", JSONValue.makeInt(geometry.canvasWidth()));
+        canvas.set("h", JSONValue.makeInt(geometry.canvasHeight()));
         package.set("canvas", canvas);
-        package.set("canvas_layer", JSONValue.makeString(geometry.canvasLayer.id));
+        package.set("canvas_layer", JSONValue.makeString(geometry.canvasLayerId()));
         JSONValue previous = package.get("layers");
         JSONValue layers = JSONValue.makeArray();
         for layer in geometry.layers {
-            JSONValue emitted = layer.toJson(geometry.frame(), geometry.canvasLayer.width, geometry.canvasLayer.height);
+            JSONValue emitted = layer.toJson(geometry.frame(), geometry.canvasWidth(), geometry.canvasHeight());
             if (BezelPackageWriter.hidden(previous, layer.id)) { emitted.set("visible", JSONValue.makeBool(false)); }  // a layer the package hides (the editor's eye) stays hidden
             layers.push(emitted);
         }
@@ -336,7 +344,7 @@ class BezelPackageWriter {
         BezelRect image = geometry.plateRect(placed.picture);
         BezelRect edge = geometry.plateRect(placed.tube);
         BezelRect bezel = geometry.plateRect(placed.bezel);
-        BezelRect existing = BezelRect.fromJson(screen.get("tube"));
+        BezelRect? existing = BezelRect.fromJson(screen.get("tube"));
         string opening = "bezel_outer";
         BezelRect tube = bezel;
         if (existing != null && existing.contains(bezel, 2.0) && existing.w < bezel.w * 1.6 && existing.h < bezel.h * 1.6) { tube = existing; opening = "kept"; }  // a measured hole or lens, or the editor's own edit, that holds the drawn bezel
@@ -352,7 +360,7 @@ class BezelPackageWriter {
             ring.set("outer_radius", JSONValue.makeFloat(geometry.plateRadius(placed.bezelRadius)));
             bool painted = kept && SemuJson.textAt(previous, "color").equals("none");  // the art paints this bezel: a band for the reflection, no fill
             ring.set("color", JSONValue.makeString(painted ? "none" : geometry.placement.bezelColor()));
-            JSONValue bevel = kept ? previous.get("bevel") : null;  // the lip's lit chamfer is the package's, never the preset's; a new ring has none: every plate draws its own opening, and a lit rim on a TV read as a light bar (M16 item 10)
+            JSONValue? bevel = kept ? previous.get("bevel") : null;  // the lip's lit chamfer is the package's, never the preset's; a new ring has none: every plate draws its own opening, and a lit rim on a TV read as a light bar (M16 item 10)
             ring.set("bevel", bevel != null && bevel.isNumber() ? bevel : JSONValue.makeFloat(0.0));
             screen.set("ring", ring);
         } else if (screen.has("ring")) { screen.set("ring", JSONValue.makeNull()); }
@@ -376,7 +384,7 @@ class BezelPackageWriter {
             double side = tube.w < tube.h ? tube.w : tube.h;
             shape.set("radius", JSONValue.makeFloat(side > 0.0 ? geometry.plateRadius(placed.bezelRadius) / side : 0.0));
             shape.set("exponent", JSONValue.makeFloat(4.0));
-            JSONValue bulge = previous != null && previous.isObject() ? previous.get("bulge") : null;  // the editor's bowed tube edges outlive a new opening
+            JSONValue? bulge = previous != null && previous.isObject() ? previous.get("bulge") : null;  // the editor's bowed tube edges outlive a new opening
             if (bulge != null && bulge.isObject()) { shape.set("bulge", bulge); }
             screen.set("shape", shape);
         }
@@ -393,7 +401,7 @@ class BezelPackageWriter {
         flip.push(JSONValue.makeBool(geometry.placement.flippedVertical()));
         flip.push(JSONValue.makeBool(geometry.placement.flippedHorizontal()));
         provenance.set("flip", flip);
-        provenance.set("canvas_layer", JSONValue.makeString(geometry.canvasLayer.id));
+        provenance.set("canvas_layer", JSONValue.makeString(geometry.canvasLayerId()));
         provenance.set("opening", JSONValue.makeString(opening));
         JSONValue parameters = JSONValue.makeObject();
         for name in geometry.params.used.keys().sorted() { parameters.set(name, JSONValue.makeString(geometry.params.used.get(name))); }
@@ -408,7 +416,7 @@ class BezelPackageWriter {
             if (failure.isEmpty()) { self.written.push(f"{packageId}: written"); } else { self.failed.push(f"{packageId}: {failure}"); }
         }
         for packageId in self.repository.packageIds() {
-            JSONValue package = self.repository.package(packageId);
+            JSONValue? package = self.repository.package(packageId);
             if (package == null) { continue; }
             string failure = "";
             if (!SemuJson.textAt(package, "geometry_from").isEmpty()) {
@@ -420,9 +428,10 @@ class BezelPackageWriter {
     }
 
     public string inherit(string packageId) {  // recolors and re-cuts share their base's geometry
-        JSONValue package = self.repository.package(packageId);
+        JSONValue? package = self.repository.package(packageId);
+        if (package == null) { return "no such package"; }
         string baseId = SemuJson.textAt(package, "geometry_from");
-        JSONValue base = self.repository.package(baseId);
+        JSONValue? base = self.repository.package(baseId);
         if (base == null) { return "geometry_from names no package: " + baseId; }
         for key in ["canvas", "shell", "canvas_layer", "layers", "frame"] { if (base.has(key)) { package.set(key, base.get(key)); } }
         JSONValue screens = package.get("screens");
@@ -436,7 +445,7 @@ class BezelPackageWriter {
     }
 
     public string plain(string packageId) {  // a Semu-owned plate with no preset: its art is the one layer and the canvas
-        JSONValue package = self.repository.package(packageId);
+        JSONValue? package = self.repository.package(packageId);
         if (package == null || package.has("layers")) { return ""; }  // already layered: nothing to add
         string art = SemuJson.textAt(package, "art");
         if (art.isEmpty()) { return ""; }

@@ -55,7 +55,7 @@ class AudioSpecContract {
         string platform = AudioSpecContract.platformOf(target);
         for row in AudioSpecTable.pinned() {
             Vector<string> field = AudioSpecTable.fields(row);
-            if (!field.get(1).equals(platform) || !fixture.model.emulator(field.get(0)).supports(platform)) { continue; }
+            if (!field.get(1).equals(platform) || !fixture.emulatorOf(field.get(0)).supports(platform)) { continue; }
             string document = fixture.profile(field.get(0), field.get(2));
             contract.contains(document, field.get(3), target + " " + field.get(0) + " plays through " + field.get(4) + " (" + field.get(2) + ")");
         }
@@ -67,7 +67,7 @@ class AudioSpecContract {
         string platform = AudioSpecContract.platformOf(target);
         for row in AudioSpecTable.upstreamDefaults() {
             Vector<string> field = AudioSpecTable.fields(row);
-            if (!fixture.model.emulator(field.get(0)).supports(platform)) { continue; }
+            if (!fixture.emulatorOf(field.get(0)).supports(platform)) { continue; }
             string document = fixture.profile(field.get(0), field.get(1));
             contract.expect(!document.isEmpty(), target + " " + field.get(0) + " renders " + field.get(1));
             contract.lacks(document, field.get(2), target + " " + field.get(0) + " keeps its default audio, " + field.get(3));
@@ -76,7 +76,7 @@ class AudioSpecContract {
 
     class void environmentContract(Contract contract, Fixture fixture) {  // no launch reroutes the sound server
         for identifier in fixture.model.emulatorIds() {
-            SemuEmulator emulator = fixture.model.emulator(identifier);
+            SemuEmulator emulator = fixture.emulatorOf(identifier);
             for platform in ["linux", "macos"] {
                 JSONValue set = SemuJson.get(emulator.platform(platform), "env.set");
                 if (!set.isObject()) { continue; }

@@ -39,7 +39,7 @@ class ModsSpecDeclarations {
     class string diagnose(Fixture fixture, string emulatorId, string field, string value) { return ModsSpecDeclarations.diagnoseValue(fixture, emulatorId, field, JSONValue.parse(value.replace("'", "\""))); }  // quotes written as '
 
     class string diagnoseValue(Fixture fixture, string emulatorId, string field, JSONValue value) {  // the checker's report with one state field of EMULATOR replaced
-        fixture.model.emulator(emulatorId).platform("linux").get("state").set(field, value);
+        fixture.emulatorOf(emulatorId).platform("linux").get("state").set(field, value);
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuChecker.check(fixture.model, fixture.plan, diagnostics);
         return diagnostics.render();
@@ -66,12 +66,12 @@ class ModsSpecDeclarations {
         contract.contains(ModsSpecDeclarations.mods("{'kinds':[],'copy':true}"), "platforms.linux.state.mods.copy: is not a field Semu reads here", "an unknown field beside the kinds is refused");
         contract.contains(ModsSpecDeclarations.mods("[]"), "platforms.linux.state.mods: must be an object with a kinds array", "a mods block that is not an object is refused");
         Fixture profile = Fixture("linux-desktop");
-        SemuJson.get(profile.model.emulator("azahar").profile, "files.0.lines").push(JSONValue.makeString("x=${mods.nothing}"));
+        SemuJson.get(profile.emulatorOf("azahar").profile, "files.0.lines").push(JSONValue.makeString("x=${mods.nothing}"));
         contract.contains(ModsSpecDeclarations.diagnose(profile, "azahar", "seeds", "[]"), "${mods.nothing} names no group", "a profile that binds an undeclared settings group is refused");
     }
 
     class string broken(string field, string value) {  // ryujinx's real updates declaration with one field replaced
-        JSONValue declaration = SemuJson.get(Fixture("linux-desktop").model.emulator("ryujinx").platform("linux"), "state.updates");
+        JSONValue declaration = SemuJson.get(Fixture("linux-desktop").emulatorOf("ryujinx").platform("linux"), "state.updates");
         JSONValue changed = JSONValue.parse(declaration.stringify());
         if (field.contains(".")) { changed.get("title").set("base_suffix", JSONValue.parse(value)); } else { changed.set(field, JSONValue.parse(value)); }
         return ModsSpecDeclarations.diagnoseValue(Fixture("linux-desktop"), "ryujinx", "updates", changed);
@@ -92,12 +92,12 @@ class ModsSpecDeclarations {
         Vector<string> places = [PathTools.join(content, "mods"), PathTools.join(state, "mods"), fixture.plan.romsRoot(), "Emulation/mods"];
         for place in places {
             SemuDiagnostics diagnostics = SemuDiagnostics();
-            SemuPlan plan = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"paths\":{\"state_root\":\"" + state + "\",\"content_root\":\"" + content + "\",\"mods\":\"" + place + "\"}}", diagnostics);
+            SemuPlan plan = Fixture.resolved(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"paths\":{\"state_root\":\"" + state + "\",\"content_root\":\"" + content + "\",\"mods\":\"" + place + "\"}}", diagnostics);
             SemuChecker.check(fixture.model, plan, diagnostics);
             contract.contains(diagnostics.render(), "settings.paths.mods", "a library at " + place + " is refused");
         }
         SemuDiagnostics off = SemuDiagnostics();
-        SemuPlan empty = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"paths\":{\"state_root\":\"" + state + "\",\"content_root\":\"" + content + "\",\"mods\":\"\"}}", off);
+        SemuPlan empty = Fixture.resolved(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"paths\":{\"state_root\":\"" + state + "\",\"content_root\":\"" + content + "\",\"mods\":\"\"}}", off);
         contract.expect(SemuChecker.check(fixture.model, empty, off), "an empty paths.mods is allowed: it turns mods off: " + off.render());
         for target in ["linux-desktop", "steam-deck", "macos"] {
             Fixture real = Fixture(target);
@@ -110,7 +110,7 @@ class ModsSpecGuard {  // decision M6: no contract reads or links the owner's li
     class void run(Contract contract) {
         for target in ["linux-desktop", "steam-deck", "macos"] {
             Fixture fixture = Fixture(target);
-            SemuPlan unguarded = SemuResolver.plan(fixture.model, target, fixture.plan.semuHome, fixture.plan.assetRoot, "{}", SemuDiagnostics());
+            SemuPlan unguarded = Fixture.resolved(fixture.model, target, fixture.plan.semuHome, fixture.plan.assetRoot, "{}", SemuDiagnostics());
             contract.expect(SemuPaths.inside(fixture.scratch, fixture.plan.path("mods")) && !SemuPaths.inside(fixture.scratch, unguarded.path("mods")), target + ": the fixture's library is scratch, never the real " + unguarded.path("mods"));
             contract.expect(SemuPaths.inside(fixture.scratch, EmulatorRuntimeSpecTools.plan(fixture, target, "").path("mods")), target + ": the runtime spec's plans use the scratch library");
         }

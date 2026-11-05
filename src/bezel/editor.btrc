@@ -93,7 +93,7 @@ class BezelEditor {
 
     public HTTPResponse asset(string rest) {  // /asset/<package>/background or /asset/<package>/glass/<screen id>: what SEMU_RENDER_BACKGROUND and _GLASS name
         int slash = Strings.find(rest, "/", 0);
-        JSONValue package = slash > 0 ? self.repository.package(rest.substring(0, slash)) : null;
+        JSONValue? package = slash > 0 ? self.repository.package(rest.substring(0, slash)) : null;
         if (package == null) { return HTTPResponse.notFound(); }
         string what = rest.substring(slash + 1, rest.len() - slash - 1);
         string logical = what.equals("background") ? SemuJson.textAt(package, "background") : "";
@@ -120,7 +120,7 @@ class BezelEditor {
         JSONValue settings = SemuJson.readFile(PathTools.join(self.repository.configRoot, "settings/defaults.json"));
         JSONValue result = JSONValue.makeArray();
         for id in self.repository.packageIds() {
-            JSONValue package = self.repository.package(id);
+            JSONValue? package = self.repository.package(id);
             bool computed = package != null && BezelComputedLayout.code(SemuJson.textAt(package, "layout")) != SEMU_LAYOUT_FIXED;  // a DS/3DS layout the renderer works out from the screen: no canvas, drawn frames
             if (package == null || (!computed && (package.get("canvas") == null || !package.get("canvas").isObject()))) { continue; }
             JSONValue systems = JSONValue.makeArray();
@@ -136,13 +136,13 @@ class BezelEditor {
     public HTTPResponse layer(string rest) {  // /layer/<package>/<layer id>
         int slash = Strings.find(rest, "/", 0);
         if (slash <= 0) { return HTTPResponse.notFound(); }
-        JSONValue package = self.repository.package(rest.substring(0, slash));
+        JSONValue? package = self.repository.package(rest.substring(0, slash));
         string layerId = rest.substring(slash + 1, rest.len() - slash - 1);
-        JSONValue layers = package == null ? null : package.get("layers");
+        JSONValue? layers = package == null ? null : package.get("layers");
         if (layers == null || !layers.isArray()) { return HTTPResponse.notFound(); }
         string reference = "";
         for (int index = 0; index < layers.size(); index++) { if (SemuJson.textAt(layers.at(index), "id").equals(layerId)) { reference = SemuJson.textAt(layers.at(index), "file"); } }
-        JSONValue ambient = package.get("ambient");
+        JSONValue ambient = SemuJson.get(package, "ambient");
         if (layerId.equals("ambient") && ambient != null && ambient.isObject()) { reference = SemuJson.textAt(ambient, "file"); }  // the night plate the renderer multiplies in
         if (reference.isEmpty()) { return HTTPResponse.notFound(); }
         string file = SemuPaths.normalize(self.tree.absolute(reference));
@@ -153,14 +153,14 @@ class BezelEditor {
         return HTTPResponse.bytes(200, file.toLower().endsWith(".png") ? "image/png" : "image/jpeg", data);
     }
 
-    class JSONValue rounded(JSONValue rect) {  // whatever the page sends, integer canvas pixels
+    class JSONValue? rounded(JSONValue? rect) {  // whatever the page sends, integer canvas pixels
         if (rect == null || !rect.isObject()) { return null; }
         JSONValue value = JSONValue.makeObject();
         for key in ["x", "y", "w", "h"] { value.set(key, JSONValue.makeInt((int)(BezelNumber.of(rect.get(key)) + (BezelNumber.of(rect.get(key)) < 0.0 ? -0.5 : 0.5)))); }
         return value;
     }
 
-    class JSONValue find(JSONValue array, string id) {
+    class JSONValue? find(JSONValue? array, string id) {
         if (array == null || !array.isArray()) { return null; }
         for (int index = 0; index < array.size(); index++) { if (SemuJson.textAt(array.at(index), "id").equals(id)) { return array.at(index); } }
         return null;
@@ -169,7 +169,7 @@ class BezelEditor {
     public HTTPResponse save(string body) {
         JSONValue payload = JSONValue.parse(body);
         string id = SemuJson.textAt(payload, "id");
-        JSONValue package = self.repository.package(id);
+        JSONValue? package = self.repository.package(id);
         if (package == null) { return HTTPResponse.error(404, "no such package"); }
         string when = DateTime.now().format();
         string canvasLayer = SemuJson.textAt(payload, "canvas_layer");
@@ -179,18 +179,18 @@ class BezelEditor {
         if (layers != null && layers.isArray() && existing != null && existing.isArray()) {
             for (int index = 0; index < layers.size(); index++) {
                 JSONValue edited = layers.at(index);
-                JSONValue layer = BezelEditor.find(existing, SemuJson.textAt(edited, "id"));
+                JSONValue? layer = BezelEditor.find(existing, SemuJson.textAt(edited, "id"));
                 if (layer == null) { continue; }
                 if (edited.has("visible")) { layer.set("visible", JSONValue.makeBool(SemuJson.boolAt(edited, "visible", true))); }
                 if (edited.has("order")) { layer.set("order", JSONValue.makeFloat(BezelNumber.of(edited.get("order")))); }
                 string blend = SemuJson.textAt(edited, "blend");
                 if (blend.equals("normal") || blend.equals("add") || blend.equals("multiply")) { layer.set("blend", JSONValue.makeString(blend)); }
                 if (edited.has("opacity")) { layer.set("opacity", JSONValue.makeFloat(BezelNumber.clamp(BezelNumber.of(edited.get("opacity")), 0.0, 1.0))); }
-                JSONValue rect = BezelEditor.rounded(edited.get("rect"));
+                JSONValue? rect = BezelEditor.rounded(edited.get("rect"));
                 if (rect != null) { layer.set("rect", rect); }
             }
-            JSONValue canvasEntry = BezelEditor.find(existing, SemuJson.textAt(package, "canvas_layer"));
-            JSONValue size = canvasEntry == null ? null : canvasEntry.get("size");
+            JSONValue? canvasEntry = BezelEditor.find(existing, SemuJson.textAt(package, "canvas_layer"));
+            JSONValue? size = canvasEntry == null ? null : canvasEntry.get("size");
             if (size != null && size.isObject()) { package.set("canvas", size); }  // the canvas is the addressable layer's own pixel grid
         }
         JSONValue screens = payload.get("screens");
@@ -198,9 +198,9 @@ class BezelEditor {
         if (screens != null && screens.isArray() && targets != null && targets.isArray()) {
             for (int index = 0; index < screens.size(); index++) {
                 JSONValue edited = screens.at(index);
-                JSONValue screen = BezelEditor.find(targets, SemuJson.textAt(edited, "id"));
+                JSONValue? screen = BezelEditor.find(targets, SemuJson.textAt(edited, "id"));
                 if (screen == null) { continue; }
-                for key in ["tube", "image"] { JSONValue rect = BezelEditor.rounded(edited.get(key)); if (rect != null) { screen.set(key, rect); } }
+                for key in ["tube", "image"] { JSONValue? rect = BezelEditor.rounded(edited.get(key)); if (rect != null) { screen.set(key, rect); } }
                 string surround = SemuJson.textAt(edited, "surround");
                 if (surround.len() == 7 && surround.startsWith("#")) { screen.set("surround", JSONValue.makeString(surround)); }
                 JSONValue shape = edited.get("shape");
@@ -223,7 +223,7 @@ class BezelEditor {
                 if (ring != null && ring.isObject()) {
                     JSONValue target = screen.get("ring");
                     if (target == null || !target.isObject()) { target = JSONValue.makeObject(); screen.set("ring", target); }
-                    for key in ["inner", "outer"] { JSONValue rect = BezelEditor.rounded(ring.get(key)); if (rect != null) { target.set(key, rect); } }
+                    for key in ["inner", "outer"] { JSONValue? rect = BezelEditor.rounded(ring.get(key)); if (rect != null) { target.set(key, rect); } }
                     for key in ["inner_radius", "outer_radius"] { if (ring.has(key)) { target.set(key, JSONValue.makeFloat(BezelNumber.of(ring.get(key)))); } }
                     string color = SemuJson.textAt(ring, "color");
                     if ((color.len() == 7 && color.startsWith("#")) || color.equals("none")) { target.set("color", JSONValue.makeString(color)); }
@@ -255,7 +255,7 @@ class BezelEditor {
         saved.push(JSONValue.makeString(id));
         BezelPackageWriter writer = BezelPackageWriter(self.repository, self.tree);
         for other in self.repository.packageIds() {
-            JSONValue follower = self.repository.package(other);
+            JSONValue? follower = self.repository.package(other);
             if (follower != null && SemuJson.textAt(follower, "geometry_from").equals(id) && writer.inherit(other).isEmpty()) { saved.push(JSONValue.makeString(other)); }
         }
         JSONValue result = JSONValue.makeObject();
@@ -272,7 +272,7 @@ class BezelPreview {  // what the launcher gives the renderer when a system show
             if (seen.contains(system)) { continue; }
             seen.push(system);
             string folder = PathTools.join(PathTools.join(repository.configRoot, "systems"), system);
-            JSONValue definition = repository.system(system);
+            JSONValue? definition = repository.system(system);
             JSONValue bezels = SemuJson.readFile(PathTools.join(folder, "bezels.json"));
             JSONValue shaders = SemuJson.readFile(PathTools.join(folder, "shaders.json"));
             JSONValue variants = bezels.get("variants");
@@ -345,7 +345,7 @@ class BezelPreview {  // what the launcher gives the renderer when a system show
         result.set("variant", JSONValue.makeString(id));
         result.set("label", JSONValue.makeString(chosen.isObject() ? SemuJson.textAt(chosen, "label") : id));
         result.set("preset", JSONValue.makeString(preset));
-        JSONValue screens = chosen.isObject() ? chosen.get("screens") : null;
+        JSONValue screens = chosen.isObject() ? chosen.get("screens") : JSONValue.makeNull();
         result.set("screens", screens != null && screens.isObject() ? screens : JSONValue.makeObject());
         return result;
     }
@@ -428,7 +428,7 @@ class BezelProductionRender {  // the real renderer on this machine (a checkout'
 
     public HTTPResponse render(string body) {  // {package, system, variant, width, height, card, aspect} -> the frame as PPM; the request is checked before the tools
         JSONValue request = JSONValue.parse(body);
-        JSONValue package = request == null ? null : request.get("package");
+        JSONValue package = request == null ? JSONValue.makeNull() : request.get("package");
         string id = SemuJson.textAt(package, "id");
         string system = SemuJson.textAt(request, "system");
         string variant = SemuJson.textAt(request, "variant");

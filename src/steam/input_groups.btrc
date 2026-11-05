@@ -25,7 +25,7 @@ class SteamInputBindings {  // what Steam parses: command, label, icon, two colo
 
     class string slot(SteamInputDocument document, Vector<SteamInputPreset> presets, string identifier) {  // a radial button: a page enters its preset, an action types its chord
         if (document.page(identifier) == null) { return SteamInputBindings.action(document, identifier); }
-        SteamInputPreset target = SteamInputPresets.find(presets, document.pagePreset(identifier));
+        SteamInputPreset? target = SteamInputPresets.find(presets, document.pagePreset(identifier));
         return target == null ? "" : SteamInputBindings.binding(document, target.enter(), identifier);  // the rules name a page this controller cannot reach
     }
 

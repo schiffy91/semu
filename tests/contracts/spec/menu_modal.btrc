@@ -254,7 +254,7 @@ class MenuModalWiring {  // the kernel grab and every exit path, by source
             contract.contains(text, "semu: the menu gave", harness + " reads the release line the supervisor prints");
         }
         for emulator in ["azahar", "cemu", "dolphin", "flycast", "pcsx2", "ryujinx"] {
-            string doc = SemuJson.textAt(fixture.model.emulator(emulator).definition, "menu.doc");
+            string doc = SemuJson.textAt(fixture.emulatorOf(emulator).definition, "menu.doc");
             contract.lacks(doc, "the pad still reaches the game", emulator + "'s menu pause doc no longer says the pad reaches the game");
             contract.contains(doc, "holds the pad", emulator + "'s menu pause doc says the menu holds the pad");
         }

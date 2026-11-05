@@ -41,7 +41,7 @@ class FitStatesSpecNames {
         bool whole = RendererConfiguration.wholeSteps(SEMU_PLACEMENT_GAME) && RendererConfiguration.wholeSteps(SEMU_PLACEMENT_BEZEL) && !RendererConfiguration.wholeSteps(SEMU_PLACEMENT_GAME_FRACTIONAL) && !RendererConfiguration.wholeSteps(SEMU_PLACEMENT_BEZEL_FRACTIONAL);
         bool first = RendererConfiguration.pictureFirst(SEMU_PLACEMENT_GAME) && RendererConfiguration.pictureFirst(SEMU_PLACEMENT_GAME_FRACTIONAL) && !RendererConfiguration.pictureFirst(SEMU_PLACEMENT_BEZEL) && !RendererConfiguration.pictureFirst(SEMU_PLACEMENT_BEZEL_FRACTIONAL);
         contract.expect(coded && whole && first, "the renderer reads the four ids (fit and anything unknown as integer bezel) and knows which are whole steps and which put the picture first");
-        JSONValue fit = SemuJson.get(fixture.plan.input.definition, "actions").get("visual.placement.next");
+        JSONValue fit = SemuJson.get(fixture.input().definition, "actions").get("visual.placement.next");
         Vector<string> labels = [];
         bool fitting = true;
         for state in SemuFitStates.all() {
@@ -58,7 +58,7 @@ class FitStatesSpecNames {
 
 class FitStatesSpecGeometry {  // every single-screen bezel in the four states, and the same picture with the bezel off
     class int lines(Fixture fixture, string systemId) {  // the picture's native height less its declared crop, as the renderer places it
-        JSONValue screen = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0");
+        JSONValue screen = SemuJson.get(fixture.systemOf(systemId).definition, "display.screens.0");
         return SemuJson.intAt(screen, "native.h", 0) - SemuJson.intAt(screen, "crop.top", 0) - SemuJson.intAt(screen, "crop.bottom", 0);
     }
 
@@ -84,8 +84,8 @@ class FitStatesSpecGeometry {  // every single-screen bezel in the four states, 
         Vector<string> failures = [];
         int systems = 0;
         for systemId in fixture.model.systemIds() {
-            JSONValue screens = SemuJson.get(fixture.model.system(systemId).definition, "display.screens");
-            JSONValue declared = fixture.model.system(systemId).bezels.get("variants");
+            JSONValue screens = SemuJson.get(fixture.systemOf(systemId).definition, "display.screens");
+            JSONValue declared = fixture.systemOf(systemId).bezels.get("variants");
             if (screens == null || !screens.isArray() || screens.size() != 1 || declared == null || !declared.isArray() || declared.size() < 1) { continue; }
             int nativeWidth = SemuJson.intAt(screens.at(0), "native.w", 0);
             int nativeHeight = SemuJson.intAt(screens.at(0), "native.h", 0);

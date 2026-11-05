@@ -39,7 +39,7 @@ import ./live_variants.btrc;
 class RenderScaleSpecTools {
     class SemuPlan plan(Fixture fixture, string target, string overlay) {
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        return SemuResolver.plan(fixture.model, target, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
+        return Fixture.resolved(fixture.model, target, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
     }
 
     class string offered(SemuPlan plan, SemuSystem system, string emulatorId) {  // "1,2,3", "" where the emulator takes none
@@ -53,7 +53,7 @@ class RenderScaleSpecTools {
         plan.tokens.put("emulator", emulatorId);
         plan.tokens.put("core", "");
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        for file in SemuProfiles.render(fixture.model, plan, fixture.model.emulator(emulatorId), diagnostics) {
+        for file in SemuProfiles.render(fixture.model, plan, fixture.emulatorOf(emulatorId), diagnostics) {
             if (file.path.endsWith(ending)) { return file.content; }
         }
         return "";
@@ -78,7 +78,7 @@ class RenderScaleSpecTools {
         launch.semuHome = PathTools.join(root, "home");
         FileSystem.mkdirp(launch.semuHome);
         SemuPlan plan = RenderScaleSpecTools.plan(fixture, "steam-deck", "{}");
-        launch.variants = SemuRenderVariants.chooseFor(plan, fixture.model.system(systemId), emulatorId);
+        launch.variants = SemuRenderVariants.chooseFor(plan, fixture.systemOf(systemId), emulatorId);
         launch.menuDrawn = true;
         return launch;
     }
@@ -87,7 +87,7 @@ class RenderScaleSpecTools {
 class RenderScaleSpecData {  // every declared list starts native and rises; 2D systems and the Wii U declare none
     class void run(Contract contract, Fixture fixture) {
         for systemId in fixture.model.systemIds() {
-            SemuSystem system = fixture.model.system(systemId);
+            SemuSystem system = fixture.systemOf(systemId);
             JSONValue choices = SemuJson.get(system.definition, "display.render_scale.choices");
             if (!choices.isArray()) { continue; }
             bool rising = choices.size() >= 1 && choices.at(0).isInt() && choices.at(0).asInt() == 1;
@@ -96,7 +96,7 @@ class RenderScaleSpecData {  // every declared list starts native and rises; 2D 
             for (int index = 0; index < choices.size(); index++) { if (choices.at(index).isInt() && choices.at(index).asInt() == SemuRenderScale.defaultScale(system)) { listed = true; } }
             contract.expect(rising && listed && !SemuJson.textAt(system.definition, "display.render_scale.doc").isEmpty(), systemId + ": its render scales start at native and rise, its default among them, the GPU cost stated");
         }
-        for systemId in ["gb", "gbc", "gba", "nes", "snes", "genesis", "wiiu"] { contract.expect(!SemuJson.get(fixture.model.system(systemId).definition, "display.render_scale").isObject(), systemId + " declares no render scale"); }
+        for systemId in ["gb", "gbc", "gba", "nes", "snes", "genesis", "wiiu"] { contract.expect(!SemuJson.get(fixture.systemOf(systemId).definition, "display.render_scale").isObject(), systemId + " declares no render scale"); }
     }
 }
 
@@ -108,11 +108,11 @@ class RenderScaleSpecOffer {  // what each emulator takes on the Deck: RetroArch
         for line in cases {
             Vector<string> field = Strings.split(line, " ");
             string expected = field.get(2).equals("-") ? "" : field.get(2);
-            string offered = RenderScaleSpecTools.offered(deck, fixture.model.system(field.get(0)), field.get(1));
+            string offered = RenderScaleSpecTools.offered(deck, fixture.systemOf(field.get(0)), field.get(1));
             contract.expect(offered.equals(expected), "on the Deck " + field.get(0) + " through " + field.get(1) + " offers " + (expected.isEmpty() ? "no scale" : expected) + ": " + offered);
         }
         SemuPlan desktop = RenderScaleSpecTools.plan(fixture, "linux-desktop", "{}");
-        contract.expect(RenderScaleSpecTools.offered(desktop, fixture.model.system("n3ds"), "retroarch").equals("1,2"), "a 4K screen holds the 3DS core's 2x frame (800x960)");
+        contract.expect(RenderScaleSpecTools.offered(desktop, fixture.systemOf("n3ds"), "retroarch").equals("1,2"), "a 4K screen holds the 3DS core's 2x frame (800x960)");
     }
 }
 
@@ -120,16 +120,16 @@ class RenderScaleSpecEnvironment {  // the renderer's two keys: the scale above 
     class void run(Contract contract, Fixture fixture) {
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuPlan scaled = RenderScaleSpecTools.plan(fixture, "steam-deck", "{\"visual\":{\"systems\":{\"n64\":{\"render_scale\":\"2x\"},\"gc\":{\"render_scale\":\"2x\"},\"ps2\":{\"render_scale\":\"2x\"}}}}");
-        Vector<string> n64 = SemuRenderEnvironment.compile(scaled, fixture.model.system("n64"), "retroarch", "/state", diagnostics);
-        Vector<string> gc = SemuRenderEnvironment.compile(scaled, fixture.model.system("gc"), "dolphin", "/state", diagnostics);
-        Vector<string> ps2 = SemuRenderEnvironment.compile(scaled, fixture.model.system("ps2"), "pcsx2", "/state", diagnostics);
+        Vector<string> n64 = SemuRenderEnvironment.compile(scaled, fixture.systemOf("n64"), "retroarch", "/state", diagnostics);
+        Vector<string> gc = SemuRenderEnvironment.compile(scaled, fixture.systemOf("gc"), "dolphin", "/state", diagnostics);
+        Vector<string> ps2 = SemuRenderEnvironment.compile(scaled, fixture.systemOf("ps2"), "pcsx2", "/state", diagnostics);
         contract.expect(n64.contains("SEMU_RENDER_SCALE=2") && n64.contains("SEMU_RENDER_SURFACE_SCALED=1") && n64.contains("SEMU_RENDER_SURFACE_0_NATIVE=320x240"), "the N64 core at 2x: the renderer divides its 640x480 frame back to the declared 320x240");
         contract.expect(ps2.contains("SEMU_RENDER_SCALE=2") && ps2.contains("SEMU_RENDER_SURFACE_SCALED=1"), "PCSX2's hook reports the GS texels, the scaled picture: the renderer divides them back");
         contract.expect(gc.contains("SEMU_RENDER_SCALE=2") && !gc.contains("SEMU_RENDER_SURFACE_SCALED=1"), "Dolphin's window picture is cut at the declared native: no division");
-        Vector<string> native = SemuRenderEnvironment.compile(fixture.plan, fixture.model.system("n64"), "retroarch", "/state", diagnostics);
+        Vector<string> native = SemuRenderEnvironment.compile(fixture.plan, fixture.systemOf("n64"), "retroarch", "/state", diagnostics);
         bool unscaled = true;
         for entry in native { if (entry.startsWith("SEMU_RENDER_SCALE=")) { unscaled = false; } }
-        contract.expect(unscaled && !SemuRenderEnvironment.compile(fixture.plan, fixture.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_SURFACE_SCALED=1"), "native emits no scale, and a core that takes none no division");
+        contract.expect(unscaled && !SemuRenderEnvironment.compile(fixture.plan, fixture.systemOf("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_SURFACE_SCALED=1"), "native emits no scale, and a core that takes none no division");
     }
 }
 
@@ -273,7 +273,7 @@ class RenderScaleSpecMenu {  // the renderer's SCALE row and toasts from 88 reco
         string state = PathTools.join(fixture.scratch, "render-scale/menu");
         FileSystem.mkdirp(state);
         SemuPlan plan = RenderScaleSpecTools.plan(fixture, "linux-desktop", "{}");
-        SemuRenderVariantSet set = SemuRenderVariants.write(plan, fixture.model.system("nds"), "retroarch", state);
+        SemuRenderVariantSet set = SemuRenderVariants.write(plan, fixture.systemOf("nds"), "retroarch", state);
         LiveVariantTools.environment(fixture, state, set.token);
         struct RendererPostUiState ui;
         memset(&ui, 0, sizeof(struct RendererPostUiState));
@@ -297,8 +297,8 @@ class RenderScaleSpecMenu {  // the renderer's SCALE row and toasts from 88 reco
 }
 
 class RenderScaleSpecSettingsPage {  // SEMU SETTINGS' per-system page offers the system's declared scales, saved where the radial saves them
-    class string field(JSONValue page, string key) {  // FIELD's value and choices as "value:choice,choice"; "" when the page lacks it
-        JSONValue fields = page == null ? null : page.get("fields");
+    class string field(JSONValue? page, string key) {  // FIELD's value and choices as "value:choice,choice"; "" when the page lacks it
+        JSONValue? fields = page == null ? null : page.get("fields");
         for (int index = 0; fields != null && fields.isArray() && index < fields.size(); index++) {
             JSONValue entry = fields.at(index);
             if (SemuJson.textAt(entry, "key").equals(key)) { return SemuJson.textAt(entry, "value") + ":" + SemuJson.strings(entry.get("choices")).join(","); }
@@ -308,9 +308,9 @@ class RenderScaleSpecSettingsPage {  // SEMU SETTINGS' per-system page offers th
 
     class void run(Contract contract, Fixture fixture) {
         JSONValue settings = fixture.plan.settings;
-        contract.expect(RenderScaleSpecSettingsPage.field(SemuSettingsUi.systemPage(settings, fixture.model.system("n64")), "visual.systems.n64.render_scale").equals("1x:1x,2x,3x"), "the N64 page's RENDER SCALE offers 1x, 2x and 3x, native by default");
-        contract.expect(RenderScaleSpecSettingsPage.field(SemuSettingsUi.systemPage(settings, fixture.model.system("psp")), "visual.systems.psp.render_scale").equals("2x:1x,2x,3x"), "the PSP page starts on its default 2x");
-        contract.expect(RenderScaleSpecSettingsPage.field(SemuSettingsUi.systemPage(settings, fixture.model.system("gb")), "visual.systems.gb.render_scale").isEmpty(), "a system without scales has no RENDER SCALE field");
+        contract.expect(RenderScaleSpecSettingsPage.field(SemuSettingsUi.systemPage(settings, fixture.systemOf("n64")), "visual.systems.n64.render_scale").equals("1x:1x,2x,3x"), "the N64 page's RENDER SCALE offers 1x, 2x and 3x, native by default");
+        contract.expect(RenderScaleSpecSettingsPage.field(SemuSettingsUi.systemPage(settings, fixture.systemOf("psp")), "visual.systems.psp.render_scale").equals("2x:1x,2x,3x"), "the PSP page starts on its default 2x");
+        contract.expect(RenderScaleSpecSettingsPage.field(SemuSettingsUi.systemPage(settings, fixture.systemOf("gb")), "visual.systems.gb.render_scale").isEmpty(), "a system without scales has no RENDER SCALE field");
     }
 }
 

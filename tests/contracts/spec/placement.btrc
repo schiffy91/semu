@@ -32,8 +32,8 @@ class PlacementSpecEnvironment {
     class Vector<string> compile(Fixture fixture, string systemId, string variant) {  // the Deck's launch environment for a bezel variant ("" the default)
         string overlay = variant.isEmpty() ? "{}" : "{\"visual\":{\"systems\":{\"" + systemId + "\":{\"bezel_variant\":\"" + variant + "\"}}}}";
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuPlan plan = SemuResolver.plan(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
-        return SemuRenderEnvironment.compile(plan, fixture.model.system(systemId), "retroarch", "/state/retroarch", diagnostics);
+        SemuPlan plan = Fixture.resolved(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
+        return SemuRenderEnvironment.compile(plan, fixture.systemOf(systemId), "retroarch", "/state/retroarch", diagnostics);
     }
 
     class Vector<string> layers(Vector<string> environment, string ending) {  // the package layers whose file ends in ENDING
@@ -67,7 +67,7 @@ class PlacementSpecEnvironment {
         contract.expect(television.equals("0.4") && television.equals(genesis), "the N64 TV lip mirrors the picture at the TV strength, genesis's 0.4: n64 " + television + ", genesis " + genesis);
         for systemId in ["psp", "gb", "gbc", "gba", "nds", "n3ds"] {
             Vector<string> variants = [""];
-            JSONValue declared = fixture.model.system(systemId).bezels.get("variants");
+            JSONValue declared = fixture.systemOf(systemId).bezels.get("variants");
             for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) { variants.push(SemuJson.textAt(declared.at(index), "id")); }
             for variant in variants {
                 Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, variant);
@@ -176,7 +176,7 @@ class PlacementSpecGeometry {
         int widths[2] = {1280, 1920};
         int heights[2] = {800, 1080};
         for systemId in ["gb", "gbc", "gba"] {
-            JSONValue native = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0.native");
+            JSONValue native = SemuJson.get(fixture.systemOf(systemId).definition, "display.screens.0.native");
             int nativeWidth = SemuJson.intAt(native, "w", 0);
             int nativeHeight = SemuJson.intAt(native, "h", 0);
             for (int size = 0; size < 2; size++) {

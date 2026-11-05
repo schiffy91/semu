@@ -60,7 +60,8 @@ class SemuModListing {
     class Vector<SemuSystem> systems(SemuModel model, SemuPlan plan, string emulatorId) {  // the systems ES-DE may start in this emulator
         Vector<SemuSystem> result = [];
         for systemId in plan.systems {
-            SemuSystem system = model.system(systemId);
+            SemuSystem? system = model.system(systemId);
+            if (system == null) { continue; }
             bool bound = false;
             for binding in system.bindingsFor(plan.platform) { if (binding.emulator.equals(emulatorId)) { bound = true; } }
             if (bound) { result.push(system); }
@@ -111,7 +112,8 @@ class SemuModListing {
         JSONValue emulators = JSONValue.makeArray();
         string saved = plan.tokens.get("state_root");
         for emulatorId in plan.emulators {
-            SemuEmulator emulator = model.emulator(emulatorId);
+            SemuEmulator? emulator = model.emulator(emulatorId);
+            if (emulator == null) { continue; }
             string stateRoot = PathTools.join(plan.stateRoot(), emulatorId);
             plan.tokens.put("state_root", stateRoot);  // each kind resolves inside this emulator's state
             Vector<SemuModKind> kinds = SemuModKind.declared(plan, emulator);

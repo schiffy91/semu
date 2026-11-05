@@ -239,12 +239,13 @@ class SemuLauncher {
         launch.bezelsOn = SemuJson.boolAt(plan.settings, "visual.bezels", true);
         launch.shadersOn = SemuJson.boolAt(plan.settings, "visual.crt_shaders", true);
         if (plan.input == null) { return; }
-        JSONValue definition = plan.input.definition;
+        SemuInput input = plan.input;  // the field's non-null fact does not survive the calls below
+        JSONValue definition = input.definition;
         Vector<string> shown = launch.variants.shown();  // a FIT or ASPECT row only where that choice offers two or more
         launch.players.show(shown);  // CONTROLLER and PLAYERS where they apply
         for entry in launch.players.environment() { launch.environment.push(entry); }
-        launch.menuLabels = plan.input.menuItemsShown("label", shown);  // the renderer draws this list, the supervisor mirrors it
-        launch.menuActions = plan.input.menuItemsShown("action", shown);
+        launch.menuLabels = input.menuItemsShown("label", shown);  // the renderer draws this list, the supervisor mirrors it
+        launch.menuActions = input.menuItemsShown("action", shown);
         bool pauses = SemuJson.textAt(emulator.definition, "menu.pause").equals("emulator");  // pausing one that stops presenting would hide the menu
         launch.pauseAction = pauses ? SemuJson.textAt(definition, "menu.pause_action") : "";
         launch.chordModifier = SemuJson.textAt(definition, "gamepad_chords.modifier");
@@ -263,20 +264,20 @@ class SemuLauncher {
                 if (!chord.isEmpty()) { launch.actionChords.push(action + "=" + chord); }
             }
         }
-        for entry in plan.input.menuEnvironment(shown) { launch.environment.push(entry); }  // SEMU_MENU_ITEMS, _ACTIONS and _TOASTS
+        for entry in input.menuEnvironment(shown) { launch.environment.push(entry); }  // SEMU_MENU_ITEMS, _ACTIONS and _TOASTS
     }
 
     class SemuLaunchPlan plan(SemuModel model, SemuPlan plan, string emulatorId, string systemId, string core, string rom, SemuDiagnostics diagnostics) {
         SemuLaunchPlan launch = SemuLaunchPlan();
         launch.emulator = emulatorId;
         launch.system = systemId;
-        SemuEmulator emulator = model.emulator(emulatorId);
-        SemuSystem system = model.system(systemId);
+        SemuEmulator? emulator = model.emulator(emulatorId);
+        SemuSystem? system = model.system(systemId);
         if (emulator == null || system == null) {
             launch.error = "unknown emulator or system";
             return launch;
         }
-        SemuSystemBinding binding = system.bindingFor(plan.platform, emulatorId, core);
+        SemuSystemBinding? binding = system.bindingFor(plan.platform, emulatorId, core);
         if (binding == null || !plan.systems.contains(systemId) || !plan.emulators.contains(emulatorId)) {
             launch.error = f"{systemId} does not bind {emulatorId} on target {plan.target.id}";
             return launch;

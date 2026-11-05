@@ -20,12 +20,15 @@ class SteamInputDocument {  // the shared Steam Input definition: actions, radia
         return actions != null && actions.isObject() && actions.has(identifier) ? actions.get(identifier) : JSONValue.makeObject();
     }
 
-    public JSONValue page(string identifier) {  // a radial slot that switches Steam's preset instead of typing a chord; null for an action
+    public JSONValue? page(string identifier) {  // a radial slot that switches Steam's preset instead of typing a chord; null for an action
         JSONValue pages = SemuJson.get(self.root, "radial.pages");  // ids hold dots, so the last step is a key
         return pages != null && pages.isObject() && pages.has(identifier) ? pages.get(identifier) : null;
     }
 
-    public JSONValue slotEntry(string identifier) { return self.page(identifier) != null ? self.page(identifier) : self.action(identifier); }
+    public JSONValue slotEntry(string identifier) {
+        JSONValue? page = self.page(identifier);
+        return page != null ? page : self.action(identifier);
+    }
     public string label(string identifier) { return SemuJson.textAt(self.slotEntry(identifier), "label"); }
     public string icon(string identifier) { return SemuJson.textAt(self.slotEntry(identifier), "icon"); }
     public string chord(string identifier) { return SemuJson.textAt(self.action(identifier), "chord"); }
@@ -55,12 +58,12 @@ class SteamInputDocument {  // the shared Steam Input definition: actions, radia
     public int haptics() { return SemuJson.intAt(self.root, "radial.haptic_intensity", 2); }
     public JSONValue templates() { return SemuJson.get(self.root, "templates"); }
 
-    public JSONValue entry(string table, string identifier) {  // controllers, layouts or vocabularies.<id>; null when undeclared
+    public JSONValue? entry(string table, string identifier) {  // controllers, layouts or vocabularies.<id>; null when undeclared
         JSONValue entries = self.root.get(table);
         return entries != null && entries.isObject() && entries.has(identifier) ? entries.get(identifier) : null;
     }
 
-    public JSONValue defaultTemplate() {  // the one template installed as every user's profile
+    public JSONValue? defaultTemplate() {  // the one template installed as every user's profile
         JSONValue templates = self.templates();
         for (int index = 0; templates.isArray() && index < templates.size(); index++) {
             if (SemuJson.boolAt(templates.at(index), "default", false)) { return templates.at(index); }
@@ -140,9 +143,9 @@ class SteamInputChordNames {  // Semu chord text -> Steam key_press names
 
 class SteamInputController {  // one controller_type: its Steam names and Semu layout
     public string identifier;
-    public JSONValue definition;
-    public JSONValue layout;
-    public JSONValue vocabulary;
+    public JSONValue? definition;
+    public JSONValue? layout;
+    public JSONValue? vocabulary;
 
     public SteamInputController(SteamInputDocument document, string identifier) {
         self.identifier = identifier;
@@ -154,10 +157,10 @@ class SteamInputController {  // one controller_type: its Steam names and Semu l
     public bool declared() { return self.definition != null && self.layout != null && self.vocabulary != null; }
     public string type() { return SemuJson.textAt(self.definition, "controller_type"); }
     public string file(string field) { return self.definition == null ? "" : SemuJson.textAt(self.definition, field); }  // controller_file or configset_file, empty when undeclared
-    public string grip(string logical) { return SemuJson.textAt(self.layout.get("grips"), logical); }  // a layer activator to the Steam input name
+    public string grip(string logical) { return SemuJson.textAt(SemuJson.get(self.layout, "grips"), logical); }  // a layer activator to the Steam input name
 
     public bool knows(string kind, string name) {  // kind is sources or inputs; radial buttons 0..radial_buttons count too
-        if (SemuJson.strings(self.vocabulary.get(kind)).contains(name)) { return true; }
+        if (SemuJson.strings(SemuJson.get(self.vocabulary, kind)).contains(name)) { return true; }
         string prefix = "touch_menu_button_";
         if (!kind.equals("inputs") || !name.startsWith(prefix) || name.len() == prefix.len()) { return false; }
         string number = name.substring(prefix.len(), name.len() - prefix.len());

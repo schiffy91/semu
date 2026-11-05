@@ -46,7 +46,7 @@ class ModsSpecReport {
         return bed;
     }
 
-    class JSONValue entry(JSONValue report, string emulatorId, string kindId, string relative) {  // null when absent
+    class JSONValue? entry(JSONValue report, string emulatorId, string kindId, string relative) {  // null when absent
         JSONValue emulators = report.get("emulators");
         for (int index = 0; index < emulators.size(); index++) {
             if (!SemuJson.textAt(emulators.at(index), "emulator").equals(emulatorId)) { continue; }
@@ -61,7 +61,7 @@ class ModsSpecReport {
     }
 
     class string field(JSONValue report, string emulatorId, string kindId, string relative, string name) {
-        JSONValue found = ModsSpecReport.entry(report, emulatorId, kindId, relative);
+        JSONValue? found = ModsSpecReport.entry(report, emulatorId, kindId, relative);
         return found == null ? "(absent)" : (found.get(name).isArray() ? SemuJson.strings(found.get(name)).join(",") : SemuJson.textAt(found, name));
     }
 
@@ -134,7 +134,7 @@ class ModsSpecReport {
 
     class void graphicPacks(Contract contract) {  // Cemu runs a pack only when settings.xml names its rules.txt
         StandaloneSpecBed bed = StandaloneSpecBed();
-        SemuEmulator cemu = bed.fixture.model.emulator("cemu");
+        SemuEmulator cemu = bed.fixture.emulatorOf("cemu");
         string settings = ModsSpecLaunch.rendered(bed, cemu, "settings.xml");
         contract.contains(settings, "\t<GraphicPack>\n\t</GraphicPack>\n</content>", "with no pack settings.xml lists none");
         string packs = PathTools.join(bed.fixture.plan.path("mods"), "cemu/graphicpacks");
@@ -153,18 +153,18 @@ class ModsSpecReport {
 
     class void checker(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
-        JSONValue kind = SemuJson.get(fixture.model.emulator("cemu").platform("linux"), "state.mods.kinds").at(0);
+        JSONValue kind = SemuJson.get(fixture.emulatorOf("cemu").platform("linux"), "state.mods.kinds").at(0);
         kind.set("entry_lines", JSONValue.parse("{\"format\":\"no entry here\",\"escape\":\"html\"}"));
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuChecker.check(fixture.model, fixture.plan, diagnostics);
         contract.contains(diagnostics.render(), "state.mods.kinds.0.entry_lines: needs a format naming ${entry}", "the checker refuses entry_lines without ${entry} or with an unknown escape");
         Fixture listed = Fixture("linux-desktop");
-        SemuJson.get(listed.model.emulator("cemu").profile, "files.1.lines").push(JSONValue.makeString("@lines:mods.nothing"));
+        SemuJson.get(listed.emulatorOf("cemu").profile, "files.1.lines").push(JSONValue.makeString("@lines:mods.nothing"));
         diagnostics = SemuDiagnostics();
         SemuChecker.check(listed.model, listed.plan, diagnostics);
         contract.contains(diagnostics.render(), "@lines:mods.nothing names no kind with entry_lines", "a profile listing a kind's entries needs that kind to declare them");
         Fixture titled = Fixture("linux-desktop");
-        titled.model.system("switch").definition.get("titles").set("from", JSONValue.makeString("guess"));
+        titled.systemOf("switch").definition.get("titles").set("from", JSONValue.makeString("guess"));
         diagnostics = SemuDiagnostics();
         SemuChecker.check(titled.model, titled.plan, diagnostics);
         contract.contains(diagnostics.render(), "titles: from filename (open, close, length) or from header", "the checker refuses a titles declaration it cannot read");

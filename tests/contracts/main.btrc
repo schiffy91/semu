@@ -109,7 +109,7 @@ class ModelContract {
         contract.contains(fixture.plan.path("esde_home"), "Games/Emulation/ES-DE", "ES-DE home is the existing data directory so gamelists and media carry over");
         Fixture deck = Fixture("steam-deck");
         contract.contains(deck.plan.romsRoot(), "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs", "deck ROM root is the SD card");
-        contract.expect(deck.plan.input != null && deck.plan.input.id.equals("steam-deck"), "deck uses its own input definition");
+        contract.expect(deck.plan.input != null && deck.input().id.equals("steam-deck"), "deck uses its own input definition");
     }
 }
 
@@ -121,7 +121,7 @@ class SettingsLadderContract {
         FileSystem.writeText(PathTools.join(home, "semu.json"), "{\"ui\":{\"theme\":\"linear-es-de\"},\"visual\":{\"bezels\":false}}");
         FileSystem.writeText(PathTools.join(home, "overrides/visual/bezels.json"), "{\"visual\":{\"bezels\":true}}");
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuPlan plan = SemuResolver.plan(fixture.model, "linux-desktop", home, fixture.plan.assetRoot, "{\"ui\":{\"display_index\":2}}", diagnostics);
+        SemuPlan plan = Fixture.resolved(fixture.model, "linux-desktop", home, fixture.plan.assetRoot, "{\"ui\":{\"display_index\":2}}", diagnostics);
         contract.expect(SemuJson.textAt(plan.settings, "ui.theme").equals("linear-es-de"), "semu.json overrides defaults");
         contract.expect(SemuJson.boolAt(plan.settings, "visual.bezels", false), "overrides beat semu.json");
         contract.expect(SemuJson.intAt(plan.settings, "ui.display_index", 0) == 2, "--settings-json beats everything");
@@ -307,7 +307,7 @@ class RenderingContract {
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
         string assets = fixture.plan.assetRoot;
-        SemuSystem gb = fixture.model.system("gb");
+        SemuSystem gb = fixture.systemOf("gb");
         Vector<string> bare = SemuRenderEnvironment.compile(fixture.plan, gb, "retroarch", "/state/retroarch", fixture.diagnostics);
         contract.expect(bare.contains("SEMU_RENDER_SYSTEM_ID=gb"), "renderer knows the system");
         contract.expect(bare.contains("SEMU_RENDER_SURFACE_COUNT=1"), "gb has one surface");
@@ -319,7 +319,7 @@ class RenderingContract {
         FileSystem.mkdirp(PathTools.join(assets, "share/semu/assets/bezels/gb"));
         FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/gb/dmg-shell.png"), "png");
         FileSystem.writeText(PathTools.join(assets, "share/semu/assets/bezels/gb/dmg-glass.png"), "png");
-        SemuSystem nes = fixture.model.system("nes");
+        SemuSystem nes = fixture.systemOf("nes");
         Vector<string> nesBare = SemuRenderEnvironment.compile(fixture.plan, nes, "retroarch", "/state/retroarch", fixture.diagnostics);
         bool artFromRepository = false;
         for entry in nesBare { if (entry.startsWith("SEMU_RENDER_ART=" + fixture.plan.configRoot)) { artFromRepository = true; } }
@@ -379,10 +379,10 @@ class RenderingContract {
         }
         contract.expect(dmgImage && dmgRing, "the DMG picture and its drawn bezel come from the upstream preset");
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuPlan off = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"crt_shaders\":false,\"bezels\":false}}", diagnostics);
+        SemuPlan off = Fixture.resolved(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"crt_shaders\":false,\"bezels\":false}}", diagnostics);
         Vector<string> disabled = SemuRenderEnvironment.compile(off, gb, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(disabled.contains("SEMU_RENDER_SHADERS=0") && disabled.contains("SEMU_RENDER_BEZELS=0"), "settings can disable shaders and bezels");
-        SemuSystem nds = fixture.model.system("nds");
+        SemuSystem nds = fixture.systemOf("nds");
         Vector<string> dual = SemuRenderEnvironment.compile(fixture.plan, nds, "retroarch", "/state/retroarch", fixture.diagnostics);
         contract.expect(dual.contains("SEMU_RENDER_SURFACE_COUNT=2"), "nds has two surfaces");
         contract.expect(dual.contains("SEMU_RENDER_BEZELS=1") && dual.contains("SEMU_RENDER_LAYOUT=fixed") && dual.contains("SEMU_RENDER_BEZEL_ID=nds-shell"), "the DS default is the Duimon shell");
@@ -407,7 +407,7 @@ class RenderingContract {
             contract.expect(deviceBelow && topAbove && !coverBackground, "the DS layer stack reaches the compositor: the face under the screens, the top plate over them, and no Duimon backdrop, so black shows around the shell");
             contract.expect(dual.contains("SEMU_RENDER_CANVAS=3840,2160"), "the layer canvas is the DS face's own pixel grid");
         } else { contract.skip("layer stack", "the upstream layers resolve nowhere (no bundle layers, no bezel tree)"); }
-        SemuPlan computed = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"main_right\"}}}}", diagnostics);
+        SemuPlan computed = Fixture.resolved(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"main_right\"}}}}", diagnostics);
         Vector<string> computedEnv = SemuRenderEnvironment.compile(computed, nds, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(computedEnv.contains("SEMU_RENDER_BEZELS=1") && computedEnv.contains("SEMU_RENDER_LAYOUT=main_right") && computedEnv.contains("SEMU_RENDER_BEZEL_ID=dual-main-right"), "the computed main-right layout is an alternate that needs no plate");
         bool dressed = false;
@@ -419,7 +419,7 @@ class RenderingContract {
             if (drawnFrame.isObject() && drawnFrame.has("radius")) { rounded.push(packageId); }
         }
         contract.expect(rounded.isEmpty(), "no package gives its drawn frame a radius: nothing reads one, the frame rounds with its opening: " + Strings.join(rounded, ", "));
-        SemuPlan shell = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"shell\"}}}}", diagnostics);
+        SemuPlan shell = Fixture.resolved(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"nds\":{\"bezel_variant\":\"shell\"}}}}", diagnostics);
         Vector<string> shellEnv = SemuRenderEnvironment.compile(shell, nds, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(shellEnv.contains("SEMU_RENDER_BEZEL_ID=nds-shell") && shellEnv.contains("SEMU_RENDER_LAYOUT=fixed") && shellEnv.contains("SEMU_RENDER_SCREEN_1=0.509635,0.137963,0.471354,0.637963"), "the DS shell alternate is a fixed package with two computed openings");  // 1957,298,1810,1378: the right screen's bezel edge
         contract.expect(fixture.diagnostics.ok(), "rendering emitter has no diagnostics: " + fixture.diagnostics.render());
@@ -498,8 +498,8 @@ class BezelPackageContract {  // every calibrated package: the picture sits insi
         Fixture fixture = Fixture("linux-desktop");
         int calibrated = 0;
         for id in fixture.model.systemIds() {
-            SemuSystem system = fixture.model.system(id);
-            JSONValue variants = system.bezels == null ? null : system.bezels.get("variants");
+            SemuSystem system = fixture.systemOf(id);
+            JSONValue? variants = system.bezels == null ? null : system.bezels.get("variants");
             if (variants == null || !variants.isArray()) { continue; }
             JSONValue display = system.definition.get("display");
             JSONValue screens = display.get("screens");
@@ -510,7 +510,7 @@ class BezelPackageContract {  // every calibrated package: the picture sits insi
                 for (int screenIndex = 0; screenIndex < screens.size(); screenIndex++) {
                     JSONValue native = screens.at(screenIndex).get("native");
                     JSONValue screen = SemuBezelPackage.screen(package, screens.size() == 1 ? "main" : SemuJson.textAt(screens.at(screenIndex), "id"));
-                    JSONValue image = screen.isObject() ? screen.get("image") : null;
+                    JSONValue? image = screen.isObject() ? screen.get("image") : null;
                     string where = SemuJson.textAt(package, "id") + "/" + SemuJson.textAt(screen, "id");
                     bool derived = package.has("upstream") || !SemuJson.textAt(package, "geometry_from").isEmpty();
                     if (image == null || !image.isObject()) { contract.expect(!derived, where + ": an upstream or recolour package carries a picture rectangle"); continue; }
@@ -551,19 +551,19 @@ class LayerLookContract {  // recolour tints and the night plate reach the compo
         for layer in ["background.jpg", "led.png", "decal.png", "device.png", "device_led.png", "glass.png", "top.png"] { LayerLookContract.bundle(assets, "gba-shell", layer); LayerLookContract.bundle(assets, "gba-arctic", layer); }
         for layer in ["background.png", "led.png", "ambient.png"] { LayerLookContract.bundle(assets, "tv-soqueroeu-nes", layer); }
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuPlan arctic = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"gba\":{\"bezel_variant\":\"arctic\"}}}}", diagnostics);
-        Vector<string> arcticEnv = SemuRenderEnvironment.compile(arctic, fixture.model.system("gba"), "retroarch", "/state/retroarch", diagnostics);
-        Vector<string> shellEnv = SemuRenderEnvironment.compile(fixture.plan, fixture.model.system("gba"), "retroarch", "/state/retroarch", diagnostics);
+        SemuPlan arctic = Fixture.resolved(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"gba\":{\"bezel_variant\":\"arctic\"}}}}", diagnostics);
+        Vector<string> arcticEnv = SemuRenderEnvironment.compile(arctic, fixture.systemOf("gba"), "retroarch", "/state/retroarch", diagnostics);
+        Vector<string> shellEnv = SemuRenderEnvironment.compile(fixture.plan, fixture.systemOf("gba"), "retroarch", "/state/retroarch", diagnostics);
         string tinted = LayerLookContract.layerWith(arcticEnv, "/layers/gba-arctic/device.png|");
         contract.expect(tinted.endsWith("|0.933333,0.945098,0.956863,1.9|0"), "the arctic variant tints its device layer: " + tinted);
         contract.expect(LayerLookContract.layerWith(arcticEnv, "/layers/gba-arctic/decal.png|").endsWith("|-|0"), "layers the recolour does not name stay untinted");
         contract.expect(LayerLookContract.layerWith(shellEnv, "/layers/gba-shell/device.png|").endsWith("|-|0"), "the default GBA shell is untinted, so the two variants differ");
-        Vector<string> nesEnv = SemuRenderEnvironment.compile(fixture.plan, fixture.model.system("nes"), "retroarch", "/state/retroarch", diagnostics);
+        Vector<string> nesEnv = SemuRenderEnvironment.compile(fixture.plan, fixture.systemOf("nes"), "retroarch", "/state/retroarch", diagnostics);
         string night = LayerLookContract.layerWith(nesEnv, "/layers/tv-soqueroeu-nes/ambient.png|");
         contract.expect(night.endsWith("|0|2|1|-|0.2|1"), "the TV scene multiplies the night plate, lifted by one minus its opacity, and carries it on past the canvas with the room: " + night);
         contract.expect(nesEnv.contains("SEMU_RENDER_LAYER_COUNT=3"), "background, night plate and LED make the NES stack");
-        SemuPlan off = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"gba\":{\"bezel_variant\":\"none\",\"shader_variant\":\"none\"}}}}", diagnostics);
-        Vector<string> offEnv = SemuRenderEnvironment.compile(off, fixture.model.system("gba"), "retroarch", "/state/retroarch", diagnostics);
+        SemuPlan off = Fixture.resolved(fixture.model, "linux-desktop", fixture.plan.semuHome, assets, "{\"visual\":{\"systems\":{\"gba\":{\"bezel_variant\":\"none\",\"shader_variant\":\"none\"}}}}", diagnostics);
+        Vector<string> offEnv = SemuRenderEnvironment.compile(off, fixture.systemOf("gba"), "retroarch", "/state/retroarch", diagnostics);
         contract.expect(offEnv.contains("SEMU_RENDER_BEZELS=0") && offEnv.contains("SEMU_RENDER_SHADERS=0"), "bezel and shader variant none turn this system's look off");
         contract.expect(diagnostics.ok(), "the layer stacks compile without diagnostics: " + diagnostics.render());
     }
@@ -600,7 +600,7 @@ class LibrarySettingsContract {  // the ROM folder is chosen from ES-DE, and a l
         string link = PathTools.join(fixture.scratch, "roms-link");
         FileSystem.symlink(external, link);
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuPlan plan = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"paths\":{\"roms\":\"" + link + "\"}}", diagnostics);
+        SemuPlan plan = Fixture.resolved(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"paths\":{\"roms\":\"" + link + "\"}}", diagnostics);
         JSONValue document = SemuSettingsUi.document(fixture.model, plan);
         bool offered = false;
         JSONValue sections = document.get("sections");
@@ -627,8 +627,8 @@ class InheritedDefinitionContract {  // "extends": a definition refines another;
         contract.expect(SemuJson.intAt(value, "a.x", 0) == 1 && SemuJson.intAt(value, "a.y", 0) == 5, "extends merges objects key by key");
         contract.expect(SemuJson.intAt(value, "b", 0) == 1 && SemuJson.intAt(value, "d", 0) == 4 && !value.has("c") && !value.has("extends"), "extends keeps the base, adds new keys, and a null removes an inherited one");
         contract.expect(value.get("list").size() == 1, "extends replaces arrays whole");
-        contract.expect(fixture.model.input("macos").definition.stringify().equals(fixture.model.input("linux-desktop").definition.stringify()), "macOS input is the desktop's, inherited");
-        contract.expect(SemuJson.textAt(fixture.model.input("steam-deck").definition, "device").equals("steam-deck") && SemuJson.textAt(fixture.model.input("steam-deck").definition, "device_identities.retroarch_input_driver").equals("sdl2"), "the Deck input refines the desktop's device and pad identities and keeps the rest");
+        contract.expect(fixture.inputOf("macos").definition.stringify().equals(fixture.inputOf("linux-desktop").definition.stringify()), "macOS input is the desktop's, inherited");
+        contract.expect(SemuJson.textAt(fixture.inputOf("steam-deck").definition, "device").equals("steam-deck") && SemuJson.textAt(fixture.inputOf("steam-deck").definition, "device_identities.retroarch_input_driver").equals("sdl2"), "the Deck input refines the desktop's device and pad identities and keeps the rest");
     }
 }
 
@@ -645,7 +645,7 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
         contract.contains(macProfile, "pause_nonactive = \"false\"", "RetroArch keeps running without focus: on ES-DE's Space macOS may not make it the active app, and it paused on a black first frame");
         contract.contains(mac.profile("ryujinx", "config/Ryujinx/Config.json"), "\"use_hypervisor\": true", "macOS Ryujinx runs on Apple's hypervisor: its launcher is signed with the entitlement (ryujinx_semu.nix)");
         contract.contains(desktop.profile("ryujinx", "config/Ryujinx/Config.json"), "\"use_hypervisor\": true", "Linux keeps Ryujinx's setting, a JSON boolean");
-        contract.contains(mac.model.emulator("ryujinx").platform("macos").stringify(), "switch_firmware", "macOS Ryujinx seeds the Switch firmware from the library");
+        contract.contains(mac.emulatorOf("ryujinx").platform("macos").stringify(), "switch_firmware", "macOS Ryujinx seeds the Switch firmware from the library");
         contract.contains(macProfile, "input_joypad_driver = \"hid\"", "macOS RetroArch reads pads through HID");
         contract.contains(macProfile, "audio_driver = \"coreaudio\"", "macOS RetroArch plays through Core Audio");
         contract.contains(macProfile, "input_driver = \"cocoa\"", "macOS RetroArch takes Cocoa keyboard input");
@@ -654,7 +654,7 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
         contract.contains(linuxProfile, "audio_driver = \"pulse\"", "Linux RetroArch keeps Pulse");
         contract.expect(mac.plan.systems.contains("gb") && mac.plan.systems.contains("n64"), "the RetroArch systems serve macOS");
         for systemId in mac.model.systemIds() {  // a macOS binding needs a core flake that builds for darwin
-            JSONValue bindings = mac.model.system(systemId).definition.get("emulators");
+            JSONValue bindings = mac.systemOf(systemId).definition.get("emulators");
             for (int index = 0; bindings != null && index < bindings.size(); index++) {
                 JSONValue binding = bindings.at(index);
                 if (!SemuJson.textAt(binding, "emulator").equals("retroarch") || !SemuJson.strings(binding.get("platforms")).contains("macos")) { continue; }
@@ -663,22 +663,22 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
             }
         }
         for systemId in mac.model.systemIds() {  // shader timing follows the console, not a 60 Hz guess
-            double refresh = atof(SemuRenderEnvironment.numberOr(SemuJson.get(mac.model.system(systemId).definition, "display"), "refresh_hz", "0"));
+            double refresh = atof(SemuRenderEnvironment.numberOr(SemuJson.get(mac.systemOf(systemId).definition, "display"), "refresh_hz", "0"));
             contract.expect(refresh > 45.0 && refresh < 75.0, systemId + " declares its display refresh rate (display.refresh_hz)");
         }
         for systemId in mac.model.systemIds() {  // a game window appears on ES-DE's Space, never a small window sliding to a black fullscreen Space
-            JSONValue bindings = mac.model.system(systemId).definition.get("emulators");
+            JSONValue bindings = mac.systemOf(systemId).definition.get("emulators");
             for (int index = 0; bindings != null && index < bindings.size(); index++) {
                 string emulatorId = SemuJson.textAt(bindings.at(index), "emulator");
                 Vector<string> platforms = SemuJson.strings(bindings.at(index).get("platforms"));
-                if (emulatorId.equals("retroarch") || !mac.model.emulator(emulatorId).supports("macos") || (!platforms.isEmpty() && !platforms.contains("macos"))) { continue; }
-                contract.expect(SemuJson.boolAt(mac.model.emulator(emulatorId).platform("macos"), "window_shim", false), systemId + ": macOS " + emulatorId + " launches through libsemuwindow");
+                if (emulatorId.equals("retroarch") || !mac.emulatorOf(emulatorId).supports("macos") || (!platforms.isEmpty() && !platforms.contains("macos"))) { continue; }
+                contract.expect(SemuJson.boolAt(mac.emulatorOf(emulatorId).platform("macos"), "window_shim", false), systemId + ": macOS " + emulatorId + " launches through libsemuwindow");
             }
         }
         for platformId in ["linux", "macos"] {  // every standalone draws inside Semu's bezel: a hook, the GL preload or the Vulkan composition
             Fixture target = platformId.equals("macos") ? mac : desktop;
             for emulatorId in target.model.emulatorIds() {
-                JSONValue platform = target.model.emulator(emulatorId).platform(platformId);
+                JSONValue platform = target.emulatorOf(emulatorId).platform(platformId);
                 if (emulatorId.equals("retroarch") || !platform.isObject()) { continue; }
                 bool composed = SemuJson.boolAt(platform, "render_hook", false) || SemuJson.boolAt(platform, "render_preload", false)
                     || SemuJson.boolAt(platform, "render_vulkan", false);
@@ -689,7 +689,7 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
                 contract.expect(composed, platformId + " " + emulatorId + " is composed by Semu (render_hook, render_preload or render_vulkan)");
             }
         }
-        contract.expect(!SemuJson.boolAt(mac.model.emulator("retroarch").platform("macos"), "window_shim", false)
+        contract.expect(!SemuJson.boolAt(mac.emulatorOf("retroarch").platform("macos"), "window_shim", false)
             && FileSystem.readText(PathTools.join(mac.project, "config/emulators/retroarch/darwin.nix")).contains("retroarch_darwin_fullscreen.patch"),
             "macOS RetroArch goes fullscreen on ES-DE's Space through its own patch, not the shim");
     }
@@ -698,8 +698,8 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
 class RenderResolutionContract {  // the upscaling 3D cores render at the system's render scale (M16 item 2): native unless chosen, the PSP at 2x; a frame past the screen is never offered
     class string options(Fixture fixture, string overlay, string core, string systemId) {
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuPlan plan = SemuResolver.plan(fixture.model, fixture.plan.target.id, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
-        return SemuLauncher.coreOptions(plan, fixture.model.emulator("retroarch").platform("linux"), core, fixture.model.system(systemId));
+        SemuPlan plan = Fixture.resolved(fixture.model, fixture.plan.target.id, fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
+        return SemuLauncher.coreOptions(plan, fixture.emulatorOf("retroarch").platform("linux"), core, fixture.systemOf(systemId));
     }
 
     class string scaled(string systemId, string scale) { return "{\"visual\":{\"systems\":{\"" + systemId + "\":{\"render_scale\":\"" + scale + "\"}}}}"; }
@@ -732,9 +732,9 @@ class RenderResolutionContract {  // the upscaling 3D cores render at the system
         contract.contains(RenderResolutionContract.options(desktop, RenderResolutionContract.scaled("dreamcast", "2x"), "flycast", "dreamcast"), "reicast_internal_resolution = \"1280x960\"", "the Flycast core at 2x on a screen that holds 960 lines");
         contract.contains(RenderResolutionContract.options(deck, RenderResolutionContract.scaled("dreamcast", "2x"), "flycast", "dreamcast"), "reicast_internal_resolution = \"640x480\"", "and native on the Deck's 800");
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuPlan fitted = SemuResolver.plan(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"systems\":{\"gb\":{\"placement\":\"bezel_fractional\"},\"nes\":{\"placement\":\"fit\"}}}}", diagnostics);
-        contract.expect(SemuRenderEnvironment.compile(deck.plan, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=game") && SemuRenderEnvironment.compile(deck.plan, deck.model.system("nes"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=bezel"), "handhelds default to integer game, TVs to integer bezel");
-        contract.expect(SemuRenderEnvironment.compile(fitted, deck.model.system("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=bezel_fractional") && SemuRenderEnvironment.compile(fitted, deck.model.system("nes"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=bezel"), "a per-system Fit state overrides the system's default, and a saved fit (retired) reads as integer bezel");
+        SemuPlan fitted = Fixture.resolved(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"systems\":{\"gb\":{\"placement\":\"bezel_fractional\"},\"nes\":{\"placement\":\"fit\"}}}}", diagnostics);
+        contract.expect(SemuRenderEnvironment.compile(deck.plan, deck.systemOf("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=game") && SemuRenderEnvironment.compile(deck.plan, deck.systemOf("nes"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=bezel"), "handhelds default to integer game, TVs to integer bezel");
+        contract.expect(SemuRenderEnvironment.compile(fitted, deck.systemOf("gb"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=bezel_fractional") && SemuRenderEnvironment.compile(fitted, deck.systemOf("nes"), "retroarch", "/state", diagnostics).contains("SEMU_RENDER_PLACEMENT=bezel"), "a per-system Fit state overrides the system's default, and a saved fit (retired) reads as integer bezel");
     }
 }
 
@@ -800,9 +800,13 @@ class BezelPlacementContract {  // the Mega Bezel port against the last render-b
         contract.expect(dmg.value("HSM_ASPECT_RATIO_MODE").equals("1.000000") && dmg.value("HSM_ASPECT_RATIO_EXPLICIT").equals("1.110000"), "a referencing preset overrides the base it references");
         contract.expect(dmg.missing.size() == 0 && dmg.textures.has("DeviceImage") && dmg.textures.has("CabinetGlassImage"), "every texture the DMG preset draws resolves to a file");
         BezelRepository repository = BezelRepository(fixture.plan.configRoot);
-        BezelGeometry geometry = BezelGeometry(tree, "gb-dmg-shell", repository.package("gb-dmg-shell"), repository.system("gb"));
-        contract.expect(geometry.failure.isEmpty() && geometry.canvasLayer != null && geometry.canvasLayer.id.equals("device") && geometry.canvasLayer.width == 3440 && geometry.canvasLayer.height == 6115, "the DMG device layer is the canvas at its own 3440x6115");
-        contract.expect(geometry.layers.size() == 7 && geometry.layer("cutouts") != null && geometry.layer("top").order > geometry.layer("cutouts").order, "the DMG stack has seven layers with the top plate above the cutouts");
+        JSONValue? dmgPackage = repository.package("gb-dmg-shell");
+        if (dmgPackage == null) { contract.expect(false, "gb-dmg-shell is in the repository"); return; }
+        BezelGeometry geometry = BezelGeometry(tree, "gb-dmg-shell", dmgPackage, repository.system("gb"));
+        contract.expect(geometry.failure.isEmpty() && geometry.canvasLayerId().equals("device") && geometry.canvasWidth() == 3440 && geometry.canvasHeight() == 6115, "the DMG device layer is the canvas at its own 3440x6115");
+        BezelLayer? topPlate = geometry.layer("top");
+        BezelLayer? cutouts = geometry.layer("cutouts");
+        contract.expect(geometry.layers.size() == 7 && cutouts != null && topPlate != null && topPlate.order > cutouts.order, "the DMG stack has seven layers with the top plate above the cutouts");
         contract.expect(geometry.plateRect(geometry.screens[0].picture).rounded().stringify().equals("{\"x\":1012,\"y\":1512,\"w\":1416,\"h\":1275}"), "the DMG picture lands at Duimon's placement in device pixels");
     }
 }
@@ -930,14 +934,15 @@ class SteamContract {  // the binary VDF Steam reads: our entry exact, everythin
         string file = PathTools.join(root, "userdata/1234/config/shortcuts.vdf");
         SemuPaths.removeFile(file);
         string error = "";
-        SteamShortcut other = SteamShortcuts.upsert(file, "Other Game", "/opt/other/run", "/opt/other", &error);
+        SteamShortcut? other = SteamShortcuts.upsert(file, "Other Game", "/opt/other/run", "/opt/other", &error);
         contract.expect(other != null && error.isEmpty(), "shortcut written into an absent file: " + error);
-        SteamShortcut ours = SteamShortcuts.upsert(file, "Semu", "/run/current-system/sw/bin/semu-es-de", "/home/u", &error);
+        SteamShortcut? ours = SteamShortcuts.upsert(file, "Semu", "/run/current-system/sw/bin/semu-es-de", "/home/u", &error);
         contract.expect(ours != null && ours.launchUrl().startsWith("steam://rungameid/"), "semu shortcut appended");
         SteamShortcutsFile parsed = SteamShortcutsFile.read(file);
         contract.expect(parsed.valid && parsed.entries.size() == 2, f"two entries survive a rewrite ({parsed.entries.size()})");
         contract.expect(parsed.entries.get(0).appName.equals("Other Game") && parsed.entries.get(0).exe.equals("\"/opt/other/run\""), "foreign entry preserved byte for byte");
-        contract.expect(parsed.entries.get(1).appName.equals("Semu") && parsed.entries.get(1).startDir.equals("\"/home/u\"") && parsed.entries.get(1).appid == ours.appid, "semu entry parsed back");
+        long oursAppid = ours == null ? 0L : ours.appid;
+        contract.expect(parsed.entries.get(1).appName.equals("Semu") && parsed.entries.get(1).startDir.equals("\"/home/u\"") && parsed.entries.get(1).appid == oursAppid, "semu entry parsed back");
         SteamShortcuts.upsert(file, "Semu", "/run/current-system/sw/bin/semu-es-de", "/home/u", &error);
         SteamShortcutsFile again = SteamShortcutsFile.read(file);
         contract.expect(again.entries.size() == 2, "a second upsert replaces instead of duplicating");

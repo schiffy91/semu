@@ -87,7 +87,7 @@ class SemuChecker {
         if (system.theme.isEmpty()) { diagnostics.add(system.file, "es_de.theme", "missing"); }
         SemuRomTitles.check(system, diagnostics);  // how a ROM names the title id its mods are filed under
         for binding in system.bindingsFor(plan.platform) {
-            SemuEmulator emulator = model.emulator(binding.emulator);
+            SemuEmulator? emulator = model.emulator(binding.emulator);
             if (emulator == null) {
                 diagnostics.add(system.file, "emulators", "unknown emulator " + binding.emulator);
                 continue;
@@ -119,7 +119,7 @@ class SemuChecker {
         for extension in system.extensions {
             bool opened = false;
             for binding in system.bindingsFor(plan.platform) {
-                SemuEmulator emulator = model.emulator(binding.emulator);
+                SemuEmulator? emulator = model.emulator(binding.emulator);
                 if (emulator != null && SemuContent.opens(emulator, emulator.platform(plan.platform), binding.core, extension)) { opened = true; }
             }
             if (!opened) { diagnostics.add(system.file, "rom.extensions", f"{extension}: no emulator bound on {plan.platform} declares that it opens it"); }
@@ -181,14 +181,17 @@ class SemuChecker {
         if (compiler == null || !compiler.isObject()) { diagnostics.add(emulator.profileFile, "compiler", "must be an object"); }
     }
 
-    class bool check(SemuModel model, SemuPlan plan, SemuDiagnostics diagnostics) {
+    class bool check(SemuModel model, SemuPlan? plan, SemuDiagnostics diagnostics) {
         if (plan == null) { return false; }
         if (!plan.platform.equals("linux") && !plan.platform.equals("macos")) { diagnostics.add(plan.target.id, "platform", "only linux and macos targets are supported"); }
         if (plan.assetRoot.isEmpty()) { diagnostics.add(plan.target.id, "asset_root", "SEMU_ASSET_ROOT or --asset-root is required"); }
         if (plan.systems.isEmpty()) { diagnostics.add(plan.target.id, "systems", "no system serves this platform"); }
-        for systemId in plan.systems { SemuChecker.checkSystem(model, plan, model.system(systemId), diagnostics); }
+        for systemId in plan.systems {
+            SemuSystem? system = model.system(systemId);  // plan.systems came from the model
+            if (system != null) { SemuChecker.checkSystem(model, plan, system, diagnostics); }
+        }
         for emulatorId in plan.emulators {
-            SemuEmulator emulator = model.emulator(emulatorId);
+            SemuEmulator? emulator = model.emulator(emulatorId);
             if (emulator != null) { SemuChecker.checkEmulator(model, plan, emulator, diagnostics); }
         }
         SemuModDeclarations.checkLibrary(plan, diagnostics);

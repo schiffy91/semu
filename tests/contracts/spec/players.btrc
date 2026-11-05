@@ -33,7 +33,7 @@ class PlayersBed {  // a launch-like plan: the target, a system, settings, and a
     class SemuPlan plan(Fixture fixture, string target, string systemId, string settings, int pads) {
         SemuDiagnostics diagnostics = SemuDiagnostics();
         string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(fixture.scratch, "players-state") + "\",\"content_root\":\"" + PathTools.join(fixture.scratch, "content") + "\",\"mods\":\"" + PathTools.join(fixture.scratch, "mods") + "\"}" + (settings.isEmpty() ? "" : "," + settings) + "}";
-        SemuPlan plan = SemuResolver.plan(fixture.model, target, PathTools.join(fixture.scratch, "players-home"), fixture.plan.assetRoot, overlay, diagnostics);
+        SemuPlan plan = Fixture.resolved(fixture.model, target, PathTools.join(fixture.scratch, "players-home"), fixture.plan.assetRoot, overlay, diagnostics);
         plan.tokens.put("system", systemId);
         if (pads >= 0) { plan.pads = PlayersBed.pads(pads); }
         return plan;
@@ -41,7 +41,7 @@ class PlayersBed {  // a launch-like plan: the target, a system, settings, and a
 
     class string file(Fixture fixture, SemuPlan plan, string emulatorId, string relative) {  // one rendered profile file, "" when not rendered
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        for file in SemuProfiles.render(fixture.model, plan, fixture.model.emulator(emulatorId), diagnostics) {
+        for file in SemuProfiles.render(fixture.model, plan, fixture.emulatorOf(emulatorId), diagnostics) {
             if (file.path.equals(relative)) { return file.content; }
         }
         return "";
@@ -50,7 +50,7 @@ class PlayersBed {  // a launch-like plan: the target, a system, settings, and a
     class Vector<string> paths(Fixture fixture, SemuPlan plan, string emulatorId) {
         Vector<string> result = [];
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        for file in SemuProfiles.render(fixture.model, plan, fixture.model.emulator(emulatorId), diagnostics) { result.push(file.path); }
+        for file in SemuProfiles.render(fixture.model, plan, fixture.emulatorOf(emulatorId), diagnostics) { result.push(file.path); }
         return result;
     }
 
@@ -83,7 +83,7 @@ class PlayersRosterSpec {  // the roster's order, names and identities
         twinPads.push(SemuPadRoster.pad(6, "8BitDo Pro 2", 3, 0x2dc8, 0x6006, 0x0111, -1, noSlots, null));
         JSONValue twins = SemuPadRoster.order(twinPads);
         contract.expect(SemuJson.textAt(twins.at(0), "same_guid_index").equals("0") && SemuJson.textAt(twins.at(1), "same_guid_index").equals("1") && SemuJson.textAt(twins.at(1), "same_name_index").equals("1"), "two pads of one model share SDL's GUID: Cemu's <n>_<guid> counts them 0 and 1");
-        JSONValue sdlNames = SemuJson.get(Fixture("linux-desktop").plan.input.definition, "players.sdl_names");
+        JSONValue sdlNames = SemuJson.get(Fixture("linux-desktop").input().definition, "players.sdl_names");
         JSONValue renamed = SemuPadRoster.pad(8, "Microsoft X-Box 360 pad", 3, 0x045e, 0x028e, 0x0114, -1, noSlots, sdlNames);
         contract.expect(SemuJson.textAt(renamed, "name").equals("Xbox 360 Controller") && SemuJson.textAt(renamed, "evdev_name").equals("Microsoft X-Box 360 pad") && SemuJson.textAt(renamed, "guid").equals(SemuPadGuid.sdl(3, 0x045e, 0x028e, 0x0114, "Microsoft X-Box 360 pad")), "a pad SDL renames carries SDL's name (Dolphin's device name) and keeps the evdev name's GUID");
         contract.expect(SemuJson.textAt(SemuPadRoster.pad(9, "Sony Interactive Entertainment DualSense Wireless Controller", 3, 0x054c, 0x0ce6, 0x8111, -1, noSlots, sdlNames), "name").equals("PS5 Controller") && SemuJson.textAt(SemuPadRoster.pad(10, "8BitDo Pro 2", 3, 0x2dc8, 0x6006, 0x0111, -1, noSlots, sdlNames), "name").equals("8BitDo Pro 2"), "a DualSense is SDL's PS5 Controller; a pad SDL does not rename keeps its evdev name");
@@ -93,33 +93,33 @@ class PlayersRosterSpec {  // the roster's order, names and identities
 class PlayersRowsSpec {  // the rows: counts, pads dealt, identities per player
     class void run(Contract contract, Fixture fixture) {
         SemuPlan deck = PlayersBed.plan(fixture, "steam-deck", "wii", "", 4);
-        JSONValue rows = SemuPlayers.rows(deck, fixture.model.system("wii"), fixture.model.emulator("dolphin"));
+        JSONValue rows = SemuPlayers.rows(deck, fixture.systemOf("wii"), fixture.emulatorOf("dolphin"));
         contract.expect(rows.size() == 4, "a Wii game on Dolphin takes four players");
-        JSONValue device = SemuJson.get(deck.input.definition, "device_identities");
+        JSONValue device = SemuJson.get(Fixture.definitionOf(deck), "device_identities");
         bool first = true;
         for key in ["dolphin_pad", "cemu_uuid", "ryujinx_controller_id"] { first = first && SemuJson.textAt(rows.at(0), key).equals(SemuJson.textAt(device, key)); }
         contract.expect(first && SemuJson.textAt(rows.at(0), "dolphin_pointer").equals(SemuJson.textAt(device, "dolphin_pointer")) && SemuJson.textAt(rows.at(0), "dolphin_motion").equals(SemuJson.textAt(device, "dolphin_wiimote")), "player 1 on the first pad keeps the target's device identities, pointer and motion");
-        JSONValue templates = SemuJson.get(deck.input.definition, "players.identities");
+        JSONValue templates = SemuJson.get(Fixture.definitionOf(deck), "players.identities");
         bool consistent = true;
         for key in ["dolphin_pad", "cemu_uuid", "ryujinx_controller_id"] { consistent = consistent && SemuPlayers.fill(SemuJson.textAt(templates, key), rows.at(1), device).contains("${") == false; }
         JSONValue padZero = JSONValue.parse(rows.at(0).stringify());
-        SemuPlayers.padFields(padZero, deck.pads.at(0));
+        SemuPlayers.padFields(padZero, Fixture.padsOf(deck).at(0));
         for key in ["dolphin_pad", "cemu_uuid", "ryujinx_controller_id"] { consistent = consistent && SemuPlayers.fill(SemuJson.textAt(templates, key), padZero, device).equals(SemuJson.textAt(device, key)); }
         contract.expect(consistent, "the identity templates give Steam's pad 0 exactly the steam-deck device identities");
         contract.expect(SemuJson.textAt(rows.at(1), "dolphin_pad").equals("SDL/0/Xbox Series X Controller") && SemuJson.textAt(rows.at(2), "dolphin_pad").equals("SDL/1/Xbox Series X Controller") && SemuJson.textAt(rows.at(3), "dolphin_pad").equals("SDL/0/DualSense Wireless Controller"), "players 2-4 hold pads 2-4 under Dolphin's per-name numbering");
         contract.expect(SemuJson.textAt(rows.at(1), "ryujinx_controller_id").equals("1-00000003-28de-0000-ff11-000001000000") && SemuJson.textAt(rows.at(1), "cemu_uuid").equals("0_0300" + SemuPadGuid.word(SemuPadGuid.crc16("Microsoft X-Box 360 pad 1")) + "de280000ff11000001000000"), "player 2's Ryujinx id counts the same GUID, its Cemu uuid carries its own name CRC");
         contract.expect(SemuJson.textAt(rows.at(1), "dolphin_aim").equals("stick") && SemuJson.textAt(rows.at(1), "dolphin_pointer").equals("SDL/0/Xbox Series X Controller") && SemuJson.textAt(rows.at(0), "dolphin_aim").equals("pointer"), "player 1 aims with the pointer, the others with their own pad");
         SemuPlan saved = PlayersBed.plan(fixture, "steam-deck", "wii", "\"input\":{\"systems\":{\"wii\":{\"players\":{\"1\":{\"pad\":2},\"2\":{\"pad\":2,\"layout\":\"classic\"},\"3\":{\"pad\":-1}}}}}", 4);
-        JSONValue dealt = SemuPlayers.rows(saved, fixture.model.system("wii"), fixture.model.emulator("dolphin"));
+        JSONValue dealt = SemuPlayers.rows(saved, fixture.systemOf("wii"), fixture.emulatorOf("dolphin"));
         string pads = SemuJson.textAt(dealt.at(0), "pad") + "," + SemuJson.textAt(dealt.at(1), "pad") + "," + SemuJson.textAt(dealt.at(2), "pad") + "," + SemuJson.textAt(dealt.at(3), "pad");
         contract.expect(pads.equals("2,0,-1,1"), "saved pads win in player order, a taken one falls back to the lowest free pad, none stays none: " + pads);
         Vector<int> firstNone = SemuPlayers.assign(JSONValue.parse("{\"input\":{\"systems\":{\"wii\":{\"players\":{\"1\":{\"pad\":-1}}}}}}"), "wii", 2, 2);
         contract.expect(firstNone.get(0) == 0 && firstNone.get(1) == 1, "a saved player 1 without a pad is dealt the first pad anyway (player 1 always plays), and player 2 the next");
         contract.expect(SemuJson.textAt(dealt.at(1), "layout").equals("classic") && SemuJson.textAt(dealt.at(1), "extension").equals("Classic") && SemuJson.textAt(dealt.at(0), "layout").equals("nunchuk") && SemuJson.textAt(dealt.at(2), "connected").isEmpty() && SemuJson.textAt(dealt.at(2), "wiimote_source").equals("0"), "each player's layout row; a player without a pad has no Wii Remote");
         SemuPlan gba = PlayersBed.plan(fixture, "steam-deck", "gba", "", 4);
-        contract.expect(SemuPlayers.rows(gba, fixture.model.system("gba"), fixture.model.emulator("retroarch")).size() == 1 && SemuPlayers.rows(PlayersBed.plan(fixture, "steam-deck", "ps2", "", 4), fixture.model.system("ps2"), fixture.model.emulator("pcsx2")).size() == 2, "a single-player system is one slot; PS2 on PCSX2 two");
+        contract.expect(SemuPlayers.rows(gba, fixture.systemOf("gba"), fixture.emulatorOf("retroarch")).size() == 1 && SemuPlayers.rows(PlayersBed.plan(fixture, "steam-deck", "ps2", "", 4), fixture.systemOf("ps2"), fixture.emulatorOf("pcsx2")).size() == 2, "a single-player system is one slot; PS2 on PCSX2 two");
         SemuPlan macos = PlayersBed.plan(fixture, "steam-deck", "wii", "", -1);
-        JSONValue blind = SemuPlayers.rows(macos, fixture.model.system("wii"), fixture.model.emulator("dolphin"));
+        JSONValue blind = SemuPlayers.rows(macos, fixture.systemOf("wii"), fixture.emulatorOf("dolphin"));
         contract.expect(!SemuJson.textAt(blind.at(0), "connected").isEmpty() && SemuJson.textAt(blind.at(1), "connected").isEmpty() && SemuJson.textAt(blind.at(1), "assigned").isEmpty(), "without a roster player 1 holds the default pad and the others none");
     }
 }
@@ -166,7 +166,7 @@ class PlayersProfilesSpec {  // each emulator's per-player output
         contract.contains(PlayersBed.file(fixture, wiiu, "cemu", "config/Cemu/controllerProfiles/controller0.xml"), "<uuid>0_030079f6de280000ff11000001000000</uuid>", "Cemu: the GamePad keeps the Deck's uuid");
         contract.expect(PlayersBed.file(fixture, PlayersBed.plan(fixture, "steam-deck", "wiiu", "", 1), "cemu", "config/Cemu/controllerProfiles/controller1.xml").isEmpty(), "Cemu: no second pad, no controller1.xml");
         SemuPlan desktop = PlayersBed.plan(fixture, "linux-desktop", "wii", "", -1);
-        JSONValue sdlNames = SemuJson.get(desktop.input.definition, "players.sdl_names");
+        JSONValue sdlNames = SemuJson.get(Fixture.definitionOf(desktop), "players.sdl_names");
         Vector<string> noSlots = [];
         Vector<JSONValue> desktopPads = [];
         desktopPads.push(SemuPadRoster.pad(3, "8BitDo Pro 2", 3, 0x2dc8, 0x6006, 0x0111, -1, noSlots, sdlNames));
@@ -181,15 +181,15 @@ class PlayersProfilesSpec {  // each emulator's per-player output
 class PlayersIdentitySpec {  // a player's files name only that player's devices
     class void run(Contract contract, Fixture fixture) {
         SemuPlan wii = PlayersBed.plan(fixture, "steam-deck", "wii", "", 4);
-        JSONValue rows = SemuPlayers.rows(wii, fixture.model.system("wii"), fixture.model.emulator("dolphin"));
+        JSONValue rows = SemuPlayers.rows(wii, fixture.systemOf("wii"), fixture.emulatorOf("dolphin"));
         Vector<string> identities = [];
         for (int index = 0; index < rows.size(); index++) { identities.push(SemuJson.textAt(rows.at(index), "dolphin_pad")); }
-        string pointer = SemuJson.textAt(SemuJson.get(wii.input.definition, "device_identities"), "dolphin_pointer");
-        string motion = SemuJson.textAt(SemuJson.get(wii.input.definition, "device_identities"), "dolphin_wiimote");
+        string pointer = SemuJson.textAt(SemuJson.get(Fixture.definitionOf(wii), "device_identities"), "dolphin_pointer");
+        string motion = SemuJson.textAt(SemuJson.get(Fixture.definitionOf(wii), "device_identities"), "dolphin_wiimote");
         SemuDiagnostics diagnostics = SemuDiagnostics();
         int checked = 0;
         bool own = true;
-        for file in SemuProfiles.render(fixture.model, wii, fixture.model.emulator("dolphin"), diagnostics) {
+        for file in SemuProfiles.render(fixture.model, wii, fixture.emulatorOf("dolphin"), diagnostics) {
             if (!file.path.contains("Semu Layouts/P")) { continue; }
             int player = Strings.toInt(PathTools.basename(file.path).substring(1, 1));
             checked++;
@@ -215,38 +215,38 @@ class PlayersIdentitySpec {  // a player's files name only that player's devices
 class PlayersCheckerSpec {  // the checker refuses a layout no emulator row applies and presses too fast to count
     class void run(Contract contract, Fixture fixture) {
         Fixture broken = Fixture("steam-deck");
-        broken.model.emulator("dolphin").definition.get("controllers").set("press_ms", JSONValue.makeInt(10));
-        broken.model.emulator("dolphin").profile.get("controller_layouts").at(2).set("apply", JSONValue.makeString("soon"));
+        broken.emulatorOf("dolphin").definition.get("controllers").set("press_ms", JSONValue.makeInt(10));
+        broken.emulatorOf("dolphin").profile.get("controller_layouts").at(2).set("apply", JSONValue.makeString("soon"));
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuPlayersChecker.check(broken.model, broken.plan, broken.model.system("wii"), diagnostics);
+        SemuPlayersChecker.check(broken.model, broken.plan, broken.systemOf("wii"), diagnostics);
         string text = diagnostics.render();
         contract.expect(text.contains("controllers.press_ms") && text.contains("wii layout classic has no row"), "the checker names a press under 30 ms and a layout no row applies: " + text);
         SemuDiagnostics clean = SemuDiagnostics();
-        SemuPlayersChecker.check(fixture.model, fixture.plan, fixture.model.system("wii"), clean);
+        SemuPlayersChecker.check(fixture.model, fixture.plan, fixture.systemOf("wii"), clean);
         contract.expect(clean.ok(), "the shipped Wii layouts and Dolphin's switch pass: " + clean.render());
         Fixture thin = Fixture("steam-deck");
-        JSONValue hotkeys = thin.model.emulator("dolphin").profile.get("layout_hotkeys");
+        JSONValue hotkeys = thin.emulatorOf("dolphin").profile.get("layout_hotkeys");
         JSONValue fewer = JSONValue.makeArray();
         fewer.push(hotkeys.at(0));
         fewer.push(hotkeys.at(1));
-        thin.model.emulator("dolphin").profile.set("layout_hotkeys", fewer);
-        JSONValue controllers = thin.model.system("wii").definition.get("controllers");
+        thin.emulatorOf("dolphin").profile.set("layout_hotkeys", fewer);
+        JSONValue controllers = thin.systemOf("wii").definition.get("controllers");
         JSONValue single = JSONValue.makeArray();
         single.push(controllers.get("layouts").at(1));
         controllers.set("layouts", single);
         SemuDiagnostics thinner = SemuDiagnostics();
-        SemuPlayersChecker.check(thin.model, thin.plan, thin.model.system("wii"), thinner);
+        SemuPlayersChecker.check(thin.model, thin.plan, thin.systemOf("wii"), thinner);
         string refused = thinner.render();
         contract.expect(refused.contains("layout_hotkeys") && refused.contains("needs a key for each of the 4 players"), "the checker refuses fewer layout keys than players (players 3 and 4 could never switch): " + refused);
         contract.expect(refused.contains("controllers.layouts") && refused.contains("declare two or more layouts, or none"), "and a single layout, which has nothing to switch to: " + refused);
         Fixture unlinked = Fixture("steam-deck");
-        JSONValue links = unlinked.model.emulator("dolphin").profile.get("connection_hotkeys");
+        JSONValue links = unlinked.emulatorOf("dolphin").profile.get("connection_hotkeys");
         JSONValue three = JSONValue.makeArray();
         for (int index = 0; index < 3; index++) { three.push(links.at(index)); }
-        unlinked.model.emulator("dolphin").profile.set("connection_hotkeys", three);
-        unlinked.model.emulator("dolphin").profile.get("controller_layouts").at(1).set("connection", JSONValue.makeString("away"));
+        unlinked.emulatorOf("dolphin").profile.set("connection_hotkeys", three);
+        unlinked.emulatorOf("dolphin").profile.get("controller_layouts").at(1).set("connection", JSONValue.makeString("away"));
         SemuDiagnostics linkless = SemuDiagnostics();
-        SemuPlayersChecker.check(unlinked.model, unlinked.plan, unlinked.model.system("wii"), linkless);
+        SemuPlayersChecker.check(unlinked.model, unlinked.plan, unlinked.systemOf("wii"), linkless);
         string missing = linkless.render();
         contract.expect(missing.contains("connection_hotkeys") && missing.contains("needs a key for each of the 4 players") && missing.contains("wii layout nunchuk: connection is connected or disconnected"),
             "a layout that unlinks the Wii Remote (GameCube) needs every player's Connect key, and a link is connected or disconnected: " + missing);

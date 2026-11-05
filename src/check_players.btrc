@@ -20,12 +20,12 @@ class SemuPlayersChecker {
         if (layouts.size() == 1) { diagnostics.add(system.file, "controllers.layouts", "declare two or more layouts, or none"); }
         if (layouts.size() > 0 && SemuPlayers.layoutIndex(system, SemuJson.textAt(system.definition, "controllers.default")) < 0) { diagnostics.add(system.file, "controllers.default", "names no declared layout"); }
         for binding in system.bindingsFor(plan.platform) {
-            SemuEmulator emulator = model.emulator(binding.emulator);
+            SemuEmulator? emulator = model.emulator(binding.emulator);
             if (emulator == null || !SemuJson.get(emulator.profile, "controller_layouts").isArray()) { continue; }
             bool unlinks = false;
             for (int index = 0; index < layouts.size(); index++) {
                 string layout = SemuJson.textAt(layouts.at(index), "id");
-                JSONValue row = SemuPlayers.layoutRow(emulator, layout);
+                JSONValue? row = SemuPlayers.layoutRow(emulator, layout);
                 string apply = row == null ? "" : SemuJson.textAt(row, "apply");
                 if (!apply.equals("live") && !apply.equals("relaunch")) { diagnostics.add(emulator.profileFile, "controller_layouts", f"{system.id} layout {layout} has no row applied live or by relaunch"); }
                 string connection = row == null ? "" : SemuJson.textAt(row, "connection");

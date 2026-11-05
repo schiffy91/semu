@@ -19,7 +19,7 @@ import ../../../src/renderer/renderer_scanline_pitch.btrc;
 
 class CrtRuleSpec {
     class string defaultScreen(Fixture fixture, string systemId) {  // the default variant's screen asset, or "" without one
-        JSONValue shaders = fixture.model.system(systemId).shaders;
+        JSONValue shaders = fixture.systemOf(systemId).shaders;
         string chosen = SemuJson.textAt(shaders, "default_variant");
         JSONValue variants = shaders.get("variants");
         for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
@@ -57,7 +57,7 @@ class CrtRuleSpec {
             contract.expect(CrtRuleSpec.liquidCrystal(manifest.get("assets").get(screen)), system + " (a handheld) defaults to an LCD look: " + screen);
         }
         for system in high {
-            JSONValue shaders = fixture.model.system(system).shaders;
+            JSONValue shaders = fixture.systemOf(system).shaders;
             contract.expect(!SemuJson.boolAt(shaders, "enabled", true) && CrtRuleSpec.defaultScreen(fixture, system).isEmpty(), system + " (an HD console) draws no shader");
         }
     }

@@ -43,8 +43,8 @@ class LaunchSpecTools {
 
 class LaunchSpecQuitChord {  // pure state machine over synthetic evdev events
     class void run(Contract contract, Fixture fixture) {
-        Vector<string> configured = fixture.plan.input.quitChord();
-        int window = fixture.plan.input.chordWindowMs();
+        Vector<string> configured = fixture.input().quitChord();
+        int window = fixture.input().chordWindowMs();
         contract.expect(configured.size() == 2 && configured.contains("start") && configured.contains("select") && window == 250, "config/input declares Start+Select within 250 ms");
         struct SemuChordState chord;
         contract.expect(SemuQuitChord.configure(&chord, configured, window) && chord.count == 2, "the configured buttons become a chord");
@@ -155,7 +155,7 @@ class LaunchSpecSettings {  // malformed user files are reported and never repla
         contract.expect(FileSystem.readText(file).equals("{\"ui\": {\"theme\": "), "the malformed semu.json is left untouched");
         FileSystem.writeText(PathTools.join(home, "overrides/broken.json"), "[1, 2");
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuResolver.plan(fixture.model, "linux-desktop", home, fixture.plan.assetRoot, "", diagnostics);
+        Fixture.resolved(fixture.model, "linux-desktop", home, fixture.plan.assetRoot, "", diagnostics);
         contract.contains(diagnostics.render(), file + ": json", "a malformed semu.json is a diagnostic");
         contract.contains(diagnostics.render(), "overrides/broken.json: json", "a malformed override is a diagnostic");
         string fresh = PathTools.join(fixture.scratch, "launch-spec/fresh-home");
@@ -192,7 +192,7 @@ class LaunchSpecSettingsUi {  // controller modes come from config; the launcher
         string source = LaunchSpecTools.source(fixture, "src/emit/settings_ui.btrc");
         contract.lacks(source, "\"dolphin\"", "the settings UI names no emulator");
         contract.lacks(source, "input.systems.wii", "the settings UI names no system setting");
-        SemuSystem wii = fixture.model.system("wii");
+        SemuSystem wii = fixture.systemOf("wii");
         string setting = "input.systems.wii.players.1.layout";
         contract.expect(SemuJson.get(wii.definition, "controllers.layouts").size() == 4 && SemuJson.textAt(wii.definition, "controllers.default").equals("nunchuk"), "wii system.json declares its four controller layouts and the default");
         string document = SemuSettingsUi.document(fixture.model, fixture.plan).stringify();

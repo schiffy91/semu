@@ -98,7 +98,7 @@ class SemuSystem {
         return result;
     }
 
-    public SemuSystemBinding bindingFor(string platform, string emulator, string core) {
+    public SemuSystemBinding? bindingFor(string platform, string emulator, string core) {
         for binding in self.bindingsFor(platform) {
             if (binding.emulator.equals(emulator) && (core.isEmpty() || binding.core.equals(core))) { return binding; }
         }
@@ -307,13 +307,13 @@ class SemuModel {
         return model;
     }
 
-    public SemuTarget target(string identifier) { return self.targets.has(identifier) ? self.targets.get(identifier) : null; }
+    public SemuTarget? target(string identifier) { return self.targets.has(identifier) ? self.targets.get(identifier) : null; }
 
-    public SemuSystem system(string identifier) { return self.systems.has(identifier) ? self.systems.get(identifier) : null; }
+    public SemuSystem? system(string identifier) { return self.systems.has(identifier) ? self.systems.get(identifier) : null; }
 
-    public SemuEmulator emulator(string identifier) { return self.emulators.has(identifier) ? self.emulators.get(identifier) : null; }
+    public SemuEmulator? emulator(string identifier) { return self.emulators.has(identifier) ? self.emulators.get(identifier) : null; }
 
-    public SemuInput input(string identifier) { return self.inputs.has(identifier) ? self.inputs.get(identifier) : null; }
+    public SemuInput? input(string identifier) { return self.inputs.has(identifier) ? self.inputs.get(identifier) : null; }
 
     public Vector<string> systemIds() { return self.systems.keys().sorted(); }
 

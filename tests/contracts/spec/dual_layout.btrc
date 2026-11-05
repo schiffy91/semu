@@ -97,7 +97,7 @@ class DualLayoutSpecContract {
 
     class void check(Contract contract, Fixture fixture, string systemId, int layout, string package, int areaWidth, int areaHeight) {
         struct RendererCompositionGeometry geometry;
-        DualLayoutSpecContract.prepare(&geometry, fixture.model.system(systemId));
+        DualLayoutSpecContract.prepare(&geometry, fixture.systemOf(systemId));
         int frame = DualLayoutSpecContract.frameWidth(fixture, package, areaHeight);
         float gapFraction = DualLayoutSpecContract.gapFraction(fixture);
         int gap = (int)(gapFraction * (float)areaWidth + 0.5f);
@@ -134,7 +134,7 @@ class DualLayoutSpecContract {
         Vector<string> fields = Strings.split(row, "/");
         Vector<string> size = Strings.split(fields[2], "x");
         struct RendererCompositionGeometry geometry;
-        DualLayoutSpecContract.prepare(&geometry, fixture.model.system(fields[0]));
+        DualLayoutSpecContract.prepare(&geometry, fixture.systemOf(fields[0]));
         RendererLayout.computed(&geometry, DualLayoutSpecContract.code(fields[1]), Strings.toInt(size[0]), Strings.toInt(size[1]), 0, DualLayoutSpecContract.gapFraction(fixture));
         string main = DualLayoutSpecContract.text(&geometry.lanes[0]);
         string second = DualLayoutSpecContract.text(&geometry.lanes[1]);
@@ -147,8 +147,8 @@ class DualLayoutSpecContract {
         for systemId in ["nds", "n3ds"] {
             for variant in ["main_right", "main_left", "side_by_side", "stacked"] {
                 SemuDiagnostics diagnostics = SemuDiagnostics();
-                SemuPlan plan = SemuResolver.plan(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"visual\":{\"systems\":{\"" + systemId + "\":{\"bezel_variant\":\"" + variant + "\"}}}}", diagnostics);
-                Vector<string> environment = SemuRenderEnvironment.compile(plan, fixture.model.system(systemId), "retroarch", "/state/retroarch", diagnostics);
+                SemuPlan plan = Fixture.resolved(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, "{\"visual\":{\"systems\":{\"" + systemId + "\":{\"bezel_variant\":\"" + variant + "\"}}}}", diagnostics);
+                Vector<string> environment = SemuRenderEnvironment.compile(plan, fixture.systemOf(systemId), "retroarch", "/state/retroarch", diagnostics);
                 if (!environment.contains("SEMU_RENDER_LAYOUT=" + variant)) { drawn.push(systemId + ":" + variant + " is not the computed layout"); continue; }
                 checked++;
                 for line in environment {
@@ -184,14 +184,14 @@ class DualLayoutSpecContract {
         for row in rows { DualLayoutSpecContract.exact(contract, fixture, row); }
         struct RendererCompositionGeometry geometry;  // a package may still name a frame: it shrinks to the room the screens leave and never costs a step
         float gapFraction = DualLayoutSpecContract.gapFraction(fixture);
-        DualLayoutSpecContract.prepare(&geometry, fixture.model.system("nds"));
+        DualLayoutSpecContract.prepare(&geometry, fixture.systemOf("nds"));
         int drawn = RendererLayout.computed(&geometry, SEMU_LAYOUT_STACKED, 1280, 800, 24, gapFraction);
         contract.expect(DualLayoutSpecContract.step(&geometry.lanes[0]) == 2 && DualLayoutSpecContract.step(&geometry.lanes[1]) == 2 && drawn == 3,
             f"nds stacked on the Deck with a 24 px frame named: both screens 2x (768 px and the 20 px gap) with a {drawn} px frame: " + DualLayoutSpecContract.text(&geometry.lanes[0]));
         RendererLayout.computed(&geometry, SEMU_LAYOUT_MAIN_RIGHT, 1280, 800, 24, gapFraction);
         contract.expect(DualLayoutSpecContract.step(&geometry.lanes[0]) == 3 && DualLayoutSpecContract.step(&geometry.lanes[1]) == 1,
             "nds main_right on the Deck with a 24 px frame named: main 3x, second 1x: " + DualLayoutSpecContract.text(&geometry.lanes[1]));
-        DualLayoutSpecContract.prepare(&geometry, fixture.model.system("n3ds"));
+        DualLayoutSpecContract.prepare(&geometry, fixture.systemOf("n3ds"));
         RendererLayout.computed(&geometry, SEMU_LAYOUT_MAIN_LEFT, 1280, 800, 24, gapFraction);
         contract.expect(DualLayoutSpecContract.step(&geometry.lanes[0]) == 2 && DualLayoutSpecContract.step(&geometry.lanes[1]) == 1,
             "n3ds main_left on the Deck with a 24 px frame named: main 2x, the touch screen 1x: " + DualLayoutSpecContract.text(&geometry.lanes[1]));

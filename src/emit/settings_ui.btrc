@@ -78,7 +78,7 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
 
     class Vector<string> variantIds(JSONValue manifest) {
         Vector<string> result = [];
-        JSONValue variants = manifest == null ? null : manifest.get("variants");
+        JSONValue? variants = manifest == null ? null : manifest.get("variants");
         if (variants == null || !variants.isArray()) { return result; }
         for (int index = 0; index < variants.size(); index++) {
             string identifier = SemuJson.textAt(variants.at(index), "id");
@@ -97,7 +97,7 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         return result;
     }
 
-    class JSONValue systemPage(JSONValue settings, SemuSystem system) {  // null when the system has nothing to choose
+    class JSONValue? systemPage(JSONValue settings, SemuSystem system) {  // null when the system has nothing to choose
         Vector<string> shaders = SemuSettingsUi.variantIds(system.shaders);
         Vector<string> bezels = SemuSettingsUi.variantIds(system.bezels);
         if (shaders.isEmpty() && bezels.isEmpty()) { return null; }
@@ -132,7 +132,8 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
     class JSONValue controllerFields(SemuModel model, SemuPlan plan) {  // one choice per system declaring controller layouts: player 1's, as the radial and the menu save it
         JSONValue fields = JSONValue.makeArray();
         for systemId in plan.systems {
-            SemuSystem system = model.system(systemId);
+            SemuSystem? system = model.system(systemId);
+            if (system == null) { continue; }  // plan.systems came from the model
             JSONValue layouts = SemuJson.get(system.definition, "controllers.layouts");
             Vector<string> ids = [];
             for (int index = 0; layouts != null && layouts.isArray() && index < layouts.size(); index++) { ids.push(SemuJson.textAt(layouts.at(index), "id")); }
@@ -152,7 +153,8 @@ class SemuSettingsUi {  // the semu-settings-v2 document ES-DE renders as SEMU S
         visuals.push(SemuSettingsUi.boolean(settings, "visual.performance_overlay", "SPEED OVERLAY AND FRAME LOG", false));  // each emulator profile that binds it shows its speed and logs frame times
         JSONValue systems = JSONValue.makeArray();
         for systemId in plan.systems {
-            JSONValue page = SemuSettingsUi.systemPage(settings, model.system(systemId));
+            SemuSystem? system = model.system(systemId);
+            JSONValue? page = system == null ? null : SemuSettingsUi.systemPage(settings, system);
             if (page != null) { systems.push(page); }
         }
         JSONValue interfaceFields = JSONValue.makeArray();

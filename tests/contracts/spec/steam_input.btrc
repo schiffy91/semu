@@ -153,7 +153,7 @@ class SteamInputSpecVocabulary {  // Steam's chords and the supervisor's chords 
     class void run(Contract contract, Fixture fixture) {
         JSONValue root = SteamInputSpecFiles.definition(fixture);
         SteamInputDocument document = SteamInputDocument(root);
-        SemuInput input = fixture.plan.input;
+        SemuInput input = fixture.input();
         JSONValue actions = root.get("actions");
         for id in actions.keys() {
             contract.expect(document.chord(id).equals(input.chord(id)), "Steam and supervisor agree on the chord for " + id);

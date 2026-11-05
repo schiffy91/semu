@@ -36,10 +36,10 @@ class VisualCycleBed {  // a scratch nds launch: its own journal and semu.json, 
         FileSystem.mkdirp(launch.semuHome);
         if (!settings.isEmpty()) { FileSystem.writeText(PathTools.join(launch.semuHome, "semu.json"), settings); }
         SemuPlan plan = RenderVariantTools.plan(fixture, settings.isEmpty() ? "{}" : settings);
-        launch.variants = SemuRenderVariants.choose(plan, fixture.model.system("nds"));
+        launch.variants = SemuRenderVariants.choose(plan, fixture.systemOf("nds"));
         Vector<string> shown = launch.variants.shown();
-        launch.menuLabels = fixture.plan.input.menuItemsShown("label", shown);
-        launch.menuActions = fixture.plan.input.menuItemsShown("action", shown);
+        launch.menuLabels = fixture.input().menuItemsShown("label", shown);
+        launch.menuActions = fixture.input().menuItemsShown("action", shown);
         launch.menuDrawn = true;
         return launch;
     }
@@ -104,7 +104,7 @@ class VisualCycleNothing {  // Wii U (M14 item 5): no bezel and no shader to cho
     class void run(Contract contract, Fixture fixture) {
         SemuLaunchPlan wiiu = VisualCycleBed.launch(fixture, "nothing-wiiu", "");
         wiiu.system = "wiiu";
-        wiiu.variants = SemuRenderVariants.write(fixture.plan, fixture.model.system("wiiu"), "cemu", wiiu.stateDir);  // as the launch plan writes it
+        wiiu.variants = SemuRenderVariants.write(fixture.plan, fixture.systemOf("wiiu"), "cemu", wiiu.stateDir);  // as the launch plan writes it
         contract.expect(wiiu.variants.written && !wiiu.variants.bezel.available() && !wiiu.variants.shader.available(), "wiiu's launch writes its variants file, with no bezel and no shader to choose");
         bool bezelsBefore = wiiu.bezelsOn;
         bool shadersBefore = wiiu.shadersOn;
@@ -184,9 +184,9 @@ class VisualCycleSeam {  // Ctrl, Shift, B as XI raw keys through one real pollD
 
 class VisualCycleToasts {  // input.json's toast templates reach the renderer; the composer fills and cuts them
     class void run(Contract contract, Fixture fixture) {
-        string toasts = fixture.plan.input.toasts();
+        string toasts = fixture.input().toasts();
         for action in ["state.save", "state.load", "state.next", "state.prev", "ui.screenshot", "visual.bezel.next", "visual.shader.next"] {
-            string pattern = SemuJson.textAt(fixture.plan.input.definition.get("actions").get(action), "toast");
+            string pattern = SemuJson.textAt(fixture.input().definition.get("actions").get(action), "toast");
             bool clean = !pattern.isEmpty() && !pattern.contains("|") && pattern.replace("{slot}", "").replace("{label}", "").indexOf("{") < 0;
             contract.expect(clean && toasts.contains(action + "=" + pattern), "toasts: " + action + " declares a template with only {slot} and {label}: " + pattern);
         }

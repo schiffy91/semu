@@ -62,7 +62,7 @@ class ShaderEdgeSpecLooks {  // the handheld looks: every shader variant of the 
     class Vector<JSONValue> variants(Fixture fixture) {
         Vector<JSONValue> found = [];
         for systemId in ["gb", "gbc", "gba", "nds", "n3ds"] {
-            JSONValue variants = fixture.model.system(systemId).shaders.get("variants");
+            JSONValue variants = fixture.systemOf(systemId).shaders.get("variants");
             for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) { found.push(variants.at(index)); }
         }
         return found;

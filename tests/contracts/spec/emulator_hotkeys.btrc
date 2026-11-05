@@ -42,7 +42,7 @@ class EmulatorHotkeyTools {
     class Vector<string> steamChords(Fixture fixture) {  // every chord a Steam Input binding of the Deck sends: hotkeys, every radial and centre, the layers
         JSONValue root = SemuJson.readFile(PathTools.join(fixture.project, "config/input/steam/steam_input.json"));
         Vector<string> chords = [];
-        for action in SteamInputDocument(root).boundActions() { chords.push(fixture.plan.input.chord(action)); }
+        for action in SteamInputDocument(root).boundActions() { chords.push(fixture.input().chord(action)); }
         return chords;
     }
 }
@@ -50,7 +50,7 @@ class EmulatorHotkeyTools {
 class EmulatorHotkeyOwnership {  // ui.menu*, visual.* and (where the supervisor quits) app.quit are Semu's
     class void run(Contract contract, Fixture fixture) {
         for emulatorId in EmulatorHotkeyTools.emulators() {
-            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            SemuEmulator emulator = fixture.emulatorOf(emulatorId);
             for action in emulator.actions {
                 contract.expect(!SemuActionRouter.semuOwned(action) || action.equals("app.quit"), emulatorId + " declares no Semu-owned action but quit: " + action);
             }
@@ -70,10 +70,10 @@ class EmulatorHotkeyOwnership {  // ui.menu*, visual.* and (where the supervisor
 
 class EmulatorHotkeyDefaults {  // a native default that shares a Semu chord is blanked, or never applies
     class void azahar(Contract contract, Fixture fixture, string target) {  // no [UI] shortcut but Semu's binds a Semu chord, and every colliding default is written empty
-        SemuEmulator emulator = fixture.model.emulator("azahar");
+        SemuEmulator emulator = fixture.emulatorOf("azahar");
         string main = fixture.profile("azahar", "config/azahar-emu/qt-config.ini");
         Vector<string> own = SemuKeyCollisions.settings(SemuJson.get(emulator.profile, "hotkeys.keymap"), fixture.plan.platform, emulator.actions);
-        Vector<string> chords = SemuChords.keys(fixture.plan.input.definition, SemuJson.get(emulator.profile, "compiler.line_groups.keymap_hotkeys.chord_encoding"));
+        Vector<string> chords = SemuChords.keys(fixture.input().definition, SemuJson.get(emulator.profile, "compiler.line_groups.keymap_hotkeys.chord_encoding"));
         int bound = 0;
         for line in Strings.split(main, "\n") {
             int separator = line.indexOf("\\KeySeq=");
@@ -112,7 +112,7 @@ class EmulatorHotkeyDefaults {  // a native default that shares a Semu chord is 
             EmulatorHotkeyDefaults.azahar(contract, fixture, target);
             for emulatorId in EmulatorHotkeyTools.emulators() {
                 if (emulatorId.equals("retroarch")) { continue; }  // RetroArch's keyboard defaults: retroarch_keyboard.btrc
-                JSONValue shortcuts = SemuJson.get(fixture.model.emulator(emulatorId).profile, "native_shortcuts");
+                JSONValue shortcuts = SemuJson.get(fixture.emulatorOf(emulatorId).profile, "native_shortcuts");
                 string label = target + " " + emulatorId;
                 contract.expect(shortcuts.isObject() && !SemuJson.textAt(shortcuts, "source").isEmpty() && !SemuJson.textAt(shortcuts, "why").isEmpty() && SemuJson.get(shortcuts, "fallback").isBool(), label + " declares its native shortcuts with their pinned source");
                 if (SemuJson.boolAt(shortcuts, "fallback", true)) {
@@ -132,14 +132,14 @@ class EmulatorHotkeyFixed {  // compiled-in shortcuts: the same action as the Se
         Vector<string> steam = EmulatorHotkeyTools.steamChords(fixture);
         contract.expect(!steam.contains("Esc") && steam.contains("Ctrl+Backspace"), "no Steam binding sends Esc; the hotkey set's R3 is Menu Back");
         for emulatorId in EmulatorHotkeyTools.emulators() {
-            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            SemuEmulator emulator = fixture.emulatorOf(emulatorId);
             JSONValue fixed = SemuJson.get(emulator.profile, "native_shortcuts.fixed");
             Vector<string> fixedKeys = [];
             for (int index = 0; fixed.isArray() && index < fixed.size(); index++) {
                 JSONValue row = fixed.at(index);
                 string key = SemuJson.textAt(row, "key");
                 fixedKeys.push(key + "=" + SemuJson.textAt(row, "action"));
-                string chordAction = EmulatorHotkeyTools.actionFor(fixture.plan.input, key);
+                string chordAction = EmulatorHotkeyTools.actionFor(fixture.input(), key);
                 if (chordAction.isEmpty()) { continue; }
                 bool same = SemuJson.textAt(row, "action").equals(chordAction);
                 bool accepted = !SemuJson.textAt(row, "accepted").isEmpty() && !steam.contains(key);
@@ -160,7 +160,7 @@ class EmulatorHotkeyFixed {  // compiled-in shortcuts: the same action as the Se
 
 class EmulatorHotkeyQuoting {  // QSettings reads an unquoted comma value as a list, which Azahar sees as empty
     class void run(Contract contract, Fixture fixture) {
-        JSONValue encoding = SemuJson.get(fixture.model.emulator("azahar").profile, "compiler.line_groups.keymap_hotkeys.chord_encoding");
+        JSONValue encoding = SemuJson.get(fixture.emulatorOf("azahar").profile, "compiler.line_groups.keymap_hotkeys.chord_encoding");
         contract.expect(SemuJson.boolAt(encoding, "quote_commas", false) && SemuChords.compile(encoding, "Ctrl+Enter").equals("Ctrl+Return") && SemuChords.compile(encoding, "Ctrl++").equals("Ctrl++"), "azahar keymap values are Qt portable text (the main Enter key is Return), quoted when they hold a comma");
         contract.expect(SemuChords.compile(encoding, "Ctrl+,").equals("\"Ctrl+,\"") && SemuChords.bare(encoding, "Ctrl+,").equals("Ctrl+,"), "a comma chord is written quoted and compared bare");
         contract.expect(SemuChords.compile(encoding, "Ctrl+S").equals("Ctrl+S"), "a chord without a comma stays unquoted");

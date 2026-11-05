@@ -16,7 +16,7 @@ import ./emulator_hotkeys.btrc;
 
 class EmulatorKeyboardTools {
     class Vector<string> finals(Fixture fixture, string emulatorId, string group) {  // the key each Steam-bound chord ends on, as EMULATOR_ID names keys
-        JSONValue encoding = SemuJson.get(fixture.model.emulator(emulatorId).profile, "compiler.line_groups." + group + ".chord_encoding");
+        JSONValue encoding = SemuJson.get(fixture.emulatorOf(emulatorId).profile, "compiler.line_groups." + group + ".chord_encoding");
         Vector<string> result = [];
         for chord in EmulatorHotkeyTools.steamChords(fixture) {
             string key = SemuChords.finalKey(encoding, chord);
@@ -39,7 +39,7 @@ class EmulatorKeyboardTools {
 class EmulatorKeyboardPcsx2 {  // a pad button's Keyboard/<key> alternate never shares a key with a Steam chord
     class void run(Contract contract, Fixture fixture, string target) {
         Vector<string> finals = EmulatorKeyboardTools.finals(fixture, "pcsx2", "keymap_hotkeys");
-        JSONValue input = fixture.plan.input.definition;
+        JSONValue input = fixture.input().definition;
         contract.expect(SemuChords.taken(input, "A") && SemuChords.taken(input, "Return") && SemuChords.taken(input, "backspace") && !SemuChords.taken(input, "KP_Enter") && !SemuChords.taken(input, "I"), target + ": a key is taken when a config/input chord ends on it, Return being Enter; keypad Enter and I are free");
         contract.expect(finals.contains("Keyboard/A") && finals.contains("Keyboard/X") && finals.contains("Keyboard/Up") && finals.contains("Keyboard/Return"), target + ": pcsx2 spells the Steam chords' keys Keyboard/A, Keyboard/X, Keyboard/Up, Keyboard/Return");
         for file in ["config/PCSX2/inis/PCSX2.ini", "config/PCSX2/inputprofiles/Steam Deck.ini"] {
@@ -105,7 +105,7 @@ class EmulatorKeyboardDolphin {  // every control resolves on its device; a keyb
     }
 
     class void file(Contract contract, Fixture fixture, string target, string relative, bool game, Vector<string> finals) {
-        JSONValue controls = SemuJson.get(fixture.model.emulator("dolphin").profile, "native_controls");
+        JSONValue controls = SemuJson.get(fixture.emulatorOf("dolphin").profile, "native_controls");
         string device = "";
         for line in Strings.split(fixture.profile("dolphin", relative), "\n") {
             string name = EmulatorKeyboardTools.name(line);
@@ -169,7 +169,7 @@ class EmulatorKeyboardGrips {  // the Deck's grips switch Steam presets; no emul
         contract.expect(held.size() == 4
 , "the default Deck template holds a preset on all four grips: " + held.join(" "));
         for emulatorId in EmulatorHotkeyTools.emulators() {
-            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            SemuEmulator emulator = fixture.emulatorOf(emulatorId);
             for file in SemuProfiles.render(fixture.model, fixture.plan, emulator, fixture.diagnostics) {
                 for name in held {
                     contract.expect(!file.content.contains("`" + name + "`") && !file.content.contains(":" + name + "`"), "steam-deck " + emulatorId + " " + file.path + " reads the grip " + name + ", which Steam keeps for a preset");

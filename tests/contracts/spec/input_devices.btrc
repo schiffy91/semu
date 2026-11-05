@@ -42,7 +42,7 @@ class InputDevicesTools {
 
 class InputDevicesAdopt {  // the face layout, routing source and dedupe identity come from classify()'s answers
     class void run(Contract contract, Fixture fixture) {
-        Vector<string> layouts = SemuJson.strings(SemuJson.get(fixture.plan.input.definition, "gamepad_chords.xpad_layout_ids"));
+        Vector<string> layouts = SemuJson.strings(SemuJson.get(fixture.input().definition, "gamepad_chords.xpad_layout_ids"));
         InputDeliveryTools.fresh();
         SemuInputDevices.adopt(0, -1, 1, 0, 0x28de, 0x11ff, "/dev/input/event90", layouts);
         SemuInputDevices.adopt(1, -1, 1, 0, 0x28de, 0x1205, "/dev/input/event91", layouts);
@@ -70,7 +70,7 @@ class InputDevicesIgnore {  // the pads Steam virtualises reach the game only as
         contract.expect(SemuSdlIgnore.identities("0x28DE").isEmpty() && SemuSdlIgnore.identities("").isEmpty(), "a vendor without its product names nothing");
         contract.expect(SemuSdlIgnore.ignored(0x054c, 0x0ce6, steamList, "") && !SemuSdlIgnore.ignored(0x28de, 0x11ff, steamList, ""), "the DualSense Steam virtualises is ignored; Steam's virtual pad is not");
         contract.expect(SemuSdlIgnore.ignored(0x054c, 0x0ce6, "", "0x28DE/0x11FF") && !SemuSdlIgnore.ignored(0x28de, 0x11ff, steamList, "0x28DE/0x11FF"), "an _EXCEPT list ignores every pad it does not name, as SDL does");
-        Vector<string> layouts = SemuJson.strings(SemuJson.get(fixture.plan.input.definition, "gamepad_chords.xpad_layout_ids"));
+        Vector<string> layouts = SemuJson.strings(SemuJson.get(fixture.input().definition, "gamepad_chords.xpad_layout_ids"));
         SemuLaunchPlan launch = InputDeliveryTools.launch(PathTools.join(fixture.scratch, "devices/ignore"), InputDeliveryTools.none(), InputDeliveryTools.none());
         launch.xpadLayoutIds = layouts;
         InputDeliveryTools.fresh();
@@ -94,7 +94,7 @@ class InputDevicesTwoPads {  // a physical PlayStation pad and Steam's copy of i
     class void press(int writer, int code) { MenuModalTools.key(writer, code, 1); }
 
     class void run(Contract contract, Fixture fixture) {
-        Vector<string> layouts = SemuJson.strings(SemuJson.get(fixture.plan.input.definition, "gamepad_chords.xpad_layout_ids"));
+        Vector<string> layouts = SemuJson.strings(SemuJson.get(fixture.input().definition, "gamepad_chords.xpad_layout_ids"));
         string journal = PathTools.join(fixture.scratch, "devices/two-pads");
         InputDeliveryTools.fresh();
         SemuLaunchPlan launch = MenuModalTools.launch(journal);

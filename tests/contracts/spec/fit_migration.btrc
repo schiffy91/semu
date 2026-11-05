@@ -25,9 +25,9 @@ class FitMigrationSpecTools {
 
     class string states(Fixture fixture, string home) {  // each system's Fit state as a launch resolves it: "wii=...,gc=...,ps2=...,dreamcast=...,psx=...,n64=..."
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        SemuPlan plan = SemuResolver.plan(fixture.model, "steam-deck", home, fixture.plan.assetRoot, "", diagnostics);
+        SemuPlan plan = Fixture.resolved(fixture.model, "steam-deck", home, fixture.plan.assetRoot, "", diagnostics);
         Vector<string> parts = [];
-        for system in ["wii", "gc", "ps2", "dreamcast", "psx", "n64"] { parts.push(system + "=" + SemuFitStates.current(plan.settings, fixture.model.system(system))); }
+        for system in ["wii", "gc", "ps2", "dreamcast", "psx", "n64"] { parts.push(system + "=" + SemuFitStates.current(plan.settings, fixture.systemOf(system))); }
         return parts.join(",");
     }
 }

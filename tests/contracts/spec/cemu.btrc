@@ -110,14 +110,14 @@ class CemuSpecContract {
     }
 
     class void declarativeContract(Contract contract, Fixture fixture) {
-        SemuEmulator cemu = fixture.model.emulator("cemu");
+        SemuEmulator cemu = fixture.emulatorOf("cemu");
         JSONValue linux = cemu.platform("linux");
         contract.expect(SemuJson.textAt(linux, "executable").equals("${asset_root}/bin/Cemu"), "cemu runs the bundled executable");
         contract.expect(SemuJson.strings(linux.get("args")).join(" ").equals("-f -m ${state_root}/data/Cemu/mlc01 -g"), "cemu args are -f, -m <owned mlc01>, -g");
         contract.expect(!cemu.supports("macos"), "cemu declares no macOS slice");
         contract.expect(SemuJson.textAt(linux, "state.config_home").equals("xdg") && SemuJson.textAt(linux, "state.data_home").equals("xdg"), "cemu config and data follow XDG");
         contract.expect(SemuJson.textAt(linux, "state.config_subdir").equals("Cemu") && SemuJson.textAt(linux, "state.data_subdir").equals("Cemu"), "cemu XDG subdirectories are Cemu");
-        SemuSystem wiiu = fixture.model.system("wiiu");
+        SemuSystem wiiu = fixture.systemOf("wiiu");
         contract.expect(SemuJson.strings(SemuJson.get(wiiu.definition, "rom.extensions")).join(" ").equals(".rpx .wua .wud .wux"), "wiiu ROM extensions are exact");
         contract.expect(wiiu.bindingFor("linux", "cemu", "") != null && wiiu.bindingFor("macos", "cemu", "") == null, "wiiu binds cemu on linux only");
         JSONValue seeds = SemuJson.get(linux, "state.seeds");
@@ -132,13 +132,13 @@ class CemuSpecContract {
     }
 
     class void actionContract(Contract contract, Fixture fixture) {
-        SemuEmulator cemu = fixture.model.emulator("cemu");
+        SemuEmulator cemu = fixture.emulatorOf("cemu");
         contract.expect(cemu.actions.join(" ").equals("app.quit screen.swap"), "cemu declares exactly quit and swap");
         contract.expect(CemuSpecContract.hasAction(cemu.profile, "native", "app.quit", "Ctrl+Q"), "cemu quits natively on Ctrl+Q");
         contract.expect(CemuSpecContract.hasAction(cemu.profile, "native", "screen.swap", "Ctrl+Tab"), "cemu swaps TV and GamePad on Ctrl+Tab");
         contract.expect(CemuSpecContract.hasAction(cemu.profile, "unsupported", "state.save", ""), "cemu declares save state unsupported");
         contract.expect(CemuSpecContract.hasAction(cemu.profile, "unsupported", "state.load", ""), "cemu declares load state unsupported");
-        contract.expect(fixture.plan.input.chord("app.quit").equals("Ctrl+Q") && fixture.plan.input.chord("screen.swap").equals("Ctrl+Tab"), "the target sends the chords cemu consumes");
+        contract.expect(fixture.input().chord("app.quit").equals("Ctrl+Q") && fixture.input().chord("screen.swap").equals("Ctrl+Tab"), "the target sends the chords cemu consumes");
         JSONValue mappings = SemuJson.get(cemu.profile, "controller.mappings");
         Vector<string> rows = [];
         bool unbound = true;
@@ -165,7 +165,7 @@ class CemuSpecContract {
         Fixture fixture = Fixture(target);
         string controller = fixture.profile("cemu", "config/Cemu/controllerProfiles/controller0.xml");
         string settings = fixture.profile("cemu", "config/Cemu/settings.xml");
-        JSONValue identities = SemuJson.get(fixture.plan.input.definition, "device_identities");
+        JSONValue identities = SemuJson.get(fixture.input().definition, "device_identities");
         string guid = SemuJson.textAt(identities, "azahar_controller_guid");
         string uuid = SemuJson.textAt(identities, "cemu_uuid");
         contract.expect(CemuSpecText.lowerHex(guid) && uuid.equals("0_" + guid), target + " cemu UUID is 0_<target pad SDL GUID>: " + uuid);

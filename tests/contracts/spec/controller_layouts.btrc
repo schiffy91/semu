@@ -45,7 +45,7 @@ class LayoutsBed {  // a Wii launch on Dolphin with PADS pads: profiles written 
         SemuPlan plan = PlayersBed.plan(fixture, "steam-deck", systemId, "", pads);
         string root = PathTools.join(fixture.scratch, "layouts/" + name);
         plan.stateRootPath = PathTools.join(root, "state");
-        SemuEmulator emulator = fixture.model.emulator(emulatorId);
+        SemuEmulator emulator = fixture.emulatorOf(emulatorId);
         string stateRoot = PathTools.join(plan.stateRoot(), emulatorId);
         plan.tokens.put("state_root", stateRoot);
         SemuDiagnostics diagnostics = SemuDiagnostics();
@@ -56,8 +56,8 @@ class LayoutsBed {  // a Wii launch on Dolphin with PADS pads: profiles written 
         launch.emulator = emulatorId;
         launch.semuHome = PathTools.join(root, "home");
         FileSystem.mkdirp(launch.semuHome);
-        launch.players = SemuPlayerSets.from(plan, fixture.model.system(systemId), emulator);
-        launch.variants = SemuRenderVariants.choose(plan, fixture.model.system(systemId));
+        launch.players = SemuPlayerSets.from(plan, fixture.systemOf(systemId), emulator);
+        launch.variants = SemuRenderVariants.choose(plan, fixture.systemOf(systemId));
         SemuLauncher.inputContracts(launch, plan, emulator.platform(plan.platform), launch.stateDir, emulator);
         launch.stateDir = PathTools.join(root, "journal");
         launch.semuHome = PathTools.join(root, "home");
@@ -281,9 +281,9 @@ class LayoutsRendererSpec {  // the renderer draws the page from the file and na
         FileSystem.mkdirp(state);
         FileSystem.writeText(PathTools.join(state, "semu-render-players.txt"), "P1  PAD 1  NUNCHUK\nP2  NO PAD\nRESTART GAME\nBACK\n");
         setenv("SEMU_RENDER_STATE_DIR", state, 1);
-        setenv("SEMU_MENU_ITEMS", fixture.plan.input.menuItems("label").join("|"), 1);
-        setenv("SEMU_MENU_ACTIONS", fixture.plan.input.menuItems("action").join("|"), 1);
-        setenv("SEMU_MENU_TOASTS", fixture.plan.input.toasts(), 1);
+        setenv("SEMU_MENU_ITEMS", fixture.input().menuItems("label").join("|"), 1);
+        setenv("SEMU_MENU_ACTIONS", fixture.input().menuItems("action").join("|"), 1);
+        setenv("SEMU_MENU_TOASTS", fixture.input().toasts(), 1);
         setenv("SEMU_MENU_LAYOUTS", "WII REMOTE|NUNCHUK|CLASSIC|GAMECUBE", 1);
         setenv("SEMU_MENU_LAYOUT", "1", 1);
         struct RendererPostUiState ui;

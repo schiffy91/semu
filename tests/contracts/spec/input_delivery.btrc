@@ -168,7 +168,7 @@ class InputDeliveryChords {  // a chord fires on its own key with exactly its mo
 
 class InputDeliveryFaces {  // Steam's virtual pad and Microsoft pads report the top face button as BTN_WEST
     class void run(Contract contract, Fixture fixture) {
-        Vector<string> identities = SemuJson.strings(SemuJson.get(fixture.plan.input.definition, "gamepad_chords.xpad_layout_ids"));
+        Vector<string> identities = SemuJson.strings(SemuJson.get(fixture.input().definition, "gamepad_chords.xpad_layout_ids"));
         contract.expect(SemuFaceLayout.swapped(0x28de, 0x11ff, identities), "Steam's virtual pad 28de:11ff is xpad-ordered");
         contract.expect(SemuFaceLayout.swapped(0x045e, 0x02ea, identities) && SemuFaceLayout.swapped(0x045e, 0x0b12, identities), "every Microsoft pad is xpad-ordered");
         contract.expect(!SemuFaceLayout.swapped(0x28de, 0x1205, identities) && !SemuFaceLayout.swapped(0x5345, 0x4d55, identities), "the Deck's own controller and Semu's test pad are positional");

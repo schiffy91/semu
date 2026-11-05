@@ -44,7 +44,7 @@ class SemuRenderLayers {  // the package's layer stack for the compositor: file,
     }
 
     class string tint(JSONValue recolor, string layerId) {  // r,g,b,brightness when the package recolors this layer, else "-"
-        JSONValue targets = recolor == null || !recolor.isObject() ? null : recolor.get("layers");
+        JSONValue? targets = recolor == null || !recolor.isObject() ? null : recolor.get("layers");
         if (targets == null || !targets.isArray()) { return "-"; }
         for (int index = 0; index < targets.size(); index++) {
             JSONValue target = targets.at(index);
@@ -134,7 +134,7 @@ class SemuBezelPackage {  // config/bezels/<id>/bezel.json: art, background, lay
     class bool computed(JSONValue package) { return !SemuBezelPackage.layout(package).equals("fixed"); }
 
     class JSONValue screen(JSONValue package, string id) {
-        JSONValue screens = package == null ? null : package.get("screens");
+        JSONValue? screens = package == null ? null : package.get("screens");
         if (screens == null || !screens.isArray()) { return JSONValue.makeNull(); }
         for (int index = 0; index < screens.size(); index++) {
             if (SemuJson.textAt(screens.at(index), "id").equals(id)) { return screens.at(index); }
@@ -169,7 +169,7 @@ class SemuRenderEnvironment {
 
     public void set(string name, string value) { if (!value.isEmpty()) { self.entries.push(name + "=" + value); } }
 
-    class string number(JSONValue value) {  // shortest round-trip text: 0.04, not 0.040000000000000001
+    class string number(JSONValue? value) {  // shortest round-trip text: 0.04, not 0.040000000000000001
         if (value == null || !value.isNumber()) { return ""; }
         double parsed = atof(value.stringify());
         char* buffer = (char*)malloc(32);
@@ -252,7 +252,7 @@ class SemuRenderEnvironment {
 
     class string bulge(JSONValue screen) {  // bx,by: how far the side and the top/bottom edges bow outward, as fractions of the opening's half width and half height
         JSONValue shape = screen.get("shape");
-        JSONValue bulge = shape == null || !shape.isObject() ? null : shape.get("bulge");
+        JSONValue? bulge = shape == null || !shape.isObject() ? null : shape.get("bulge");
         JSONValue tube = screen.get("tube");
         if (bulge == null || !bulge.isObject() || tube == null || !tube.isObject()) { return ""; }
         double w = atof(SemuRenderEnvironment.numberOr(tube, "w", "0"));
@@ -283,7 +283,7 @@ class SemuRenderEnvironment {
     }
 
     class JSONValue findVariant(JSONValue manifest, string id) {
-        JSONValue variants = manifest == null ? null : manifest.get("variants");
+        JSONValue? variants = manifest == null ? null : manifest.get("variants");
         if (variants == null || !variants.isArray()) { return JSONValue.makeNull(); }
         for (int index = 0; index < variants.size(); index++) {
             if (SemuJson.textAt(variants.at(index), "id").equals(id)) { return variants.at(index); }
@@ -392,7 +392,7 @@ class SemuRenderEnvironment {
     class Vector<string> screenIds(SemuSystem system) {
         Vector<string> ids = [];
         JSONValue display = system.definition.get("display");
-        JSONValue screens = display == null ? null : display.get("screens");
+        JSONValue? screens = display == null ? null : display.get("screens");
         if (screens == null || !screens.isArray()) { return ids; }
         for (int index = 0; index < screens.size(); index++) { ids.push(SemuJson.textAt(screens.at(index), "id")); }
         return ids;
@@ -400,7 +400,7 @@ class SemuRenderEnvironment {
 
     class string screenShader(SemuPlan plan, SemuSystem system, string shaderId, string screenId) {  // shaders.json variants may name a preset per screen
         JSONValue variant = SemuRenderEnvironment.findVariant(system.shaders, shaderId);
-        JSONValue screens = variant.isObject() ? variant.get("screens") : null;
+        JSONValue? screens = variant.isObject() ? variant.get("screens") : null;
         if (screens == null || !screens.isObject() || !screens.has(screenId)) { return ""; }
         return SemuRenderAssets.shader(plan, SemuJson.text(screens.get(screenId)));
     }
@@ -443,7 +443,7 @@ class SemuRenderEnvironment {
 
     class void surfaces(SemuRenderEnvironment env, SemuSystem system, SemuDiagnostics diagnostics) {
         JSONValue display = system.definition.get("display");
-        JSONValue screens = display == null ? null : display.get("screens");
+        JSONValue? screens = display == null ? null : display.get("screens");
         if (screens == null || !screens.isArray() || screens.size() < 1 || screens.size() > 2) {
             diagnostics.add(system.file, "display.screens", "renderer needs one or two declared screens");
             return;

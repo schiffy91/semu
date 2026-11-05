@@ -41,7 +41,7 @@ class GameBoyFitScreen {  // one package placed on one screen, as RendererGeomet
         Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, variantId);
         struct RendererVariantConfig variant;
         PlacementSpecGeometry.load(environment, &variant);
-        JSONValue native = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0.native");
+        JSONValue native = SemuJson.get(fixture.systemOf(systemId).definition, "display.screens.0.native");
         int nativeWidth = SemuJson.intAt(native, "w", 1);
         int nativeHeight = SemuJson.intAt(native, "h", 1);
         float shown = PlacementSpecGeometry.aspect(environment, nativeWidth, nativeHeight);
@@ -195,8 +195,8 @@ class GameBoyFitSpecContract {
             for (int size = 0; size < 2; size++) {
                 string display = size == 0 ? "" : "\"display\":{\"width\":1920,\"height\":1080},";
                 string overlay = "{\"visual\":{" + display + "\"systems\":{\"" + systems[index] + "\":{\"placement\":\"bezel\",\"bezel_variant\":\"" + variants[index] + "\"}}}}";
-                SemuPlan plan = SemuResolver.plan(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, overlay, SemuDiagnostics());
-                int composed = SemuComposedScale.of(plan, fixture.model.system(systems[index]), emulators[index]);
+                SemuPlan plan = Fixture.resolved(fixture.model, "steam-deck", fixture.plan.semuHome, fixture.plan.assetRoot, overlay, SemuDiagnostics());
+                int composed = SemuComposedScale.of(plan, fixture.systemOf(systems[index]), emulators[index]);
                 int wanted = size == 0 ? deck[index] : docked[index];
                 contract.expect(composed == wanted, systems[index] + ":" + variants[index] + (size == 0 ? " at 1280x800" : " at 1920x1080") + f", bezel placement: a texture pack is composed at the renderer's {wanted}x, not {composed}x");
             }

@@ -30,7 +30,7 @@ class SteamInputTemplates {  // templates, icons, user profiles and their config
         return file.close() && wrote;
     }
 
-    class JSONValue definition(SemuPlan plan) {  // null after saying why
+    class JSONValue? definition(SemuPlan plan) {  // null after saying why
         string source = SteamInputTemplates.source(plan);
         if (source.isEmpty() || !FileSystem.isFile(source)) {
             Console.error("semu: target " + plan.target.id + " has no Steam Input definition (steam.input: " + source + ")");
@@ -47,7 +47,7 @@ class SteamInputTemplates {  // templates, icons, user profiles and their config
     }
 
     class int publish(SemuPlan plan, string outputDirectory, string iconDirectory) {
-        JSONValue root = SteamInputTemplates.definition(plan);
+        JSONValue? root = SteamInputTemplates.definition(plan);
         if (root == null) { return 1; }
         SteamInputDocument document = SteamInputDocument(root);
         JSONValue templates = document.templates();
@@ -90,7 +90,7 @@ class SteamInputTemplates {  // templates, icons, user profiles and their config
             Console.error("semu: Steam is running and rewrites its controller configsets when it exits; quit Steam first (or pass --steam-root DIR)");
             return 1;
         }
-        JSONValue root = SteamInputTemplates.definition(plan);
+        JSONValue? root = SteamInputTemplates.definition(plan);
         if (root == null) { return 1; }
         JSONValue platform = SemuJson.get(root, "platforms." + plan.platform);
         if (!platform.isObject()) { Console.error("semu: no Steam Input paths for " + plan.platform); return 1; }
@@ -100,7 +100,7 @@ class SteamInputTemplates {  // templates, icons, user profiles and their config
         int published = SteamInputTemplates.publish(plan, templates, icons);
         if (published != 0) { return published; }
         SteamInputDocument document = SteamInputDocument(root);
-        JSONValue chosen = document.defaultTemplate();
+        JSONValue? chosen = document.defaultTemplate();
         SteamInputController controller = SteamInputController(document, SemuJson.textAt(chosen, "controller"));
         string application = SemuJson.textAt(root, "application.config_id");
         string pattern = SemuJson.textAt(platform, "application_config_dir");

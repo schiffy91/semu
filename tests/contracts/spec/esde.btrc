@@ -89,7 +89,7 @@ class EsDeSpecPatch {  // a hunk whose added-line count lies makes the ES-DE bui
 class EsDeSpecDocuments {  // the Deck plan narrowed to gb and gc: exact systems, semantic commands, selected rules
     class SemuPlan deckPlan(Fixture fixture, string roms, SemuDiagnostics diagnostics) {
         string overlay = "{\"paths\":{\"roms\":\"" + roms + "\",\"state_root\":\"" + PathTools.join(fixture.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(fixture.scratch, "content") + "\"},\"ui\":{\"theme\":\"modern-es-de\",\"display_index\":2}}";
-        return SemuResolver.plan(fixture.model, "steam-deck", PathTools.join(fixture.scratch, "esde-spec-home"), PathTools.join(fixture.scratch, "esde-spec-assets"), overlay, diagnostics);
+        return Fixture.resolved(fixture.model, "steam-deck", PathTools.join(fixture.scratch, "esde-spec-home"), PathTools.join(fixture.scratch, "esde-spec-assets"), overlay, diagnostics);
     }
 
     class void run(Contract contract, Fixture fixture, SemuPlan plan, SemuDiagnostics diagnostics) {
@@ -172,7 +172,7 @@ class EsDeSpecSettingsProtocol {  // the semu-settings-v2 limits ES-DE's patch e
     class int systemsWithChoices(Fixture fixture) {
         int total = 0;
         for systemId in fixture.plan.systems {
-            SemuSystem system = fixture.model.system(systemId);
+            SemuSystem system = fixture.systemOf(systemId);
             if (SemuSettingsUi.variantIds(system.bezels).size() + SemuSettingsUi.variantIds(system.shaders).size() > 0) { total++; }
         }
         return total;

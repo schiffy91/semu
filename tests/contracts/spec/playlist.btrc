@@ -200,11 +200,11 @@ class PlaylistSpecDeclarations {  // every .m3u binding states how its emulator,
             Fixture fixture = Fixture(target);
             int bindings = 0;
             for systemId in fixture.plan.systems {
-                SemuSystem system = fixture.model.system(systemId);
+                SemuSystem system = fixture.systemOf(systemId);
                 if (!SemuChecker.listsPlaylists(system)) { continue; }
                 for binding in system.bindingsFor(fixture.plan.platform) {
                     bindings++;
-                    SemuEmulator emulator = fixture.model.emulator(binding.emulator);
+                    SemuEmulator emulator = fixture.emulatorOf(binding.emulator);
                     JSONValue platform = emulator.platform(fixture.plan.platform);
                     contract.expect(SemuChecker.playlistDeclared(platform), f"{target} {binding.emulator} declares how it opens {systemId} playlists");
                     contract.expect(SemuContent.opens(emulator, platform, binding.core, ".m3u"), f"{target} {SemuContent.label(binding)} opens {systemId} playlists, itself or through Semu");
@@ -215,14 +215,14 @@ class PlaylistSpecDeclarations {  // every .m3u binding states how its emulator,
         }
         Fixture fixture = Fixture("linux-desktop");
         Vector<string> listing = [];
-        for systemId in fixture.plan.systems { if (SemuChecker.listsPlaylists(fixture.model.system(systemId))) { listing.push(systemId); } }
+        for systemId in fixture.plan.systems { if (SemuChecker.listsPlaylists(fixture.systemOf(systemId))) { listing.push(systemId); } }
         contract.expect(listing.sorted().join(" ").equals("dreamcast gc ps2 psx"), "dreamcast, gc, ps2 and psx are the systems listing .m3u: " + listing.sorted().join(" "));
         for row in ["flycast linux first_entry", "pcsx2 linux first_entry", "dolphin linux native", "dolphin macos native", "retroarch linux native", "retroarch macos native"] {
             Vector<string> parts = Strings.split(row, " ");
-            string open = SemuJson.textAt(fixture.model.emulator(parts.get(0)).platform(parts.get(1)), "playlist.open");
+            string open = SemuJson.textAt(fixture.emulatorOf(parts.get(0)).platform(parts.get(1)), "playlist.open");
             contract.expect(open.equals(parts.get(2)), f"{parts.get(0)} {parts.get(1)} playlist.open is {parts.get(2)}: {open}");
         }
-        contract.expect(SemuJson.strings(SemuJson.get(fixture.model.emulator("pcsx2").platform("linux"), "playlist.args")).isEmpty(), "pcsx2 needs no playlist arguments");
+        contract.expect(SemuJson.strings(SemuJson.get(fixture.emulatorOf("pcsx2").platform("linux"), "playlist.args")).isEmpty(), "pcsx2 needs no playlist arguments");
     }
 
     class string diagnose(Fixture fixture) {  // checker diagnostics after an in-memory change
@@ -232,7 +232,7 @@ class PlaylistSpecDeclarations {  // every .m3u binding states how its emulator,
 
     class string mutated(string emulatorId, string playlist) {  // one platform's playlist block replaced
         Fixture fixture = Fixture("linux-desktop");
-        fixture.model.emulator(emulatorId).platform("linux").set("playlist", JSONValue.parse(playlist));
+        fixture.emulatorOf(emulatorId).platform("linux").set("playlist", JSONValue.parse(playlist));
         return PlaylistSpecDeclarations.diagnose(fixture);
     }
 
@@ -245,20 +245,20 @@ class PlaylistSpecDeclarations {  // every .m3u binding states how its emulator,
         contract.contains(PlaylistSpecDeclarations.mutated("pcsx2", "\"first_entry\""), "platforms.linux.playlist: must be an object", "a playlist block that is not an object fails the checker");
         contract.contains(PlaylistSpecDeclarations.mutated("flycast", "{\"open\":\"first_entry\",\"quote\":{\"marks\":[\"''\"]}}"), "playlist.quote: needs marks", "a quote mark longer than one character fails the checker");
         Fixture n64 = Fixture("linux-desktop");  // the reviewed gap: a native core that reads no playlist
-        n64.model.system("n64").extensions.push(".m3u");
+        n64.systemOf("n64").extensions.push(".m3u");
         contract.contains(PlaylistSpecDeclarations.diagnose(n64), "retroarch/mupen64plus_next passes .m3u on (playlist.open native) but declares no .m3u", "n64 listing .m3u fails: Mupen64Plus-Next reads no playlist");
         Fixture core = Fixture("steam-deck");
-        SemuContent.core(core.model.emulator("retroarch"), "flycast").set("extensions", JSONValue.parse("[\".cdi\",\".chd\",\".cue\",\".gdi\"]"));
+        SemuContent.core(core.emulatorOf("retroarch"), "flycast").set("extensions", JSONValue.parse("[\".cdi\",\".chd\",\".cue\",\".gdi\"]"));
         contract.contains(PlaylistSpecDeclarations.diagnose(core), "retroarch/flycast passes .m3u on", "the flycast core without .m3u fails dreamcast, though RetroArch itself says native");
         Fixture standalone = Fixture("macos");
-        SemuJson.get(standalone.model.emulator("dolphin").definition, "content").set("extensions", JSONValue.parse("[\".iso\",\".rvz\"]"));
+        SemuJson.get(standalone.emulatorOf("dolphin").definition, "content").set("extensions", JSONValue.parse("[\".iso\",\".rvz\"]"));
         contract.contains(PlaylistSpecDeclarations.diagnose(standalone), "dolphin passes .m3u on", "a native standalone emulator that declares no .m3u fails gc");
     }
 
     class void declarationDrives(Contract contract) {  // flip or empty the declaration, not the emulator, and argv follows
         for playlist in ["{\"open\":\"native\"}", "{}"] {
             StandaloneSpecBed bed = StandaloneSpecBed();
-            bed.fixture.model.emulator("flycast").platform("linux").set("playlist", JSONValue.parse(playlist));
+            bed.fixture.emulatorOf("flycast").platform("linux").set("playlist", JSONValue.parse(playlist));
             string name = PlaylistSpecLaunch.veronica();
             string folder = PlaylistSpecLaunch.writeFolder(bed, "dreamcast", name, name + " (USA) (Disc 1).chd\n", [name + " (USA) (Disc 1).chd"]);
             PlaylistSpecLaunch.expectPassed(contract, "flycast with playlist " + playlist, PlaylistSpecLaunch.launch(bed, "flycast", "dreamcast", "", name + ".m3u"), PathTools.join(folder, name + ".m3u"));

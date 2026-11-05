@@ -157,7 +157,7 @@ class TouchSpecEmulators {
             contract.lacks(FileSystem.readText(PathTools.join(directory, "emulator.json")), "${paths.project_bios}", emulatorId + ": no project BIOS path");
             contract.expect(TouchSpecEmulators.pinned(lock), emulatorId + ": the source is locked to one commit and hash");
         }
-        SemuEmulator melonDs = fixture.model.emulator("melonds");
+        SemuEmulator melonDs = fixture.emulatorOf("melonds");
         contract.expect(melonDs.actions.contains("state.load") && melonDs.actions.contains("state.save"), "melonDS declares save and load actions");
         JSONValue package = SemuJson.readFile(PathTools.join(fixture.project, "config/emulators/melonds/package.json"));
         for action in ["state.load", "state.save"] {
@@ -172,13 +172,13 @@ class TouchSpecRouting {
     class void run(Contract contract, Fixture fixture) {  // the renderer is told which surface is the touch screen
         for systemId in ["nds", "n3ds"] {
             string bottomNative = systemId.equals("nds") ? "256x192" : "320x240";
-            SemuSystem system = fixture.model.system(systemId);
+            SemuSystem system = fixture.systemOf(systemId);
             Vector<string> environment = SemuRenderEnvironment.compile(fixture.plan, system, "retroarch", "/state/retroarch", fixture.diagnostics);
             contract.expect(environment.contains("SEMU_RENDER_SURFACE_COUNT=2") && environment.contains("SEMU_RENDER_SURFACE_LAYOUT=vertical") && environment.contains("SEMU_RENDER_SURFACE_1_ID=bottom"), systemId + ": two stacked surfaces, the second is bottom");
             contract.expect(environment.contains("SEMU_RENDER_SURFACE_1_NATIVE=" + bottomNative), systemId + ": the touch surface keeps its native size");
             contract.expect(environment.contains("SEMU_RENDER_TOUCH_SURFACE_ID=bottom") && environment.contains("SEMU_RENDER_TOUCH_SURFACE_INDEX=1"), systemId + ": touch goes to the bottom surface, index 1");
         }
-        Vector<string> single = SemuRenderEnvironment.compile(fixture.plan, fixture.model.system("gb"), "retroarch", "/state/retroarch", fixture.diagnostics);
+        Vector<string> single = SemuRenderEnvironment.compile(fixture.plan, fixture.systemOf("gb"), "retroarch", "/state/retroarch", fixture.diagnostics);
         bool touchless = true;
         for line in single { if (line.startsWith("SEMU_RENDER_TOUCH_")) { touchless = false; } }
         contract.expect(touchless, "a single-screen system names no touch surface");

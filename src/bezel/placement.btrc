@@ -40,7 +40,7 @@ class BezelRect {
         return value;
     }
 
-    class BezelRect fromJson(JSONValue value) {
+    class BezelRect? fromJson(JSONValue? value) {
         if (value == null || !value.isObject()) { return null; }
         return BezelRect(BezelNumber.of(value.get("x")), BezelNumber.of(value.get("y")), BezelNumber.of(value.get("w")), BezelNumber.of(value.get("h")));
     }
@@ -385,7 +385,7 @@ class MegaBezelPlacement {
         return result;
     }
 
-    public MegaBezelLayerRect layer(string prefix, double textureAspect, MegaBezelScreen screen, MegaBezelLayerRect background, MegaBezelLayerRect device) {  // HSM_GetScaledCoord: where a BG, DEVICE, DECAL, CAB_GLASS, TOP or LED texture lands
+    public MegaBezelLayerRect layer(string prefix, double textureAspect, MegaBezelScreen screen, MegaBezelLayerRect? background, MegaBezelLayerRect? device) {  // HSM_GetScaledCoord: where a BG, DEVICE, DECAL, CAB_GLASS, TOP or LED texture lands
         double oa = self.outputAspect;
         int follow = self.p.mode("HSM_" + prefix + "_FOLLOW_LAYER");
         int mode = self.p.mode("HSM_" + prefix + "_FOLLOW_MODE");

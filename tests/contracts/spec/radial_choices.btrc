@@ -41,11 +41,11 @@ class RadialBed {  // a scratch launch of SYSTEM with its own journal and semu.j
         if (!settings.isEmpty()) { FileSystem.writeText(PathTools.join(launch.semuHome, "semu.json"), settings); }
         SemuPlan plan = RenderVariantTools.plan(fixture, settings.isEmpty() ? "{}" : settings);
         plan.tokens.put("rom", rom);
-        launch.variants = SemuRenderVariants.choose(plan, fixture.model.system(systemId));
+        launch.variants = SemuRenderVariants.choose(plan, fixture.systemOf(systemId));
         Vector<string> shown = launch.variants.shown();
         launch.players.show(shown);  // as the launch plan does: RESTART GAME where a second output waits for it
-        launch.menuLabels = fixture.plan.input.menuItemsShown("label", shown);
-        launch.menuActions = fixture.plan.input.menuItemsShown("action", shown);
+        launch.menuLabels = fixture.input().menuItemsShown("label", shown);
+        launch.menuActions = fixture.input().menuItemsShown("action", shown);
         launch.menuDrawn = true;
         return launch;
     }
@@ -70,7 +70,7 @@ class RadialAbiSpec {  // the new codes after 80, their ids and toasts, and the 
         bool roundTrip = true;
         for code in [81, 82, 85, 87] { roundTrip = roundTrip && SemuActions.code(SemuActions.id(code)) == code && SemuActions.rendererOwned(code); }
         contract.expect(roundTrip && SemuActions.toastAction(81).equals("visual.placement.next") && SemuActions.toastAction(82).equals("visual.output.next") && SemuActions.toastAction(85).equals("system.reset") && SemuActions.toastAction(87).equals("system.restart"), "each new code round-trips id and code, is the renderer's, and shows its action's toasts");
-        string toasts = fixture.plan.input.toasts();
+        string toasts = fixture.input().toasts();
         for entry in ["visual.placement.next=FIT: {label}", "visual.placement.next:unavailable=", "visual.bezel.next:unavailable=BEZEL: NONE HERE", "visual.output.next=ASPECT: {label}", "visual.output.next:pending=ASPECT {label}: RESTART TO APPLY", "system.reset:confirm=RESET: PRESS AGAIN", "system.reset:pending=RESET: RESTART TO APPLY", "system.reset:done=RESET TO DEFAULTS",
                       "system.restart:done=RESTARTING GAME", "system.restart:unchanged=RESTART: NOTHING TO APPLY", "controller.layout.next:pending={slot} {label}: RESTART TO APPLY"] {
             contract.contains(toasts, entry, "SEMU_MENU_TOASTS carries every NAME_toast as action:NAME: " + entry);

@@ -61,7 +61,7 @@ class SaveSlotDeclarations {  // each emulator's slots, as its pinned source cyc
         Vector<string> expected = ["retroarch=10/0", "dolphin=10/1", "pcsx2=10/1", "ppsspp=5/1", "flycast=10/1", "melonds=1/1", "azahar=1/0", "cemu=0/0", "ryujinx=0/0"];
         for entry in expected {
             string emulatorId = entry.substring(0, entry.indexOf("="));
-            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            SemuEmulator emulator = fixture.emulatorOf(emulatorId);
             int slots = SemuJson.intAt(emulator.definition, "save_states.slots", -1);
             int first = SemuJson.intAt(emulator.definition, "save_states.first_slot", -1);
             contract.expect(entry.equals(f"{emulatorId}={slots}/{first}") && !SemuJson.textAt(emulator.definition, "save_states.doc").isEmpty(), emulatorId + " declares its slots with the source behind them: " + entry);
@@ -135,7 +135,7 @@ class SaveSlotNative {  // an emulator listening for its own key gets that key t
 class SaveSlotMenu {  // never an invisible menu
     class void run(Contract contract, Fixture fixture) {
         for emulatorId in ["retroarch", "dolphin", "pcsx2", "ppsspp", "flycast", "melonds", "azahar", "cemu", "ryujinx"] {
-            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            SemuEmulator emulator = fixture.emulatorOf(emulatorId);
             string pause = SemuJson.textAt(emulator.definition, "menu.pause");
             string doc = SemuJson.textAt(emulator.definition, "menu.doc");
             contract.expect((pause.equals("emulator") || pause.equals("none")) && !doc.isEmpty() && !doc.contains("pending"), emulatorId + " declares whether the menu pauses it, from an observation: " + pause);

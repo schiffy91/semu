@@ -27,7 +27,7 @@ import ./placement.btrc;
 class SceneFillSpecChecks {
     class Vector<string> variants(Fixture fixture, string systemId) {  // "" (the system's default) and every declared bezel variant
         Vector<string> found = [""];
-        JSONValue declared = fixture.model.system(systemId).bezels.get("variants");
+        JSONValue declared = fixture.systemOf(systemId).bezels.get("variants");
         for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) { found.push(SemuJson.textAt(declared.at(index), "id")); }
         return found;
     }
@@ -66,7 +66,7 @@ class SceneFillSpecChecks {
         int rooms = 0;
         int black = 0;
         for systemId in fixture.model.systemIds() {
-            JSONValue screens = SemuJson.get(fixture.model.system(systemId).definition, "display.screens");
+            JSONValue screens = SemuJson.get(fixture.systemOf(systemId).definition, "display.screens");
             int count = screens != null && screens.isArray() && screens.size() == 2 ? 2 : 1;
             for variant in SceneFillSpecChecks.variants(fixture, systemId) {
                 Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, variant);
@@ -153,10 +153,10 @@ class SceneFillSpecChecks {
         int rooms = 0;
         for systemId in fixture.model.systemIds() {
             Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, "");
-            JSONValue native = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0.native");
+            JSONValue native = SemuJson.get(fixture.systemOf(systemId).definition, "display.screens.0.native");
             int nativeWidth = SemuJson.intAt(native, "w", 0);
             int nativeHeight = SemuJson.intAt(native, "h", 0);
-            JSONValue crop = SemuJson.get(fixture.model.system(systemId).definition, "display.screens.0.crop");
+            JSONValue crop = SemuJson.get(fixture.systemOf(systemId).definition, "display.screens.0.crop");
             int lines = nativeHeight - SemuJson.intAt(crop, "top", 0) - SemuJson.intAt(crop, "bottom", 0);  // the renderer steps the picture less its declared crop
             if (PlacementSpecEnvironment.layers(environment, "/background.png").isEmpty() || !PlacementSpecEnvironment.layers(environment, "/background.png")[0].endsWith("|1") || nativeHeight < 1) { continue; }
             rooms++;

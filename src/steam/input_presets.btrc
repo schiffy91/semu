@@ -53,14 +53,14 @@ class SteamInputPreset {  // one Steam preset: the group each source drives
 }
 
 class SteamInputPresets {  // the layout's presets, then each layer its grips reach
-    class SteamInputPreset find(Vector<SteamInputPreset> presets, string identifier) {  // null when this controller has no such preset
+    class SteamInputPreset? find(Vector<SteamInputPreset> presets, string identifier) {  // null when this controller has no such preset
         for preset in presets { if (!identifier.isEmpty() && preset.identifier.equals(identifier)) { return preset; } }
         return null;
     }
 
     class Vector<SteamInputPreset> ordered(SteamInputDocument document, SteamInputController controller) {
         Vector<SteamInputPreset> presets = [];
-        JSONValue declared = controller.layout.get("presets");
+        JSONValue declared = SemuJson.get(controller.layout, "presets");
         for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) {
             JSONValue row = declared.at(index);
             SteamInputPreset preset = SteamInputPreset(presets.size(), SemuJson.textAt(row, "id"), SemuJson.textAt(row, "title"), row.get("sources"), SemuJson.boolAt(row, "hotkeys", false), -1);
@@ -76,7 +76,7 @@ class SteamInputPresets {  // the layout's presets, then each layer its grips re
             bool reachable = !activators.isEmpty();
             for activator in activators { if (controller.grip(activator).isEmpty()) { reachable = false; } }
             if (!reachable) { continue; }  // a controller without those grips gets no such layer
-            SteamInputPreset preset = SteamInputPreset(presets.size(), SemuJson.textAt(layers.at(index), "id"), SemuJson.textAt(layers.at(index), "name"), controller.layout.get("layer_sources"), false, index);
+            SteamInputPreset preset = SteamInputPreset(presets.size(), SemuJson.textAt(layers.at(index), "id"), SemuJson.textAt(layers.at(index), "name"), SemuJson.get(controller.layout, "layer_sources"), false, index);
             for activator in activators { preset.holds.push(SteamInputHold(controller.grip(activator), "")); }
             presets.push(preset);
         }

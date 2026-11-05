@@ -57,21 +57,21 @@ class WiiPointerSpecRouting {
     }
 
     class void run(Contract contract, Fixture fixture) {  // only the Wii names a pointer screen
-        Vector<string> wii = SemuRenderEnvironment.compile(fixture.plan, fixture.model.system("wii"), "dolphin", "/state/dolphin", fixture.diagnostics);
+        Vector<string> wii = SemuRenderEnvironment.compile(fixture.plan, fixture.systemOf("wii"), "dolphin", "/state/dolphin", fixture.diagnostics);
         contract.expect(wii.contains("SEMU_RENDER_POINTER_SURFACE_INDEX=0"), "wii: the IR aims at the main screen, index 0");
         contract.expect(!WiiPointerSpecRouting.names(wii, "SEMU_RENDER_TOUCH_"), "wii: the pointer screen is no touch screen");
         for systemId in ["gc", "nds", "n3ds"] {
             string emulatorId = systemId.equals("gc") ? "dolphin" : "retroarch";
-            Vector<string> other = SemuRenderEnvironment.compile(fixture.plan, fixture.model.system(systemId), emulatorId, "/state/" + emulatorId, fixture.diagnostics);
+            Vector<string> other = SemuRenderEnvironment.compile(fixture.plan, fixture.systemOf(systemId), emulatorId, "/state/" + emulatorId, fixture.diagnostics);
             contract.expect(!WiiPointerSpecRouting.names(other, "SEMU_RENDER_POINTER_"), systemId + ": no pointer screen, so its window pointer is left alone");
         }
         contract.expect(fixture.diagnostics.ok(), "pointer routing compiles without diagnostics: " + fixture.diagnostics.render());
         Fixture typo = Fixture("linux-desktop");
-        SemuJson.get(typo.model.system("wii").definition, "display.surface_mapping").set("pointer_screen", JSONValue.makeString("mian"));
-        SemuJson.get(typo.model.system("nds").definition, "display.surface_mapping").set("touch_screen", JSONValue.makeString("bottm"));
+        SemuJson.get(typo.systemOf("wii").definition, "display.surface_mapping").set("pointer_screen", JSONValue.makeString("mian"));
+        SemuJson.get(typo.systemOf("nds").definition, "display.surface_mapping").set("touch_screen", JSONValue.makeString("bottm"));
         SemuDiagnostics refused = SemuDiagnostics();
-        Vector<string> typoed = SemuRenderEnvironment.compile(typo.plan, typo.model.system("wii"), "dolphin", "/state/dolphin", refused);
-        Vector<string> touchTypo = SemuRenderEnvironment.compile(typo.plan, typo.model.system("nds"), "retroarch", "/state/retroarch", refused);
+        Vector<string> typoed = SemuRenderEnvironment.compile(typo.plan, typo.systemOf("wii"), "dolphin", "/state/dolphin", refused);
+        Vector<string> touchTypo = SemuRenderEnvironment.compile(typo.plan, typo.systemOf("nds"), "retroarch", "/state/retroarch", refused);
         contract.expect(!WiiPointerSpecRouting.names(typoed, "SEMU_RENDER_POINTER_") && refused.render().contains("display.surface_mapping.pointer_screen") && refused.render().contains("names no declared screen: mian"), "a pointer screen that names no declared screen is refused, not silently dropped: " + refused.render());
         contract.expect(!WiiPointerSpecRouting.names(touchTypo, "SEMU_RENDER_TOUCH_SURFACE_INDEX") && refused.render().contains("display.surface_mapping.touch_screen") && refused.render().contains("names no declared screen: bottm"), "and so is such a touch screen");
     }

@@ -49,7 +49,7 @@ class SemuChords {
         return result;
     }
 
-    class string mapped(JSONValue values, string token, bool required) {
+    class string mapped(JSONValue? values, string token, bool required) {
         if (values != null && values.isObject() && values.has(token)) { return SemuJson.text(values.get(token)); }
         return required ? "" : token;
     }
@@ -112,8 +112,8 @@ class SemuChords {
         return lower;
     }
 
-    class bool taken(JSONValue inputDefinition, string key) {  // some config/input chord ends on KEY
-        JSONValue actions = inputDefinition == null ? null : inputDefinition.get("actions");
+    class bool taken(JSONValue? inputDefinition, string key) {  // some config/input chord ends on KEY
+        JSONValue? actions = inputDefinition == null ? null : inputDefinition.get("actions");
         if (actions == null || !actions.isObject() || key.isEmpty()) { return false; }
         for action in actions.keys() {
             string chord = SemuJson.textAt(actions.get(action), "chord");
@@ -124,16 +124,16 @@ class SemuChords {
 
     class string finalKey(JSONValue encoding, string chord) {  // the key a chord ends on, as this encoding names a key on its own
         string key = SemuChords.key(chord);
-        JSONValue whole = encoding == null ? null : encoding.get("whole");
+        JSONValue? whole = encoding == null ? null : encoding.get("whole");
         if (whole != null && whole.isObject() && whole.has(key)) { return SemuJson.text(whole.get(key)); }
         string mapped = SemuChords.mapped(encoding == null ? null : encoding.get("keys"), key, false);
         if (encoding != null && SemuJson.textAt(encoding, "key_case").equals("lower")) { mapped = mapped.toLower(); }
         return SemuChords.formatted(encoding == null ? "" : SemuJson.textAt(encoding, "key_format"), mapped);
     }
 
-    class Vector<string> keys(JSONValue inputDefinition, JSONValue encoding) {  // every config/input chord as this encoding writes it
+    class Vector<string> keys(JSONValue? inputDefinition, JSONValue encoding) {  // every config/input chord as this encoding writes it
         Vector<string> result = [];
-        JSONValue actions = inputDefinition == null ? null : inputDefinition.get("actions");
+        JSONValue? actions = inputDefinition == null ? null : inputDefinition.get("actions");
         if (actions == null || !actions.isObject()) { return result; }
         for action in actions.keys().sorted() {
             string chord = SemuJson.textAt(actions.get(action), "chord");
@@ -184,9 +184,10 @@ class SemuProfileContext {
 
     public string stateRoot() { return PathTools.join(self.plan.stateRoot(), self.emulator.id); }
 
-    public SemuSystem servedSystem() {  // the first system this emulator plays here, for a profile written with no system chosen
+    public SemuSystem? servedSystem() {  // the first system this emulator plays here, for a profile written with no system chosen
         for identifier in self.model.systemIds() {
-            SemuSystem candidate = self.model.system(identifier);
+            SemuSystem? candidate = self.model.system(identifier);
+            if (candidate == null) { continue; }
             for binding in candidate.bindingsFor(self.plan.platform) { if (binding.emulator.equals(self.emulator.id)) { return candidate; } }
         }
         return null;
@@ -239,9 +240,9 @@ class SemuProfileContext {
         result.put("asset_root", self.plan.assetRoot);
         result.put("content_root", self.plan.path("content_root"));
         for group in SemuModKind.settingGroups(self.plan, self.emulator) { result.put("mods." + group, SemuModKind.settingValue(self.plan, self.emulator, group)); }  // an installed kind switches its group on
-        SemuSystem system = self.model.system(self.plan.tokens.get("system"));  // none while emitting every profile at once: native
+        SemuSystem? system = self.model.system(self.plan.tokens.get("system"));  // none while emitting every profile at once: native
         int scale = SemuRenderScale.launched(self.plan, system, self.emulator.id);
-        SemuSystem served = system == null ? self.servedSystem() : system;
+        SemuSystem? served = system == null ? self.servedSystem() : system;
         result.put("render_scale", Strings.fromInt(scale));  // the system's render scale, 1 where this emulator takes none
         result.put(scale > 1 ? "render_scale_upscaled" : "render_scale_native", "1");  // an {"if"} line held only above native or only at it: melonDS's OpenGL renderer, the one its ScaleFactor scales
         result.put("render_scale_lines", Strings.fromInt(scale * (served == null ? 0 : SemuJson.intAt(served.definition, "display.screens.0.native.h", 0))));  // Flycast's rend.Resolution counts lines
@@ -339,7 +340,7 @@ class SemuProfileContext {
     }
 
     public JSONValue rowSet(string name) {  // the rows a for_each walks: players, or each player with each live layout
-        SemuSystem system = self.model.system(self.plan.tokens.get("system"));
+        SemuSystem? system = self.model.system(self.plan.tokens.get("system"));
         if (name.equals("players")) { return SemuPlayers.rows(self.plan, system, self.emulator); }
         if (name.equals("player_layouts")) { return SemuPlayers.layoutRows(self.plan, system, self.emulator); }
         self.diagnostics.add(self.emulator.profileFile, "for_each", "unknown rows " + name);
@@ -523,7 +524,7 @@ class SemuProfiles {
 
     class bool emit(SemuModel model, SemuPlan plan, string outputRoot, SemuDiagnostics diagnostics) {
         for emulatorId in plan.emulators {
-            SemuEmulator emulator = model.emulator(emulatorId);
+            SemuEmulator? emulator = model.emulator(emulatorId);
             if (emulator == null) { continue; }
             Vector<SemuProfileFile> files = SemuProfiles.render(model, plan, emulator, diagnostics);
             if (!SemuProfiles.write(PathTools.join(PathTools.join(outputRoot, "profiles"), emulatorId), files, diagnostics)) { return false; }

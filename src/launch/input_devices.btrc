@@ -108,7 +108,7 @@ class SemuInputDevices {  // evdev gamepads and keyboards, opened into reusable 
             if (strncmp(name, "event", 5) == 0) {
                 char path[64];
                 size_t capacity = sizeof(path);
-                snprintf(path, capacity, "/dev/input/%s", name);
+                snprintf(path, capacity, "/dev/input/%.52s", name);  // the 64-byte slot SemuDevicePaths keeps per device
                 if (!SemuInputDevices.opened(path)) {
                     int flags = (int)O_RDONLY | (int)O_NONBLOCK | (int)O_CLOEXEC;
                     int handle = open(path, flags);

@@ -71,12 +71,57 @@ class Fixture {
         string assets = PathTools.join(self.scratch, "assets");
         FileSystem.mkdirp(PathTools.join(assets, "bin"));
         string home = PathTools.join(self.scratch, "semu-home");
-        string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(self.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(self.scratch, "content") + "\",\"mods\":\"" + PathTools.join(self.scratch, "mods") + "\"}}";  // a scratch library: contracts never read the owner's mods
-        self.plan = SemuResolver.plan(self.model, target, home, assets, overlay, self.diagnostics);
+        string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(self.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(self.scratch, "content") + "\",\"mods\":\"" + PathTools.join(self.scratch, "mods") + "\",\"bios\":\"" + PathTools.join(self.scratch, "bios") + "\",\"emulation_root\":\"" + PathTools.join(self.scratch, "emulation") + "\"}}";  // a scratch library: contracts never read the owner's mods, firmware or ROMs
+        SemuPlan? resolved = SemuResolver.plan(self.model, target, home, assets, overlay, self.diagnostics);
+        if (resolved == null) { Console.fatal("contracts: target " + target + " did not resolve:\n" + self.diagnostics.render()); }  // a broken fixture, not a failed contract
+        self.plan = resolved;
+    }
+
+    class SemuPlan resolved(SemuModel model, string target, string home, string assets, string overlay, SemuDiagnostics diagnostics) {  // a contract's own plan: a target that does not resolve is a broken fixture
+        SemuPlan? plan = SemuResolver.plan(model, target, home, assets, overlay, diagnostics);
+        if (plan == null) { Console.fatal("contracts: target " + target + " did not resolve:\n" + diagnostics.render()); }
+        return plan;
+    }
+
+    class JSONValue definitionOf(SemuPlan plan) {  // the plan's input definition; a contract reaching for it needs one
+        SemuInput? input = plan.input;
+        if (input == null) { Console.fatal("contracts: target " + plan.target.id + " declares no input definition"); }
+        return input.definition;
+    }
+
+    class JSONValue padsOf(SemuPlan plan) {  // the roster a contract's bed took
+        JSONValue? pads = plan.pads;
+        if (pads == null) { Console.fatal("contracts: target " + plan.target.id + " took no pad roster"); }
+        return pads;
+    }
+
+    public SemuSystem systemOf(string id) {  // a contract names systems this config declares
+        SemuSystem? system = self.model.system(id);
+        if (system == null) { Console.fatal("contracts: no system " + id); }
+        return system;
+    }
+
+    public SemuEmulator emulatorOf(string id) {
+        SemuEmulator? emulator = self.model.emulator(id);
+        if (emulator == null) { Console.fatal("contracts: no emulator " + id); }
+        return emulator;
+    }
+
+    public SemuInput inputOf(string id) {
+        SemuInput? input = self.model.input(id);
+        if (input == null) { Console.fatal("contracts: no input definition " + id); }
+        return input;
+    }
+
+    public SemuInput input() {  // the target's own input definition
+        SemuInput? input = self.plan.input;
+        if (input == null) { Console.fatal("contracts: target " + self.plan.target.id + " declares no input definition"); }
+        return input;
     }
 
     public string profile(string emulatorId, string relative) {
-        SemuEmulator emulator = self.model.emulator(emulatorId);
+        SemuEmulator? emulator = self.model.emulator(emulatorId);
+        if (emulator == null) { return ""; }
         for file in SemuProfiles.render(self.model, self.plan, emulator, self.diagnostics) {
             if (file.path.equals(relative)) { return file.content; }
         }

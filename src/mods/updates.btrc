@@ -48,7 +48,7 @@ class SemuTitleUpdates {
         return digits.isEmpty() ? -1 : value;
     }
 
-    class SemuTitleUpdate parse(JSONValue declaration, string directory, string name) {  // null for a name that is not an update
+    class SemuTitleUpdate? parse(JSONValue declaration, string directory, string name) {  // null for a name that is not an update
         int length = SemuJson.intAt(declaration, "title.length", 16);
         string updateSuffix = SemuJson.textAt(declaration, "title.update_suffix");
         string baseSuffix = SemuJson.textAt(declaration, "title.base_suffix");
@@ -78,7 +78,7 @@ class SemuTitleUpdates {
             bool listed = false;
             for extension in extensions { if (name.toLower().endsWith(extension)) { listed = true; } }
             if (!listed || name.startsWith(".") || !FileSystem.isFile(PathTools.join(directory, name))) { continue; }
-            SemuTitleUpdate update = SemuTitleUpdates.parse(declaration, directory, name);
+            SemuTitleUpdate? update = SemuTitleUpdates.parse(declaration, directory, name);
             if (update != null) { result.push(update); }
         }
         return result;
@@ -108,13 +108,14 @@ class SemuTitleUpdates {
         for update in updates { if (!titles.contains(update.title)) { titles.push(update.title); } }
         Vector<SemuModRecord> files = [];
         for title in titles {
-            SemuTitleUpdate chosen = null;
+            SemuTitleUpdate? chosen = null;
             Vector<string> paths = [];
             for update in updates {
                 if (!update.title.equals(title)) { continue; }
                 paths.push(update.path);
                 if (chosen == null || update.version > chosen.version) { chosen = update; }
             }
+            if (chosen == null) { continue; }  // every title came from an update, so this cannot happen
             string path = plan.tokens.resolve(SemuJson.textAt(declaration, "target").replace("${title}", title));
             string content = SemuTitleUpdates.render(declaration.get("json"), chosen.path, paths).stringifyPretty(2) + "\n";
             bool current = FileSystem.isFile(path) && !FileSystem.isSymlink(path) && FileSystem.readText(path).equals(content);

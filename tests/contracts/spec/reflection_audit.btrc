@@ -46,7 +46,7 @@ class ReflectionAuditBand {
 class ReflectionAuditChecks {
     class Vector<string> variantIds(Fixture fixture, string systemId) {
         Vector<string> ids = [];
-        JSONValue declared = fixture.model.system(systemId).bezels.get("variants");
+        JSONValue declared = fixture.systemOf(systemId).bezels.get("variants");
         for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) { ids.push(SemuJson.textAt(declared.at(index), "id")); }
         return ids;
     }
@@ -55,7 +55,7 @@ class ReflectionAuditChecks {
         Vector<string> environment = PlacementSpecEnvironment.compile(fixture, systemId, variantId);
         struct RendererVariantConfig variant;
         PlacementSpecGeometry.load(environment, &variant);
-        JSONValue screens = SemuJson.get(fixture.model.system(systemId).definition, "display.screens");
+        JSONValue screens = SemuJson.get(fixture.systemOf(systemId).definition, "display.screens");
         int count = screens != null && screens.isArray() ? screens.size() : 1;
         struct SemuRenderFrameGl frame;
         memset(&frame, 0, sizeof(struct SemuRenderFrameGl));

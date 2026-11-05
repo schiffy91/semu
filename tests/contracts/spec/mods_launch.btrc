@@ -57,7 +57,7 @@ class ModsSpecLaunch {
         for (int which = 0; which < platforms.size(); which++) {
             Vector<string> found = [];
             for emulatorId in emulators {
-                JSONValue platform = fixture.model.emulator(emulatorId).platform(platforms.get(which));
+                JSONValue platform = fixture.emulatorOf(emulatorId).platform(platforms.get(which));
                 if (platform == null || !platform.isObject()) { continue; }
                 JSONValue mods = SemuJson.get(platform, "state.mods");
                 contract.expect(mods.isObject() && SemuJson.get(mods, "kinds").isArray() && !SemuJson.textAt(mods, "doc").isEmpty(), emulatorId + " " + platforms.get(which) + " declares its mod kinds and says where its library is, or why it has none");
@@ -78,11 +78,11 @@ class ModsSpecLaunch {
         for row in cases {
             Vector<string> field = Strings.split(row, "|");
             StandaloneSpecBed bed = StandaloneSpecBed();
-            SemuEmulator emulator = bed.fixture.model.emulator(field.get(0));
+            SemuEmulator emulator = bed.fixture.emulatorOf(field.get(0));
             contract.contains(ModsSpecLaunch.rendered(bed, emulator, field.get(4)), "\n" + field.get(5) + field.get(7) + "\n", field.get(0) + " keeps its texture switch off with no pack");
             ModsSpecTree.write(PathTools.join(bed.fixture.plan.path("mods"), field.get(0) + "/textures/" + field.get(2) + "/" + field.get(3)), "pack");
             bed.fixture.plan.tokens.put("state_root", bed.stateRoot(field.get(0)));
-            SemuModInstallReport report = SemuModInstaller.install(bed.fixture.plan, emulator, bed.fixture.model.system(field.get(1)));
+            SemuModInstallReport report = SemuModInstaller.install(bed.fixture.plan, emulator, bed.fixture.systemOf(field.get(1)));
             string target = SemuModKind.declared(bed.fixture.plan, emulator).get(0).target;
             contract.expect(FileSystem.readLink(PathTools.join(target, field.get(2))).equals(PathTools.join(bed.fixture.plan.path("mods"), field.get(0) + "/textures/" + field.get(2))), field.get(0) + " links the game's pack folder into its state: " + report.lines.join("; "));
             contract.contains(ModsSpecLaunch.rendered(bed, emulator, field.get(4)), "\n" + field.get(5) + field.get(6) + "\n", field.get(0) + " turns its texture switch on while a pack is installed");
@@ -109,7 +109,7 @@ class ModsSpecLaunch {
         for line in ["[Utility]\n", "custom_textures=false\n", "custom_textures\\default=false\n", "preload_textures=false\n", "preload_textures\\default=false\n", "async_custom_loading=true\n", "async_custom_loading\\default=false\n", "dump_textures=false\n", "Shortcuts\\Main%20Window\\Toggle%20Custom%20Textures\\KeySeq=\n"] { contract.contains(global, line, "the global qt-config.ini keeps textures off for every game, lazy and never preloaded"); }
         contract.lacks(global, "custom_textures=true", "custom textures are never on globally");
         contract.lacks(global, "preload_textures=true", "packs are never preloaded");
-        int scale = SemuComposedScale.of(bed.fixture.plan, bed.fixture.model.system("n3ds"), "azahar");
+        int scale = SemuComposedScale.of(bed.fixture.plan, bed.fixture.systemOf("n3ds"), "azahar");
         string title = ModsSpecLaunch.ini(bed, "config/azahar-emu/custom/0004000000033600.ini");
         for line in ["[Renderer]\n", "resolution_factor\\use_global=false\n", f"resolution_factor={scale}\n", "[Utility]\n", "custom_textures\\use_global=false\n", "custom_textures=true\n", "preload_textures=false\n", "async_custom_loading=true\n"] { contract.contains(title, line, "the game with a pack switches textures on for itself, at the composed scale"); }
         contract.expect(!FileSystem.exists(PathTools.join(bed.stateRoot("azahar"), "config/azahar-emu/custom/0004000000125500.ini")), "a game with only a LayeredFS mod gets no per-title texture settings");
@@ -150,7 +150,7 @@ class ModsSpecLaunch {
         string saved = FileSystem.readText(PathTools.join(root, "games/0100f2c0115b6000/updates.json"));
         bed.fixture.plan.tokens.put("roms", PathTools.join(bed.fixture.scratch, "unmounted"));
         bed.fixture.plan.tokens.put("state_root", bed.stateRoot("ryujinx"));
-        SemuModInstaller.install(bed.fixture.plan, bed.fixture.model.emulator("ryujinx"), bed.fixture.model.system("switch"));  // a launch would stop at the missing ROM first
+        SemuModInstaller.install(bed.fixture.plan, bed.fixture.emulatorOf("ryujinx"), bed.fixture.systemOf("switch"));  // a launch would stop at the missing ROM first
         contract.expect(FileSystem.readText(PathTools.join(root, "games/0100f2c0115b6000/updates.json")).equals(saved), "ROMs that are not mounted change no choice file");
         bed.fixture.plan.tokens.put("roms", bed.roms);
         rename(zelda + "[0100F2C0115B6800][v196608].nsp", PathTools.join(bed.fixture.scratch, "v196608.nsp"));
@@ -161,12 +161,12 @@ class ModsSpecLaunch {
     class void scale(Contract contract) {  // the composed scale on the Deck, from the same arithmetic the placement spec pins
         Fixture deck = Fixture("steam-deck");
         RenderEnvSpecAssets.packages(deck.plan.assetRoot, deck.plan.configRoot);  // the bezel layers exist, as in the bundle
-        contract.expect(SemuComposedScale.of(deck.plan, deck.model.system("n3ds"), "azahar") == 2, "the 3DS top screen is composed at 2x on the Deck's 1280x800, so Azahar renders a pack at 2x");
-        contract.expect(SemuComposedScale.of(deck.plan, deck.model.system("psp"), "ppsspp") == 2 && SemuComposedScale.of(deck.plan, deck.model.system("gb"), "retroarch") == 5, "one screen in game placement takes the largest step the screen holds: the PSP at 2x, the Game Boy at 5x");
-        SemuPlan docked = SemuResolver.plan(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"display\":{\"width\":1920,\"height\":1080}}}", SemuDiagnostics());
-        contract.expect(SemuComposedScale.of(docked, deck.model.system("n3ds"), "azahar") == 3, "at 1920x1080 the 3DS top screen is 3x");
-        SemuPlan bare = SemuResolver.plan(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"bezels\":false}}", SemuDiagnostics());
-        contract.expect(SemuComposedScale.of(bare, deck.model.system("n3ds"), "azahar") == 1, "without the shell both screens stack at the largest whole step, 1x at 1280x800");
+        contract.expect(SemuComposedScale.of(deck.plan, deck.systemOf("n3ds"), "azahar") == 2, "the 3DS top screen is composed at 2x on the Deck's 1280x800, so Azahar renders a pack at 2x");
+        contract.expect(SemuComposedScale.of(deck.plan, deck.systemOf("psp"), "ppsspp") == 2 && SemuComposedScale.of(deck.plan, deck.systemOf("gb"), "retroarch") == 5, "one screen in game placement takes the largest step the screen holds: the PSP at 2x, the Game Boy at 5x");
+        SemuPlan docked = Fixture.resolved(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"display\":{\"width\":1920,\"height\":1080}}}", SemuDiagnostics());
+        contract.expect(SemuComposedScale.of(docked, deck.systemOf("n3ds"), "azahar") == 3, "at 1920x1080 the 3DS top screen is 3x");
+        SemuPlan bare = Fixture.resolved(deck.model, "steam-deck", deck.plan.semuHome, deck.plan.assetRoot, "{\"visual\":{\"bezels\":false}}", SemuDiagnostics());
+        contract.expect(SemuComposedScale.of(bare, deck.systemOf("n3ds"), "azahar") == 1, "without the shell both screens stack at the largest whole step, 1x at 1280x800");
     }
 
     class void run(Contract contract) {

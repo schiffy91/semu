@@ -137,13 +137,13 @@ class RenderEnvSpecContract {
     class void emittedNames(Fixture fixture, Vector<string> names) {  // every system under every bezel variant, names only
         SemuDiagnostics diagnostics = SemuDiagnostics();
         for systemId in fixture.model.systemIds() {
-            SemuSystem system = fixture.model.system(systemId);
+            SemuSystem system = fixture.systemOf(systemId);
             Vector<string> variants = [""];
-            JSONValue declared = system.bezels == null ? null : system.bezels.get("variants");
+            JSONValue? declared = system.bezels == null ? null : system.bezels.get("variants");
             for (int index = 0; declared != null && declared.isArray() && index < declared.size(); index++) { variants.push(SemuJson.textAt(declared.at(index), "id")); }
             for variant in variants {
                 string overlay = variant.isEmpty() ? "{}" : "{\"visual\":{\"systems\":{\"" + systemId + "\":{\"bezel_variant\":\"" + variant + "\"}}}}";
-                SemuPlan plan = SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
+                SemuPlan plan = Fixture.resolved(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
                 Vector<string> emulatorIds = ["retroarch"];
                 for binding in system.bindingsFor("linux") { if (!emulatorIds.contains(binding.emulator)) { emulatorIds.push(binding.emulator); } }
                 for emulatorId in emulatorIds {
@@ -158,7 +158,7 @@ class RenderEnvSpecContract {
     }
 
     class void packageOptions(Fixture fixture, Vector<string> names) {  // fields a package may name though none ships one since M15: a background plate and a drawn frame
-        SemuSystem system = fixture.model.system("nds");
+        SemuSystem system = fixture.systemOf("nds");
         JSONValue package = SemuBezelPackage.load(fixture.plan, "dual-main-right");
         if (package == null || !package.isObject()) { return; }
         FileSystem.mkdirp(PathTools.join(fixture.plan.assetRoot, "share/semu/assets/bezels/backgrounds"));
@@ -178,7 +178,7 @@ class RenderEnvSpecContract {
     }
 
     class void editorAuthored(Fixture fixture, Vector<string> names) {  // fields only the bezel editor writes today: a bulged tube
-        SemuSystem system = fixture.model.system("nes");
+        SemuSystem system = fixture.systemOf("nes");
         JSONValue package = SemuBezelPackage.load(fixture.plan, SemuRenderEnvironment.packageId(system, SemuJson.textAt(system.bezels, "default_variant")));
         JSONValue screen = SemuBezelPackage.screen(package, "main");
         if (screen == null || !screen.isObject()) { return; }
@@ -203,7 +203,7 @@ class RenderEnvSpecContract {
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
         for systemId in fixture.model.systemIds() {
-            SemuSystem system = fixture.model.system(systemId);
+            SemuSystem system = fixture.systemOf(systemId);
             RenderEnvSpecAssets.walk(fixture.plan.assetRoot, system.shaders);
             RenderEnvSpecAssets.walk(fixture.plan.assetRoot, system.bezels);
         }

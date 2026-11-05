@@ -19,7 +19,7 @@ class AuditPackagesSpecContract {
     class void need(Vector<string> missing, string name, string scope, string wanted) { if (!scope.contains(wanted)) { missing.push(name + ": " + wanted); } }
 
     class string declared(Fixture fixture, string systemId, string variantId) {  // the variant's own package, "" when the system declares no such variant
-        JSONValue variants = fixture.model.system(systemId).bezels.get("variants");
+        JSONValue variants = fixture.systemOf(systemId).bezels.get("variants");
         for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
             if (SemuJson.textAt(variants.at(index), "id").equals(variantId)) { return SemuJson.textAt(variants.at(index), "bezel"); }
         }
@@ -71,7 +71,7 @@ class AuditPackagesSpecContract {
         }
         Vector<string> absent = [];
         for systemId in fixture.model.systemIds() {
-            JSONValue variants = fixture.model.system(systemId).bezels.get("variants");
+            JSONValue variants = fixture.systemOf(systemId).bezels.get("variants");
             for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
                 for state in ["game", "bezel", "game_fractional", "bezel_fractional"] {  // the four Fit states (M16 item 5), each at both sizes
                     string cell = systemId + ":" + SemuJson.textAt(variants.at(index), "id") + ":" + state;

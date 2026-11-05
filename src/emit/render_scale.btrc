@@ -111,7 +111,7 @@ class SemuRenderScale {
 
     class string coreFor(SemuPlan plan, SemuSystem system, string emulatorId) {  // the launch's core where it is this system's, else the system's first core for EMULATOR
         if (system == null) { return ""; }
-        SemuSystemBinding binding = system.bindingFor(plan.platform, emulatorId, plan.tokens.get("core"));
+        SemuSystemBinding? binding = system.bindingFor(plan.platform, emulatorId, plan.tokens.get("core"));
         if (binding == null) { binding = system.bindingFor(plan.platform, emulatorId, ""); }
         return binding == null ? "" : binding.core;
     }
@@ -120,7 +120,7 @@ class SemuRenderScale {
         return SemuRenderScaleSpec(SemuRenderScale.platform(plan, emulatorId), SemuRenderScale.coreFor(plan, system, emulatorId));
     }
 
-    class int launched(SemuPlan plan, SemuSystem system, string emulatorId) {  // the scale this launch renders at: 1 wherever the emulator takes none
+    class int launched(SemuPlan plan, SemuSystem? system, string emulatorId) {  // the scale this launch renders at: 1 wherever the emulator takes none
         if (system == null) { return 1; }
         return SemuRenderScale.current(plan, system, SemuRenderScale.choices(plan, system, SemuRenderScale.specFor(plan, system, emulatorId)));
     }

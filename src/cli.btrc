@@ -78,7 +78,7 @@ class SemuCli {
 
     public string targetId() { return self.option("target", Environment.get("SEMU_TARGET", "linux-desktop")); }
 
-    public SemuPlan resolve(SemuModel model, SemuDiagnostics diagnostics) {
+    public SemuPlan? resolve(SemuModel model, SemuDiagnostics diagnostics) {
         return SemuResolver.plan(model, self.targetId(), self.option("semu-home", ""), self.option("asset-root", ""), self.option("settings-json", ""), diagnostics);
     }
 
@@ -90,7 +90,8 @@ class SemuCli {
     public int buildConfigs() {
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
-        SemuPlan plan = self.resolve(model, diagnostics);
+        SemuPlan? plan = self.resolve(model, diagnostics);
+        if (plan == null) { return self.fail(diagnostics); }
         if (!SemuChecker.check(model, plan, diagnostics)) { return self.fail(diagnostics); }
         string output = FileSystem.absolutePath(self.option("output", PathTools.join(PathTools.dirname(model.configRoot), "build/targets/" + plan.target.id)));
         if (!SemuEsDeDocuments.emit(model, plan, output, diagnostics) || !SemuProfiles.emit(model, plan, output, diagnostics)) { return self.fail(diagnostics); }
@@ -101,7 +102,8 @@ class SemuCli {
     public int prepare() {
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
-        SemuPlan plan = self.resolve(model, diagnostics);
+        SemuPlan? plan = self.resolve(model, diagnostics);
+        if (plan == null) { return self.fail(diagnostics); }
         if (!SemuChecker.check(model, plan, diagnostics)) { return self.fail(diagnostics); }
         string esDeHome = SemuPaths.expandHome(self.option("es-de-home", PathTools.join(plan.path("esde_home"), "ES-DE")));
         if (!SemuEsDeDocuments.install(model, plan, esDeHome, diagnostics)) { return self.fail(diagnostics); }
@@ -114,15 +116,16 @@ class SemuCli {
     public int renderEnv() {  // tooling hook: the compiled bezel package and shader selection without launching anything
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
-        SemuPlan plan = self.resolve(model, diagnostics);
+        SemuPlan? plan = self.resolve(model, diagnostics);
+        if (plan == null) { return self.fail(diagnostics); }
         if (!SemuChecker.check(model, plan, diagnostics)) { return self.fail(diagnostics); }
-        SemuSystem system = model.system(self.option("system", ""));
+        SemuSystem? system = model.system(self.option("system", ""));
         if (system == null) {
             Console.error("semu: unknown system " + self.option("system", ""));
             return 1;
         }
         string emulatorId = self.option("emulator", "retroarch");
-        SemuSystemBinding bound = system.bindingFor(plan.platform, emulatorId, self.option("core", ""));
+        SemuSystemBinding? bound = system.bindingFor(plan.platform, emulatorId, self.option("core", ""));
         plan.tokens.put("emulator", emulatorId);  // the render scale is the emulator's and its core's
         plan.tokens.put("core", bound == null ? self.option("core", "") : bound.core);
         string variants = self.option("variants-file", "");  // DIR: also every combination, DIR standing in as the state dir
@@ -130,13 +133,14 @@ class SemuCli {
         string stateRoot = variants.isEmpty() ? PathTools.join(plan.stateRoot(), emulatorId) : FileSystem.absolutePath(variants);
         for entry in SemuRenderEnvironment.compile(plan, system, emulatorId, stateRoot, diagnostics) { Console.log(entry); }
         if (plan.input != null) {
-            SemuEmulator playing = model.emulator(self.option("emulator", ""));
+            SemuInput input = plan.input;  // the field's non-null fact does not survive the calls below
+            SemuEmulator? playing = model.emulator(self.option("emulator", ""));
             for binding in system.bindingsFor(plan.platform) { if (playing == null) { playing = model.emulator(binding.emulator); } }  // else the system's first emulator
             plan.tokens.put("system", system.id);
             SemuPlayerSet players = SemuPlayerSets.from(plan, system, playing);
             Vector<string> shown = SemuRenderVariants.choose(plan, system).shown();
             players.show(shown);
-            for entry in plan.input.menuEnvironment(shown) { Console.log(entry); }  // the menu's rows and the toasts, as the launch gives them
+            for entry in input.menuEnvironment(shown) { Console.log(entry); }  // the menu's rows and the toasts, as the launch gives them
             for entry in players.environment() { Console.log(entry); }
         }
         if (!variants.isEmpty()) {
@@ -154,7 +158,8 @@ class SemuCli {
         if (self.line.operandCount() < 2) { return self.usage(64); }
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
-        SemuPlan plan = self.resolve(model, diagnostics);
+        SemuPlan? plan = self.resolve(model, diagnostics);
+        if (plan == null) { return self.fail(diagnostics); }
         if (!SemuChecker.check(model, plan, diagnostics)) { return self.fail(diagnostics); }
         SemuLaunchPlan launch = SemuLauncher.plan(model, plan, self.line.operand(1), self.option("system", ""), self.option("core", ""), self.option("rom", ""), diagnostics);
         if (self.line.has("--print-plan")) {
@@ -170,7 +175,8 @@ class SemuCli {
         for (int restarts = 0; status >= 0 && SemuSupervisor.relaunching() && restarts < 8; restarts++) {  // a choice the emulator reads at boot: the same game again, planned anew from semu.json; ES-DE keeps waiting on this process
             SemuDiagnostics again = SemuDiagnostics();
             SemuModel fresh = SemuModel.load(self.configRoot(), again);
-            SemuPlan replanned = self.resolve(fresh, again);
+            SemuPlan? replanned = self.resolve(fresh, again);
+            if (replanned == null) { return self.fail(again); }
             launch = SemuLauncher.plan(fresh, replanned, self.line.operand(1), self.option("system", ""), self.option("core", ""), self.option("rom", ""), again);
             if (!launch.ok()) {
                 Console.error("semu: could not restart the game: " + launch.error);
@@ -194,7 +200,7 @@ class SemuCli {
     public int path() {  // print one resolved path token, for shell wrappers
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
-        SemuPlan plan = self.resolve(model, diagnostics);
+        SemuPlan? plan = self.resolve(model, diagnostics);
         if (plan == null) { return self.fail(diagnostics); }
         string value = plan.path(self.line.operand(1, ""));
         if (value.isEmpty()) {
@@ -220,7 +226,7 @@ class SemuCli {
         string path = self.line.operand(2, "");
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
-        SemuPlan plan = self.resolve(model, diagnostics);
+        SemuPlan? plan = self.resolve(model, diagnostics);
         if (plan == null) { return self.fail(diagnostics); }
         if (action.equals("ui")) {
             Console.log(SemuSettingsUi.document(model, plan).stringify());
@@ -253,7 +259,7 @@ class SemuCli {
         string action = self.line.operand(1, "");
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
-        SemuPlan plan = self.resolve(model, diagnostics);
+        SemuPlan? plan = self.resolve(model, diagnostics);
         if (plan == null) { return self.fail(diagnostics); }
         if (action.equals("start")) { return SemuSync.start(plan); }
         if (action.equals("run")) { return SemuSync.run(plan); }
@@ -276,7 +282,7 @@ class SemuCli {
         string action = self.line.operand(1, "");
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
-        SemuPlan plan = self.resolve(model, diagnostics);
+        SemuPlan? plan = self.resolve(model, diagnostics);
         if (plan == null) { return self.fail(diagnostics); }
         string root = self.option("steam-root", "");
         if (action.equals("shortcuts")) { return SteamShortcuts.install(plan, root, self.line.has("--force")); }
@@ -298,7 +304,7 @@ class SemuCli {
         if (action.equals("edit")) { return BezelEditor(repository, tree, self.option("asset-root", Environment.get("SEMU_ASSET_ROOT", ""))).serve(Strings.toInt(self.option("port", "8765"))); }
         if (action.equals("resolve")) {
             for packageId in wanted {
-                JSONValue package = repository.package(packageId);
+                JSONValue? package = repository.package(packageId);
                 if (package == null) { Console.error(f"{packageId}: no such package"); continue; }
                 MegaBezelPreset preset = MegaBezelPreset(tree.packagePreset(package));
                 Console.log(f"{packageId}: {preset.chain.size()} files, {preset.values.size()} values, {preset.textures.size()} textures" + (preset.missing.size() > 0 ? ", MISSING " + Strings.join(preset.missing, ", ") : ""));
@@ -322,7 +328,8 @@ class SemuCli {
     public int mods() {  // mods list [--json] [--roms] | layout | init | migrate [--dry-run] [--allow-copy] [--detach] [--reverse]
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
-        SemuPlan plan = self.resolve(model, diagnostics);
+        SemuPlan? plan = self.resolve(model, diagnostics);
+        if (plan == null) { return self.fail(diagnostics); }
         if (!SemuChecker.check(model, plan, diagnostics)) { return self.fail(diagnostics); }
         if (self.line.operand(1, "").equals("migrate")) { return SemuModMigration.command(model, plan, self.line.has("--dry-run"), self.line.has("--allow-copy"), self.line.has("--detach"), self.line.has("--reverse")); }
         int code = SemuModCommand.run(model, plan, self.line.operand(1, ""), self.line.has("--json"), self.line.has("--roms"));
@@ -332,7 +339,7 @@ class SemuCli {
     public int doctor() {
         SemuDiagnostics diagnostics = SemuDiagnostics();
         SemuModel model = SemuModel.load(self.configRoot(), diagnostics);
-        SemuPlan plan = self.resolve(model, diagnostics);
+        SemuPlan? plan = self.resolve(model, diagnostics);
         if (plan == null) { return self.fail(diagnostics); }
         SemuChecker.check(model, plan, diagnostics);
         Console.log(f"target: {plan.target.id} ({plan.platform})");
@@ -349,8 +356,8 @@ class SemuCli {
         Console.log(f"emulators: {plan.emulators.join(" ")}");
         JSONValue mods = SemuModListing.report(model, plan, false);
         for emulatorId in plan.emulators {
-            SemuEmulator emulator = model.emulator(emulatorId);
-            string executable = plan.tokens.resolve(SemuJson.textAt(emulator.platform(plan.platform), "executable"));
+            SemuEmulator? emulator = model.emulator(emulatorId);
+            string executable = emulator == null ? "" : plan.tokens.resolve(SemuJson.textAt(emulator.platform(plan.platform), "executable"));
             string state = FileSystem.isFile(executable) ? "ok" : "missing";
             Console.log(f"  {emulatorId}: {executable} [{state}]");
             for line in SemuModListing.doctorLines(mods, emulatorId) { Console.log(line); }

@@ -60,7 +60,7 @@ class SemuEsDeDocuments {
 
     class string label(SemuModel model, SemuSystemBinding binding) {
         if (!binding.label.isEmpty()) { return binding.label; }
-        SemuEmulator emulator = model.emulator(binding.emulator);
+        SemuEmulator? emulator = model.emulator(binding.emulator);
         return emulator == null ? binding.emulator : emulator.name;
     }
 
@@ -88,7 +88,10 @@ class SemuEsDeDocuments {
     class string systems(SemuModel model, SemuPlan plan, SemuDiagnostics diagnostics) {
         SemuEsDeTemplates templates = SemuEsDeTemplates(plan.configRoot, diagnostics);
         string entries = "";
-        for systemId in plan.systems { entries = entries + SemuEsDeDocuments.systemEntry(model, plan, model.system(systemId), templates); }
+        for systemId in plan.systems {
+            SemuSystem? system = model.system(systemId);  // plan.systems came from the model
+            if (system != null) { entries = entries + SemuEsDeDocuments.systemEntry(model, plan, system, templates); }
+        }
         return templates.complete("es_systems", templates.read("es_systems").replace("${SYSTEMS}", entries));
     }
 

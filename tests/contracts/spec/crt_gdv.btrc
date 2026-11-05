@@ -71,8 +71,8 @@ class CrtGdvSpecChecks {
         return values;
     }
 
-    class JSONValue variant(Fixture fixture, string systemId, string variantId) {  // null when the system has no such variant
-        JSONValue variants = fixture.model.system(systemId).shaders.get("variants");
+    class JSONValue? variant(Fixture fixture, string systemId, string variantId) {  // null when the system has no such variant
+        JSONValue variants = fixture.systemOf(systemId).shaders.get("variants");
         for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
             if (SemuJson.textAt(variants.at(index), "id").equals(variantId)) { return variants.at(index); }
         }
@@ -96,7 +96,7 @@ class CrtGdvSpecChecks {
     }
 
     class int position(Fixture fixture, string systemId, string variantId) {  // the variant's place in Next Shader's order, or -1
-        JSONValue variants = fixture.model.system(systemId).shaders.get("variants");
+        JSONValue variants = fixture.systemOf(systemId).shaders.get("variants");
         for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
             if (SemuJson.textAt(variants.at(index), "id").equals(variantId)) { return index; }
         }
@@ -104,8 +104,8 @@ class CrtGdvSpecChecks {
     }
 
     class void port(Contract contract, Fixture fixture, JSONValue manifest, string systemId, string previousId, string previousPath) {
-        string defaultId = SemuJson.textAt(fixture.model.system(systemId).shaders, "default_variant");
-        JSONValue chosen = CrtGdvSpecChecks.variant(fixture, systemId, defaultId);
+        string defaultId = SemuJson.textAt(fixture.systemOf(systemId).shaders, "default_variant");
+        JSONValue? chosen = CrtGdvSpecChecks.variant(fixture, systemId, defaultId);
         string logical = chosen == null ? "" : SemuJson.textAt(chosen, "screen");
         JSONValue recipe = manifest.get("assets").get(logical);
         bool guest = recipe != null && SemuJson.textAt(recipe, "type").equals("slang_wrapper")
@@ -115,8 +115,8 @@ class CrtGdvSpecChecks {
         bool pinned = guest && GameBoySpecFiles.wrapperHashes(fixture.scratch, manifest, logical);
         contract.expect(failures.isEmpty() && pinned,
             systemId + "'s default CRT is Retro Crisis's GDV-NTSC (crt-guest-advanced-ntsc, his Steam Deck values, intres 1, interm 0), each value emitted and the wrapper pinned: " + failures.join("; "));
-        JSONValue previous = CrtGdvSpecChecks.variant(fixture, systemId, previousId);
-        JSONValue previousRecipe = previous == null ? null : manifest.get("assets").get(SemuJson.textAt(previous, "screen"));
+        JSONValue? previous = CrtGdvSpecChecks.variant(fixture, systemId, previousId);
+        JSONValue? previousRecipe = previous == null ? null : manifest.get("assets").get(SemuJson.textAt(previous, "screen"));
         int defaultAt = CrtGdvSpecChecks.position(fixture, systemId, defaultId);
         contract.expect(previousRecipe != null && SemuJson.textAt(previousRecipe, "reference.path").equals(previousPath) && !defaultId.equals(previousId)
             && defaultAt >= 0 && CrtGdvSpecChecks.position(fixture, systemId, previousId) == defaultAt + 1,
@@ -127,8 +127,8 @@ class CrtGdvSpecChecks {
     // semu.json names their shaders by id: "default" follows the rule, "royale" stays CRT Royale, and a "gdv" saved
     // while his preset was offered one step away is stale and falls back to the default, the same preset.
     class void moved(Contract contract, Fixture fixture, string systemId) {
-        JSONValue royale = CrtGdvSpecChecks.variant(fixture, systemId, "royale");
-        contract.expect(SemuJson.textAt(fixture.model.system(systemId).shaders, "default_variant").equals("default") && royale != null
+        JSONValue? royale = CrtGdvSpecChecks.variant(fixture, systemId, "royale");
+        contract.expect(SemuJson.textAt(fixture.systemOf(systemId).shaders, "default_variant").equals("default") && royale != null
             && SemuJson.textAt(royale, "screen").equals("assets/shaders/" + systemId + "/screen.slangp") && CrtGdvSpecChecks.variant(fixture, systemId, "gdv") == null,
             systemId + "'s default is the variant a saved \"default\" names, a saved \"royale\" keeps CRT Royale, and no second id names his preset");
     }

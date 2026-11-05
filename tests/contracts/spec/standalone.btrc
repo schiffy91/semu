@@ -67,7 +67,7 @@ class StandaloneSpecBed {  // a linux-desktop fixture whose external roots live 
     public string stateRoot(string emulatorId) { return PathTools.join(self.fixture.plan.stateRoot(), emulatorId); }
 
     public string romPath(string systemId, string romName) {
-        SemuSystem system = self.fixture.model.system(systemId);
+        SemuSystem system = self.fixture.systemOf(systemId);
         return PathTools.join(PathTools.join(self.roms, system.romDir), romName);
     }
 
@@ -77,7 +77,7 @@ class StandaloneSpecBed {  // a linux-desktop fixture whose external roots live 
     }
 
     public string executable(string emulatorId) {
-        JSONValue platform = self.fixture.model.emulator(emulatorId).platform(self.fixture.plan.platform);
+        JSONValue platform = self.fixture.emulatorOf(emulatorId).platform(self.fixture.plan.platform);
         return self.fixture.plan.tokens.resolve(SemuJson.textAt(platform, "executable"));
     }
 
@@ -145,6 +145,8 @@ class StandaloneSpecContract {
     }
 
     class void chordContract(Contract contract, SemuPlan plan, SemuEmulator emulator) {  // profile chord rows repeat the target's chords
+        SemuInput? input = plan.input;
+        if (input == null) { return; }
         for group in StandaloneSpecContract.actionGroups() {
             JSONValue rows = SemuJson.get(emulator.profile, group);
             if (!rows.isArray()) { continue; }
@@ -152,7 +154,7 @@ class StandaloneSpecContract {
                 JSONValue row = rows.at(index);
                 if (!row.has("chord")) { continue; }
                 string action = SemuJson.textAt(row, "action");
-                contract.expect(SemuJson.textAt(row, "chord").equals(plan.input.chord(action)), f"{emulator.id} {action} chord matches target {plan.target.id}");
+                contract.expect(SemuJson.textAt(row, "chord").equals(input.chord(action)), f"{emulator.id} {action} chord matches target {plan.target.id}");
             }
         }
     }
@@ -210,7 +212,7 @@ class StandaloneSpecContract {
         }
     }
 
-    class string identity(Fixture fixture, string name) { return SemuJson.textAt(fixture.plan.input.definition, "device_identities." + name); }
+    class string identity(Fixture fixture, string name) { return SemuJson.textAt(fixture.input().definition, "device_identities." + name); }
 
     class void dolphinProfile(Contract contract, Fixture fixture, string target) {
         fixture.plan.tokens.put("system", "wii");  // the players and layouts of a Wii launch
@@ -242,7 +244,7 @@ class StandaloneSpecContract {
     class void pcsx2Profile(Contract contract, Fixture fixture, string target) {
         string main = fixture.profile("pcsx2", "config/PCSX2/inis/PCSX2.ini");
         string input = fixture.profile("pcsx2", "config/PCSX2/inputprofiles/Steam Deck.ini");
-        JSONValue platform = fixture.model.emulator("pcsx2").platform("linux");
+        JSONValue platform = fixture.emulatorOf("pcsx2").platform("linux");
         contract.expect(SemuJson.textAt(platform, "input.primary_device").equals("SDL-0") && SemuJson.textAt(platform, "input.selection").equals("first_sdl_gamepad"), "pcsx2 Pad1 is the first SDL gamepad");
         contract.contains(main, "Renderer = 12", target + " pcsx2 forces OpenGL");
         contract.contains(main, "InputProfileName = Steam Deck", target + " pcsx2 selects the generated input profile");
@@ -402,7 +404,7 @@ class StandaloneSpecContract {
         StandaloneSpecContract.melondsProfile(contract, fixture, target);
         StandaloneSpecContract.azaharProfile(contract, fixture, target);
         StandaloneSpecContract.ryujinxProfile(contract, fixture, target);
-        for emulatorId in StandaloneSpecContract.standaloneIds() { StandaloneSpecContract.chordContract(contract, fixture.plan, fixture.model.emulator(emulatorId)); }
+        for emulatorId in StandaloneSpecContract.standaloneIds() { StandaloneSpecContract.chordContract(contract, fixture.plan, fixture.emulatorOf(emulatorId)); }
         contract.expect(fixture.diagnostics.ok(), target + " standalone profiles render cleanly: " + fixture.diagnostics.render());
     }
 
@@ -420,7 +422,7 @@ class StandaloneSpecContract {
         StandaloneSpecContract.expectArgv(contract, bed, dolphin, ["--config", "SYSCONF.IPL.AR=False", "-u", PathTools.join(bed.stateRoot("dolphin"), "dolphin-user"), "--config", "Dolphin.Display.Fullscreen=True",
             "-b", "-e"], bed.romPath("wii", "Sports.rvz"));  // the standard output's arguments come first: args end on -e and the game
         // Wii titles render 4:3, not anamorphic 16:9 squashed by the 4:3 pin, on macOS too
-        string macosArguments = SemuJson.strings(SemuJson.get(bed.fixture.model.emulator("dolphin").platform("macos"), "outputs.wii.standard.args")).join(" | ");
+        string macosArguments = SemuJson.strings(SemuJson.get(bed.fixture.emulatorOf("dolphin").platform("macos"), "outputs.wii.standard.args")).join(" | ");
         contract.contains(macosArguments, "--config | SYSCONF.IPL.AR=False", "dolphin macos turns the Wii widescreen answer off in the standard output");
         SemuLaunchPlan pcsx2 = bed.launch("pcsx2", "ps2", "Shadow.chd");
         StandaloneSpecContract.expectArgv(contract, bed, pcsx2, ["-nogui", "-fullscreen", "--"], bed.romPath("ps2", "Shadow.chd"));
@@ -460,14 +462,14 @@ class StandaloneSpecContract {
 
     class void seededPaths(Contract contract) {  // Deck-specific seed sources the old spec pinned
         Fixture fixture = Fixture("linux-desktop");
-        JSONValue flycast = fixture.model.emulator("flycast").platform("linux");
+        JSONValue flycast = fixture.emulatorOf("flycast").platform("linux");
         Vector<string> flycastSources = [];
         JSONValue flycastSeeds = SemuJson.get(flycast, "state.seeds");
         for (int index = 0; index < flycastSeeds.size(); index++) {
             for source in SemuJson.strings(flycastSeeds.at(index).get("sources")) { flycastSources.push(source); }
         }
         contract.expect(flycastSources.contains("${bios}/dc/dc_boot.bin") && flycastSources.contains("${bios}/dc/dc_flash.bin"), "flycast BIOS fallbacks use ${bios}/dc");
-        SemuEmulator ryujinx = fixture.model.emulator("ryujinx");
+        SemuEmulator ryujinx = fixture.emulatorOf("ryujinx");
         for platformName in ryujinx.definition.get("platforms").keys() {
             JSONValue seeds = SemuJson.get(ryujinx.platform(platformName), "state.seeds");
             string prodKeys = "";
@@ -487,13 +489,13 @@ class StandaloneSpecContract {
         Vector<string> all = ["retroarch"];
         for emulatorId in StandaloneSpecContract.standaloneIds() { all.push(emulatorId); }
         for emulatorId in all {
-            SemuEmulator emulator = fixture.model.emulator(emulatorId);
+            SemuEmulator emulator = fixture.emulatorOf(emulatorId);
             contract.expect(emulator != null, emulatorId + " is declared");
             if (emulator == null) { continue; }
             StandaloneSpecContract.actionContract(contract, emulator);
             StandaloneSpecContract.seedContract(contract, fixture, emulator);
         }
-        for emulatorId in StandaloneSpecContract.standaloneIds() { StandaloneSpecContract.sourceContract(contract, fixture.project, fixture.model.emulator(emulatorId)); }
+        for emulatorId in StandaloneSpecContract.standaloneIds() { StandaloneSpecContract.sourceContract(contract, fixture.project, fixture.emulatorOf(emulatorId)); }
         StandaloneSpecContract.genericEmitters(contract, fixture.project);
         StandaloneSpecContract.seededPaths(contract);
         StandaloneSpecContract.renderedProfiles(contract, "linux-desktop");

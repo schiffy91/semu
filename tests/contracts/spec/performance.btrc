@@ -20,12 +20,12 @@ class PerformanceSpecRender {  // one rendered profile file for a target under a
     class SemuPlan plan(Fixture fixture, string target, string settings, SemuDiagnostics diagnostics) {
         string paths = "{\"paths\":{\"state_root\":\"" + PathTools.join(fixture.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(fixture.scratch, "content") + "\"}}";
         JSONValue overlay = SemuJson.merge(JSONValue.parse(paths), JSONValue.parse(settings));
-        return SemuResolver.plan(fixture.model, target, fixture.plan.semuHome, fixture.plan.assetRoot, overlay.stringify(), diagnostics);
+        return Fixture.resolved(fixture.model, target, fixture.plan.semuHome, fixture.plan.assetRoot, overlay.stringify(), diagnostics);
     }
 
     class string file(Fixture fixture, string target, string settings, string emulatorId, string relative, SemuDiagnostics diagnostics) {
         SemuPlan plan = PerformanceSpecRender.plan(fixture, target, settings, diagnostics);
-        for rendered in SemuProfiles.render(fixture.model, plan, fixture.model.emulator(emulatorId), diagnostics) {
+        for rendered in SemuProfiles.render(fixture.model, plan, fixture.emulatorOf(emulatorId), diagnostics) {
             if (rendered.path.equals(relative)) { return rendered.content; }
         }
         return "";
@@ -82,9 +82,9 @@ class PerformanceSpecSwitch {
     class void expectMode(Contract contract, Fixture fixture, string target, string settings, string mode) {
         SemuDiagnostics diagnostics = SemuDiagnostics();
         JSONValue config = JSONValue.parse(PerformanceSpecRender.file(fixture, target, settings, "ryujinx", "config/Ryujinx/Config.json", diagnostics));
-        JSONValue players = config == null || config.isError() ? null : config.get("input_config");
+        JSONValue? players = config == null || config.isError() ? null : config.get("input_config");
         JSONValue player = players != null && players.isArray() && players.size() == 1 ? players.at(0) : JSONValue.makeObject();
-        JSONValue docked = config == null || config.isError() ? null : config.get("docked_mode");
+        JSONValue? docked = config == null || config.isError() ? null : config.get("docked_mode");
         bool handheld = mode.equals("handheld");
         bool undocked = docked != null && docked.isBool() && !docked.asBool();
         string slot = SemuJson.textAt(player, "player_index");

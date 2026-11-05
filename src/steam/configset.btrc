@@ -29,7 +29,7 @@ class SteamVdfScanner {  // reads Steam's text KeyValues without rewriting a byt
         self.position = 0;
     }
 
-    public SteamVdfToken next() {  // null at the end of the text
+    public SteamVdfToken? next() {  // null at the end of the text
         while (self.position < self.text.len()) {
             char character = self.text.charAt(self.position);
             if (character == '/' && self.position + 1 < self.text.len() && self.text.charAt(self.position + 1) == '/') {
@@ -63,7 +63,7 @@ class SteamVdfScanner {  // reads Steam's text KeyValues without rewriting a byt
     public int skipBlock() {  // past the matching close brace, or -1 if none
         int depth = 1;
         while (depth > 0) {
-            SteamVdfToken token = self.next();
+            SteamVdfToken? token = self.next();
             if (token == null) { return -1; }
             if (token.brace("{")) { depth++; }
             if (token.brace("}")) { depth--; }
@@ -91,16 +91,16 @@ class SteamConfigset {  // which profile Steam loads per app; Semu owns one
     class string upserted(string text, string key, string* error) {  // every byte outside the one entry kept
         if (text.trim().isEmpty()) { return "\"controller_config\"\n{\n" + SteamConfigset.block(key) + "}\n"; }
         SteamVdfScanner scanner = SteamVdfScanner(text);
-        SteamVdfToken root = scanner.next();
-        SteamVdfToken open = scanner.next();
+        SteamVdfToken? root = scanner.next();
+        SteamVdfToken? open = scanner.next();
         if (root == null || !root.quoted || open == null || !open.brace("{")) { *error = "not a text KeyValues file"; return ""; }
         Vector<int> spans = [];  // start, end pairs of every existing entry for key
         int close = -1;
         while (close < 0) {
-            SteamVdfToken name = scanner.next();
+            SteamVdfToken? name = scanner.next();
             if (name == null) { *error = "the root block never closes"; return ""; }
             if (name.brace("}")) { close = name.start; break; }
-            SteamVdfToken value = scanner.next();
+            SteamVdfToken? value = scanner.next();
             if (!name.quoted || value == null || value.brace("}")) { *error = "a key without a value at byte " + Strings.fromInt(name.start); return ""; }
             int end = value.brace("{") ? scanner.skipBlock() : value.end;
             if (end < 0) { *error = "a block never closes"; return ""; }

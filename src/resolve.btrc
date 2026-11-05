@@ -41,10 +41,10 @@ class SemuPlan {
     public string stateRootPath;
     public JSONValue settings;
     public SemuTokens tokens;
-    public SemuInput input;
+    public SemuInput? input;
     public Vector<string> systems;
     public Vector<string> emulators;
-    public JSONValue pads;  // the pads a launch found, in slot order (SemuPadRoster); null when none was taken
+    public JSONValue? pads;  // the pads a launch found, in slot order (SemuPadRoster); null when none was taken
 
     public SemuPlan(SemuTarget target, string configRoot) {
         self.target = target;
@@ -101,7 +101,7 @@ class SemuResolver {
     class JSONValue targetSettings(SemuModel model, SemuTarget target, SemuDiagnostics diagnostics) {
         Vector<string> seen = [];
         Vector<SemuTarget> chain = [];
-        SemuTarget current = target;
+        SemuTarget? current = target;
         while (current != null) {
             if (seen.contains(current.id)) {
                 diagnostics.add(current.id, "inherits", "target inheritance cycle");
@@ -119,8 +119,8 @@ class SemuResolver {
         return result;
     }
 
-    class SemuPlan plan(SemuModel model, string targetId, string semuHome, string assetRoot, string settingsJson, SemuDiagnostics diagnostics) {
-        SemuTarget target = model.target(targetId);
+    class SemuPlan? plan(SemuModel model, string targetId, string semuHome, string assetRoot, string settingsJson, SemuDiagnostics diagnostics) {
+        SemuTarget? target = model.target(targetId);
         if (target == null) {
             diagnostics.add(model.configRoot, "target", "unknown target " + targetId);
             return null;
@@ -159,7 +159,8 @@ class SemuResolver {
         plan.input = model.input(target.input);
         if (plan.input == null) { diagnostics.add(target.id, "input", "unknown input definition " + target.input); }
         for systemId in model.systemIds() {
-            SemuSystem system = model.system(systemId);
+            SemuSystem? system = model.system(systemId);
+            if (system == null) { continue; }
             Vector<SemuSystemBinding> bindings = system.bindingsFor(plan.platform);
             if (bindings.isEmpty()) { continue; }
             plan.systems.push(systemId);

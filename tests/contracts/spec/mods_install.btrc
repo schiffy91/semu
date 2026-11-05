@@ -31,7 +31,7 @@ class ModsSpecBed {  // azahar on linux-desktop carrying only the synthetic kind
 
     public ModsSpecBed() {
         self.bed = StandaloneSpecBed();
-        self.emulator = self.bed.fixture.model.emulator("azahar");
+        self.emulator = self.bed.fixture.emulatorOf("azahar");
         self.emulator.platform("linux").get("state").set("mods", JSONValue.parse(ModsSpecBed.kinds()));
         self.library = PathTools.join(self.bed.fixture.plan.path("mods"), "azahar");
         self.state = self.bed.stateRoot("azahar");
@@ -44,7 +44,7 @@ class ModsSpecBed {  // azahar on linux-desktop carrying only the synthetic kind
         return ("{'settings':{'fixture':{'on':'true','off':'false'}},'kinds':[" + textures + "," + contents + "]}").replace("'", "\"");
     }
 
-    public SemuModInstallReport install() { return SemuModInstaller.install(self.bed.fixture.plan, self.emulator, self.bed.fixture.model.system("n3ds")); }
+    public SemuModInstallReport install() { return SemuModInstaller.install(self.bed.fixture.plan, self.emulator, self.bed.fixture.systemOf("n3ds")); }
 
     public string textures(string relative) {  // the target itself for ""
         string root = PathTools.join(self.state, "data/fixture/load/textures");
@@ -60,7 +60,7 @@ class ModsSpecBed {  // azahar on linux-desktop carrying only the synthetic kind
 
     public void root(string value) { for name in ["mods", "paths.mods"] { self.bed.fixture.plan.tokens.put(name, value); } }
 
-    public SemuModKind kind(string identifier) {
+    public SemuModKind? kind(string identifier) {  // null when the bed declares no such kind
         for kind in SemuModKind.declared(self.bed.fixture.plan, self.emulator) { if (kind.id.equals(identifier)) { return kind; } }
         return null;
     }
@@ -84,7 +84,8 @@ class ModsSpecValidity {  // the cheap checks before a link, at their edges
         contract.expect(patch.problem(entry).isEmpty(), "a BPS whose sizes take two bytes each and carries no metadata passes: " + patch.problem(entry));
         ModsSpecTree.writeBytes(PathTools.join(entry, "code.bps"), [66, 80, 83, 49, 0, 128, 44, 129, 0, 128]);  // metadata 128, spelled [0x00, 0x80]
         contract.expect(patch.problem(entry).contains("carries metadata"), "a BPS whose metadata size is 128 in two bytes is refused: each beat number adds its shift");
-        SemuModKind kind = bed.kind("fixture-textures");
+        SemuModKind? kind = bed.kind("fixture-textures");
+        if (kind == null) { contract.expect(false, "the bed declares the fixture-textures kind"); return; }
         contract.expect(kind.readsName("TEX.PNG", false) && kind.readsName("tex.png", false) && !kind.readsName("TEX.JPG", false), "a pack whose files end in .PNG is read: the suffix matches in any case");
         SemuModLevel title = SemuModLevel(JSONValue.parse("{\"length\":16,\"characters\":\"0123456789ABCDEFabcdef\"}"));
         contract.expect(title.matches("0004000000033600") && !title.matches("X004000000033600") && !title.matches("000400000003360X"), "a title name is checked from its first character to its last");
@@ -130,7 +131,7 @@ class ModsSpecInstall {
         contract.expect(!FileSystem.exists(bed.textures("0004000000033600.semu-link")) && !FileSystem.isSymlink(bed.textures("0004000000033600.semu-link")), "no .semu-link is left behind");
         Vector<string> records = Strings.split(bed.manifest().trim(), "\n");
         contract.expect(ModsSpecTree.count(records, "link\tfixture-textures\t") == 2 && ModsSpecTree.count(records, "file\tfixture-textures\t") == 2, "the manifest holds the two links and their two title settings: " + bed.manifest());
-        int scale = SemuComposedScale.of(bed.bed.fixture.plan, bed.bed.fixture.model.system("n3ds"), "azahar");
+        int scale = SemuComposedScale.of(bed.bed.fixture.plan, bed.bed.fixture.systemOf("n3ds"), "azahar");
         string settings = FileSystem.readText(PathTools.join(bed.state, "config/fixture/custom/0004000000033600.ini"));
         contract.expect(settings.equals(f"[Fixture]\nscale={scale}\ntitle=0004000000033600\n") && FileSystem.isFile(PathTools.join(bed.state, "config/fixture/custom/00040000000AEB00.ini")), "each installed title gets its title settings at the composed scale: " + settings);
         Vector<string> custom = FileSystem.listDir(PathTools.join(bed.state, "config/fixture/custom"));
@@ -242,7 +243,8 @@ class ModsSpecInstall {
         entries.push(SemuModEntry("00040000000aeb00", "/library/00040000000aeb00", "00040000000AEB00", "", false));
         SemuModLibrary.markTwins(entries);
         contract.expect(entries.get(0).problem.startsWith("duplicate") && entries.get(1).problem.startsWith("duplicate") && entries.get(2).problem.isEmpty(), "two library names that link to one name are both reported as duplicates, the rest untouched");
-        SemuModKind kind = bed.kind("fixture-textures");
+        SemuModKind? kind = bed.kind("fixture-textures");
+        if (kind == null) { contract.expect(false, "the bed declares the fixture-textures kind"); return; }
         string empty = PathTools.join(bed.bed.fixture.scratch, "active");
         kind.target = empty;
         FileSystem.mkdirp(empty);
@@ -253,7 +255,8 @@ class ModsSpecInstall {
         contract.expect(!kind.active(), "a dangling link does not count");
         FileSystem.symlink(bed.source("fixture-textures/0004000000033600"), PathTools.join(empty, "0004000000033600"));
         contract.expect(kind.active(), "a link to a folder with a texture makes the kind active");
-        SemuModKind contents = bed.kind("fixture-contents");
+        SemuModKind? contents = bed.kind("fixture-contents");
+        if (contents == null) { contract.expect(false, "the bed declares the fixture-contents kind"); return; }
         string container = PathTools.join(bed.bed.fixture.scratch, "active-contents");
         contents.target = container;
         FileSystem.mkdirp(PathTools.join(container, "0100f2c0115b6000"));

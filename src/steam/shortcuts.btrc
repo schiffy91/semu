@@ -131,7 +131,7 @@ class SteamShortcutsFile {
         return value;
     }
 
-    public int walk(int offset, SteamShortcut shortcut) {  // returns the offset after the object's closing 0x08, or -1
+    public int walk(int offset, SteamShortcut? shortcut) {  // returns the offset after the object's closing 0x08, or -1
         while (offset < self.size) {
             int type = (int)self.data[offset];
             offset++;
@@ -239,14 +239,14 @@ class SteamShortcuts {
 
     class string quote(string value) { return "\"" + value + "\""; }
 
-    class SteamShortcut find(SteamShortcutsFile file, string name, string quotedExe) {
+    class SteamShortcut? find(SteamShortcutsFile file, string name, string quotedExe) {
         for entry in file.entries {
             if (entry.appName.equals(name) || entry.exe.equals(quotedExe)) { return entry; }
         }
         return null;
     }
 
-    class SteamShortcut upsert(string path, string name, string exe, string startDir, string* error) {  // keeps every other entry byte for byte
+    class SteamShortcut? upsert(string path, string name, string exe, string startDir, string* error) {  // keeps every other entry byte for byte
         SteamShortcutsFile file = SteamShortcutsFile.read(path);
         if (!file.valid) {
             *error = "cannot walk " + path + " (unknown VDF content); not rewriting it";
@@ -366,7 +366,7 @@ class SteamShortcuts {
         }
         for file in files {
             string error = "";
-            SteamShortcut entry = SteamShortcuts.upsert(file, SteamShortcuts.name(plan), launcher, SteamShortcuts.startDir(plan), &error);
+            SteamShortcut? entry = SteamShortcuts.upsert(file, SteamShortcuts.name(plan), launcher, SteamShortcuts.startDir(plan), &error);
             if (entry == null) {
                 Console.error("semu: " + error);
                 return 1;
@@ -386,7 +386,7 @@ class SteamShortcuts {
         int missing = 0;
         for file in files {
             SteamShortcutsFile parsed = SteamShortcutsFile.read(file);
-            SteamShortcut entry = parsed.valid ? SteamShortcuts.find(parsed, SteamShortcuts.name(plan), quotedExe) : null;
+            SteamShortcut? entry = parsed.valid ? SteamShortcuts.find(parsed, SteamShortcuts.name(plan), quotedExe) : null;
             if (entry == null) {
                 missing++;
                 Console.log(f"{file}: {parsed.valid ? "no Semu shortcut" : "unreadable"} ({parsed.entries.size()} entries)");

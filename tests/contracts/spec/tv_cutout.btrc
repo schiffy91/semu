@@ -238,7 +238,7 @@ class TvCutoutChecks {
         Vector<string> lit = [];
         Vector<string> wrong = [];
         for systemId in fixture.model.systemIds() {
-            JSONValue variants = fixture.model.system(systemId).bezels.get("variants");
+            JSONValue variants = fixture.systemOf(systemId).bezels.get("variants");
             for (int index = 0; variants != null && variants.isArray() && index < variants.size(); index++) {
                 string variantId = SemuJson.textAt(variants.at(index), "id");
                 JSONValue package = SemuBezelPackage.load(fixture.plan, SemuJson.textAt(variants.at(index), "bezel"));
@@ -246,7 +246,7 @@ class TvCutoutChecks {
                 PlacementSpecGeometry.load(PlacementSpecEnvironment.compile(fixture, systemId, variantId), &variant);
                 int loaded[8] = {1, 1, 1, 1, 1, 1, 1, 1};
                 int chosen = RendererRoomLight.layer(variant.layers, variant.layer_count, loaded);
-                JSONValue ambient = package == null ? null : package.get("ambient");
+                JSONValue? ambient = package == null ? null : package.get("ambient");
                 bool night = ambient != null && ambient.isObject();
                 string cell = systemId + ":" + variantId;
                 if (!night) { if (chosen != -1) { wrong.push(cell + " lights its lip with no night plate"); } continue; }

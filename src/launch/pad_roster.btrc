@@ -93,13 +93,13 @@ class SemuPadRoster {
         return rest.isDigit() ? Strings.toInt(rest) : -1;
     }
 
-    class string sdlName(JSONValue sdlNames, int vendor, int product, string evdevName) {  // SDL's gamepad name for a pad its mapping database renames (players.sdl_names), else the evdev name
+    class string sdlName(JSONValue? sdlNames, int vendor, int product, string evdevName) {  // SDL's gamepad name for a pad its mapping database renames (players.sdl_names), else the evdev name
         string key = SemuPadGuid.hexByte((vendor >> 8) & 255) + SemuPadGuid.hexByte(vendor & 255) + ":" + SemuPadGuid.hexByte((product >> 8) & 255) + SemuPadGuid.hexByte(product & 255);
         string named = sdlNames != null && sdlNames.isObject() && sdlNames.has(key) ? SemuJson.text(sdlNames.get(key)) : "";
         return named.isEmpty() ? evdevName : named;
     }
 
-    class JSONValue pad(int node, string evdevName, int bus, int vendor, int product, int version, int slot, Vector<string> names, JSONValue sdlNames) {  // one roster entry before its place is known
+    class JSONValue pad(int node, string evdevName, int bus, int vendor, int product, int version, int slot, Vector<string> names, JSONValue? sdlNames) {  // one roster entry before its place is known
         JSONValue entry = JSONValue.makeObject();
         string name = slot >= 0 && slot < names.size() && !names.get(slot).isEmpty() ? names.get(slot) : SemuPadRoster.sdlName(sdlNames, vendor, product, evdevName);  // the name SDL gives it: Dolphin matches SDL/<n>/<name>
         entry.set("node", JSONValue.makeInt(node));
@@ -155,7 +155,7 @@ class SemuPadRoster {
         return read && ((keyBits[south / 64] >> (south % 64)) & 1UL) != 0UL && ((keyBits[start / 64] >> (start % 64)) & 1UL) != 0UL;
     }
 
-    class JSONValue scan(JSONValue players) {  // the pads present now; null without /sys/class/input (macOS), so the launch keeps its defaults
+    class JSONValue? scan(JSONValue players) {  // the pads present now; null without /sys/class/input (macOS), so the launch keeps its defaults
         string classes = "/sys/class/input";
         if (!FileSystem.isDir(classes)) { return null; }
         string slotFile = Environment.get(SemuJson.textAt(players, "steam_slots_variable"), "");

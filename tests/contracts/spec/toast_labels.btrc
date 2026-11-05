@@ -23,16 +23,16 @@ class ToastLabelsSpecContract {
 
     class void run(Contract contract) {
         Fixture fixture = Fixture("steam-deck");
-        JSONValue actions = SemuJson.get(fixture.plan.input.definition, "actions");
+        JSONValue actions = SemuJson.get(fixture.input().definition, "actions");
         string bezel = SemuJson.textAt(actions.get("visual.bezel.next"), "toast");
         string shader = SemuJson.textAt(actions.get("visual.shader.next"), "toast");
         string output = SemuJson.textAt(actions.get("visual.output.next"), "toast");
         Vector<string> cut = [];
         Vector<int> counted = [];
         for systemId in fixture.model.systemIds() {
-            ToastLabelsSpecContract.labels(fixture.model.system(systemId).bezels.get("variants"), bezel, systemId + " bezel", cut, counted);
-            ToastLabelsSpecContract.labels(SemuJson.get(fixture.model.system(systemId).shaders, "variants"), shader, systemId + " shader", cut, counted);
-            ToastLabelsSpecContract.labels(SemuJson.get(fixture.model.system(systemId).definition, "display.outputs"), output, systemId + " output", cut, counted);
+            ToastLabelsSpecContract.labels(fixture.systemOf(systemId).bezels.get("variants"), bezel, systemId + " bezel", cut, counted);
+            ToastLabelsSpecContract.labels(SemuJson.get(fixture.systemOf(systemId).shaders, "variants"), shader, systemId + " shader", cut, counted);
+            ToastLabelsSpecContract.labels(SemuJson.get(fixture.systemOf(systemId).definition, "display.outputs"), output, systemId + " output", cut, counted);
         }
         contract.expect(bezel.equals("BEZEL: {label}") && shader.equals("SHADER: {label}") && output.equals("ASPECT: {label}") && counted.size() >= 60 && cut.isEmpty(),
             f"every bezel, shader and output label ({counted.size()}) fits its toast whole in the renderer's 31 characters, so a toast names the preset in full: " + cut.join(" | "));

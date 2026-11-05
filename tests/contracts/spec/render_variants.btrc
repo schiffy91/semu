@@ -69,7 +69,7 @@ class RenderVariantTools {
 
     class SemuPlan plan(Fixture fixture, string overlay) {
         SemuDiagnostics diagnostics = SemuDiagnostics();
-        return SemuResolver.plan(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
+        return Fixture.resolved(fixture.model, "linux-desktop", fixture.plan.semuHome, fixture.plan.assetRoot, overlay, diagnostics);
     }
 
     class Vector<string> emulators(SemuSystem system) {
@@ -133,7 +133,7 @@ class RenderVariantCompleteness {  // every system, every combination: only scop
         SemuDiagnostics diagnostics = SemuDiagnostics();
         int sections = 0;
         for systemId in fixture.model.systemIds() {
-            SemuSystem system = fixture.model.system(systemId);
+            SemuSystem system = fixture.systemOf(systemId);
             for overlay in ["{}", "{\"visual\":{\"bezels\":false,\"crt_shaders\":false}}"] {
                 SemuPlan plan = RenderVariantTools.plan(fixture, overlay);
                 for emulatorId in RenderVariantTools.emulators(system) {
@@ -196,7 +196,7 @@ class RenderVariantFileSpec {  // the DS file through the CLI, the computed layo
         for (int shader = 0; shader < 3; shader++) { if (file.section(1, shader).contains("SEMU_RENDER_ART")) { computedArt = true; } }
         contract.expect(!computedArt && file.section(0, 0).contains("SEMU_RENDER_ART="), "a computed layout's sections name no art, the shell's do");
         contract.expect(file.section(6, 2).contains("SEMU_RENDER_SHADERS=0") && file.section(6, 2).contains("SEMU_RENDER_BEZELS=0") && !file.section(6, 2).contains("SEMU_RENDER_SCREEN_"), "nds [none,none] turns both off and draws no screens' look");
-        SemuSystem wii = fixture.model.system("wii");
+        SemuSystem wii = fixture.systemOf("wii");
         string wiiState = PathTools.join(fixture.scratch, "variants/wii-dolphin-file");
         SemuRenderVariants.write(fixture.plan, wii, "dolphin", wiiState);
         RenderVariantFile wide = RenderVariantFile(FileSystem.readText(SemuRenderVariants.path(wiiState)));
@@ -221,7 +221,7 @@ class RenderVariantChoiceSpec {  // a system's own choice beats the global switc
     }
 
     class void run(Contract contract, Fixture fixture) {
-        SemuSystem gameBoy = fixture.model.system("gb");
+        SemuSystem gameBoy = fixture.systemOf("gb");
         SemuDiagnostics diagnostics = SemuDiagnostics();
         Vector<string> chosen = SemuRenderEnvironment.compile(RenderVariantTools.plan(fixture, "{\"visual\":{\"bezels\":false,\"crt_shaders\":false,\"systems\":{\"gb\":{\"bezel_variant\":\"dmg\",\"shader_variant\":\"pocket\"}}}}"), gameBoy, "retroarch", "/state/retroarch", diagnostics);
         contract.expect(chosen.contains("SEMU_RENDER_BEZELS=1") && chosen.contains("SEMU_RENDER_BEZEL_ID=gb-dmg-shell") && chosen.contains("SEMU_RENDER_SHADERS=1"), "with both global switches off, gb's own DMG bezel and pocket shader still draw");
@@ -261,7 +261,7 @@ class RenderVariantSpecContract {
     class void run(Contract contract) {
         Fixture fixture = Fixture("linux-desktop");
         for systemId in fixture.model.systemIds() {
-            SemuSystem system = fixture.model.system(systemId);
+            SemuSystem system = fixture.systemOf(systemId);
             RenderEnvSpecAssets.walk(fixture.plan.assetRoot, system.shaders);
             RenderEnvSpecAssets.walk(fixture.plan.assetRoot, system.bezels);
         }
