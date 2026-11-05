@@ -19,7 +19,9 @@
     {
       system = "aarch64-darwin";
       runner = "macos-15";  # Apple Silicon, free for public repositories
-      attrs = [ "semu-cli" "bezel-layers" "visual-assets" ];
+      # not semu-cli: src/launch/semu_evdev.h includes linux/input.h, so the
+      # program is Linux-only. These two are pure asset builds and do cross.
+      attrs = [ "bezel-layers" "visual-assets" ];
     }
   ];
 
