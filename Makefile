@@ -13,8 +13,10 @@ SEMU_BIN := $(BUILD)/semu
 CONTRACTS_BIN := $(BUILD)/contracts
 TARGET ?= linux-desktop
 ASSET_ROOT ?= $(BUILD)/nix/result
+PORT ?= 8080
+CACHE_DIR ?= $(HOME)/.cache/nix-cache  # shared with the other repositories on this host
 
-.PHONY: all build test repository-check bezel-tree render-host configs nix nix-check nix-eval prepare doctor clean help
+.PHONY: all build test repository-check bezel-tree render-host configs nix nix-check nix-eval prepare doctor cache cache-all cache-serve clean help
 
 all: build ## Build the semu CLI
 
@@ -79,6 +81,16 @@ prepare: nix ## Install ES-DE documents and settings for TARGET using the built 
 
 doctor: $(SEMU_BIN) ## Show resolved paths and what is missing for TARGET
 	"$(CURDIR)/$(SEMU_BIN)" doctor --target "$(TARGET)" --project "$(CURDIR)" --asset-root "$(abspath $(ASSET_ROOT))"
+
+cache: ## Build this host's ci/targets.nix attrs, sign them, and add them to build/cache
+	packaging/cache/publish.sh
+
+cache-all: ## The same for the whole product (the composed bundle and the Deck release)
+	packaging/cache/publish.sh --all
+
+cache-serve: ## Serve build/cache over HTTP for the other machines (PORT=8080)
+	@printf 'serving %s on port %s; substituter: http://%s.local:%s\n' "$(CACHE_DIR)" "$(PORT)" "$$(hostname)" "$(PORT)"
+	@python3 -m http.server "$(PORT)" --directory "$(CACHE_DIR)"
 
 clean:
 	rm -rf "$(BUILD)"

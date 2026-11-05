@@ -1,0 +1,46 @@
+name: release
+
+# A v* tag publishes the Deck release: the bundle's whole closure as a tarball, its
+# digest, and the installer, exactly as ci/targets.nix `release` names them.
+on:
+  push:
+    tags: [ "v*" ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to publish (it must already exist)
+        required: true
+
+permissions:
+  contents: write  # only to attach the assets to its own release
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            extra-substituters = ${{ vars.SEMU_CACHE_URL }}
+            extra-trusted-public-keys = ${{ vars.SEMU_CACHE_PUBLIC_KEY }}
+      - name: build the release
+        run: |
+          attr=$(nix eval --raw --file ci/targets.nix --apply 'c: c.release.attr')
+          nix build --print-build-logs --out-link build/release ".#$attr"
+      - name: collect the assets
+        run: |
+          mkdir -p assets
+          for file in $(nix eval --raw --file ci/targets.nix --apply 'c: builtins.concatStringsSep " " c.release.files'); do
+            cp -L "build/release/$file" "assets/$file"
+          done
+          ( cd assets && sha256sum ./* > SHA256SUMS )
+          ls -l assets
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: assets/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

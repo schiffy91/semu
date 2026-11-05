@@ -1,0 +1,1 @@
+{"manifest-hash":"2158ac637d442d3e5cc8110575d262b5598303b87786c78f83634921dd73f39f","packages":[{"dependencies":{},"manifest-hash":"a9da13f0665bd4928fc39e1042ac0ca5864ac38d2732ebe273e28325f28fd6e6","name":"semu","source":{"path":"."}}],"root":"semu","schema":3}

@@ -102,6 +102,49 @@ verifies the digest, installs into `~/Applications/Semu/releases/<digest>`,
 switches the `current` symlink, keeps one `previous` release, and writes a
 desktop entry.
 
+## Cache and releases
+
+`ci/targets.nix` is the single list of what gets built, for which systems, on which
+runners, and what a release carries. Adding a system or an attribute there is the whole
+change: the Makefile targets and both GitHub workflows read that file.
+
+A machine of your own publishes for the others, with no account anywhere:
+
+```sh
+make cache            # this host's ci/targets.nix attrs, signed into build/cache
+make cache-all        # the composed bundle and the Deck release as well
+make cache-serve      # serve build/cache over HTTP (PORT=8080)
+```
+
+The first run writes a signing key to `~/.config/nix/semu-cache-1.key` and prints its
+public half. Keep a copy: it is what lets the other machines trust the cache. On each of
+them, where `HOST` is the publisher:
+
+```nix
+nix.settings.extra-substituters = [ "http://HOST:8080" ];
+nix.settings.extra-trusted-public-keys = [ "semu-cache-1:GAvdDO5fCGcTJsr1yyVLgnVn7TTyFYnfEkb7fd2zUew=" ];
+```
+
+In CI, `.github/workflows/cache.yml` builds one job per system and attribute every
+Monday and on every push to `main`. With a `CACHIX_AUTH_TOKEN` secret and a cache named
+in `ci/targets.nix` it pushes there; with a `NIX_CACHE_SECRET_KEY` secret and no Cachix
+it signs the closure and leaves a flat cache as a workflow artifact, which
+`nix copy --from file://...` consumes unchanged. Set the `SEMU_CACHE_URL` and
+`SEMU_CACHE_PUBLIC_KEY` repository variables and the runners substitute from the cache
+they are filling.
+
+The composed bundle is about 4.5 GiB and does not fit a hosted runner's disk or a
+GitHub Pages site, which is why `semu` and `release` are in `local` rather than in a CI
+job: build those on your own machine and let the other machines pull them. The parts
+that do fit — the CLI, the renderer, ES-DE, RetroArch, the bezel and visual assets — are
+what CI keeps warm.
+
+`.github/workflows/release.yml` turns a `v*` tag into a GitHub Release carrying
+`Semu-x86_64.tar.zst`, its digest, `install.sh` and a `SHA256SUMS`, built from the same
+`ci/targets.nix` entry that `make nix` uses. The tarball measured 1.5 GiB here — the
+4.5 GiB closure compresses well enough to stay under GitHub's 2 GiB asset limit, so the
+Deck release travels as one asset and `install.sh` verifies the digest beside it.
+
 ## Commands
 
 ```sh
