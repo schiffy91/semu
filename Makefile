@@ -82,7 +82,7 @@ prepare: nix ## Install ES-DE documents and settings for TARGET using the built 
 doctor: $(SEMU_BIN) ## Show resolved paths and what is missing for TARGET
 	"$(CURDIR)/$(SEMU_BIN)" doctor --target "$(TARGET)" --project "$(CURDIR)" --asset-root "$(abspath $(ASSET_ROOT))"
 
-cache: ## Build this host's ci/targets.nix attrs, sign them, and add them to build/cache
+cache: ## Build this host's .github/ci/targets.nix attrs, sign them, and add them to build/cache
 	packaging/cache/publish.sh
 
 cache-all: ## The same for the whole product (the composed bundle and the Deck release)

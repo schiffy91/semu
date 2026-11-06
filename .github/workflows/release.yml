@@ -1,7 +1,7 @@
 name: release
 
 # A v* tag publishes the Deck release: the bundle's whole closure as a tarball, its
-# digest, and the installer, exactly as ci/targets.nix `release` names them.
+# digest, and the installer, exactly as .github/ci/targets.nix `release` names them.
 on:
   push:
     tags: [ "v*" ]
@@ -28,12 +28,12 @@ jobs:
             extra-trusted-public-keys = ${{ vars.SEMU_CACHE_PUBLIC_KEY }}
       - name: build the release
         run: |
-          attr=$(nix eval --raw --file ci/targets.nix --apply 'c: c.release.attr')
+          attr=$(nix eval --raw --file .github/ci/targets.nix --apply 'c: c.release.attr')
           nix build --print-build-logs --out-link build/release ".#$attr"
       - name: collect the assets
         run: |
           mkdir -p assets
-          for file in $(nix eval --raw --file ci/targets.nix --apply 'c: builtins.concatStringsSep " " c.release.files'); do
+          for file in $(nix eval --raw --file .github/ci/targets.nix --apply 'c: builtins.concatStringsSep " " c.release.files'); do
             cp -L "build/release/$file" "assets/$file"
           done
           ( cd assets && sha256sum ./* > SHA256SUMS )

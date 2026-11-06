@@ -1,15 +1,15 @@
 #!/bin/sh
-# Build this host's share of ci/targets.nix, sign it, and add it to a flat-file Nix
+# Build this host's share of .github/ci/targets.nix, sign it, and add it to a flat-file Nix
 # binary cache that other machines can substitute from over HTTP. No account anywhere.
 #
 #   publish.sh [--all] [--dir DIR] [--key FILE] [ATTR...]
 #
-# --all uses ci/targets.nix `local` (the whole product) instead of this system's CI attrs.
+# --all uses .github/ci/targets.nix `local` (the whole product) instead of this system's CI attrs.
 # The secret key is generated on first use and never leaves this machine; keep a copy.
 set -eu
 
 root=$(cd "$(dirname "$0")/../.." && pwd -P)
-targets="$root/ci/targets.nix"
+targets="$root/.github/ci/targets.nix"
 dir="${SEMU_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/nix-cache}"  # shared with the other repositories on this host
 key="${SEMU_CACHE_KEY:-${XDG_CONFIG_HOME:-$HOME/.config}/nix/semu-cache-1.key}"
 list=""
@@ -37,7 +37,7 @@ if [ -z "$list" ]; then
     list=$(evaluate "c: let m = builtins.filter (s: s.system == \"$system\") c.systems; in if m == [] then \"\" else builtins.concatStringsSep \" \" (builtins.head m).attrs")
   fi
 fi
-[ -n "$list" ] || { printf 'publish.sh: ci/targets.nix names nothing for %s\n' "$system" >&2; exit 1; }
+[ -n "$list" ] || { printf 'publish.sh: .github/ci/targets.nix names nothing for %s\n' "$system" >&2; exit 1; }
 
 if [ ! -f "$key" ]; then
   mkdir -p "$(dirname "$key")"
@@ -46,7 +46,7 @@ if [ ! -f "$key" ]; then
 fi
 public=$(nix key convert-secret-to-public < "$key")
 declared=$(evaluate 'c: c.cache.publicKey')
-[ "$public" = "$declared" ] || printf 'publish.sh: this key is %s but ci/targets.nix declares %s\n' "$public" "$declared" >&2
+[ "$public" = "$declared" ] || printf 'publish.sh: this key is %s but .github/ci/targets.nix declares %s\n' "$public" "$declared" >&2
 
 mkdir -p "$dir"
 for attr in $list; do

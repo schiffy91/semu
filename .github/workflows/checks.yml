@@ -1,0 +1,35 @@
+name: checks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+        with:
+          extra-conf: |
+            extra-substituters = ${{ vars.SEMU_CACHE_URL }}
+            extra-trusted-public-keys = ${{ vars.SEMU_CACHE_PUBLIC_KEY }}
+      - name: run every check
+        run: |
+          names=$(nix eval --json '.#checks.x86_64-linux' --apply builtins.attrNames | jq -r '.[]')
+          echo "$names" | sed 's/^/  /'
+          failed=""
+          for name in $names; do
+            printf '\n=== %s\n' "$name"
+            nix build --print-build-logs ".#checks.x86_64-linux.$name" || failed="$failed $name"
+          done
+          if [ -n "$failed" ]; then
+            printf '\nfailed:%s\n' "$failed"
+            exit 1
+          fi
