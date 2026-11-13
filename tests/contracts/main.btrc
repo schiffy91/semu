@@ -294,6 +294,7 @@ class LaunchPlanContract {
         FileSystem.writeText(PathTools.join(roms, "psp/Lumines.iso"), "");
         SemuLaunchPlan psp = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "psp", "ppsspp", "Lumines.iso", SemuDiagnostics());
         contract.expect(psp.ok(), "psp fallback core launches: " + psp.error);
+        contract.expect(FileSystem.isDir(PathTools.join(fixture.plan.path("saves"), "retroarch")) && FileSystem.isDir(PathTools.join(fixture.plan.path("states"), "retroarch")), "a launch makes the emulator's own save and state folders in a new library: RetroArch writes none into a folder that is not there");
         contract.expect(psp.argv.contains("--appendconfig"), "per-core overrides are appended for ppsspp");
         string overrides = FileSystem.readText(PathTools.join(fixture.plan.stateRoot(), "retroarch/core-ppsspp.cfg"));
         contract.contains(overrides, "video_context_driver = \"x\"", "ppsspp gets a GLX context: its GLX-built GLEW has no draw context under EGL");

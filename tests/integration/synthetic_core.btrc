@@ -27,6 +27,20 @@ int SyntheticFrameHeight;
 float SyntheticAspect;
 int SyntheticPointerDown;
 
+// libretro.h's constants by value. BTRC resolves a C macro only through a native binding declared in a
+// manifest, and this core is transpiled alone, without one; the values are libretro's frozen ABI.
+class LibretroValues {
+    class unsigned int apiVersion() { return 1u; }  // RETRO_API_VERSION
+    class unsigned int devicePointer() { return 6u; }  // RETRO_DEVICE_POINTER
+    class unsigned int pointerX() { return 0u; }  // RETRO_DEVICE_ID_POINTER_X
+    class unsigned int pointerY() { return 1u; }  // RETRO_DEVICE_ID_POINTER_Y
+    class unsigned int pointerPressed() { return 2u; }  // RETRO_DEVICE_ID_POINTER_PRESSED
+    class unsigned int regionNtsc() { return 0u; }  // RETRO_REGION_NTSC
+    class unsigned int setPixelFormat() { return 10u; }  // RETRO_ENVIRONMENT_SET_PIXEL_FORMAT
+    class unsigned int setSupportNoGame() { return 18u; }  // RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME
+    class int pixelFormatXrgb8888() { return 1; }  // RETRO_PIXEL_FORMAT_XRGB8888
+}
+
 class SyntheticGeometry {
     class void load() {  // the launcher's surface contract, else the classic 256x240 card
         SyntheticScreens = 1;
@@ -108,22 +122,22 @@ class SyntheticPointer {
 
     class void report() {  // the pointer as the core reads it, on each press edge
         if (SyntheticInputState == null) { return; }
-        int pressed = SyntheticInputState(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_PRESSED) != 0 ? 1 : 0;
+        int pressed = SyntheticInputState(0, LibretroValues.devicePointer(), 0, LibretroValues.pointerPressed()) != 0 ? 1 : 0;
         if (pressed == SyntheticPointerDown) { return; }
         SyntheticPointerDown = pressed;
         if (pressed == 0) {
             fputs("synthetic: pointer release\n", stderr);
             return;
         }
-        int16_t x = SyntheticInputState(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_X);
-        int16_t y = SyntheticInputState(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_Y);
+        int16_t x = SyntheticInputState(0, LibretroValues.devicePointer(), 0, LibretroValues.pointerX());
+        int16_t y = SyntheticInputState(0, LibretroValues.devicePointer(), 0, LibretroValues.pointerY());
         fprintf(stderr, "synthetic: pointer press %d,%d normalized %.4f,%.4f\n", (int)x, (int)y, SyntheticPointer.normalized(x), SyntheticPointer.normalized(y));
     }
 }
 
 void retro_init() { SyntheticFrame = 0ULL; SyntheticPointerDown = 0; SyntheticGeometry.load(); }
 void retro_deinit() {}
-unsigned int retro_api_version() { return RETRO_API_VERSION; }
+unsigned int retro_api_version() { return LibretroValues.apiVersion(); }
 void retro_set_environment(__fn_ptr<bool, unsigned int, void*> callback) { SyntheticEnvironment = callback; }
 void retro_set_video_refresh(__fn_ptr<void, const void*, unsigned int, unsigned int, size_t> callback) { SyntheticVideo = callback; }
 void retro_set_audio_sample(__fn_ptr<void, int16_t, int16_t> callback) { SyntheticAudio = callback; }
@@ -161,17 +175,17 @@ void retro_reset() {  // logged, so a test can tell RetroArch reset the core
 
 bool retro_load_game(const struct retro_game_info* game) {
     (void)game;
-    enum retro_pixel_format format = RETRO_PIXEL_FORMAT_XRGB8888;
-    unsigned int setFormat = RETRO_ENVIRONMENT_SET_PIXEL_FORMAT;
+    int format = LibretroValues.pixelFormatXrgb8888();  // enum retro_pixel_format, an int
+    unsigned int setFormat = LibretroValues.setPixelFormat();
     if (SyntheticEnvironment == null || !SyntheticEnvironment(setFormat, &format)) { return false; }
     bool supportsNoGame = true;
-    unsigned int setNoGame = RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME;
+    unsigned int setNoGame = LibretroValues.setSupportNoGame();
     SyntheticEnvironment(setNoGame, &supportsNoGame);
     return true;
 }
 
 void retro_unload_game() {}
-unsigned int retro_get_region() { return RETRO_REGION_NTSC; }
+unsigned int retro_get_region() { return LibretroValues.regionNtsc(); }
 size_t retro_serialize_size() { return sizeof(SyntheticFrame); }
 bool retro_serialize(void* data, size_t size) {
     if (size < sizeof(SyntheticFrame)) { return false; }

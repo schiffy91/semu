@@ -331,6 +331,7 @@ class SemuLauncher {
             }
         }
         for name in ["saves", "states", "screenshots"] { SemuPaths.prepareDirectory(plan.path(name)); }
+        for name in ["saves", "states"] { SemuPaths.prepareDirectory(PathTools.join(plan.path(name), emulatorId)); }  // each emulator's own folder: RetroArch writes no save into a folder that is not there
         if (plan.pads == null && plan.platform.equals("linux") && !Environment.get("SEMU_PAD_ROSTER", "").equals("off") && plan.input != null) { plan.pads = SemuPadRoster.scan(SemuJson.get(plan.input.definition, "players")); }  // the pads present now, dealt to the players
         SemuModInstallReport mods = SemuModInstaller.install(plan, emulator, system);  // library mods linked before the profiles that switch them on
         launch.mods = mods.lines;

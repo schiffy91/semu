@@ -3706,8 +3706,14 @@ Update this block whenever a milestone criterion changes state.
   `semu migrate` (`src/migrate.btrc`, `config/migrations/layout.json`) moves an old library and an old state
   root's saves into this layout and leaves the rest under `_legacy/`. The Syncthing save sync (M7b) is removed:
   the library is one folder a host syncs as a whole. The mods links the NixOS host patched in (relative link
-  destinations, `mods repair`) are part of the source. Not yet observed: a game launched on each emulator
-  after the migration, on the desktop and the Deck.
+  destinations, `mods repair`) are part of the source. Observed 2026-11-12/13 on FRACTAL-NORTH after the
+  migration: ES-DE lists the library, Tetris (RetroArch) and Crazy Taxi (Flycast) run headless, launch plans
+  resolve for every emulator on the desktop and the Deck, and every flake check passes (real-cores boots,
+  saves a state and quits twelve cores). A launch now makes the emulator's own folders under saves/ and
+  states/: RetroArch wrote no state into a folder that was not there, which real-cores caught. The synthetic
+  core carries libretro's constants by value (BTRC resolves a macro only through a declared binding), so
+  retroarch-headless and launch-systems build again, and the sandboxed contracts check reads PLAN.md and the
+  harness scripts it inspects. Not yet observed: a game played on the Deck after the migration.
 
 - Copyright remediation (2026-10-07): audited both published branches and 6202 distinct blobs.
   Removed the committed PSP plate and unused font atlas; bezel recipes still fetch pinned inputs
