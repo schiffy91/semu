@@ -1,4 +1,4 @@
-// Launch spec: the quit chord, quit order, orphans, journaling, settings safety, sync and settings UI ids.
+// Launch spec: the quit chord, quit order, orphans, journaling, settings safety and settings UI ids.
 
 #include <fcntl.h>
 #include <string.h>
@@ -20,7 +20,6 @@ import ../../../src/launch/plan.btrc;
 import ../../../src/launch/process.btrc;
 import ../../../src/launch/supervisor.btrc;
 import ../../../src/renderer/action_abi.btrc;
-import ../../../src/sync/syncthing.btrc;
 
 class LaunchSpecTools {
     class SemuLaunchPlan retroarchPlan(Fixture fixture) {  // a RetroArch Game Boy launch over fake assets
@@ -165,28 +164,6 @@ class LaunchSpecSettings {  // malformed user files are reported and never repla
     }
 }
 
-class LaunchSpecSync {  // XML-safe config and a pid file that must name our Syncthing
-    class void run(Contract contract, Fixture fixture) {
-        string base = "<configuration version=\"37\">\n</configuration>\n";
-        Vector<string> peers = ["AB\"<C&D"];
-        string document = SemuSync.configure(base, "/home/user/Saves & <States>", peers);
-        contract.contains(document, "path=\"/home/user/Saves &amp; &lt;States&gt;\"", "the folder path is XML-escaped");
-        contract.contains(document, "<device id=\"AB&quot;&lt;C&amp;D\" name=", "peer ids are XML-escaped");
-        contract.lacks(document, "AB\"<C", "no raw peer id reaches the XML");
-        contract.expect(SemuSync.configure(document, "/home/user/Saves & <States>", peers).equals(document), "escaped configuration stays idempotent");
-        contract.contains(SemuSync.deviceXml("ABC"), "name=\"ABC\"", "a short id keeps its whole name");
-        string executable = "/opt/semu/bin/syncthing";
-        contract.expect(SemuSync.isSemuSyncthing(executable + " serve --home /state/syncthing --no-browser", executable, "/state/syncthing"), "our serve command line is recognised");
-        contract.expect(!SemuSync.isSemuSyncthing("/usr/bin/vim --home /state/syncthing --no-browser", executable, "/state/syncthing"), "another program is not Syncthing");
-        contract.expect(!SemuSync.isSemuSyncthing(executable + " serve --home /other --no-browser", executable, "/state/syncthing"), "another Syncthing home is not ours");
-        string pidFile = SemuSync.pidFile(fixture.plan);
-        FileSystem.mkdirp(PathTools.dirname(pidFile));
-        FileSystem.writeText(pidFile, Strings.fromInt((int)getpid()) + "\n");
-        contract.expect(!SemuSync.ownsProcess(fixture.plan, (int)getpid()), "the contract process is not Semu's Syncthing");
-        contract.expect(SemuSync.stop(fixture.plan) == 0 && !FileSystem.isFile(pidFile), "sync stop drops a stale pid file without killing its process");
-    }
-}
-
 class LaunchSpecSettingsUi {  // controller modes come from config; the launcher must be executable
     class void run(Contract contract, Fixture fixture) {
         string source = LaunchSpecTools.source(fixture, "src/emit/settings_ui.btrc");
@@ -250,11 +227,11 @@ class LaunchSpecGameControllers {  // macOS pads keep a slot per controller; one
 class LaunchSpecSystemFiles {  // RetroArch's system folder is a copy in the state root: cores never write the library
     class void run(Contract contract, Fixture fixture) {
         string library = PathTools.join(fixture.scratch, "launch-spec/emulation");
-        string bios = PathTools.join(library, "RetroArch/config/system");
+        string bios = PathTools.join(library, "bios");
         FileSystem.mkdirp(PathTools.join(bios, "Mupen64plus"));
         FileSystem.writeText(PathTools.join(bios, "firmware.bin"), "library firmware");
         FileSystem.writeText(PathTools.join(bios, "Mupen64plus/mupen64plus.ini"), "library ini");
-        fixture.plan.tokens.put("emulation_root", library);
+        fixture.plan.tokens.put("bios", bios);
         SemuLaunchPlan first = LaunchSpecTools.retroarchPlan(fixture);
         string system = PathTools.join(fixture.plan.stateRoot(), "retroarch/system");
         contract.expect(first.ok() && FileSystem.readText(PathTools.join(system, "Mupen64plus/mupen64plus.ini")).equals("library ini"), "the library's system files are copied into the state root: " + first.error);
@@ -288,7 +265,6 @@ class LaunchSpecContract {
         LaunchSpecGameControllers.run(contract, fixture);
         LaunchSpecSystemFiles.run(contract, fixture);
         LaunchSpecSettings.run(contract, fixture);
-        LaunchSpecSync.run(contract, fixture);
         LaunchSpecSettingsUi.run(contract, fixture);
         LaunchSpecLayout.run(contract, fixture);
     }

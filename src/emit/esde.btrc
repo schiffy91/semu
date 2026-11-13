@@ -146,6 +146,28 @@ class SemuEsDeDocuments {
         return true;
     }
 
+    // The ES-DE home is generated and per machine; what the user owns in it (gamelists, themes, collections) is a
+    // link into the library. Nothing is linked while the library is away (a card not mounted), and a real folder
+    // holding files is left alone and reported.
+    class bool shelve(SemuPlan plan, string esDeHome, SemuDiagnostics diagnostics) {
+        if (!FileSystem.isDir(plan.path("root"))) { return true; }
+        for name in ["gamelists", "themes", "collections"] {
+            string library = SemuPaths.normalize(plan.path(name));
+            string place = PathTools.join(esDeHome, name);
+            if (library.isEmpty() || library.equals(SemuPaths.normalize(place))) { continue; }
+            if (FileSystem.isSymlink(place) && FileSystem.readLink(place).equals(library)) { continue; }
+            if (!FileSystem.isSymlink(place) && FileSystem.isDir(place) && !SemuPaths.removeEmptyDirectory(esDeHome, place)) {
+                diagnostics.add(place, "install", "holds files from before the library took them: run 'semu migrate', or move them into " + library);
+                return false;
+            }
+            if (!SemuPaths.prepareDirectory(library) || !SemuPaths.linkOwned(esDeHome, place, library)) {
+                diagnostics.add(place, "install", "could not link to " + library);
+                return false;
+            }
+        }
+        return true;
+    }
+
     class bool install(SemuModel model, SemuPlan plan, string esDeHome, SemuDiagnostics diagnostics) {  // ~/ES-DE
         string systems = SemuEsDeDocuments.systems(model, plan, diagnostics);
         string rules = SemuEsDeDocuments.findRules(plan, diagnostics);
@@ -159,6 +181,7 @@ class SemuEsDeDocuments {
             diagnostics.add(esDeHome, "install", "could not write into the ES-DE home");
             return false;
         }
+        if (!SemuEsDeDocuments.shelve(plan, esDeHome, diagnostics)) { return false; }
         string launcher = SemuSettingsUi.launcher(plan);
         string manifest = PathTools.join(esDeHome, "settings/semu_settings.json");
         if (launcher.isEmpty()) {  // no trusted CLI in this asset root: ES-DE hides the menu entry

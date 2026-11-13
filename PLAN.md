@@ -12,7 +12,7 @@ One declarative, Nix-built emulation environment that launches every system in
 Start+Select quit-to-frontend, on two production targets:
 
 - `linux-desktop`: the NixOS host FRACTAL-NORTH (RTX 4090, Plasma Wayland,
-  Xbox controllers via xone, ROMs at `~/Games/Emulation/ES-DE/ES-DE/ROMs`).
+  Xbox controllers via xone, library at `~/Games/Emulation`).
 - `steam-deck`: the physical Deck (Game Mode, Steam Input, SD-card ROM layout).
 
 The two targets share the platform string and nothing else by default. Neither
@@ -3695,6 +3695,19 @@ Still open on the Mac:
 ## Status
 
 Update this block whenever a milestone criterion changes state.
+
+- Single library root (2026-11-12): built; the contracts pass (9863 checks). Every asset is a folder of one root
+  (`paths.root` or `$SEMU_ROOT`): roms, media, gamelists, themes, collections, bios, mods, saves, states,
+  screenshots and settings/<target> (semu.json). Emulator state and the generated ES-DE home moved to
+  `paths.state_root` (`~/.cache/semu`, `~/Library/Caches/Semu`) and are disposable: each emulator's save folders
+  there are links into saves/ and states/ (`state.links`; `src/launch/links.btrc`), and the ES-DE home links
+  gamelists, themes and collections into the library. Keys and firmware are seeded only from bios/ (ps2, wiiu,
+  switch, n3ds, nds, dc); the per-emulator folders of the old tree and `${semu_home}/firmware` are no longer read.
+  `semu migrate` (`src/migrate.btrc`, `config/migrations/layout.json`) moves an old library and an old state
+  root's saves into this layout and leaves the rest under `_legacy/`. The Syncthing save sync (M7b) is removed:
+  the library is one folder a host syncs as a whole. The mods links the NixOS host patched in (relative link
+  destinations, `mods repair`) are part of the source. Not yet observed: a game launched on each emulator
+  after the migration, on the desktop and the Deck.
 
 - Copyright remediation (2026-10-07): audited both published branches and 6202 distinct blobs.
   Removed the committed PSP plate and unused font atlas; bezel recipes still fetch pinned inputs

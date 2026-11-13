@@ -57,7 +57,7 @@ fi
 
 cases="$1"; out="$(mkdir -p "$2" && cd "$2" && pwd -P)"
 interval="${SEMU_BOOT_INTERVAL:-0.25}"
-roms=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs
+roms=/run/media/deck/SD/Emulation/roms
 cli="$HOME/Applications/Semu/bin/semu-deck-cli"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 emulators='retroarch|azahar|dolphin|pcsx2|ppsspp|melonds|flycast|cemu|ryujinx|semu-btrc'

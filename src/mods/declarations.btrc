@@ -1,7 +1,7 @@
 // The checker's rules for platforms.<os>.state.mods and state.updates: the kind vocabulary (every field known,
 // every value one Semu acts on), one library folder and one target per kind, targets inside the emulator's
 // state and clear of its seeds, its profile files and each other, settings groups that exist, and a library
-// that Syncthing, the state root and the ROM and BIOS folders never hold.
+// that the save folders, the state root and the ROM and BIOS folders never hold.
 
 import Library.JSON;
 import Library.Strings;
@@ -140,6 +140,8 @@ class SemuModDeclarations {
         Vector<string> taken = [];
         JSONValue seeds = SemuJson.get(emulator.platform(plan.platform), "state.seeds");
         for (int index = 0; seeds.isArray() && index < seeds.size(); index++) { taken.push(SemuJson.textAt(seeds.at(index), "target")); }
+        JSONValue links = SemuJson.get(emulator.platform(plan.platform), "state.links");  // a save folder linked into the library is taken like a seed
+        for (int index = 0; links.isArray() && index < links.size(); index++) { taken.push(SemuJson.textAt(links.at(index), "target")); }
         for path in SemuModDeclarations.profilePaths(model, plan, emulator) { taken.push(path); }
         int fixed = taken.size();
         Vector<string> ids = [];
@@ -220,9 +222,9 @@ class SemuModDeclarations {
             diagnostics.add(plan.target.id, "settings.paths.mods", "must be an absolute path, or empty to turn mods off: " + library);
             return;
         }
-        for name in ["content_root", "state_root"] {
+        for name in ["saves", "states", "state_root"] {
             string other = plan.path(name);
-            if (!other.isEmpty() && SemuModDeclarations.overlaps(library, other)) { diagnostics.add(plan.target.id, "settings.paths.mods", f"{library} overlaps {name} {other}: " + (name.equals("content_root") ? "Syncthing would carry the packs" : "emulators rewrite their state")); }
+            if (!other.isEmpty() && SemuModDeclarations.overlaps(library, other)) { diagnostics.add(plan.target.id, "settings.paths.mods", f"{library} overlaps {name} {other}: " + (name.equals("state_root") ? "emulators rewrite their state" : "emulators write their saves there")); }
         }
         for name in ["roms", "bios"] {
             string other = plan.path(name);

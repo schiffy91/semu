@@ -16,7 +16,6 @@ import ../../src/emit/profiles.btrc;
 import ../../src/launch/plan.btrc;
 import ../../src/emit/rendering.btrc;
 import ../../src/emit/settings_ui.btrc;
-import ../../src/sync/syncthing.btrc;
 import ../../src/steam/shortcuts.btrc;
 import ../../src/cli.btrc;
 import ../../src/launch/supervisor.btrc;
@@ -71,7 +70,7 @@ class Fixture {
         string assets = PathTools.join(self.scratch, "assets");
         FileSystem.mkdirp(PathTools.join(assets, "bin"));
         string home = PathTools.join(self.scratch, "semu-home");
-        string overlay = "{\"paths\":{\"state_root\":\"" + PathTools.join(self.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(self.scratch, "content") + "\",\"mods\":\"" + PathTools.join(self.scratch, "mods") + "\",\"bios\":\"" + PathTools.join(self.scratch, "bios") + "\",\"emulation_root\":\"" + PathTools.join(self.scratch, "emulation") + "\"}}";  // a scratch library: contracts never read the owner's mods, firmware or ROMs
+        string overlay = "{\"paths\":{\"root\":\"" + PathTools.join(self.scratch, "library") + "\",\"state_root\":\"" + PathTools.join(self.scratch, "state") + "\",\"content_root\":\"" + PathTools.join(self.scratch, "content") + "\",\"mods\":\"" + PathTools.join(self.scratch, "mods") + "\",\"bios\":\"" + PathTools.join(self.scratch, "bios") + "\",\"emulation_root\":\"" + PathTools.join(self.scratch, "emulation") + "\"}}";  // a scratch library: contracts never read the owner's mods, firmware or ROMs
         SemuPlan? resolved = SemuResolver.plan(self.model, target, home, assets, overlay, self.diagnostics);
         if (resolved == null) { Console.fatal("contracts: target " + target + " did not resolve:\n" + self.diagnostics.render()); }  // a broken fixture, not a failed contract
         self.plan = resolved;

@@ -40,7 +40,7 @@ forAllSystems (system:
         semu = pkgs.callPackage ../semu_bundle.nix {
           inherit semuCli esDe repositoryRoot platform;
           emulatorPackages = lib.attrValues emulatorPackages ++ emulators.corePackages;
-          extraPackages = [ retroarchAutoconfig pkgs.retroarch-joypad-autoconfig pkgs.syncthing semuRenderer visualAssets.combined bezelLayers ];
+          extraPackages = [ retroarchAutoconfig pkgs.retroarch-joypad-autoconfig semuRenderer visualAssets.combined bezelLayers ];
         };
       in {
         inherit semu;

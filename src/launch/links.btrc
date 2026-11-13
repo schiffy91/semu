@@ -1,0 +1,51 @@
+// Links: an emulator's save folders are symlinks from its disposable state into the library (saves/ and
+// states/ under the root), so every save lives in the library and the state can be thrown away. A real
+// folder already holding files at the link's place is never moved or replaced here: semu migrate does that.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../lib/json.btrc;
+import ../lib/paths.btrc;
+import ../resolve.btrc;
+import ./plan.btrc;
+
+class SemuStateLinks {
+    class bool shelf(SemuPlan plan, string library) {  // strictly inside the library's saves or states folder
+        for name in ["saves", "states"] {
+            string root = SemuPaths.normalize(plan.path(name));
+            if (!root.isEmpty() && !library.equals(root) && SemuPaths.inside(root, library)) { return true; }
+        }
+        return false;
+    }
+
+    class bool link(SemuPlan plan, JSONValue platform, SemuLaunchPlan launch) {
+        JSONValue links = SemuJson.get(platform, "state.links");
+        if (links == null || !links.isArray()) { return true; }
+        string stateRoot = plan.path("state_root");
+        for (int index = 0; index < links.size(); index++) {
+            JSONValue link = links.at(index);
+            string target = SemuPaths.normalize(plan.tokens.resolve(SemuJson.textAt(link, "target")));
+            string library = SemuPaths.normalize(plan.tokens.resolve(SemuJson.textAt(link, "library")));
+            if (target.contains("${") || library.contains("${") || !SemuStateLinks.shelf(plan, library) || !SemuPaths.ownedPlace(stateRoot, target)) {
+                launch.error = f"link {index} must lead from a real path under {stateRoot} into the library's saves or states: {target} -> {library}";
+                return false;
+            }
+            if (!SemuPaths.prepareDirectory(library)) {
+                launch.error = "could not create the save folder " + library;
+                return false;
+            }
+            if (FileSystem.isSymlink(target) && FileSystem.readLink(target).equals(library)) { continue; }
+            if (!FileSystem.isSymlink(target) && FileSystem.isDir(target) && !SemuPaths.removeEmptyDirectory(stateRoot, target)) {
+                launch.error = f"{target} holds files from before saves moved into the library: run 'semu migrate', or move them into {library}";
+                return false;
+            }
+            if (!SemuPaths.prepareDirectory(PathTools.dirname(target)) || !SemuPaths.linkOwned(stateRoot, target, library)) {
+                launch.error = f"could not link {target} to {library}";
+                return false;
+            }
+        }
+        return true;
+    }
+}

@@ -126,7 +126,7 @@ class CemuSpecContract {
             if (SemuJson.textAt(seeds.at(index), "purpose").equals("wiiu_disc_and_title_keys")) { keys = seeds.at(index); }
         }
         contract.expect(SemuJson.textAt(keys, "target").equals("${state_root}/data/Cemu/keys.txt"), "cemu keys land in its data directory");
-        contract.expect(SemuJson.strings(keys.get("sources")).join(" ").equals("${semu_home}/firmware/cemu/keys.txt ${emulation_root}/Cemu/data/keys.txt ${bios}/wiiu/keys.txt ${bios}/keys.txt"), "cemu key sources prefer the Semu-owned import");
+        contract.expect(SemuJson.strings(keys.get("sources")).join(" ").equals("${bios}/wiiu/keys.txt ${bios}/keys.txt"), "cemu keys come from the library's bios folder");
         string definition = FileSystem.readText(PathTools.join(fixture.project, "config/emulators/cemu/emulator.json"));
         contract.lacks(definition, "${paths.project_bios}", "cemu uses no legacy BIOS token");
     }
@@ -207,11 +207,10 @@ class CemuSpecContract {
         FileSystem.writeText(executable, "#!/bin/sh\n");
         FileSystem.mkdirp(PathTools.join(roms, "wiiu"));
         FileSystem.writeText(PathTools.join(roms, "wiiu/Kart.wua"), "");
-        string owned = PathTools.join(fixture.plan.semuHome, "firmware/cemu/keys.txt");
+        string owned = PathTools.join(bios, "wiiu/keys.txt");
         FileSystem.mkdirp(PathTools.dirname(owned));
         FileSystem.writeText(owned, "owned");
-        FileSystem.mkdirp(PathTools.join(bios, "wiiu"));
-        FileSystem.writeText(PathTools.join(bios, "wiiu/keys.txt"), "bios");
+        FileSystem.writeText(PathTools.join(bios, "keys.txt"), "loose");
         SemuLaunchPlan launch = SemuLauncher.plan(fixture.model, fixture.plan, "cemu", "wiiu", "", "Kart.wua", SemuDiagnostics());
         string stateRoot = PathTools.join(fixture.plan.stateRoot(), "cemu");
         contract.expect(launch.ok(), "cemu launch plan resolves: " + launch.error);
@@ -221,7 +220,7 @@ class CemuSpecContract {
         contract.expect(launch.environment.contains("GDK_BACKEND=x11"), "cemu runs its wx window on XWayland");
         contract.expect(FileSystem.isFile(PathTools.join(stateRoot, "config/Cemu/controllerProfiles/controller0.xml")), "controller0.xml is written where Cemu auto-loads it");
         string keys = PathTools.join(stateRoot, "data/Cemu/keys.txt");
-        contract.expect(FileSystem.isFile(keys) && FileSystem.readText(keys).equals("owned"), "cemu keys come from the Semu-owned import first");
+        contract.expect(FileSystem.isFile(keys) && FileSystem.readText(keys).equals("owned"), "cemu keys come from bios/wiiu before a loose keys.txt");
         FileSystem.writeText(owned, "newer");
         SemuLauncher.plan(fixture.model, fixture.plan, "cemu", "wiiu", "", "Kart.wua", SemuDiagnostics());
         contract.expect(FileSystem.readText(keys).equals("owned"), "seeded cemu keys are never overwritten");

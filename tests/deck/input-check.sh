@@ -64,7 +64,7 @@
 # moves only paths.content_root, to OUT/content. The owner's semu.json, RetroArch saves, states and
 # screenshots are untouched, and the bezel and shader choices a case makes land in OUT/home/semu.json,
 # where the next cases of the run start from them. The state root stays the owner's
-# (~/.local/share/semu/<emulator>): the session's action journal, the variants file, the render
+# (~/.cache/semu/<emulator>): the session's action journal, the variants file, the render
 # receipts and the frame-60 capture go there, every launch rewrites the compiled emulator configs
 # there (the owner's next launch writes them back), and a standalone emulator keeps its own saves,
 # states and settings there. So no case saves or loads a state on a standalone emulator.
@@ -169,7 +169,7 @@ refresh="${SEMU_CHECK_REFRESH:-$(DISPLAY=:0 xrandr --current 2>/dev/null | awk '
 case "$refresh" in '') refresh=60 ;; [1-9][0-9]|[1-9][0-9][0-9]) ;; *) echo "input-check: SEMU_CHECK_REFRESH is whole hertz, not $refresh" >&2; exit 64 ;; esac
 sound="${SEMU_CHECK_SOUND:-sink}"
 case "$sound" in sink|cut) ;; *) echo "input-check: SEMU_CHECK_SOUND is sink or cut, not $sound" >&2; exit 64 ;; esac
-roms=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs
+roms=/run/media/deck/SD/Emulation/roms
 cli="$HOME/Applications/Semu/bin/semu-deck-cli"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 emulators='retroarch|azahar|dolphin|pcsx2|ppsspp|melonds|flycast|cemu|ryujinx|semu-btrc'

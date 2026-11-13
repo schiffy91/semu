@@ -83,8 +83,6 @@
             "source_access": "read_only",
             "overwrite": false,
             "sources": [
-              "${emulation_root}/bios/dreamcast/dc_boot.bin",
-              "${emulation_root}/bios/dc_boot.bin",
               "${bios}/dc/dc_boot.bin",
               "${bios}/dc_boot.bin"
             ]
@@ -96,11 +94,21 @@
             "source_access": "read_only",
             "overwrite": false,
             "sources": [
-              "${emulation_root}/bios/dreamcast/dc_flash.bin",
-              "${emulation_root}/bios/dc_flash.bin",
               "${bios}/dc/dc_flash.bin",
               "${bios}/dc_flash.bin"
             ]
+          }
+        ],
+        "links": [
+          {
+            "purpose": "game_saves",
+            "target": "${state_root}/data/flycast/saves",
+            "library": "${saves}/flycast"
+          },
+          {
+            "purpose": "save_states",
+            "target": "${state_root}/data/flycast/states",
+            "library": "${states}/flycast"
           }
         ],
         "mods": {
@@ -132,10 +140,8 @@
         }
       },
       "firmware": {
-        "dir": "${emulation_root}/bios/dreamcast",
+        "dir": "${bios}/dc",
         "fallback_dirs": [
-          "${emulation_root}/bios",
-          "${bios}/dc",
           "${bios}"
         ]
       },

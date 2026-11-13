@@ -67,8 +67,6 @@
             "source_access": "read_only",
             "overwrite": false,
             "sources": [
-              "${emulation_root}/bios/aes_keys.txt",
-              "${emulation_root}/bios/n3ds/aes_keys.txt",
               "${bios}/n3ds/aes_keys.txt",
               "${bios}/aes_keys.txt"
             ]
@@ -80,31 +78,26 @@
             "source_access": "read_only",
             "overwrite": false,
             "sources": [
-              "${emulation_root}/bios/seeddb.bin",
-              "${emulation_root}/bios/n3ds/seeddb.bin",
               "${bios}/n3ds/seeddb.bin",
               "${bios}/seeddb.bin"
             ]
-          },
+          }
+        ],
+        "links": [
           {
             "purpose": "nand",
             "target": "${state_root}/data/azahar-emu/nand",
-            "copy": "once_if_target_absent",
-            "source_access": "read_only",
-            "overwrite": false,
-            "sources": [
-              "${emulation_root}/Azahar/data/nand"
-            ]
+            "library": "${saves}/azahar/nand"
           },
           {
             "purpose": "sdmc",
             "target": "${state_root}/data/azahar-emu/sdmc",
-            "copy": "once_if_target_absent",
-            "source_access": "read_only",
-            "overwrite": false,
-            "sources": [
-              "${emulation_root}/Azahar/data/sdmc"
-            ]
+            "library": "${saves}/azahar/sdmc"
+          },
+          {
+            "purpose": "save_states",
+            "target": "${state_root}/data/azahar-emu/states",
+            "library": "${states}/azahar"
           }
         ],
         "mods": {
@@ -212,9 +205,8 @@
         }
       },
       "firmware": {
-        "dir": "${emulation_root}/bios",
+        "dir": "${bios}/n3ds",
         "fallback_dirs": [
-          "${bios}/n3ds",
           "${bios}"
         ]
       },
@@ -274,8 +266,6 @@
             "source_access": "read_only",
             "overwrite": false,
             "sources": [
-              "${emulation_root}/bios/aes_keys.txt",
-              "${emulation_root}/bios/n3ds/aes_keys.txt",
               "${bios}/n3ds/aes_keys.txt",
               "${bios}/aes_keys.txt"
             ]
@@ -287,31 +277,21 @@
             "source_access": "read_only",
             "overwrite": false,
             "sources": [
-              "${emulation_root}/bios/seeddb.bin",
-              "${emulation_root}/bios/n3ds/seeddb.bin",
               "${bios}/n3ds/seeddb.bin",
               "${bios}/seeddb.bin"
             ]
-          },
+          }
+        ],
+        "links": [
           {
             "purpose": "nand",
             "target": "${state_root}/data/azahar-emu/nand",
-            "copy": "once_if_target_absent",
-            "source_access": "read_only",
-            "overwrite": false,
-            "sources": [
-              "${emulation_root}/Azahar/data/nand"
-            ]
+            "library": "${saves}/azahar/nand"
           },
           {
             "purpose": "sdmc",
             "target": "${state_root}/data/azahar-emu/sdmc",
-            "copy": "once_if_target_absent",
-            "source_access": "read_only",
-            "overwrite": false,
-            "sources": [
-              "${emulation_root}/Azahar/data/sdmc"
-            ]
+            "library": "${saves}/azahar/sdmc"
           }
         ],
         "mods": {
@@ -419,9 +399,8 @@
         }
       },
       "firmware": {
-        "dir": "${emulation_root}/bios",
+        "dir": "${bios}/n3ds",
         "fallback_dirs": [
-          "${bios}/n3ds",
           "${bios}"
         ]
       },

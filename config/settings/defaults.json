@@ -1,14 +1,8 @@
 {
   "schema_version": 2,
   "paths": {
-    "emulation_root": "${home}/Games/Emulation",
-    "roms": "${home}/Games/Emulation/ES-DE/ES-DE/ROMs",
-    "media": "${home}/Games/Emulation/ES-DE/ES-DE/downloaded_media",
-    "bios": "${home}/Games/Emulation/RetroArch/config/system",
-    "mods": "${home}/Games/Emulation/mods",
-    "content_root": "${home}/Games/Emulation/Semu",
-    "state_root": "${home}/.local/share/semu",
-    "esde_home": "${home}/Games/Emulation/ES-DE"
+    "root": "${home}/Games/Emulation",
+    "state_root": "${home}/.cache/semu"
   },
   "visual": {
     "crt_shaders": true,
@@ -32,10 +26,5 @@
         "play_mode": "docked"
       }
     }
-  },
-  "sync": {
-    "enabled": false,
-    "gui_address": "127.0.0.1:8384",
-    "peer_device_ids": ""
   }
 }

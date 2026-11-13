@@ -26,6 +26,23 @@ class SemuPaths {
         return (path.startsWith("/") ? "/" : "") + Strings.join(kept, "/");
     }
 
+    class string relative(string directory, string target) {
+        Vector<string> base = Strings.split(SemuPaths.normalize(directory), "/");
+        Vector<string> destination = Strings.split(SemuPaths.normalize(target), "/");
+        int common = 0;
+        while (common < base.size() && common < destination.size() && base.get(common).equals(destination.get(common))) { common++; }
+        Vector<string> parts = [];
+        for (int index = common; index < base.size(); index++) { if (!base.get(index).isEmpty()) { parts.push(".."); } }
+        for (int index = common; index < destination.size(); index++) { parts.push(destination.get(index)); }
+        return parts.isEmpty() ? "." : parts.join("/");
+    }
+
+    class string linkDestination(string path) {
+        if (!FileSystem.isSymlink(path)) { return ""; }
+        string target = FileSystem.readLink(path);
+        return SemuPaths.normalize(PathTools.isAbsolute(target) ? target : PathTools.join(PathTools.dirname(path), target));
+    }
+
     class bool inside(string root, string path) {  // after normalizing both, so root/../x is outside
         string normalRoot = SemuPaths.normalize(root);
         string normalPath = SemuPaths.normalize(path);

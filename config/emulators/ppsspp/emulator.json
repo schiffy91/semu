@@ -64,6 +64,18 @@
         "data_home": "xdg",
         "config_subdir": "ppsspp",
         "data_subdir": "ppsspp",
+        "links": [
+          {
+            "purpose": "game_saves",
+            "target": "${state_root}/config/ppsspp/PSP/SAVEDATA",
+            "library": "${saves}/ppsspp/SAVEDATA"
+          },
+          {
+            "purpose": "save_states",
+            "target": "${state_root}/config/ppsspp/PSP/PPSSPP_STATE",
+            "library": "${states}/ppsspp"
+          }
+        ],
         "mods": {
           "kinds": [
             {

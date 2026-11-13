@@ -1,0 +1,147 @@
+// Layout migration spec: `semu migrate` brings an old library (ES-DE/ES-DE/ROMs, RetroArch/config/system, a
+// folder per emulator, saves in each emulator's state) to the single-root layout. The saves an old state root
+// holds win over the folders they were copied from, a file never replaces one, the rest of the old tree ends
+// under _legacy, a dry run changes nothing and a second run moves nothing.
+
+import Library.FileSystem;
+import Library.JSON;
+import Library.Strings;
+import Library.Vector;
+import ../support.btrc;
+import ../../../src/lib/json.btrc;
+import ../../../src/lib/paths.btrc;
+import ../../../src/migrate.btrc;
+
+class LayoutMigrateSpecBed {
+    public string root;
+    public string state;
+    public JSONValue table;
+
+    public LayoutMigrateSpecBed(Fixture fixture, string name) {
+        self.root = PathTools.join(fixture.scratch, name + "/Emulation");
+        self.state = PathTools.join(fixture.scratch, name + "/old-state");
+        self.table = SemuLayoutMigration.load(PathTools.join(fixture.project, "config"));
+    }
+
+    public void write(string path, string content) {
+        FileSystem.mkdirp(PathTools.dirname(path));
+        FileSystem.writeText(path, content);
+    }
+
+    public void old(string relative, string content) { self.write(PathTools.join(self.root, relative), content); }
+
+    public void played(string relative, string content) { self.write(PathTools.join(self.state, relative), content); }
+
+    public string read(string relative) {
+        string path = PathTools.join(self.root, relative);
+        return FileSystem.isFile(path) ? FileSystem.readText(path) : "<absent>";
+    }
+
+    public void library() {  // the owner's tree as it stood before the single root
+        self.old("ES-DE/ES-DE/ROMs/gb/Tetris.zip", "rom");
+        self.old("ES-DE/ES-DE/downloaded_media/gb/covers/Tetris.png", "art");
+        self.old("ES-DE/ES-DE/gamelists/gb/gamelist.xml", "list");
+        self.old("ES-DE/ES-DE/themes/horizon-es-de/theme.xml", "theme");
+        self.old("ES-DE/ES-DE/settings/es_settings.xml", "generated");
+        self.old("ES-DE/es_settings.xml", "stale");
+        self.old("RetroArch/config/system/scph5501.bin", "bios");
+        self.old("RetroArch/config/system/dc/dc_boot.bin", "boot");
+        self.old("RetroArch/config/saves/mGBA/Golden Sun.srm", "2024 save");
+        self.old("RetroArch/config/saves/Snes9x/ActRaiser.srm", "2024 save");
+        self.old("RetroArch/config/shaders/crt.slangp", "shader");
+        self.old("Semu/saves/Snes9x/ActRaiser.srm", "2026 save");
+        self.old("Semu/states/Snes9x/ActRaiser.state", "state");
+        self.old("PCSX2/config/bios/scph39001.bin", "ps2 bios");
+        self.old("PCSX2/config/memcards/Mcd001.ps2", "old card");
+        self.old("Cemu/data/keys.txt", "wiiu keys");
+        self.old("Cemu/data/mlc01/usr/save/a.bin", "old wiiu save");
+        self.old("Ryujinx/config/system/prod.keys", "switch keys");
+        self.old("Ryujinx/config/bis/user/save/1", "old switch save");
+        self.old("Azahar/data/load/mods/0004000000033600/romfs/a.bin", "mod");
+        self.old("Dolphin/data/GC/MemoryCardA.USA.raw", "old card");
+        self.old("Lime3DS/data/load/mods/x/a.bin", "duplicate");
+        self.old("backups/macos.zip", "installer");
+        self.old(".stfolder/marker.txt", "syncthing");
+        self.old("setup.py", "old script");
+    }
+
+    public void emulatorState() {  // what the emulators wrote after their saves were copied into state
+        self.played("pcsx2/config/PCSX2/memcards/Mcd001.ps2", "played card");
+        self.played("pcsx2/config/PCSX2/inis/PCSX2.ini", "generated");
+        self.played("dolphin/dolphin-user/GC/MemoryCardA.USA.raw", "played card");
+        self.played("dolphin/dolphin-user/Wii/title/save.bin", "played nand");
+        self.played("flycast/data/flycast/MK-51035_vmu_save_A1.bin", "vmu");
+        self.played("flycast/data/flycast/Crazy Taxi (USA).state", "dreamcast state");
+        self.played("flycast/data/flycast/dc_boot.bin", "boot rom copy");
+        self.played("ryujinx/config/Ryujinx/bis/user/save/1", "played switch save");
+        self.played("ppsspp/config/ppsspp/PSP/SAVEDATA/ULUS10002/DATA.BIN", "psp save");
+    }
+
+    public SemuLayoutMigration migration(bool dryRun) { return SemuLayoutMigration(self.root, self.state, dryRun, self.table); }
+}
+
+class LayoutMigrateSpecContract {
+    class string tree(string root) {  // every file under ROOT with its content, sorted: a snapshot to compare
+        Vector<string> pending = [root];
+        Vector<string> lines = [];
+        while (!pending.isEmpty()) {
+            string directory = pending.pop();
+            for name in FileSystem.listDir(directory).sorted() {
+                string path = PathTools.join(directory, name);
+                if (FileSystem.isDir(path) && !FileSystem.isSymlink(path)) { pending.push(path); }
+                else { lines.push(path + "=" + (FileSystem.isFile(path) ? FileSystem.readText(path) : "link")); }
+            }
+        }
+        lines.sort();
+        return lines.join("\n");
+    }
+
+    class void moves(Contract contract, Fixture fixture) {
+        LayoutMigrateSpecBed bed = LayoutMigrateSpecBed(fixture, "layout-migrate");
+        bed.library();
+        bed.emulatorState();
+        contract.expect(bed.table.isObject() && SemuJson.strings(bed.table.get("keep")).contains("saves") && bed.table.get("library").size() > 20 && bed.table.get("state").size() > 10, "config/migrations/layout.json names the library's folders and every move");
+        string before = LayoutMigrateSpecContract.tree(bed.root) + LayoutMigrateSpecContract.tree(bed.state);
+        SemuLayoutMigration preview = bed.migration(true);
+        contract.expect(preview.refusal().isEmpty() && preview.run() && preview.moved > 20 && !preview.done(), "a dry run lists the moves: " + preview.summary());
+        contract.expect((LayoutMigrateSpecContract.tree(bed.root) + LayoutMigrateSpecContract.tree(bed.state)).equals(before), "a dry run changes nothing in the library or the old state");
+        contract.expect(preview.lines.join("\n").contains("move  " + bed.root + "/RetroArch/config/saves/mGBA  ->  " + bed.root + "/saves/retroarch/mGBA"), "the dry run merges into a folder an earlier move would have made, as the real run does");
+        SemuLayoutMigration migration = bed.migration(false);
+        contract.expect(migration.run() && migration.failed == 0 && migration.done(), "the migration finishes and leaves its marker: " + migration.summary());
+        contract.expect(bed.read("roms/gb/Tetris.zip").equals("rom") && bed.read("media/gb/covers/Tetris.png").equals("art") && bed.read("gamelists/gb/gamelist.xml").equals("list") && bed.read("themes/horizon-es-de/theme.xml").equals("theme"), "games, art, gamelists and themes are folders of the root");
+        contract.expect(bed.read("bios/scph5501.bin").equals("bios") && bed.read("bios/dc/dc_boot.bin").equals("boot") && bed.read("bios/ps2/scph39001.bin").equals("ps2 bios") && bed.read("bios/wiiu/keys.txt").equals("wiiu keys") && bed.read("bios/switch/prod.keys").equals("switch keys"), "firmware and keys gather under bios, each console's in its folder");
+        contract.expect(bed.read("mods/azahar/mods/0004000000033600/romfs/a.bin").equals("mod"), "mods left in an emulator's folder reach the mods library");
+        contract.expect(bed.read("saves/retroarch/Snes9x/ActRaiser.srm").equals("2026 save") && bed.read("saves/retroarch/mGBA/Golden Sun.srm").equals("2024 save") && bed.read("states/retroarch/Snes9x/ActRaiser.state").equals("state"), "RetroArch's saves merge: Semu's newer one wins, an old one Semu never carried comes along");
+        contract.expect(bed.read("_legacy/RetroArch/config/saves/Snes9x/ActRaiser.srm").equals("2024 save"), "the older copy of a save both had stays, under _legacy, never replaced or deleted");
+        contract.expect(bed.read("saves/pcsx2/memcards/Mcd001.ps2").equals("played card") && bed.read("saves/dolphin/GC/MemoryCardA.USA.raw").equals("played card") && bed.read("saves/ryujinx/bis/user/save/1").equals("played switch save"), "a save the emulator's state held wins over the folder it was once copied from");
+        contract.expect(bed.read("_legacy/PCSX2/config/memcards/Mcd001.ps2").equals("old card") && bed.read("saves/cemu/mlc01/usr/save/a.bin").equals("old wiiu save") && bed.read("saves/dolphin/Wii/title/save.bin").equals("played nand"), "the older folder's copy is kept under _legacy; a save only one side had is carried");
+        contract.expect(bed.read("saves/flycast/MK-51035_vmu_save_A1.bin").equals("vmu") && bed.read("states/flycast/Crazy Taxi (USA).state").equals("dreamcast state") && bed.read("saves/ppsspp/SAVEDATA/ULUS10002/DATA.BIN").equals("psp save"), "Flycast's VMUs and states leave its data folder by name; PSP saves come whole");
+        contract.expect(FileSystem.isFile(PathTools.join(bed.state, "flycast/data/flycast/dc_boot.bin")) && FileSystem.isFile(PathTools.join(bed.state, "pcsx2/config/PCSX2/inis/PCSX2.ini")), "what is not a save stays in the old state");
+        contract.expect(bed.read("_legacy/Lime3DS/data/load/mods/x/a.bin").equals("duplicate") && bed.read("_legacy/backups/macos.zip").equals("installer") && bed.read("_legacy/.stfolder/marker.txt").equals("syncthing") && bed.read("_legacy/setup.py").equals("old script") && bed.read("_legacy/ES-DE/es_settings.xml").equals("stale") && bed.read("_legacy/RetroArch/config/shaders/crt.slangp").equals("shader"), "everything else of the old tree, hidden folders too, ends under _legacy");
+        Vector<string> top = FileSystem.listDir(bed.root).sorted();
+        contract.expect(top.join(" ").equals(".semu-layout _legacy bios gamelists media mods roms saves states themes"), "the root holds only the new layout, _legacy and the marker: " + top.join(" "));
+        string after = LayoutMigrateSpecContract.tree(bed.root);
+        contract.expect(SemuLayoutMigration.command(PathTools.join(fixture.project, "config"), bed.root, bed.state, false) == 0 && LayoutMigrateSpecContract.tree(bed.root).equals(after), "a second run moves nothing");
+    }
+
+    class void refusals(Contract contract, Fixture fixture) {
+        LayoutMigrateSpecBed bed = LayoutMigrateSpecBed(fixture, "layout-refusals");
+        contract.contains(bed.migration(false).refusal(), "is not there", "a root that is not mounted is refused");
+        bed.old("ES-DE/ES-DE/ROMs/gb/Tetris.zip", "rom");
+        contract.contains(bed.migration(false).refusal(), "is not a folder", "a state root that does not exist is refused");
+        string linked = PathTools.join(fixture.scratch, "layout-refusals/Linked");
+        FileSystem.symlink(bed.root, linked);
+        contract.contains(SemuLayoutMigration(linked, "", false, bed.table).refusal(), "is a link", "a linked root is refused");
+        string target = PathTools.join(fixture.scratch, "layout-refusals/elsewhere");
+        FileSystem.mkdirp(target);
+        FileSystem.symlink(target, PathTools.join(bed.root, "Shortcut"));
+        SemuLayoutMigration migration = SemuLayoutMigration(bed.root, "", false, bed.table);
+        contract.expect(migration.run() && FileSystem.isSymlink(PathTools.join(bed.root, "Shortcut")) && migration.lines.join("\n").contains("link: left in place"), "a link in the root is reported and left where it is");
+    }
+
+    class void run(Contract contract) {
+        Fixture fixture = Fixture("linux-desktop");
+        LayoutMigrateSpecContract.moves(contract, fixture);
+        LayoutMigrateSpecContract.refusals(contract, fixture);
+    }
+}

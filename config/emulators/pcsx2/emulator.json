@@ -59,26 +59,16 @@
         "config_home": "xdg",
         "data_home": "xdg",
         "config_subdir": "PCSX2",
-        "seeds": [
+        "links": [
           {
             "purpose": "memory_cards",
             "target": "${state_root}/config/PCSX2/memcards",
-            "copy": "once_if_target_absent",
-            "source_access": "read_only",
-            "overwrite": false,
-            "sources": [
-              "${emulation_root}/PCSX2/config/memcards"
-            ]
+            "library": "${saves}/pcsx2/memcards"
           },
           {
             "purpose": "save_states",
             "target": "${state_root}/config/PCSX2/sstates",
-            "copy": "once_if_target_absent",
-            "source_access": "read_only",
-            "overwrite": false,
-            "sources": [
-              "${emulation_root}/PCSX2/config/sstates"
-            ]
+            "library": "${states}/pcsx2"
           }
         ],
         "mods": {
@@ -111,9 +101,9 @@
         }
       },
       "firmware": {
-        "dir": "${emulation_root}/PCSX2/config/bios",
+        "dir": "${bios}/ps2",
         "fallback_dirs": [
-          "${bios}/ps2"
+          "${bios}/pcsx2/bios"
         ]
       },
       "render_hook": true,

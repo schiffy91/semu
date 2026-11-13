@@ -69,8 +69,6 @@
             "source_access": "read_only",
             "overwrite": false,
             "sources": [
-              "${emulation_root}/bios/nds/bios9.bin",
-              "${emulation_root}/bios/bios9.bin",
               "${bios}/nds/bios9.bin",
               "${bios}/bios9.bin"
             ]
@@ -82,8 +80,6 @@
             "source_access": "read_only",
             "overwrite": false,
             "sources": [
-              "${emulation_root}/bios/nds/bios7.bin",
-              "${emulation_root}/bios/bios7.bin",
               "${bios}/nds/bios7.bin",
               "${bios}/bios7.bin"
             ]
@@ -95,16 +91,24 @@
             "source_access": "read_only",
             "overwrite": false,
             "sources": [
-              "${emulation_root}/bios/nds/firmware.bin",
-              "${emulation_root}/bios/firmware.bin",
               "${bios}/nds/firmware.bin",
               "${bios}/firmware.bin"
             ]
           }
         ],
+        "links": [
+          {
+            "purpose": "game_saves",
+            "target": "${state_root}/data/melonDS/saves",
+            "library": "${saves}/melonds"
+          },
+          {
+            "purpose": "save_states",
+            "target": "${state_root}/data/melonDS/states",
+            "library": "${states}/melonds"
+          }
+        ],
         "create_dirs": [
-          "${state_root}/data/melonDS/saves",
-          "${state_root}/data/melonDS/states",
           "${state_root}/data/melonDS/cheats"
         ],
         "mods": {
@@ -113,9 +117,8 @@
         }
       },
       "firmware": {
-        "dir": "${emulation_root}/bios",
+        "dir": "${bios}/nds",
         "fallback_dirs": [
-          "${bios}/nds",
           "${bios}"
         ]
       },

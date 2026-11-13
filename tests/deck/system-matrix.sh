@@ -49,9 +49,9 @@ counter="${SEMU_MATRIX_COUNTER:-}"
 case "$counter" in ''|[0-9a-f]*' '[1-4]) ;; *) echo "system-matrix: SEMU_MATRIX_COUNTER is 'HEX-ADDRESS BYTES' (1 to 4), not $counter" >&2; exit 64 ;; esac
 refresh="${SEMU_MATRIX_REFRESH:-$(DISPLAY=:0 xrandr --current 2>/dev/null | awk '/\*/ { for (field = 2; field <= NF; field++) if ($field ~ /\*/) { sub(/[*+]+$/, "", $field); printf "%d", $field + 0.5; exit } }')}"
 case "$refresh" in '') refresh=60 ;; [1-9][0-9]|[1-9][0-9][0-9]) ;; *) echo "system-matrix: SEMU_MATRIX_REFRESH is whole hertz, not $refresh" >&2; exit 64 ;; esac
-roms=/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs
+roms=/run/media/deck/SD/Emulation/roms
 cli="$HOME/Applications/Semu/bin/semu-deck-cli"
-state="$HOME/.local/share/semu"  # the steam-deck target's state_root
+state="$HOME/.cache/semu"  # the steam-deck target's state_root
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 emulators='retroarch|azahar|dolphin|pcsx2|ppsspp|melonds|flycast|cemu|ryujinx|semu-btrc'
 mkdir -p "$out"

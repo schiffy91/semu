@@ -34,7 +34,11 @@ class SemuModManifest {
         self.records = [];
         for line in Strings.split(original, "\n") {
             Vector<string> fields = Strings.split(line, "\t");
-            if (fields.size() == 4 && (fields.get(0).equals("link") || fields.get(0).equals("file"))) { self.records.push(SemuModRecord(fields.get(0), fields.get(1), fields.get(2), fields.get(3))); }
+            if (fields.size() == 4 && (fields.get(0).equals("link") || fields.get(0).equals("file"))) {
+                string place = fields.get(2);
+                if (!PathTools.isAbsolute(place)) { place = SemuPaths.normalize(PathTools.join(PathTools.dirname(path), place)); }
+                self.records.push(SemuModRecord(fields.get(0), fields.get(1), place, fields.get(3)));
+            }
         }
     }
 
@@ -57,6 +61,17 @@ class SemuModManifest {
         return false;
     }
 
+    public bool ownsLink(string stateRoot, string place) {
+        if (self.owns(place)) { return true; }
+        if (!SemuPaths.ownedPlace(stateRoot, place) || !FileSystem.isSymlink(place)) { return false; }
+        string suffix = "/" + SemuPaths.relative(stateRoot, place);
+        string target = FileSystem.readLink(place);
+        for record in self.records {
+            if (record.type.equals("link") && record.path.endsWith(suffix) && record.target.equals(target)) { return true; }
+        }
+        return false;
+    }
+
     public void replace(string type, string kind, Vector<SemuModRecord> fresh) {  // this kind's records of this type become FRESH
         Vector<SemuModRecord> kept = [];
         for record in self.records { if (!record.type.equals(type) || !record.kind.equals(kind)) { kept.push(record); } }
@@ -66,7 +81,11 @@ class SemuModManifest {
 
     public string text() {
         Vector<string> lines = [];
-        for record in self.records { lines.push(record.line()); }
+        for record in self.records {
+            string root = PathTools.dirname(self.path);
+            string place = SemuPaths.inside(root, record.path) ? SemuPaths.relative(root, record.path) : record.path;
+            lines.push(SemuModRecord(record.type, record.kind, place, record.target).line());
+        }
         return lines.isEmpty() ? "" : lines.join("\n") + "\n";
     }
 

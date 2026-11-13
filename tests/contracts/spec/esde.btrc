@@ -119,6 +119,23 @@ class EsDeSpecInstall {  // what install writes into an ES-DE home, and what it 
         FileSystem.mkdirp(PathTools.dirname(settingsFile));
         FileSystem.writeText(settingsFile, "<?xml version=\"1.0\"?>\n<string name=\"UnrelatedPreference\" value=\"preserve-me\" />\n<string name=\"ROMDirectory\" value=\"/old-library\" />\n<bool name=\"CreatePlaceholderSystemDirectories\" value=\"true\" />\n");
         contract.expect(SemuEsDeDocuments.install(fixture.model, plan, home, diagnostics), "install into an isolated ES-DE home succeeds: " + diagnostics.render());
+        contract.expect(!FileSystem.exists(PathTools.join(home, "gamelists")) && !FileSystem.isSymlink(PathTools.join(home, "gamelists")), "while the library is away (no root folder) nothing is linked into the ES-DE home");
+        string library = PathTools.join(fixture.scratch, "esde-spec/library");
+        plan.tokens.put("root", library);
+        for name in ["gamelists", "themes", "collections"] { plan.tokens.put(name, PathTools.join(library, name)); }
+        FileSystem.mkdirp(library);
+        contract.expect(SemuEsDeDocuments.install(fixture.model, plan, home, diagnostics), "install with the library present succeeds: " + diagnostics.render());
+        for name in ["gamelists", "themes", "collections"] {
+            string place = PathTools.join(home, name);
+            contract.expect(FileSystem.isSymlink(place) && FileSystem.readLink(place).equals(plan.path(name)) && FileSystem.isDir(plan.path(name)), "the ES-DE home's " + name + " is a link to the library's: " + FileSystem.readLink(place));
+        }
+        FileSystem.writeText(PathTools.join(home, "gamelists/kept.xml"), "<gameList />");
+        contract.expect(SemuEsDeDocuments.install(fixture.model, plan, home, diagnostics) && FileSystem.isFile(PathTools.join(plan.path("gamelists"), "kept.xml")), "what ES-DE writes there lands in the library, and a second install keeps the link");
+        string crowded = PathTools.join(fixture.scratch, "esde-spec/crowded-home");
+        FileSystem.mkdirp(PathTools.join(crowded, "gamelists/gb"));
+        FileSystem.writeText(PathTools.join(crowded, "gamelists/gb/gamelist.xml"), "from before");
+        SemuDiagnostics crowdedDiagnostics = SemuDiagnostics();
+        contract.expect(!SemuEsDeDocuments.install(fixture.model, plan, crowded, crowdedDiagnostics) && crowdedDiagnostics.render().contains("semu migrate") && FileSystem.readText(PathTools.join(crowded, "gamelists/gb/gamelist.xml")).equals("from before"), "a real gamelists folder holding files is never replaced by the link: " + crowdedDiagnostics.render());
         contract.expect(FileSystem.readText(PathTools.join(home, "custom_systems/es_systems.xml")).equals(SemuEsDeDocuments.systems(fixture.model, plan, diagnostics)), "installed es_systems equals the generated document");
         contract.expect(FileSystem.readText(PathTools.join(home, "custom_systems/es_find_rules.xml")).equals(SemuEsDeDocuments.findRules(plan, diagnostics)), "installed find rules equal the generated document");
         string settings = FileSystem.readText(settingsFile);

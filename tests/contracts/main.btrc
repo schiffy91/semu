@@ -18,7 +18,6 @@ import ../../src/emit/profiles.btrc;
 import ../../src/launch/plan.btrc;
 import ../../src/emit/rendering.btrc;
 import ../../src/emit/settings_ui.btrc;
-import ../../src/sync/syncthing.btrc;
 import ../../src/steam/shortcuts.btrc;
 import ../../src/cli.btrc;
 import ../../src/launch/supervisor.btrc;
@@ -86,6 +85,7 @@ import ./spec/render_scale_wiring.btrc;
 import ./spec/fit_migration.btrc;
 import ./spec/toast_labels.btrc;
 import ./spec/flycast_keys.btrc;
+import ./spec/layout_migrate.btrc;
 import ./spec/flycast_pacing.btrc;
 import ./spec/picture_edges.btrc;
 import ./spec/m16_review.btrc;
@@ -105,10 +105,33 @@ class ModelContract {
         contract.expect(fixture.plan.emulators.contains("retroarch"), "retroarch is selected");
         contract.expect(!fixture.plan.emulators.contains("ares"), "ares is macOS only and not selected");
         contract.lacks(fixture.plan.romsRoot(), "/run/media/deck", "desktop ROM root is not the Deck SD card");
-        contract.contains(fixture.plan.romsRoot(), "Games/Emulation/ES-DE/ES-DE/ROMs", "desktop ROM root follows the Emulation layout");
-        contract.contains(fixture.plan.path("esde_home"), "Games/Emulation/ES-DE", "ES-DE home is the existing data directory so gamelists and media carry over");
+        SemuPlan desktop = Fixture.resolved(fixture.model, "linux-desktop", PathTools.join(fixture.scratch, "plain-home"), "", "", SemuDiagnostics());
+        string library = PathTools.join(SemuPaths.home(), "Games/Emulation");
+        contract.expect(desktop.path("root").equals(library) && desktop.romsRoot().equals(library + "/roms") && desktop.path("media").equals(library + "/media") && desktop.path("bios").equals(library + "/bios") && desktop.path("mods").equals(library + "/mods"), "the desktop's games, art, firmware and mods are folders of one library root: " + desktop.romsRoot());
+        contract.expect(desktop.path("saves").equals(library + "/saves") && desktop.path("states").equals(library + "/states") && desktop.path("screenshots").equals(library + "/screenshots") && desktop.path("gamelists").equals(library + "/gamelists") && desktop.path("themes").equals(library + "/themes"), "saves, states, screenshots, gamelists and themes are folders of the same root: " + desktop.path("saves"));
+        contract.expect(desktop.stateRoot().equals(PathTools.join(SemuPaths.home(), ".cache/semu")) && desktop.path("esde_home").equals(desktop.stateRoot() + "/es-de"), "emulator state and the generated ES-DE home are per machine and disposable, outside the library: " + desktop.path("esde_home"));
+        SemuPlan homeless = Fixture.resolved(fixture.model, "linux-desktop", "", "", "", SemuDiagnostics());
+        contract.expect(homeless.semuHome.equals(library + "/settings/linux-desktop"), "the user's settings live in the library, one folder per target: " + homeless.semuHome);
+        SemuPlan chosen = Fixture.resolved(fixture.model, "linux-desktop", PathTools.join(fixture.scratch, "plain-home"), "", "{\"paths\":{\"root\":\"/mnt/games\",\"mods\":\"\",\"roms\":\"/elsewhere/roms\"}}", SemuDiagnostics());
+        contract.expect(chosen.path("bios").equals("/mnt/games/bios") && chosen.path("saves").equals("/mnt/games/saves") && chosen.romsRoot().equals("/elsewhere/roms") && chosen.path("mods").isEmpty(), "another root moves every folder with it; a path named on its own stays, and an empty paths.mods still turns mods off");
+        for emulatorId in fixture.model.emulatorIds() {
+            SemuEmulator? declared = fixture.model.emulator(emulatorId);
+            if (declared == null) { continue; }
+            for platformName in ["linux", "macos"] {
+                JSONValue state = SemuJson.get(declared.platform(platformName), "state");
+                string text = state == null || !state.isObject() ? "" : state.get("seeds") == null ? "" : state.get("seeds").stringify();
+                contract.expect(!text.contains("${emulation_root}") && !text.contains("${semu_home}") && !text.contains("${content_root}"), emulatorId + " " + platformName + " seeds its keys and firmware only from the library's bios folder");
+                JSONValue links = SemuJson.get(declared.platform(platformName), "state.links");
+                for (int index = 0; links != null && links.isArray() && index < links.size(); index++) {
+                    string target = SemuJson.textAt(links.at(index), "target");
+                    string shelf = SemuJson.textAt(links.at(index), "library");
+                    contract.expect(!SemuJson.textAt(links.at(index), "purpose").isEmpty() && target.startsWith("${state_root}/") && !target.contains("..") && (shelf.startsWith("${saves}/" + emulatorId) || shelf.startsWith("${states}/" + emulatorId)), emulatorId + " " + platformName + " link " + target + " leads from its state into its own folder of the library's saves or states: " + shelf);
+                }
+            }
+        }
         Fixture deck = Fixture("steam-deck");
-        contract.contains(deck.plan.romsRoot(), "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs", "deck ROM root is the SD card");
+        SemuPlan card = Fixture.resolved(deck.model, "steam-deck", PathTools.join(deck.scratch, "plain-home"), "", "", SemuDiagnostics());
+        contract.expect(card.romsRoot().equals("/run/media/deck/SD/Emulation/roms") && card.path("saves").equals("/run/media/deck/SD/Emulation/saves"), "deck ROM root is the SD card: " + card.romsRoot());
         contract.expect(deck.plan.input != null && deck.input().id.equals("steam-deck"), "deck uses its own input definition");
     }
 }
@@ -153,8 +176,7 @@ class EsDeContract {
         string merged = SemuEsDeDocuments.settings("<?xml version=\"1.0\"?>\n<string name=\"ROMDirectory\" value=\"/old\" />\n<bool name=\"ShowHiddenFiles\" value=\"true\" />\n", fixture.plan);
         contract.lacks(merged, "/old", "existing ROM directory is replaced");
         contract.contains(merged, "<bool name=\"ShowHiddenFiles\" value=\"true\" />", "unrelated settings survive a merge");
-        string localTheme = PathTools.join(fixture.scratch, "frontend/ES-DE/themes/horizon-es-de");
-        fixture.plan.tokens.put("esde_home", PathTools.join(fixture.scratch, "frontend"));
+        string localTheme = PathTools.join(fixture.plan.path("themes"), "horizon-es-de");
         string bundledTheme = PathTools.join(fixture.plan.assetRoot, "share/es-de/themes/slate-es-de");
         FileSystem.mkdirp(localTheme);
         FileSystem.mkdirp(bundledTheme);
@@ -197,8 +219,8 @@ class RetroArchProfileContract {
         contract.contains(cfg, "input_load_state = \"nul\"", "Linux: RetroArch's own load key is off");
         contract.contains(cfg, "input_pause_toggle = \"nul\"", "Linux: RetroArch's own pause key is off, so a menu pause never toggles twice");
         contract.contains(cfg, "input_exit_emulator = \"nul\"", "Linux: Esc no longer exits RetroArch behind the Semu menu");
-        contract.contains(cfg, "savefile_directory = \"" + fixture.plan.path("content_root") + "/saves\"", "saves under the content root");
-        contract.contains(cfg, "savestate_directory = \"" + fixture.plan.path("content_root") + "/states\"", "states under the content root");
+        contract.contains(cfg, "savefile_directory = \"" + fixture.plan.path("saves") + "/retroarch\"", "RetroArch's saves are a folder of the library's saves");
+        contract.contains(cfg, "savestate_directory = \"" + fixture.plan.path("states") + "/retroarch\"", "RetroArch's states are a folder of the library's states");
         contract.contains(cfg, "joypad_autoconfig_dir = \"" + fixture.plan.assetRoot + "/share/libretro/autoconfig\"", "autoconfig from the bundle");
         contract.lacks(cfg, "${", "no unresolved tokens");
         contract.lacks(cfg, "/run/media/deck", "no Deck path on the desktop");
@@ -216,7 +238,7 @@ class NativeProfilesContract {
         contract.contains(dolphinMain, "[Core]", "dolphin core section");
         string pcsx2 = fixture.profile("pcsx2", "config/PCSX2/inis/PCSX2.ini");
         contract.contains(pcsx2, "StartFullscreen = true", "pcsx2 starts fullscreen");
-        contract.contains(pcsx2, "Bios = " + fixture.plan.path("emulation_root") + "/PCSX2/config/bios", "pcsx2 BIOS directory resolves to the existing firmware folder");
+        contract.contains(pcsx2, "Bios = " + fixture.plan.path("bios") + "/ps2", "pcsx2 BIOS directory is the library's ps2 firmware folder");
         string ppsspp = fixture.profile("ppsspp", "config/ppsspp/PSP/SYSTEM/ppsspp.ini");
         contract.expect(!ppsspp.isEmpty(), "ppsspp.ini renders");
         string melonds = fixture.profile("melonds", "config/melonDS/melonDS.toml");
@@ -277,16 +299,27 @@ class LaunchPlanContract {
         contract.contains(overrides, "video_context_driver = \"x\"", "ppsspp gets a GLX context: its GLX-built GLEW has no draw context under EGL");
         contract.lacks(overrides, "video_driver = ", "ppsspp stays on the glcore driver the tap lives in");
         contract.expect(!launch.argv.contains("--appendconfig"), "gambatte has no overrides");
-        string emulation = PathTools.join(fixture.scratch, "emulation");
-        FileSystem.mkdirp(PathTools.join(emulation, "Dolphin/data/GC"));
-        FileSystem.writeText(PathTools.join(emulation, "Dolphin/data/GC/MemoryCardA.USA.raw"), "card");
+        string cards = PathTools.join(fixture.plan.path("saves"), "dolphin/GC");
+        FileSystem.mkdirp(cards);
+        FileSystem.writeText(PathTools.join(cards, "MemoryCardA.USA.raw"), "card");
         FileSystem.mkdirp(PathTools.join(roms, "gc"));
         FileSystem.writeText(PathTools.join(roms, "gc/Monkey.rvz"), "");
         FileSystem.writeText(PathTools.join(assets, "bin/dolphin-emu"), "#!/bin/sh\n");
-        fixture.plan.tokens.put("emulation_root", emulation);
         SemuLaunchPlan gc = SemuLauncher.plan(fixture.model, fixture.plan, "dolphin", "gc", "", "Monkey.rvz", SemuDiagnostics());
         contract.expect(gc.ok(), "dolphin launches: " + gc.error);
-        contract.expect(FileSystem.isFile(PathTools.join(fixture.plan.stateRoot(), "dolphin/dolphin-user/GC/MemoryCardA.USA.raw")), "existing GameCube saves are seeded into the state root once");
+        string cardLink = PathTools.join(fixture.plan.stateRoot(), "dolphin/dolphin-user/GC");
+        contract.expect(FileSystem.isSymlink(cardLink) && FileSystem.readLink(cardLink).equals(cards) && FileSystem.isFile(PathTools.join(cardLink, "MemoryCardA.USA.raw")), "Dolphin's GameCube saves are the library's own folder, linked into its state: " + FileSystem.readLink(cardLink));
+        contract.expect(FileSystem.isSymlink(PathTools.join(fixture.plan.stateRoot(), "dolphin/dolphin-user/Wii")) && FileSystem.isDir(PathTools.join(fixture.plan.path("saves"), "dolphin/Wii")) && FileSystem.isDir(PathTools.join(fixture.plan.path("states"), "dolphin")), "the Wii NAND and the save states are linked the same way, their library folders made on the first launch");
+        FileSystem.writeText(PathTools.join(cardLink, "MemoryCardB.USA.raw"), "written by the emulator");
+        contract.expect(FileSystem.isFile(PathTools.join(cards, "MemoryCardB.USA.raw")) && SemuLauncher.plan(fixture.model, fixture.plan, "dolphin", "gc", "", "Monkey.rvz", SemuDiagnostics()).ok() && FileSystem.readLink(cardLink).equals(cards), "what the emulator writes lands in the library, and a second launch keeps the link");
+        string strayState = PathTools.join(fixture.plan.stateRoot(), "pcsx2/config/PCSX2/memcards");
+        FileSystem.mkdirp(strayState);
+        FileSystem.writeText(PathTools.join(strayState, "Mcd001.ps2"), "a card from before the library took the saves");
+        FileSystem.mkdirp(PathTools.join(roms, "ps2"));
+        FileSystem.writeText(PathTools.join(roms, "ps2/Game.iso"), "");
+        FileSystem.writeText(PathTools.join(assets, "bin/pcsx2-qt"), "#!/bin/sh\n");
+        SemuLaunchPlan refused = SemuLauncher.plan(fixture.model, fixture.plan, "pcsx2", "ps2", "", "Game.iso", SemuDiagnostics());
+        contract.expect(!refused.ok() && refused.error.contains("semu migrate") && FileSystem.readText(PathTools.join(strayState, "Mcd001.ps2")).contains("before the library") && !FileSystem.isSymlink(strayState), "a real folder holding saves at a link's place is never replaced: the launch stops and names semu migrate: " + refused.error);
         contract.expect(FileSystem.isFile(PathTools.join(fixture.plan.stateRoot(), "dolphin/dolphin-user/Config/Dolphin.ini")), "dolphin profile lands in its user directory");
         SemuLaunchPlan outside = SemuLauncher.plan(fixture.model, fixture.plan, "retroarch", "gb", "", PathTools.join(fixture.scratch, "outside.zip"), SemuDiagnostics());
         contract.expect(!outside.ok(), "ROM outside the system directory is rejected");
@@ -645,7 +678,7 @@ class MacTargetContract {  // the macOS target: RetroArch with Cocoa input, HID 
         contract.contains(macProfile, "pause_nonactive = \"false\"", "RetroArch keeps running without focus: on ES-DE's Space macOS may not make it the active app, and it paused on a black first frame");
         contract.contains(mac.profile("ryujinx", "config/Ryujinx/Config.json"), "\"use_hypervisor\": true", "macOS Ryujinx runs on Apple's hypervisor: its launcher is signed with the entitlement (ryujinx_semu.nix)");
         contract.contains(desktop.profile("ryujinx", "config/Ryujinx/Config.json"), "\"use_hypervisor\": true", "Linux keeps Ryujinx's setting, a JSON boolean");
-        contract.contains(mac.emulatorOf("ryujinx").platform("macos").stringify(), "switch_firmware", "macOS Ryujinx seeds the Switch firmware from the library");
+        contract.contains(mac.emulatorOf("ryujinx").platform("macos").stringify(), "${saves}/ryujinx/bis", "macOS Ryujinx keeps the Switch system and its saves in the library");
         contract.contains(macProfile, "input_joypad_driver = \"hid\"", "macOS RetroArch reads pads through HID");
         contract.contains(macProfile, "audio_driver = \"coreaudio\"", "macOS RetroArch plays through Core Audio");
         contract.contains(macProfile, "input_driver = \"cocoa\"", "macOS RetroArch takes Cocoa keyboard input");
@@ -901,31 +934,6 @@ class SettingsUiContract {  // the document ES-DE's SEMU SETTINGS menu validates
     }
 }
 
-class SyncContract {  // the Syncthing config Semu owns: one folder for content_root, peers shared on it
-    class void run(Contract contract) {
-        string base = "<configuration version=\"37\">\n    <device id=\"OWN\" name=\"desk\"></device>\n    <gui enabled=\"true\"></gui>\n</configuration>\n";
-        Vector<string> peers = ["PEER-ONE"];
-        string once = SemuSync.configure(base, "/home/u/Games/Emulation/Semu", peers);
-        contract.contains(once, "<folder id=\"semu-saves\" label=\"Semu saves\" path=\"/home/u/Games/Emulation/Semu\"", "sync folder targets content_root");
-        contract.contains(once, "<device id=\"PEER-ONE\" name=\"PEER-ON\"", "peer device is declared");
-        contract.contains(once, "    <device id=\"PEER-ONE\" introducedBy=\"\"></device>\n</folder>", "peer shares the folder");
-        contract.expect(once.endsWith("</configuration>\n"), "configuration root is kept");
-        contract.expect(SemuSync.configure(once, "/home/u/Games/Emulation/Semu", peers).equals(once), "configure is idempotent");
-        Vector<string> more = ["PEER-ONE", "PEER-TWO"];
-        string twice = SemuSync.configure(once, "/home/u/Games/Emulation/Semu", more);
-        contract.contains(twice, "<device id=\"PEER-TWO\" name=", "a later peer is added");
-        contract.contains(twice, "<device id=\"PEER-TWO\" introducedBy=\"\"></device>", "a later peer shares the existing folder");
-        contract.expect(SemuSync.indexOf("abcabc", "ca", 0) == 2 && SemuSync.indexOf("abcabc", "ca", 3) == -1 && SemuSync.indexOf("abc", "zz", 0) == -1, "indexOf finds and misses");
-        contract.expect(!SemuSync.listening("127.0.0.1:1"), "a closed port is not listening");
-        Fixture fixture = Fixture("linux-desktop");
-        contract.expect(!SemuSync.enabled(fixture.plan), "sync is off by default");
-        contract.expect(SemuSync.guiAddress(fixture.plan).equals("127.0.0.1:8384"), "default gui address");
-        contract.expect(SemuSync.home(fixture.plan).endsWith("/state/syncthing"), "sync home lives in the state root");
-        JSONValue ui = SemuSettingsUi.document(fixture.model, fixture.plan);
-        contract.contains(ui.stringify(), "\"key\":\"sync.enabled\"", "settings ui exposes sync");
-    }
-}
-
 class SteamContract {  // the binary VDF Steam reads: our entry exact, everything else preserved
     class void run(Contract contract) {
         contract.expect(SteamShortcuts.appid("\"/x/semu-es-de\"", "Semu") == 4175107067L, "non-Steam appid matches Steam's crc32 seed");
@@ -1013,7 +1021,6 @@ int main() {
     InheritedDefinitionContract.run(contract);
     SettingsWriteContract.run(contract);
     SettingsUiContract.run(contract);
-    SyncContract.run(contract);
     SteamContract.run(contract);
     UnifiedInputContract.run(contract);
     SteamInputContract.run(contract);
@@ -1090,6 +1097,7 @@ int main() {
     FitMigrationSpecContract.run(contract);
     ToastLabelsSpecContract.run(contract);
     FlycastKeysSpecContract.run(contract);
+    LayoutMigrateSpecContract.run(contract);
     FlycastPacingSpecContract.run(contract);
     PictureEdgesSpecContract.run(contract);
     M16ReviewSpecContract.run(contract);

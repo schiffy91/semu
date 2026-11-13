@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "layout": 2,
+  "marker": ".semu-layout",
+  "legacy": "_legacy",
+  "keep": [
+    "roms",
+    "media",
+    "gamelists",
+    "themes",
+    "collections",
+    "bios",
+    "mods",
+    "saves",
+    "states",
+    "screenshots",
+    "settings"
+  ],
+  "state": [
+    {
+      "from": "azahar/data/azahar-emu/nand",
+      "to": "saves/azahar/nand"
+    },
+    {
+      "from": "azahar/data/azahar-emu/sdmc",
+      "to": "saves/azahar/sdmc"
+    },
+    {
+      "from": "azahar/data/azahar-emu/states",
+      "to": "states/azahar"
+    },
+    {
+      "from": "cemu/data/Cemu/mlc01",
+      "to": "saves/cemu/mlc01"
+    },
+    {
+      "from": "dolphin/dolphin-user/GC",
+      "to": "saves/dolphin/GC"
+    },
+    {
+      "from": "dolphin/dolphin-user/Wii",
+      "to": "saves/dolphin/Wii"
+    },
+    {
+      "from": "dolphin/dolphin-user/StateSaves",
+      "to": "states/dolphin"
+    },
+    {
+      "from": "flycast/data/flycast",
+      "to": "saves/flycast",
+      "containing": "vmu_save"
+    },
+    {
+      "from": "flycast/data/flycast",
+      "to": "states/flycast",
+      "ending": ".state"
+    },
+    {
+      "from": "melonds/data/melonDS/saves",
+      "to": "saves/melonds"
+    },
+    {
+      "from": "melonds/data/melonDS/states",
+      "to": "states/melonds"
+    },
+    {
+      "from": "pcsx2/config/PCSX2/memcards",
+      "to": "saves/pcsx2/memcards"
+    },
+    {
+      "from": "pcsx2/config/PCSX2/sstates",
+      "to": "states/pcsx2"
+    },
+    {
+      "from": "ppsspp/config/ppsspp/PSP/SAVEDATA",
+      "to": "saves/ppsspp/SAVEDATA"
+    },
+    {
+      "from": "ppsspp/config/ppsspp/PSP/PPSSPP_STATE",
+      "to": "states/ppsspp"
+    },
+    {
+      "from": "ryujinx/config/Ryujinx/bis",
+      "to": "saves/ryujinx/bis"
+    }
+  ],
+  "library": [
+    {
+      "from": "ES-DE/ES-DE/ROMs",
+      "to": "roms"
+    },
+    {
+      "from": "ES-DE/ES-DE/downloaded_media",
+      "to": "media"
+    },
+    {
+      "from": "ES-DE/ES-DE/gamelists",
+      "to": "gamelists"
+    },
+    {
+      "from": "ES-DE/ES-DE/themes",
+      "to": "themes"
+    },
+    {
+      "from": "ES-DE/ES-DE/collections",
+      "to": "collections"
+    },
+    {
+      "from": "RetroArch/config/system",
+      "to": "bios"
+    },
+    {
+      "from": "PCSX2/config/bios",
+      "to": "bios/ps2"
+    },
+    {
+      "from": "Cemu/data/keys.txt",
+      "to": "bios/wiiu/keys.txt"
+    },
+    {
+      "from": "Ryujinx/config/system/prod.keys",
+      "to": "bios/switch/prod.keys"
+    },
+    {
+      "from": "Ryujinx/config/system/title.keys",
+      "to": "bios/switch/title.keys"
+    },
+    {
+      "from": "Azahar/data/load/mods",
+      "to": "mods/azahar/mods"
+    },
+    {
+      "from": "Azahar/data/load/textures",
+      "to": "mods/azahar/textures"
+    },
+    {
+      "from": "Ryujinx/config/mods/contents",
+      "to": "mods/ryujinx/contents"
+    },
+    {
+      "from": "Semu/saves",
+      "to": "saves/retroarch"
+    },
+    {
+      "from": "Semu/states",
+      "to": "states/retroarch"
+    },
+    {
+      "from": "Semu/screenshots",
+      "to": "screenshots"
+    },
+    {
+      "from": "RetroArch/config/saves",
+      "to": "saves/retroarch"
+    },
+    {
+      "from": "RetroArch/config/states",
+      "to": "states/retroarch"
+    },
+    {
+      "from": "RetroArch/config/screenshots",
+      "to": "screenshots"
+    },
+    {
+      "from": "Azahar/data/nand",
+      "to": "saves/azahar/nand"
+    },
+    {
+      "from": "Azahar/data/sdmc",
+      "to": "saves/azahar/sdmc"
+    },
+    {
+      "from": "Azahar/data/states",
+      "to": "states/azahar"
+    },
+    {
+      "from": "Cemu/data/mlc01",
+      "to": "saves/cemu/mlc01"
+    },
+    {
+      "from": "Dolphin/data/GC",
+      "to": "saves/dolphin/GC"
+    },
+    {
+      "from": "Dolphin/data/Wii",
+      "to": "saves/dolphin/Wii"
+    },
+    {
+      "from": "PCSX2/config/memcards",
+      "to": "saves/pcsx2/memcards"
+    },
+    {
+      "from": "PCSX2/config/sstates",
+      "to": "states/pcsx2"
+    },
+    {
+      "from": "Ryujinx/config/bis",
+      "to": "saves/ryujinx/bis"
+    }
+  ],
+  "doc": "The single-root layout (2): every asset is a folder of the library root named in keep. state lists what an emulator's old state held that is a save, relative to the old state root given with --state; it goes first because it is newer than the per-emulator folders it was once copied from. library lists the old folders of the root itself, in order. A folder merges into one already there, a file never replaces one, and whatever else sits at the top of the root afterwards moves under legacy."
+}

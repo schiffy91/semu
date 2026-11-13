@@ -9,14 +9,8 @@
   "input": "linux-desktop",
   "settings": {
     "paths": {
-      "emulation_root": "${home}/Games/Emulation",
-      "roms": "${home}/Games/Emulation/ES-DE/ES-DE/ROMs",
-      "media": "${home}/Games/Emulation/ES-DE/ES-DE/downloaded_media",
-      "bios": "${home}/Games/Emulation/RetroArch/config/system",
-      "mods": "${home}/Games/Emulation/mods",
-      "content_root": "${home}/Games/Emulation/Semu",
-      "state_root": "${home}/.local/share/semu",
-      "esde_home": "${home}/Games/Emulation/ES-DE"
+      "root": "${home}/Games/Emulation",
+      "state_root": "${home}/.cache/semu"
     },
     "ui": {
       "display_index": 0

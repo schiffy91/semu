@@ -34,7 +34,7 @@ class ModsSpecReport {
 
     class StandaloneSpecBed bed() {  // the owner's library, a 3DS ROM with its NCSD header, a wrong-magic one, a Switch dump; ES-DE in scratch
         StandaloneSpecBed bed = StandaloneSpecBed();
-        bed.fixture.plan.tokens.put("esde_home", PathTools.join(bed.fixture.scratch, "esde"));
+        bed.fixture.plan.tokens.put("gamelists", PathTools.join(bed.fixture.scratch, "esde/gamelists"));
         ModsSpecOwner.library(bed.fixture.plan.path("mods"));
         Vector<int> header = [];
         for (int index = 0; index < 256; index++) { header.push(0); }
@@ -90,7 +90,7 @@ class ModsSpecReport {
         contract.expect(ModsSpecReport.field(quick, "azahar", "layeredfs", "0004000000033600", "game").isEmpty() && ModsSpecReport.field(quick, "ryujinx", "contents", "0100f2c0115b6000/!!!TOTK Optimizer", "game").equals(ModsSpecReport.tears()), "without --roms no ROM header is read, and file names still map");
         contract.contains(ModsSpecReport.warnings(report, "azahar"), "n3ds games start in \"Azahar (libretro)\" (ES-DE's default)", "on linux ES-DE starts 3DS games in the libretro core, so the list warns");
         contract.expect(ModsSpecReport.warnings(report, "ryujinx").isEmpty(), "Ryujinx is the only Switch emulator: no warning");
-        bed.write(PathTools.join(plan.path("esde_home"), "ES-DE/gamelists/n3ds/gamelist.xml"), "<?xml version=\"1.0\"?>\n<alternativeEmulator>\n\t<label>Azahar (Standalone)</label>\n</alternativeEmulator>\n<gameList>\n");
+        bed.write(PathTools.join(plan.path("gamelists"), "n3ds/gamelist.xml"), "<?xml version=\"1.0\"?>\n<alternativeEmulator>\n\t<label>Azahar (Standalone)</label>\n</alternativeEmulator>\n<gameList>\n");
         JSONValue pinned = SemuModListing.report(bed.fixture.model, plan, false);
         contract.expect(ModsSpecReport.warnings(pinned, "azahar").isEmpty(), "a gamelist that pins Azahar (Standalone), as the Deck's does, silences the warning: " + ModsSpecReport.warnings(pinned, "azahar"));
         bed.launch("azahar", "n3ds", "Zelda.3ds");
@@ -145,7 +145,7 @@ class ModsSpecReport {
         contract.expect(launch.ok(), "the cemu launch goes ahead: " + launch.error);
         contract.contains(written, "\t<GraphicPack>\n\t\t<Entry filename=\"" + PathTools.join(bed.stateRoot("cemu"), "data/Cemu/graphicPacks") + "/BotW &amp; Res/rules.txt\"/>\n\t</GraphicPack>\n", "the installed pack is enabled by its rules.txt as Cemu walks it, through the link under graphicPacks, its name escaped");
         contract.lacks(written, "Notes", "a folder without rules.txt is neither linked nor listed");
-        contract.expect(FileSystem.readLink(PathTools.join(bed.stateRoot("cemu"), "data/Cemu/graphicPacks/BotW & Res")).equals(PathTools.join(packs, "BotW & Res")), "the pack is linked into graphicPacks");
+        contract.expect(SemuPaths.linkDestination(PathTools.join(bed.stateRoot("cemu"), "data/Cemu/graphicPacks/BotW & Res")).equals(PathTools.join(packs, "BotW & Res")), "the pack is linked into graphicPacks");
         rename(PathTools.join(packs, "BotW & Res"), PathTools.join(bed.fixture.scratch, "taken-out"));
         bed.launch("cemu", "wiiu", "Zelda.wua");
         contract.contains(FileSystem.readText(PathTools.join(bed.stateRoot("cemu"), "config/Cemu/settings.xml")), "\t<GraphicPack>\n\t</GraphicPack>\n", "a pack taken out of the library is no longer listed");

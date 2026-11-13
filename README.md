@@ -8,9 +8,42 @@ status.
 
 Targets:
 
-- `linux-desktop`: a NixOS desktop with ROMs under
-  `~/Games/Emulation/ES-DE/ES-DE/ROMs`.
-- `steam-deck`: the physical Deck with the SD-card ROM layout.
+- `linux-desktop`: a NixOS desktop with its library at `~/Games/Emulation`.
+- `steam-deck`: the physical Deck with its library on the SD card.
+- `macos`: a development host with its library at `~/Drive/media/Games/Emulation`.
+
+## The library
+
+Everything the owner has is one folder, the library root (`paths.root`, or `$SEMU_ROOT`
+when the host names it):
+
+```text
+roms/<system>/        games
+media/<system>/       ES-DE's scraped art
+gamelists/  themes/  collections/   ES-DE's lists and looks
+bios/                 firmware and keys: RetroArch's system files, plus ps2/ wiiu/ switch/ n3ds/ nds/ dc/
+mods/<emulator>/      texture packs and mods
+saves/<emulator>/     every save: RetroArch's under saves/retroarch/<core>, each standalone emulator's own folder
+states/<emulator>/    save states
+screenshots/
+settings/<target>/    semu.json, the choices made in SEMU SETTINGS on that kind of machine
+```
+
+An emulator's own state (generated profiles, shader caches, logs) and the generated ES-DE
+home are per machine and disposable: `paths.state_root`, `~/.cache/semu` on Linux and
+`~/Library/Caches/Semu` on macOS. Each emulator's save folders there are links into
+`saves/` and `states/` (`state.links` in its `emulator.json`), and the ES-DE home's
+`gamelists`, `themes` and `collections` are links into the library, so deleting the state
+root loses nothing. Semu writes nowhere else.
+
+`semu migrate [--root DIR] [--state DIR] [--dry-run]` brings a library from the old layout
+(`ES-DE/ES-DE/ROMs`, `RetroArch/config/system`, a folder per emulator) to this one, following
+`config/migrations/layout.json`. `--state` names the old state root (`~/.local/share/semu`,
+or `<root>/Semu/emulators` on the Deck) whose saves are newer than the folders they were
+copied from, so they go first; a file never replaces one, and whatever is left of the old
+tree ends under `_legacy/` for the owner to look through and delete. Moves are renames; a
+copy across filesystems keeps its source. A marker (`.semu-layout`) makes a second run a
+no-op.
 
 ## Layout
 
@@ -154,17 +187,13 @@ semu path esde_home --target linux-desktop
 semu launch retroarch --system gb --core gambatte --rom "Tetris (World) (Rev 1).zip"
 semu doctor --target linux-desktop
 semu settings ui                    # the document ES-DE renders under SEMU SETTINGS
-semu sync start | stop | status | device-id   # Syncthing for saves (sync.enabled, sync.peer_device_ids)
+semu migrate --dry-run             # what the move to the single-root layout would do
 semu steam shortcuts [--steam-root DIR] [--force] | status   # the Semu non-Steam shortcut
 ```
 
 ES-DE's main menu carries a SEMU SETTINGS entry (an ES-DE patch that only
 renders the document `semu settings ui` returns and saves through
-`semu settings put`). Save sync runs Syncthing from the bundle with a Semu-owned
-home under the state root sharing `paths.content_root` as `semu-saves`; enable
-it in the menu, read this device's id there, and paste the other device's id
-into PEER DEVICE IDS on both sides. The ES-DE launcher starts sync when enabled;
-on NixOS the `semu-sync` user service also runs it.
+`semu settings put`).
 
 `launch` regenerates the emulator's profile under the state root, starts the
 emulator in its own process group, and watches every gamepad for Start+Select
@@ -212,9 +241,9 @@ config/settings/defaults.json
 < --settings-json
 ```
 
-`$SEMU_HOME` defaults to `~/.config/semu`. Generated emulator state lives under
-`paths.state_root` (default `~/.local/share/semu/<emulator>`), saves and states
-under `paths.content_root` (default `~/Games/Emulation/Semu`).
+`$SEMU_HOME` defaults to `<root>/settings/<target>`. `$SEMU_ROOT` replaces the target's
+`paths.root`; a path named on its own in settings (`paths.roms`, `paths.bios`, ...) stays
+where it is named, and an empty `paths.mods` turns mods off.
 
 ## Licensing and distribution
 

@@ -89,7 +89,7 @@ nds retroarch melonds 40 tap:0.5,0.5 key:ctrl+shift+b tap:0.5,0.5 key:ctrl+shift
 n3ds azahar - 50 tap:0.5,0.5 key:ctrl+shift+f tap:0.5,0.5 key:ctrl+shift+b tap:0.5,0.5 key:ctrl+shift+f key:ctrl+shift+b key:ctrl+shift+b key:ctrl+shift+b tap:0.5,0.5 key:ctrl+shift+b tap:0.5,0.5 -- Legend of Zelda, The - Ocarina of Time 3D*.3ds
 # 13. Item 6, Wii U sound. Sound is cut here, so this shows only that Cemu keeps running past the game's audio
 #    init (it exits there when it has no audio device) and that the launch compiled the audio block: after
-#    the run, ~/.local/share/semu/cemu/config/Cemu/settings.xml holds <api>3</api>, <TVDevice>default</TVDevice>
+#    the run, ~/.cache/semu/cemu/config/Cemu/settings.xml holds <api>3</api>, <TVDevice>default</TVDevice>
 #    and <TVVolume>100</TVVolume>. The pad only moves (no dialog is confirmed, so no save is written). In Game
 #    Mode (by ear): the confirm sound, then music on the opening and menus, the Deck's volume buttons
 #    changing it, and ~/.local/state/wireplumber/stream-properties gaining "Cemu Cubeb".

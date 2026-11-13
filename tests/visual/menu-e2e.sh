@@ -13,7 +13,7 @@ work="$(mktemp -d)"
 display=":${SEMU_CAPTURE_DISPLAY:-97}"
 nix run --no-warn-dirty "$root#btrcpy" -- --strict-imports --no-cache --no-stdlib "$here/virtual_pad.btrc" -o "$work/virtual_pad.c" >/dev/null
 cc -std=c11 -O1 -w -I"$root/src/launch" "$work/virtual_pad.c" -o "$work/virtual_pad"
-states="$("$semu" path content_root)/states"
+states="$("$semu" path states)/retroarch"
 variant_before="$("$semu" settings get visual.systems.gb.bezel_variant)"
 bezels_before="$("$semu" settings get visual.bezels)"
 touch "$work/started"

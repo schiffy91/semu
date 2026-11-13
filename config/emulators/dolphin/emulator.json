@@ -63,26 +63,21 @@
         "config_home": "preserve",
         "data_home": "preserve",
         "profile_config_dir": "${state_root}/dolphin-user/Config",
-        "seeds": [
+        "links": [
           {
             "purpose": "gamecube_saves",
             "target": "${state_root}/dolphin-user/GC",
-            "copy": "once_if_target_absent",
-            "source_access": "read_only",
-            "overwrite": false,
-            "sources": [
-              "${emulation_root}/Dolphin/data/GC"
-            ]
+            "library": "${saves}/dolphin/GC"
           },
           {
             "purpose": "wii_nand",
             "target": "${state_root}/dolphin-user/Wii",
-            "copy": "once_if_target_absent",
-            "source_access": "read_only",
-            "overwrite": false,
-            "sources": [
-              "${emulation_root}/Dolphin/data/Wii"
-            ]
+            "library": "${saves}/dolphin/Wii"
+          },
+          {
+            "purpose": "save_states",
+            "target": "${state_root}/dolphin-user/StateSaves",
+            "library": "${states}/dolphin"
           }
         ],
         "mods": {

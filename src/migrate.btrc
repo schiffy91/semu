@@ -1,0 +1,186 @@
+// `semu migrate`: brings a library from the old layout (ES-DE/ES-DE/ROMs, RetroArch/config/system, one folder
+// per emulator, saves in each emulator's own state) to the single-root one, where roms, media, gamelists,
+// themes, bios, mods, saves, states and screenshots are folders of the root. config/migrations/layout.json
+// names every move. Saves an emulator's old state held go first, since they are newer than the folders they
+// were once copied from; a folder merges into one already there, and a file never replaces one: the older copy
+// stays where it was. Whatever else sits at the top of the root afterwards moves under _legacy, for the owner
+// to look through and delete. A move is a rename; across filesystems it is a copy that keeps the source.
+// Nothing is deleted except folders the moves emptied. A marker file makes a second run a no-op.
+
+import Library.Console;
+import Library.FileSystem;
+import Library.JSON;
+import Library.Process;
+import Library.Strings;
+import Library.Vector;
+import ./lib/json.btrc;
+import ./lib/paths.btrc;
+
+#include <errno.h>
+#include <stdio.h>
+#include <unistd.h>
+
+class SemuLayoutMigration {
+    public string root;
+    public string state;
+    public bool dryRun;
+    public JSONValue table;
+    public Vector<string> lines;
+    public Vector<string> planned;  // a dry run's destinations, so a later move merges as the real run would
+    public int moved;
+    public int copied;
+    public int kept;
+    public int failed;
+
+    public SemuLayoutMigration(string root, string state, bool dryRun, JSONValue table) {
+        self.root = SemuPaths.normalize(root);
+        self.state = state.isEmpty() ? "" : SemuPaths.normalize(state);
+        self.dryRun = dryRun;
+        self.table = table;
+        self.lines = [];
+        self.planned = [];
+        self.moved = 0;
+        self.copied = 0;
+        self.kept = 0;
+        self.failed = 0;
+    }
+
+    class JSONValue load(string configRoot) { return SemuJson.readFile(PathTools.join(configRoot, "migrations/layout.json")); }
+
+    public string marker() { return PathTools.join(self.root, SemuJson.textAt(self.table, "marker")); }
+
+    public string refusal() {  // "" when there is a library to rearrange
+        if (self.table == null || self.table.isError() || !self.table.isObject() || SemuJson.textAt(self.table, "marker").isEmpty() || SemuJson.textAt(self.table, "legacy").isEmpty()) { return "config/migrations/layout.json is missing or malformed"; }
+        if (self.root.isEmpty() || !PathTools.isAbsolute(self.root)) { return "the library root must be an absolute path"; }
+        if (FileSystem.isSymlink(self.root)) { return self.root + " is a link; Semu never rearranges a library through it"; }
+        if (!FileSystem.isDir(self.root)) { return self.root + " is not there (is the card or drive mounted?); nothing moved"; }
+        if (!self.state.isEmpty() && !FileSystem.isDir(self.state)) { return self.state + " is not a folder; name the old state root or leave --state out"; }
+        return "";
+    }
+
+    public bool done() { return FileSystem.isFile(self.marker()); }
+
+    public void note(string outcome, string source, string destination) { self.lines.push(outcome + "  " + source + (destination.isEmpty() ? "" : "  ->  " + destination)); }
+
+    public bool present(string path) { return FileSystem.exists(path) || FileSystem.isSymlink(path); }
+
+    public void place(string source, string destination) {  // DESTINATION is free: rename, or copy across filesystems and keep the source
+        if (self.dryRun) {
+            self.moved++;
+            self.planned.push(destination);
+            self.note("move", source, destination);
+            return;
+        }
+        if (FileSystem.mkdirp(PathTools.dirname(destination)) != 0 && !FileSystem.isDir(PathTools.dirname(destination))) {
+            self.failed++;
+            self.note("failed: could not create " + PathTools.dirname(destination), source, destination);
+            return;
+        }
+        if (rename(source, destination) == 0) {
+            self.moved++;
+            self.note("moved", source, destination);
+            return;
+        }
+        int code = errno;
+        int otherFilesystem = EXDEV;
+        if (code != otherFilesystem) {
+            self.failed++;
+            self.note(f"failed: rename error {code}", source, destination);
+            return;
+        }
+        string partial = destination + ".semu-partial";
+        ChildProcess.run("rm", ["-rf", partial]);
+        ExecResult copy = ChildProcess.run("cp", ["-a", source, partial]);
+        if (copy.ok() && rename(partial, destination) == 0) {
+            self.copied++;
+            self.note("copied (source kept)", source, destination);
+            return;
+        }
+        ChildProcess.run("rm", ["-rf", partial]);
+        self.failed++;
+        self.note("failed: could not copy across filesystems", source, destination);
+    }
+
+    public void carry(string source, string destination) {  // one file or folder into its new place, merging folders, never replacing a file
+        if (!self.present(source)) { return; }
+        if (FileSystem.isSymlink(source)) {
+            self.kept++;
+            self.note("link: left in place", source, "");
+            return;
+        }
+        bool expected = self.planned.contains(destination);
+        if (!expected && !self.present(destination)) {
+            self.place(source, destination);
+            return;
+        }
+        if (FileSystem.isDir(source) && (expected || (FileSystem.isDir(destination) && !FileSystem.isSymlink(destination)))) {
+            for name in FileSystem.listDir(source).sorted() { self.carry(PathTools.join(source, name), PathTools.join(destination, name)); }
+            if (!self.dryRun) { rmdir(source); }  // goes only if the moves emptied it
+            return;
+        }
+        self.kept++;
+        self.note("kept: the library already has it", source, destination);
+    }
+
+    public void entry(string base, JSONValue move) {
+        string source = PathTools.join(base, SemuJson.textAt(move, "from"));
+        string destination = PathTools.join(self.root, SemuJson.textAt(move, "to"));
+        string containing = SemuJson.textAt(move, "containing");
+        string ending = SemuJson.textAt(move, "ending");
+        if (containing.isEmpty() && ending.isEmpty()) {
+            self.carry(source, destination);
+            return;
+        }
+        if (!FileSystem.isDir(source) || FileSystem.isSymlink(source)) { return; }
+        for name in FileSystem.listDir(source).sorted() {  // only the folder's own files of that name, e.g. Flycast's VMUs beside its BIOS
+            bool wanted = (!containing.isEmpty() && name.contains(containing)) || (!ending.isEmpty() && name.endsWith(ending));
+            if (wanted) { self.carry(PathTools.join(source, name), PathTools.join(destination, name)); }
+        }
+    }
+
+    public void entries(string base, string list) {
+        JSONValue moves = self.table.get(list);
+        for (int index = 0; moves != null && moves.isArray() && index < moves.size(); index++) { self.entry(base, moves.at(index)); }
+    }
+
+    public void sweep() {  // everything else at the top of the root is the old layout's: under _legacy, for the owner to look through
+        Vector<string> staying = SemuJson.strings(self.table.get("keep"));
+        string legacyName = SemuJson.textAt(self.table, "legacy");
+        string markerName = SemuJson.textAt(self.table, "marker");
+        for name in FileSystem.listDir(self.root).sorted() {
+            if (staying.contains(name) || name.equals(legacyName) || name.equals(markerName)) { continue; }
+            self.carry(PathTools.join(self.root, name), PathTools.join(PathTools.join(self.root, legacyName), name));
+        }
+    }
+
+    public bool run() {  // false when something could not be moved; the marker is written only on a clean run
+        if (!self.state.isEmpty()) { self.entries(self.state, "state"); }
+        self.entries(self.root, "library");
+        self.sweep();
+        if (self.failed > 0 || self.dryRun) { return self.failed == 0; }
+        return FileSystem.writeText(self.marker(), Strings.fromInt(SemuJson.intAt(self.table, "layout", 2)) + "\n");
+    }
+
+    public string summary() {
+        string verb = self.dryRun ? "would move" : "moved";
+        return f"{verb} {self.moved}, copied {self.copied}, left {self.kept}, failed {self.failed}";
+    }
+
+    class int command(string configRoot, string root, string state, bool dryRun) {
+        SemuLayoutMigration migration = SemuLayoutMigration(root, state, dryRun, SemuLayoutMigration.load(configRoot));
+        string refusal = migration.refusal();
+        if (!refusal.isEmpty()) {
+            Console.error("semu: " + refusal);
+            return 1;
+        }
+        if (migration.done()) {
+            Console.log(migration.root + " already has the single-root layout; nothing moved");
+            return 0;
+        }
+        bool clean = migration.run();
+        for line in migration.lines { Console.log(line); }
+        Console.log(migration.summary());
+        if (!clean) { Console.error("semu: the migration did not finish; fix what failed and run it again"); }
+        return clean ? 0 : 1;
+    }
+}

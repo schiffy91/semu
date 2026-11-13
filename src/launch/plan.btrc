@@ -17,6 +17,7 @@ import ../mods/report.btrc;
 import ./pad_roster.btrc;
 import ./player_set.btrc;
 import ./playlist.btrc;
+import ./links.btrc;
 import ./seeds.btrc;
 
 class SemuLaunchPlan {
@@ -329,7 +330,7 @@ class SemuLauncher {
                 return launch;
             }
         }
-        for name in ["saves", "states", "screenshots"] { SemuPaths.prepareDirectory(PathTools.join(plan.path("content_root"), name)); }
+        for name in ["saves", "states", "screenshots"] { SemuPaths.prepareDirectory(plan.path(name)); }
         if (plan.pads == null && plan.platform.equals("linux") && !Environment.get("SEMU_PAD_ROSTER", "").equals("off") && plan.input != null) { plan.pads = SemuPadRoster.scan(SemuJson.get(plan.input.definition, "players")); }  // the pads present now, dealt to the players
         SemuModInstallReport mods = SemuModInstaller.install(plan, emulator, system);  // library mods linked before the profiles that switch them on
         launch.mods = mods.lines;
@@ -340,6 +341,7 @@ class SemuLauncher {
             return launch;
         }
         launch.players = SemuPlayerSets.from(plan, system, emulator);  // the same rows the profiles were rendered from
+        if (!SemuStateLinks.link(plan, platform, launch)) { return launch; }  // save folders lead into the library before anything writes them
         for directory in SemuJson.strings(SemuJson.get(platform, "state.create_dirs")) {  // emulator-written dirs the profile points at
             string resolved = plan.tokens.resolve(directory);
             if (SemuPaths.inside(stateRoot, resolved)) { SemuPaths.prepareDirectory(resolved); }

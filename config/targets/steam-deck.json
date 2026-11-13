@@ -9,14 +9,8 @@
   "input": "steam-deck",
   "settings": {
     "paths": {
-      "emulation_root": "/run/media/deck/SD/Emulation",
-      "roms": "/run/media/deck/SD/Emulation/ES-DE/ES-DE/ROMs",
-      "media": "/run/media/deck/SD/Emulation/ES-DE/ES-DE/downloaded_media",
-      "bios": "/run/media/deck/SD/Emulation/RetroArch/config/system",
-      "mods": "/run/media/deck/SD/Emulation/mods",
-      "content_root": "/run/media/deck/SD/Emulation/Semu",
-      "state_root": "${home}/.local/share/semu",
-      "esde_home": "/run/media/deck/SD/Emulation/ES-DE"
+      "root": "/run/media/deck/SD/Emulation",
+      "state_root": "${home}/.cache/semu"
     },
     "ui": {
       "display_index": 0

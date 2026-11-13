@@ -36,8 +36,8 @@ class SemuModState {  // one library entry as the emulator will see it
         if (!entry.problem.isEmpty()) { return SemuModState("invalid", entry.problem); }
         string path = SemuModInstaller.linkPath(kind.target, entry.linkRelative);
         if (FileSystem.isSymlink(path)) {
-            if (FileSystem.readLink(path).equals(entry.source)) { return SemuModState("installed", path); }
-            return manifest.owns(path) ? SemuModState("pending", "relinked at the next launch") : SemuModState("shadowed", "a link Semu did not make: " + path);
+            if (SemuPaths.linkDestination(path).equals(entry.source)) { return SemuModState("installed", path); }
+            return manifest.ownsLink(PathTools.dirname(manifest.path), path) ? SemuModState("pending", "relinked at the next launch") : SemuModState("shadowed", "a link Semu did not make: " + path);
         }
         if (FileSystem.isDir(path) && SemuModKind.holdsAnything(path)) { return SemuModState("shadowed", "a folder in the emulator's state: " + path); }
         if (!FileSystem.isDir(path) && FileSystem.exists(path)) { return SemuModState("shadowed", "a file in the emulator's state: " + path); }

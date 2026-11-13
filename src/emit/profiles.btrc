@@ -239,6 +239,7 @@ class SemuProfileContext {
         result.put("state_root", self.stateRoot());
         result.put("asset_root", self.plan.assetRoot);
         result.put("content_root", self.plan.path("content_root"));
+        for name in ["saves", "states", "screenshots"] { result.put(name, self.plan.path(name)); }
         for group in SemuModKind.settingGroups(self.plan, self.emulator) { result.put("mods." + group, SemuModKind.settingValue(self.plan, self.emulator, group)); }  // an installed kind switches its group on
         SemuSystem? system = self.model.system(self.plan.tokens.get("system"));  // none while emitting every profile at once: native
         int scale = SemuRenderScale.launched(self.plan, system, self.emulator.id);

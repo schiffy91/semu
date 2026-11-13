@@ -69,6 +69,27 @@ class SemuPlan {
 }
 
 class SemuResolver {
+    class void place(SemuPlan plan, string name, string value) {
+        plan.tokens.put(name, value);
+        plan.tokens.put("paths." + name, value);
+    }
+
+    // One library root holds every asset: roms, media, gamelists, themes, collections, bios, mods, saves, states and
+    // screenshots are its folders. A path named in settings wins (an empty paths.mods still turns mods off); the
+    // emulators' own state is per machine and disposable, so it and the generated ES-DE home sit under state_root.
+    class void derive(SemuPlan plan, JSONValue paths) {
+        string root = plan.path("root");
+        if (root.isEmpty()) { return; }
+        for name in ["content_root", "emulation_root"] { if (!paths.has(name)) { SemuResolver.place(plan, name, root); } }
+        for name in ["roms", "media", "gamelists", "themes", "collections", "bios", "mods"] {
+            if (!paths.has(name)) { SemuResolver.place(plan, name, PathTools.join(root, name)); }
+        }
+        for name in ["saves", "states", "screenshots"] {
+            if (!paths.has(name)) { SemuResolver.place(plan, name, PathTools.join(plan.path("content_root"), name)); }
+        }
+        if (!paths.has("esde_home") && !plan.path("state_root").isEmpty()) { SemuResolver.place(plan, "esde_home", PathTools.join(plan.path("state_root"), "es-de")); }
+    }
+
     class JSONValue readOptional(string path, SemuDiagnostics diagnostics) {  // absent is fine; malformed is reported and skipped
         if (!FileSystem.isFile(path)) { return JSONValue.makeNull(); }
         JSONValue value = SemuJson.readFile(path);
@@ -126,9 +147,12 @@ class SemuResolver {
             return null;
         }
         SemuPlan plan = SemuPlan(target, model.configRoot);
-        plan.semuHome = SemuPaths.expandHome(semuHome.isEmpty() ? Environment.get("SEMU_HOME", "${home}/.config/semu") : semuHome);
         plan.assetRoot = assetRoot.isEmpty() ? Environment.get("SEMU_ASSET_ROOT", "") : assetRoot;
         JSONValue settings = SemuJson.merge(model.defaults, SemuResolver.targetSettings(model, target, diagnostics));
+        string rootOverride = Environment.get("SEMU_ROOT", "");  // the host names the library (a card, a drive); every other path follows it
+        string declaredRoot = SemuPaths.expandHome(rootOverride.isEmpty() ? SemuJson.textAt(settings, "paths.root") : rootOverride);
+        string declaredHome = semuHome.isEmpty() ? Environment.get("SEMU_HOME", "") : semuHome;
+        plan.semuHome = SemuPaths.expandHome(declaredHome.isEmpty() ? PathTools.join(declaredRoot, "settings/" + target.id) : declaredHome);  // the user's choices live in the library, one folder per target
         settings = SemuJson.merge(settings, SemuSettingsMigration.fitStates(SemuResolver.readOptional(PathTools.join(plan.semuHome, "semu.json"), diagnostics)));  // a file saved before M16 reads its Fit choices as they drew
         settings = SemuJson.merge(settings, SemuResolver.overrides(plan.semuHome, diagnostics));
         if (!settingsJson.isEmpty()) {
@@ -151,9 +175,11 @@ class SemuResolver {
                 plan.tokens.put(key, value);
                 plan.tokens.put("paths." + key, value);
             }
+            if (!rootOverride.isEmpty()) { SemuResolver.place(plan, "root", SemuPaths.expandHome(rootOverride)); }
+            SemuResolver.derive(plan, paths);
         }
         plan.stateRootPath = plan.path("state_root");
-        for name in ["roms", "bios", "emulation_root", "state_root", "content_root"] {
+        for name in ["root", "state_root"] {
             if (plan.path(name).isEmpty()) { diagnostics.add(target.id, "settings.paths." + name, "must be set"); }
         }
         plan.input = model.input(target.input);

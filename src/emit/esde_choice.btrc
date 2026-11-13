@@ -24,7 +24,7 @@ class SemuEsDeChoice {
         self.pinned = pinned;
     }
 
-    class string gamelist(SemuPlan plan, SemuSystem system) { return PathTools.join(PathTools.join(plan.path("esde_home"), "ES-DE/gamelists"), system.id + "/gamelist.xml"); }
+    class string gamelist(SemuPlan plan, SemuSystem system) { return PathTools.join(plan.path("gamelists"), system.id + "/gamelist.xml"); }
 
     class string between(string text, string open, string close) {  // the text inside the first OPEN ... CLOSE, "" when absent
         int start = text.indexOf(open);

@@ -8,7 +8,7 @@
 #   esde-tour.sh OUT [SYSTEM-STEPS]   # SYSTEM-STEPS: Right presses from the first system (default 0)
 set -u
 out="$1"; steps="${2:-0}"
-steam="$HOME/.local/share/Steam"; esde_log=/run/media/deck/SD/Emulation/ES-DE/ES-DE/logs/es_log.txt
+steam="$HOME/.local/share/Steam"; esde_log="$HOME/.cache/semu/es-de/ES-DE/logs/es_log.txt"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 mkdir -p "$out"; : > "$out/result"
 note() { echo "$*" >> "$out/result"; }

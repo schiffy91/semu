@@ -84,7 +84,7 @@ class ModsSpecLaunch {
             bed.fixture.plan.tokens.put("state_root", bed.stateRoot(field.get(0)));
             SemuModInstallReport report = SemuModInstaller.install(bed.fixture.plan, emulator, bed.fixture.systemOf(field.get(1)));
             string target = SemuModKind.declared(bed.fixture.plan, emulator).get(0).target;
-            contract.expect(FileSystem.readLink(PathTools.join(target, field.get(2))).equals(PathTools.join(bed.fixture.plan.path("mods"), field.get(0) + "/textures/" + field.get(2))), field.get(0) + " links the game's pack folder into its state: " + report.lines.join("; "));
+            contract.expect(SemuPaths.linkDestination(PathTools.join(target, field.get(2))).equals(PathTools.join(bed.fixture.plan.path("mods"), field.get(0) + "/textures/" + field.get(2))), field.get(0) + " links the game's pack folder into its state: " + report.lines.join("; "));
             contract.contains(ModsSpecLaunch.rendered(bed, emulator, field.get(4)), "\n" + field.get(5) + field.get(6) + "\n", field.get(0) + " turns its texture switch on while a pack is installed");
         }
     }
@@ -100,8 +100,8 @@ class ModsSpecLaunch {
         string report = launch.mods.join("\n");
         string load = PathTools.join(bed.stateRoot("azahar"), "data/azahar-emu/load");
         contract.expect(launch.ok(), "the azahar launch goes ahead: " + launch.error);
-        for title in ["0004000000033600", "0004000000125500", "0004000000077700"] { contract.expect(FileSystem.readLink(PathTools.join(load, "mods/" + title)).equals(PathTools.join(mods, "azahar/mods/" + title)), "the LayeredFS mod " + title + " is linked into load/mods: " + report); }
-        contract.expect(FileSystem.readLink(PathTools.join(load, "textures/0004000000033600")).equals(PathTools.join(mods, "azahar/textures/0004000000033600")) && !FileSystem.exists(PathTools.join(load, "textures/00040000000AEB00")), "the texture pack is linked and the empty title folder is not");
+        for title in ["0004000000033600", "0004000000125500", "0004000000077700"] { contract.expect(SemuPaths.linkDestination(PathTools.join(load, "mods/" + title)).equals(PathTools.join(mods, "azahar/mods/" + title)), "the LayeredFS mod " + title + " is linked into load/mods: " + report); }
+        contract.expect(SemuPaths.linkDestination(PathTools.join(load, "textures/0004000000033600")).equals(PathTools.join(mods, "azahar/textures/0004000000033600")) && !FileSystem.exists(PathTools.join(load, "textures/00040000000AEB00")), "the texture pack is linked and the empty title folder is not");
         for title in ["0004000000044400", "0004000000055500", "0004000000066600"] { contract.expect(!FileSystem.exists(PathTools.join(load, "mods/" + title)) && !FileSystem.isSymlink(PathTools.join(load, "mods/" + title)), "a mod Azahar would refuse is not linked: " + title); }
         for reason in ["0004000000044400: code.ips does not start with PATCH", "0004000000055500: exheader.bin is 2047 bytes, not 2048", "0004000000066600: code.bps carries metadata", "00040000000AEB00: empty"] { contract.contains(report, reason, "the launch reports why"); }
         contract.expect(JSONValue.parse(launch.json()).get("mods").isArray(), "the printed plan carries the mods lines");
@@ -131,7 +131,7 @@ class ModsSpecLaunch {
         string root = PathTools.join(bed.stateRoot("ryujinx"), "config/Ryujinx");
         string title = PathTools.join(root, "mods/contents/0100f2c0115b6000");
         contract.expect(plain.ok() && launch.ok(), "both ryujinx launches go ahead: " + launch.error);
-        contract.expect(FileSystem.isDir(title) && !FileSystem.isSymlink(title) && FileSystem.readLink(PathTools.join(title, "!!!TOTK Optimizer")).equals(PathTools.join(mods, "ryujinx/contents/0100f2c0115b6000/!!!TOTK Optimizer")), "the TotK mod is linked inside a real title folder: " + launch.mods.join("\n"));
+        contract.expect(FileSystem.isDir(title) && !FileSystem.isSymlink(title) && SemuPaths.linkDestination(PathTools.join(title, "!!!TOTK Optimizer")).equals(PathTools.join(mods, "ryujinx/contents/0100f2c0115b6000/!!!TOTK Optimizer")), "the TotK mod is linked inside a real title folder: " + launch.mods.join("\n"));
         contract.expect(!FileSystem.exists(PathTools.join(root, "games/0100f2c0115b6000/mods.json")), "no mods.json is written: an unlisted mod is enabled");
         contract.expect(FileSystem.readText(PathTools.join(root, "Config.json")).equals(config), "Config.json is byte-identical to a launch with an empty library");
         contract.expect(ModsSpecTree.snapshot(mods).equals(before), "the library is unchanged");
