@@ -8,9 +8,11 @@ status.
 
 Targets:
 
-- `linux-desktop`: a NixOS desktop with its library at `~/Games/Emulation`.
-- `steam-deck`: the physical Deck with its library on the SD card.
-- `macos`: a development host with its library at `~/Drive/media/Games/Emulation`.
+- `linux-desktop`: a NixOS desktop.
+- `steam-deck`: the physical Deck.
+- `macos`: a development host.
+
+Every target keeps its library at `~/Drive/media/Games/Emulation`, a folder of Google Drive. On the Linux targets the Drive client keeps that folder downloaded in place; on the Deck it stores it on the SD card.
 
 ## The library
 

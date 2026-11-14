@@ -106,7 +106,7 @@ class ModelContract {
         contract.expect(!fixture.plan.emulators.contains("ares"), "ares is macOS only and not selected");
         contract.lacks(fixture.plan.romsRoot(), "/run/media/deck", "desktop ROM root is not the Deck SD card");
         SemuPlan desktop = Fixture.resolved(fixture.model, "linux-desktop", PathTools.join(fixture.scratch, "plain-home"), "", "", SemuDiagnostics());
-        string library = PathTools.join(SemuPaths.home(), "Games/Emulation");
+        string library = PathTools.join(SemuPaths.home(), "Drive/media/Games/Emulation");
         contract.expect(desktop.path("root").equals(library) && desktop.romsRoot().equals(library + "/roms") && desktop.path("media").equals(library + "/media") && desktop.path("bios").equals(library + "/bios") && desktop.path("mods").equals(library + "/mods"), "the desktop's games, art, firmware and mods are folders of one library root: " + desktop.romsRoot());
         contract.expect(desktop.path("saves").equals(library + "/saves") && desktop.path("states").equals(library + "/states") && desktop.path("screenshots").equals(library + "/screenshots") && desktop.path("gamelists").equals(library + "/gamelists") && desktop.path("themes").equals(library + "/themes"), "saves, states, screenshots, gamelists and themes are folders of the same root: " + desktop.path("saves"));
         contract.expect(desktop.stateRoot().equals(PathTools.join(SemuPaths.home(), ".cache/semu")) && desktop.path("esde_home").equals(desktop.stateRoot() + "/es-de"), "emulator state and the generated ES-DE home are per machine and disposable, outside the library: " + desktop.path("esde_home"));
@@ -131,7 +131,7 @@ class ModelContract {
         }
         Fixture deck = Fixture("steam-deck");
         SemuPlan card = Fixture.resolved(deck.model, "steam-deck", PathTools.join(deck.scratch, "plain-home"), "", "", SemuDiagnostics());
-        contract.expect(card.romsRoot().equals("/run/media/deck/SD/Emulation/roms") && card.path("saves").equals("/run/media/deck/SD/Emulation/saves"), "deck ROM root is the SD card: " + card.romsRoot());
+        contract.expect(card.romsRoot().equals(library + "/roms") && card.path("saves").equals(library + "/saves"), "the Deck's library is in the Drive too; which disk holds it is the Drive client's business: " + card.romsRoot());
         contract.expect(deck.plan.input != null && deck.input().id.equals("steam-deck"), "deck uses its own input definition");
     }
 }

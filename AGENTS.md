@@ -6,7 +6,7 @@ the live **Status** block. Reread it on every start, resume, or compaction.
 
 Ground rules that never change:
 
-- `~/Games/Emulation` (ROMs, BIOS, keys, firmware, saves) is read-only.
+- `~/Drive/media/Games/Emulation` (ROMs, BIOS, keys, firmware, saves) is read-only.
 - Hand-edit only Semu-owned files under `config/`, `src/`, `tests/`,
   `packaging/`. Emulator-native files are compiled output.
 - Code is BTRC against the current stdlib. `make build && make test` must pass

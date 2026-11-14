@@ -9,7 +9,7 @@
   "input": "steam-deck",
   "settings": {
     "paths": {
-      "root": "/run/media/deck/SD/Emulation",
+      "root": "${home}/Drive/media/Games/Emulation",
       "state_root": "${home}/.cache/semu"
     },
     "ui": {

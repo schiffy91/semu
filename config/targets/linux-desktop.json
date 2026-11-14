@@ -9,7 +9,7 @@
   "input": "linux-desktop",
   "settings": {
     "paths": {
-      "root": "${home}/Games/Emulation",
+      "root": "${home}/Drive/media/Games/Emulation",
       "state_root": "${home}/.cache/semu"
     },
     "ui": {
