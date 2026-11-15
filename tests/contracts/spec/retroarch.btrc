@@ -161,6 +161,10 @@ class RetroArchSpecPackage {  // source-built package, essential patches, every 
             string flake = SemuJson.textAt(implementation, "flake");
             contract.expect(SemuJson.textAt(implementation, "kind").equals("flake") && flake.equals("cores/" + core) && FileSystem.isFile(PathTools.join(fixture.project, directory + flake + "/flake.nix")), "selected core " + core + " has a pinned Linux core flake");
         }
+        string stateSize = RetroArchSpecText.read(fixture, directory + "cores/flycast/semu-state-size.patch");
+        contract.contains(RetroArchSpecText.read(fixture, directory + "cores/flycast/flake.nix"), "patches = (previous.patches or [ ]) ++ [ ./semu-state-size.patch ];", "the Flycast core is built with the state-size patch");
+        contract.expect(stateSize.contains("-\tif (!first_run)\n-\t\temu.start();\n+") && stateSize.contains("+\tresume_on_run = !first_run;\n") && stateSize.contains("+\tif (first_run || resume_on_run)\n"),
+            "a size query leaves Flycast's emulator stopped until the write or the next frame, so RetroArch's buffer holds the state it measured (real-cores lost the Dreamcast save to a buffer overflow)");
     }
 }
 

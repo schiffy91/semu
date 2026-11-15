@@ -1,0 +1,38 @@
+License: GPL-2.0-or-later; see config/emulators/flycast/LICENSE.upstream and packaging/LICENSES.md.
+Upstream file-specific notices remain applicable.
+
+--- a/shell/libretro/libretro.cpp
++++ b/shell/libretro/libretro.cpp
+@@ -175,6 +175,7 @@
+ unsigned per_content_vmus = 0;
+ 
+ static bool first_run = true;
++static bool resume_on_run;	// Semu: a size query left the emulator stopped
+ static bool rotate_screen;
+ static bool rotate_game;
+ static bool is_pal;
+@@ -1287,8 +1288,11 @@
+ #endif
+ 
+ 	// On the first call, we start the emulator
+-	if (first_run)
++	if (first_run || resume_on_run)
++	{
++		resume_on_run = false;
+ 		emu.start();
++	}
+ 
+ 	poll_cb();
+ 	os_UpdateInputState();
+@@ -2476,8 +2480,9 @@
+ 
+ 	Serializer ser;
+ 	dc_serialize(ser);
+-	if (!first_run)
+-		emu.start();
++	// Semu: stay stopped, so the state the front end writes next is the one just measured. Restarting the
++	// emulator thread here let the state outgrow the buffer sized by this answer, and the save was lost.
++	resume_on_run = !first_run;
+ 
+ 	return ser.size();
+ }

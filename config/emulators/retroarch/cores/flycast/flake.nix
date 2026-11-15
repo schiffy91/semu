@@ -18,6 +18,7 @@
           src = source;
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
           includeRetroArch = false;  # Semu wraps RetroArch itself; the nixpkgs launcher would drag in a Darwin-broken RetroArch
+          patches = (previous.patches or [ ]) ++ [ ./semu-state-size.patch ];  # a save state is written at the size just measured
         });
     in {
       semu = {
