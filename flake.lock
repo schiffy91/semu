@@ -416,11 +416,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1789684949,
-        "narHash": "sha256-ZKhUe/2IJUq1JhKxKMu8rbkgSGmPP2ZCqlIPn40aGCM=",
+        "lastModified": 1794537146,
+        "narHash": "sha256-Wpz/7x/YWnDIBu7yj6ixe8j6fIMsidd9Y+o1PqPF3iM=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "e554fab72f81915600f3f449b786fd9af40439a5",
+        "rev": "d5cc6833999746cffdfe0598f7bc801a57b887a9",
         "type": "github"
       },
       "original": {
@@ -524,17 +524,17 @@
     "source_10": {
       "flake": false,
       "locked": {
-        "lastModified": 1785201686,
-        "narHash": "sha256-Wz2qr657sF7D9R2jkHJLLs1BHkoKxYXd2rUAbroY5Rw=",
+        "lastModified": 1789611180,
+        "narHash": "sha256-wjoiZnAIG1L6Sox8HLCPLwrAm2c3XJNNoPn3aftUEBw=",
         "owner": "libretro",
         "repo": "mgba",
-        "rev": "32de792178a3662cd0402c8568fccfaad4a764a1",
+        "rev": "7a12d6d4b9acb14c0ae62c9166b6a2f3d08007f6",
         "type": "github"
       },
       "original": {
         "owner": "libretro",
         "repo": "mgba",
-        "rev": "32de792178a3662cd0402c8568fccfaad4a764a1",
+        "rev": "7a12d6d4b9acb14c0ae62c9166b6a2f3d08007f6",
         "type": "github"
       }
     },

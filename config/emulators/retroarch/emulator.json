@@ -138,7 +138,7 @@
           ".gbc",
           ".sgb"
         ],
-        "doc": "libretro/mgba 32de7921 src/platform/libretro/libretro.c:1347 (built with M_CORE_GB)"
+        "doc": "libretro/mgba 7a12d6d4 src/platform/libretro/libretro.c:1336 (built with M_CORE_GB)"
       },
       "mupen64plus_next": {
         "extensions": [
