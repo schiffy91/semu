@@ -11,7 +11,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # What the owner's machines already passed for this exact commit (`ci-local`, ci/local.json): a status
+  # `local/<platform>/<job>` posted by the repository's owner stands in for the same job here.
+  local:
+    runs-on: ubuntu-24.04
+    permissions:
+      statuses: read
+    outputs:
+      passed: ${{ steps.statuses.outputs.passed }}
+    steps:
+      - id: statuses
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          passed=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/statuses?per_page=100" | jq -c --arg owner "$GITHUB_REPOSITORY_OWNER" '[.[] | select(.creator.login == $owner and (.context | startswith("local/")))] | group_by(.context) | map(max_by(.created_at) | select(.state == "success") | .context)')
+          printf 'passed=%s\n' "$passed" | tee -a "$GITHUB_OUTPUT"
+
   checks:
+    needs: local
+    if: ${{ !contains(fromJSON(needs.local.outputs.passed), 'local/linux-x86_64/checks') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -21,15 +39,4 @@ jobs:
             extra-substituters = ${{ vars.SEMU_CACHE_URL }}
             extra-trusted-public-keys = ${{ vars.SEMU_CACHE_PUBLIC_KEY }}
       - name: run every check
-        run: |
-          names=$(nix eval --json '.#checks.x86_64-linux' --apply builtins.attrNames | jq -r '.[]')
-          echo "$names" | sed 's/^/  /'
-          failed=""
-          for name in $names; do
-            printf '\n=== %s\n' "$name"
-            nix build --print-build-logs ".#checks.x86_64-linux.$name" || failed="$failed $name"
-          done
-          if [ -n "$failed" ]; then
-            printf '\nfailed:%s\n' "$failed"
-            exit 1
-          fi
+        run: ci/checks.sh
