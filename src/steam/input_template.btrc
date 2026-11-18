@@ -86,7 +86,7 @@ class SteamInputTemplates {  // templates, icons, user profiles and their config
     }
 
     class int install(SemuPlan plan, string steamRoot, bool chosenRoot) {  // one Steam root; Steam's own only while stopped
-        if (!chosenRoot && SteamShortcuts.steamRunning()) {
+        if (!chosenRoot && SemuShortcut.steamRunning()) {
             Console.error("semu: Steam is running and rewrites its controller configsets when it exits; quit Steam first (or pass --steam-root DIR)");
             return 1;
         }

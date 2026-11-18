@@ -264,8 +264,8 @@ class SemuCli {
         SemuPlan? plan = self.resolve(model, diagnostics);
         if (plan == null) { return self.fail(diagnostics); }
         string root = self.option("steam-root", "");
-        if (action.equals("shortcuts")) { return SteamShortcuts.install(plan, root, self.line.has("--force")); }
-        if (action.equals("status")) { return SteamShortcuts.status(plan, root); }
+        if (action.equals("shortcuts")) { return SemuShortcut.install(plan, root, self.line.has("--force")); }
+        if (action.equals("status")) { return SemuShortcut.status(plan, root); }
         if (action.equals("input")) {
             string steamRoot = root.isEmpty() ? PathTools.join(SemuPaths.home(), ".local/share/Steam") : SemuPaths.expandHome(root);
             return SteamInputTemplates.install(plan, steamRoot, !root.isEmpty());  // every destination derives from this one root
