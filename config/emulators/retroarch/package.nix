@@ -1,7 +1,7 @@
 # RetroArch built from Semu's pinned source with the render hook: gl3 calls the
 # shared renderer after the game draw and before present. `withCores` wraps it
 # with the core packages the system bindings select.
-{ lib, pkgs, retroarch-bare, makeBinaryWrapper, writeText, symlinkJoin, btrcpy, semuRendererLoader, bridgeSource, source, version, retroarch-assets, libretro-core-info }:
+{ lib, pkgs, retroarch-bare, makeBinaryWrapper, writeText, symlinkJoin, semuRendererLoader, bridgeSource, source, version, retroarch-assets, libretro-core-info }:
 
 let
   hooked = retroarch-bare.overrideAttrs (previous: {
@@ -11,17 +11,11 @@ let
     allowSubstitutes = false;  # compiled by Semu, never a cache binary
     patches = (previous.patches or [ ]) ++ [ ./retroarch.patch ./retroarch_commands.patch ./retroarch_get_status_null_safety.patch ./retroarch_exact_rate.patch ];  # exact_rate: Sync to Exact Content Framerate off a whole multiple of the screen (the Deck OLED's 90 Hz)
     patchFlags = [ "-p1" "--fuzz=0" ];  # a patch that drifted from the pinned source fails instead of landing fuzzily
-    nativeBuildInputs = (previous.nativeBuildInputs or [ ]) ++ [ btrcpy ];
     buildInputs = (previous.buildInputs or [ ]) ++ [ semuRendererLoader ];  # the loader: renderer changes never rebuild RetroArch
     postPatch = (previous.postPatch or "") + ''
-      export HOME="$TMPDIR"  # btrcpy writes its cache under $HOME
-      # btrc resolves the package manifest beside the sources and needs the
-      # directory writable, so the bridge is transpiled from a copy rather than
-      # from its read-only store path.
-      cp -r --no-preserve=mode,ownership ${bridgeSource} "$TMPDIR/semu-bridge"
-      CPATH="${semuRendererLoader}/include''${CPATH:+:$CPATH}" \
-        btrcpy "$TMPDIR/semu-bridge/runtime_bridge.btrc" -o gfx/semu_retroarch.c \
-          --strict-imports --no-cache --no-stdlib --no-dce
+      # The bridge as committed C (the renderer's generated.nix makes it, a check holds it current): the
+      # compiler is no input here, so a new one does not rebuild RetroArch.
+      install -m644 ${bridgeSource}/generated/semu_retroarch.c ${bridgeSource}/semu_render_abi.h gfx/
       test -s gfx/semu_retroarch.c
       # Software cores get a 3.2 core context by default; the renderer and librashader need 3.3 / GLSL 330.
       sed -i '/major = 3;/{n;s/minor = 2;/minor = 3;/}' gfx/drivers/gl3.c

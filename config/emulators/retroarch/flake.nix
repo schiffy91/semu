@@ -24,12 +24,10 @@
         let pkgs = nixpkgs.legacyPackages.${system}; in
         if pkgs.stdenv.hostPlatform.isDarwin then pkgs.callPackage ./darwin.nix {
           inherit source version;
-          btrcpy = btrc.packages.${system}.btrcpy;
           semuRendererLoader = renderer.packages.${system}.loader;
           bridgeSource = renderer.retroarchBridge;
         } else pkgs.callPackage ./package.nix {
           inherit pkgs source version;
-          btrcpy = btrc.packages.${system}.btrcpy;
           semuRendererLoader = renderer.packages.${system}.loader;
           bridgeSource = renderer.retroarchBridge;
         };

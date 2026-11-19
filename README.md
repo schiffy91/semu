@@ -92,6 +92,13 @@ make nix             # build the bundle (CLI, ES-DE, emulators) at build/nix/res
 make doctor          # show resolved paths and what is missing
 ```
 
+The emulators take no compiler. What they need of Semu's BTRC is two small programs, the loader they
+link and the bridge RetroArch compiles into its gl3 driver, and both are built from their committed C
+(`src/renderer/loader/generated`, `src/renderer/retroarch/generated`). So a new btrc rebuilds Semu's own
+programs and none of RetroArch, PCSX2 or the other emulators. The check `generated-c` has the compiler
+make both afresh and fails if the committed files differ; `ci/generated.sh` writes them again after a
+change to either source.
+
 ## Visual checks
 
 On the Mac the real renderer runs offscreen (`tests/visual/render_host.btrc`, CGL), fed by

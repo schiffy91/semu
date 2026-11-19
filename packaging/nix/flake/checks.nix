@@ -88,32 +88,34 @@ forAllSystems (system:
         touch "$out"
       '';
     };
-    realCores = let  # real cores booting freely licensed test programs (tests/integration/test_roms.json)
+    # Real cores booting freely licensed test programs (tests/integration/test_roms.json), one derivation
+    # for each: they run side by side, each in its sandbox with a network of its own (RetroArch's command
+    # port is the same number in all of them), and a core that fails is named and built again alone.
+    realCores = let
       manifest = lib.importJSON (repositoryRoot + "/tests/integration/test_roms.json");
       coreFile = core: "${coreFlakes.${core}.packages.${system}.default}/lib/retroarch/cores/${core}_libretro.so";
       romFile = rom: if (rom.archive or null) == "zip"
         then "${pkgs.fetchzip { inherit (rom) url hash; stripRoot = false; }}/${rom.file}"  # the named file inside a release zip
         else pkgs.fetchurl { inherit (rom) url hash; name = rom.file; };
-      cases = lib.concatMapStringsSep "\n" (rom: "${rom.system} ${rom.core} ${romFile rom} ${coreFile rom.core} ${toString (rom.boot_seconds or 4)}") manifest.roms;
-    in pkgs.stdenv.mkDerivation {
-      name = "semu-real-cores";
-      src = lib.fileset.toSource { root = repositoryRoot; fileset = ../../../tests/integration/real-cores.sh; };
-      nativeBuildInputs = [ pkgs.xvfb-run pkgs.socat pkgs.jq pkgs.imagemagick pkgs.mesa pkgs.findutils ];
-      dontConfigure = true;
-      dontBuild = true;
-      installPhase = ''
-        export SEMU_CLI="${packages.semu-cli}/bin/semu"
-        export RETROARCH="${packages.retroarch.unwrapped or packages.retroarch}/bin/retroarch"
-        export RENDERER="${packages.semu-renderer}/lib"
-        export CASES="${cases}"
-        export LIBGL_DRIVERS_PATH="${pkgs.mesa}/lib/dri"
-        export __EGL_VENDOR_LIBRARY_DIRS="${pkgs.mesa}/share/glvnd/egl_vendor.d"
-        export __GLX_VENDOR_LIBRARY_NAME=mesa
-        export LD_LIBRARY_PATH="${pkgs.mesa}/lib"
-        xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" sh tests/integration/real-cores.sh
-        touch "$out"
-      '';
-    };
+      realCore = rom: pkgs.stdenv.mkDerivation {
+        name = "semu-real-core-${rom.system}-${rom.core}";
+        src = lib.fileset.toSource { root = repositoryRoot; fileset = ../../../tests/integration/real-cores.sh; };
+        nativeBuildInputs = [ pkgs.xvfb-run pkgs.socat pkgs.jq pkgs.imagemagick pkgs.mesa pkgs.findutils ];
+        dontConfigure = true;
+        dontBuild = true;
+        installPhase = ''
+          export SEMU_CLI="${packages.semu-cli}/bin/semu"
+          export RETROARCH="${packages.retroarch.unwrapped or packages.retroarch}/bin/retroarch"
+          export RENDERER="${packages.semu-renderer}/lib"
+          export SYSTEM=${rom.system} CORE=${rom.core} ROM="${romFile rom}" COREFILE="${coreFile rom.core}"
+          export LIBGL_DRIVERS_PATH="${pkgs.mesa}/lib/dri"
+          export __EGL_VENDOR_LIBRARY_DIRS="${pkgs.mesa}/share/glvnd/egl_vendor.d"
+          export __GLX_VENDOR_LIBRARY_NAME=mesa
+          export LD_LIBRARY_PATH="${pkgs.mesa}/lib"
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" sh tests/integration/real-cores.sh | tee "$out"
+        '';
+      };
+    in pkgs.linkFarm "semu-real-cores" (map (rom: { name = "${rom.system}-${rom.core}"; path = realCore rom; }) manifest.roms);
     installer = pkgs.stdenv.mkDerivation {
       name = "semu-installer-contract";
       src = lib.fileset.toSource {
@@ -161,7 +163,22 @@ forAllSystems (system:
             source = meta.source or null;
           };
       in pkgs.writeText "semu-platform-matrix.json" (builtins.toJSON (lib.mapAttrs row flakes));
-  in { inherit contracts; } // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+    # The emulators build from the committed C of the loader and the RetroArch bridge, so that a new
+    # compiler is no input of theirs. Here the compiler makes both afresh, and they must be the same.
+    takesCompiler = file: (lib.functionArgs (import file)) ? btrcpy;
+    generatedC = assert lib.assertMsg (!takesCompiler ../../../src/renderer/loader.nix && !takesCompiler ../../../config/emulators/retroarch/package.nix && !takesCompiler ../../../config/emulators/retroarch/darwin.nix)
+      "the loader and RetroArch must not take the compiler: a new compiler would rebuild every emulator";
+      pkgs.runCommand "semu-generated-c" { } ''
+      current() {
+        ${pkgs.diffutils}/bin/diff -u "$1" "$2" && return
+        echo "$3 is not what the compiler makes of its source: run ci/generated.sh and commit what it changes" >&2
+        exit 1
+      }
+      current ${../../../src/renderer/loader/generated/semu_renderer_loader.c} ${renderer.packages.${system}.generated}/semu_renderer_loader.c src/renderer/loader/generated/semu_renderer_loader.c
+      current ${../../../src/renderer/retroarch/generated/semu_retroarch.c} ${renderer.packages.${system}.generated}/semu_retroarch.c src/renderer/retroarch/generated/semu_retroarch.c
+      touch "$out"
+    '';
+  in { inherit contracts; generated-c = generatedC; } // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
     inherit installer;
     platform-matrix = platformMatrix;
     launch-systems = launchSystems;

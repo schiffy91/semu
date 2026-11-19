@@ -3,7 +3,7 @@
 # hook patches as Linux, and the renderer reached through the loader. `make install` leaves a
 # bare Mach-O whose Cocoa entry point hangs without its bundle, so the real RetroArch.app is
 # assembled from the pinned source and bin/retroarch execs it.
-{ lib, stdenv, pkg-config, unzip, zlib, btrcpy, semuRendererLoader, bridgeSource, source, version }:
+{ lib, stdenv, pkg-config, unzip, zlib, semuRendererLoader, bridgeSource, source, version }:
 
 let
   hooked = stdenv.mkDerivation {
@@ -13,11 +13,10 @@ let
     allowSubstitutes = false;  # compiled by Semu, never a cache binary
     patches = [ ./retroarch.patch ./retroarch_commands.patch ./retroarch_get_status_null_safety.patch ./retroarch_darwin.patch ./retroarch_darwin_fullscreen.patch ./retroarch_darwin_runloop.patch ];
     patchFlags = [ "-p1" "--fuzz=0" ];  # a patch that drifted from the pinned source fails
-    nativeBuildInputs = [ pkg-config unzip btrcpy ];
+    nativeBuildInputs = [ pkg-config unzip ];
     buildInputs = [ zlib semuRendererLoader ];
     postPatch = ''
-      btrcpy ${bridgeSource}/runtime_bridge.btrc -o gfx/semu_retroarch.c \
-        --strict-imports --no-cache --no-stdlib --no-dce
+      install -m644 ${bridgeSource}/generated/semu_retroarch.c ${bridgeSource}/semu_render_abi.h gfx/  # committed C: no compiler in this build
       test -s gfx/semu_retroarch.c
       patchShebangs ./configure ./qb
     '';

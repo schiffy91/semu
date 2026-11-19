@@ -1,5 +1,5 @@
 {
-  "doc": "Freely licensed test programs that real cores boot in the real-cores check, pinned by release or commit and hash: pinobatch's 240p Test Suite ports (GPL-2.0-or-later), PeterLemon's bare-metal N64 programs (Unlicense, public domain), SGDK's image sample (MIT), nesdoug's SNES_09 (MIT), asie's DLDI benchmark built with BlocksDS (MIT), thePratz's Blue Lightning PSP demo (MIT), mtheall's ftpd for 3DS (GPL-3.0-or-later), Hunter Davis's Curse of the Herder for Dreamcast (MIT) and filipalac's PS1 port of the 240p Test Suite (GPL-2.0-or-later). An entry with archive zip names a file inside that release zip, and its hash is the unpacked tree's; boot_seconds replaces the default 4 s wait before the screenshot.",
+  "doc": "Freely licensed test programs that real cores boot in the real-cores check, pinned by release or commit and hash: pinobatch's 240p Test Suite ports (GPL-2.0-or-later), PeterLemon's bare-metal N64 programs (Unlicense, public domain), SGDK's image sample (MIT), nesdoug's SNES_09 (MIT), asie's DLDI benchmark built with BlocksDS (MIT), thePratz's Blue Lightning PSP demo (MIT), mtheall's ftpd for 3DS (GPL-3.0-or-later), Hunter Davis's Curse of the Herder for Dreamcast (MIT) and filipalac's PS1 port of the 240p Test Suite (GPL-2.0-or-later). An entry with archive zip names a file inside that release zip, and its hash is the unpacked tree's.",
   "sources": [
     { "url": "https://github.com/pinobatch/240p-test-mini/releases/tag/v0.23", "licence": "GPL-2.0-or-later" },
     { "url": "https://github.com/PeterLemon/N64/tree/7085543e4a19d8c539fc9e0a4d2869e788b4ed4b", "licence": "Unlicense" },
@@ -23,6 +23,6 @@
     { "system": "psp", "core": "ppsspp", "file": "thepratz-blue-lightning.pbp", "url": "https://github.com/pratzerich/thepratz-blue-lightning/releases/download/0.0.1/EBOOT.PBP", "hash": "sha256-Ep/aBMt2GyI7XM2uQ37NcM4tP+1jGasESqHjrDnmRE4=" },
     { "system": "n3ds", "core": "azahar", "file": "ftpd.3dsx", "url": "https://github.com/mtheall/ftpd/releases/download/v3.2.1/ftpd.3dsx", "hash": "sha256-6iPSagE2POfi9T5B/bVRvaCAFMVu5SqwwBmXTQJIC9o=" },
     { "system": "dreamcast", "core": "flycast", "file": "herder-1.0.elf", "url": "https://github.com/huntergdavis/curse-of-the-herder-dreamcast/releases/download/v1.0.0/herder-1.0.elf", "hash": "sha256-DXvrmoHOr/2FC8X95SusyYHfw8MFhciW/tno3nyy/R8=" },
-    { "system": "psx", "core": "mednafen_psx", "file": "240pTestSuitePS1-EMU.bin", "archive": "zip", "boot_seconds": 12, "url": "https://github.com/filipalac/240pTestSuite-PS1/releases/download/19122020/240pTestSuitePS1-EMU.zip", "hash": "sha256-QNIuoeHoqpQmzXLFtRBeK1OOCZK/1HFM/BUO2kGGL6o=" }
+    { "system": "psx", "core": "mednafen_psx", "file": "240pTestSuitePS1-EMU.bin", "archive": "zip", "url": "https://github.com/filipalac/240pTestSuite-PS1/releases/download/19122020/240pTestSuitePS1-EMU.zip", "hash": "sha256-QNIuoeHoqpQmzXLFtRBeK1OOCZK/1HFM/BUO2kGGL6o=" }
   ]
 }
