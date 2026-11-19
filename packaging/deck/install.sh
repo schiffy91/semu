@@ -66,8 +66,15 @@ install_delta() {  # a release tree plus only the store paths the current releas
   next_steps
 }
 
-next_steps() {  # the shortcut, then the controller profile: without steam input Steam keeps its fallback layout, so no radial or trackpad pointer
-  echo "add to Steam: quit Steam, then run $root/bin/semu-deck-cli steam shortcuts && $root/bin/semu-deck-cli steam input"
+# The shortcut, then the controller profile: without steam input Steam keeps its fallback layout, so no
+# radial or trackpad pointer. Both are done here when Steam is closed. While it runs both refuse, since
+# Steam writes its own copies over them when it exits, and the steps are left to the owner.
+next_steps() {
+  if "$root/bin/semu-deck-cli" steam shortcuts && "$root/bin/semu-deck-cli" steam input; then
+    echo "added to Steam: the shortcut and the controller profile"
+  else
+    echo "add to Steam: quit Steam, then run $root/bin/semu-deck-cli steam shortcuts && $root/bin/semu-deck-cli steam input"
+  fi
 }
 
 switch_to() {  # make TARGET current, keep the old current as previous, refresh launchers

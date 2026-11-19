@@ -85,4 +85,26 @@ printf '#!/bin/sh\necho seven\n' > "$dir/bin/semu-deck"; printf '#!/bin/sh\necho
 tar -C "$work/src/seven" -cf - . | zstd -q -f -o "$work/seven.delta.tar.zst"; (cd "$work" && sha256sum seven.delta.tar.zst > seven.delta.tar.zst.sha256)
 sh "$installer" install-delta "$work/seven.delta.tar.zst" >/dev/null || { echo "install-delta seven failed" >&2; exit 1; }
 [ "$("$work/root/bin/semu-deck")" = "seven" ] || { echo "a delta with the same store but new launchers reused the old release" >&2; exit 1; }
+
+steam() {  # steam NAME VERSION: a release whose CLI writes down what it is asked, and refuses while "Steam runs"
+  dir="$work/src/$1"
+  mkdir -p "$dir/bin" "$dir/nix/store/x-$1"; printf %s "$1" > "$dir/nix/store/x-$1/data"
+  printf '%s\n' "$2" > "$dir/VERSION"
+  printf '#!/bin/sh\necho %s\n' "$1" > "$dir/bin/semu-deck"
+  printf '#!/bin/sh\n[ ! -e "%s/steam-runs" ] || exit 1\necho "$*" >> "%s/asked"\n' "$work" "$work" > "$dir/bin/semu-deck-cli"
+  chmod +x "$dir/bin/"*
+  tar -C "$dir" -cf - . | zstd -q -o "$work/$1.tar.zst"
+  (cd "$work" && sha256sum "$1.tar.zst" > "$1.tar.zst.sha256")
+}
+steam eight 8
+touch "$work/steam-runs"
+said="$(sh "$installer" install "$work/eight.tar.zst")"
+case "$said" in *"quit Steam, then run"*) ;; *) echo "with Steam running the Steam steps were not left to the owner" >&2; exit 1 ;; esac
+[ ! -e "$work/asked" ] || { echo "with Steam running a Steam step was done all the same" >&2; exit 1; }
+rm "$work/steam-runs"
+steam nine 9
+said="$(sh "$installer" install "$work/nine.tar.zst")"
+[ "$(cat "$work/asked")" = "steam shortcuts
+steam input" ] || { echo "with Steam closed the installer did not do the shortcut and then the controller profile" >&2; exit 1; }
+case "$said" in *"added to Steam"*) ;; *) echo "the installer did not say that it added Semu to Steam" >&2; exit 1 ;; esac
 echo "installer: pass"
