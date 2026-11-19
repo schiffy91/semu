@@ -60,15 +60,25 @@ if [ -z "$version" ]; then
 fi
 echo "retroarch version: $version"
 
-command_port SCREENSHOT >/dev/null || true
-shot=""
-for _ in $(seq 1 20); do
-  shot="$(find "$work/screenshots" -name '*.png' | head -1)"
-  [ -n "$shot" ] && [ -s "$shot" ] && break
+# The first frame comes when it comes: on a busy machine a screenshot asked for too early is black. So one
+# is taken until one is not blank, for as long as RetroArch is there, up to a minute.
+shot=""; mean=0
+for _ in $(seq 1 60); do
+  kill -0 "$pid" 2>/dev/null || { echo "retroarch left before it drew a frame" >&2; exit 1; }
+  rm -f "$work/screenshots/"*.png
+  command_port SCREENSHOT >/dev/null || true
+  shot=""
+  for _ in $(seq 1 8); do
+    shot="$(find "$work/screenshots" -name '*.png' | head -1)"
+    [ -n "$shot" ] && [ -s "$shot" ] && break
+    sleep 0.25
+  done
+  [ -n "$shot" ] && [ -s "$shot" ] || continue
+  mean="$(magick identify -format '%[fx:mean]' "$shot" 2>/dev/null || echo 0)"
+  awk "BEGIN { exit !($mean > 0.05) }" && break
   sleep 0.5
 done
 [ -n "$shot" ] || { echo "no screenshot written" >&2; kill "$pid" 2>/dev/null || true; exit 1; }
-mean="$(magick identify -format '%[fx:mean]' "$shot")"
 echo "screenshot: $shot mean=$mean"
 awk "BEGIN { exit !($mean > 0.05) }" || { echo "screenshot is blank" >&2; kill "$pid" 2>/dev/null || true; exit 1; }
 
