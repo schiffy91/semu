@@ -18,11 +18,24 @@ gone() {  # RetroArch is no longer there: say how it left
   wait "$launcher" || code=$?
   fail "RetroArch left with status $code$([ "$code" -gt 128 ] && echo " (signal $((code - 128)))") while waiting for $1"
 }
+# RetroArch's resident memory in MiB, 0 when it is not there. On 19 November one grew to 52 GB while this
+# check waited for its first answer, and the kernel killed it; nothing here said why it was gone.
+resident() {
+  total=0
+  for status in /proc/[0-9]*/status; do
+    case "$(sed -n 1p "$status" 2>/dev/null)" in *retroarch*) ;; *) continue ;; esac
+    kilobytes="$(sed -n 's/^VmRSS:[[:space:]]*\([0-9]*\).*/\1/p' "$status" 2>/dev/null)"
+    [ -z "$kilobytes" ] || total=$((total + kilobytes / 1024))
+  done
+  echo "$total"
+}
 # await SECONDS WHAT COMMAND...: the command is tried four times a second until it holds.
 await() {
   tries=$(( $1 * 4 )); what=$2; shift 2
   while ! "$@"; do
     kill -0 "$launcher" 2>/dev/null || gone "$what"
+    grown="$(resident)"
+    [ "$grown" -lt 3072 ] || fail "RetroArch holds $grown MiB while waiting for $what: it is growing without bound"
     tries=$((tries - 1))
     [ "$tries" -gt 0 ] || fail "no $what in time"
     sleep 0.25

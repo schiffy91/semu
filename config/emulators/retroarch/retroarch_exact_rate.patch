@@ -3,7 +3,7 @@ Upstream file-specific notices remain applicable.
 
 --- a/retroarch.c
 +++ b/retroarch.c
-@@ -1507,6 +1507,41 @@
+@@ -1507,6 +1507,43 @@
        : audio_st->chunk_block_size;
  }
  
@@ -27,7 +27,9 @@ Upstream file-specific notices remain applicable.
 +   unsigned whole      = 0;
 +   bool exact          = false;
 +
-+   if (content_rate <= 0.0 || screen_rate <= 0.0f)
++   /* Written so that a rate that is not a number, as a display without the
++    * VidMode extension reports it, is one the context cannot tell too. */
++   if (!(content_rate > 0.0) || !(screen_rate > 0.0f))
 +      return;
 +
 +   refreshes = (double)screen_rate / content_rate;
@@ -45,7 +47,7 @@ Upstream file-specific notices remain applicable.
  void drivers_init(
        settings_t *settings,
        int flags,
-@@ -1569,6 +1604,10 @@
+@@ -1569,6 +1606,10 @@
        runloop_st->frame_time_last = 0;
     }
  

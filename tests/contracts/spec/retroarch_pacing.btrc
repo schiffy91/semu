@@ -34,7 +34,7 @@ class RetroArchPacingSpecContract {
             + "+   settings->bools.vrr_runloop_enable = exact;\n";
         contract.contains(patch, rule, "a screen off a whole multiple of the content's rate (90 Hz under 60 fps) times frames at the content's rate; a whole multiple within RetroArch's own skew keeps its sync");
         contract.contains(patch, "+   float screen_rate   = video_driver_get_refresh_rate();", "the screen's rate is the one the video context reports");
-        contract.contains(patch, "+   if (content_rate <= 0.0 || screen_rate <= 0.0f)\n+      return;\n", "a screen whose rate the context cannot tell changes nothing");
+        contract.contains(patch, "+   if (!(content_rate > 0.0) || !(screen_rate > 0.0f))\n+      return;\n", "a screen whose rate the context cannot tell, or tells as not a number, changes nothing");
         contract.contains(patch, "+   fprintf(stderr, \"semu-retroarch: screen %.2f Hz, content %.2f fps, %.2f refreshes a frame: %s\\n\",", "the decision is logged, so a Deck run can read it");
         contract.expect(RetroArchPacingSpecChecks.before(patch, "       runloop_st->frame_time_last = 0;\n    }\n", "+      semu_exact_rate_select(settings, video_st);")
             && RetroArchPacingSpecChecks.before(patch, "+      semu_exact_rate_select(settings, video_st);", " /* Regular display refresh rate startup autoswitch based on content av_info. */"),
