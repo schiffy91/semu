@@ -211,6 +211,7 @@ class RetroArchProfileContract {
         contract.contains(cfg, "video_shader_enable = \"false\"", "native shaders disabled");
         contract.contains(cfg, "global_core_options = \"true\"", "core options come from the generated global file");
         contract.contains(cfg, "quit_press_twice = \"false\"", "a single QUIT command exits");
+        contract.contains(cfg, "desktop_menu_enable = \"false\"", "RetroArch does not build its Qt desktop menu at every start: nothing here opens it, and one of its pages can fill memory without end before the first frame");
         contract.contains(cfg, "video_driver = \"glcore\"", "core-profile GL so hardware-rendered cores initialise");
         contract.contains(cfg, "system_directory = \"" + PathTools.join(fixture.plan.stateRoot(), "retroarch/system") + "\"", "BIOS and core assets come from a state-root copy of the library's system directory, which cores may write");
         contract.contains(cfg, "input_save_state = \"nul\"", "Linux: RetroArch's own save key is off, the supervisor saves over the command port");

@@ -97,6 +97,10 @@ forAllSystems (system:
       romFile = rom: if (rom.archive or null) == "zip"
         then "${pkgs.fetchzip { inherit (rom) url hash; stripRoot = false; }}/${rom.file}"  # the named file inside a release zip
         else pkgs.fetchurl { inherit (rom) url hash; name = rom.file; };
+      # The state this program left under the lock before this one, where one is kept (ci/states.sh keeps
+      # them). They are saved on x86_64, which is what the machines that hold real states are.
+      previousState = rom: let kept = repositoryRoot + "/tests/integration/states/${rom.system}-${rom.core}.state";
+        in lib.optionalString (system == "x86_64-linux" && builtins.pathExists kept) "${kept}";
       realCore = rom: pkgs.stdenv.mkDerivation {
         name = "semu-real-core-${rom.system}-${rom.core}";
         src = lib.fileset.toSource { root = repositoryRoot; fileset = ../../../tests/integration/real-cores.sh; };
@@ -112,7 +116,9 @@ forAllSystems (system:
           export __EGL_VENDOR_LIBRARY_DIRS="${pkgs.mesa}/share/glvnd/egl_vendor.d"
           export __GLX_VENDOR_LIBRARY_NAME=mesa
           export LD_LIBRARY_PATH="${pkgs.mesa}/lib"
-          xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" sh tests/integration/real-cores.sh | tee "$out"
+          mkdir -p "$out"
+          export STATE_OUT="$out/state" PREVIOUS_STATE="${previousState rom}"
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" sh tests/integration/real-cores.sh | tee "$out/log"
         '';
       };
     in pkgs.linkFarm "semu-real-cores" (map (rom: { name = "${rom.system}-${rom.core}"; path = realCore rom; }) manifest.roms);

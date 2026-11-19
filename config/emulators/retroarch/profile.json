@@ -345,6 +345,7 @@
         "global_core_options = \"true\"",
         "quit_press_twice = \"false\"",
         "pause_nonactive = \"false\"",
+        "desktop_menu_enable = \"false\"",
         {
           "if": "audio_driver",
           "line": "audio_driver = \"${audio_driver}\""

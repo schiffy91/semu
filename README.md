@@ -99,6 +99,12 @@ programs and none of RetroArch, PCSX2 or the other emulators. The check `generat
 make both afresh and fails if the committed files differ; `ci/generated.sh` writes them again after a
 change to either source.
 
+The check `real-cores` boots each RetroArch core with a freely licensed test program, saves a state,
+loads it back, and then loads the state the same program left under the lock before this one
+(`tests/integration/states`). A core update that no longer takes that state fails the check: that is how
+an update that breaks the states already on a machine is seen before it ships. `ci/states.sh` keeps this
+lock's states as the next one's, once such a break is accepted or a core is added.
+
 ## Visual checks
 
 On the Mac the real renderer runs offscreen (`tests/visual/render_host.btrc`, CGL), fed by
