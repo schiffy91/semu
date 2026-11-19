@@ -143,7 +143,9 @@ class RetroArchSpecPackage {  // source-built package, essential patches, every 
             contract.contains(packageNix, "./" + patchFiles.get(index), "package.nix applies the local " + patchFiles.get(index));
         }
         contract.lacks(packageNix, "5ff33af", "no upstream commit patch in place of the local command patch");
-        contract.contains(packageNix, "--strict-imports --no-cache --no-stdlib --no-dce", "the runtime bridge is transpiled strictly");
+        // The bridge and the loader are transpiled once, where their C is generated, and the emulator's own build compiles that C.
+        contract.contains(RetroArchSpecText.read(fixture, "src/renderer/generated.nix"), "--strict-imports --no-cache --no-stdlib --no-dce", "the runtime bridge is transpiled strictly");
+        contract.lacks(packageNix, "btrcpy", "the emulator's build does not run the compiler");
         contract.contains(packageNix, "minor = 3;", "the gl3 context is raised to OpenGL 3.3 for GLSL 330");
         string manifest = SemuJson.textAt(package, "runtime_extras.input_autoconfig.manifest");
         contract.expect(manifest.equals("../../input/steam-deck/retroarch_autoconfig.json") && FileSystem.isFile(PathTools.join(fixture.project, directory + manifest)), "the Deck autoconfig manifest ships with the package");
