@@ -3,7 +3,8 @@
 This file is the goal contract. It supersedes `AGENTS.md`, `README.md`, and
 everything under `docs/` until milestone 1 replaces them. On every start,
 resume, or context compaction, reread this file and the **Status** block at the
-bottom before deciding what to do next.
+bottom before deciding what to do next. Open work is tracked at
+https://github.com/schiffy91/semu/issues.
 
 ## Vision
 
@@ -622,8 +623,8 @@ Progress (2026-09-25):
   a real click on OK in the composed bottom screen of the 3DS shell (screen point 1756,984;
   framebuffer 3512,1892) mapped to Azahar's layout at 2052,2269 and dismissed "Save data
   created", and the game went on to its intro. The touch criterion is met on both platforms.
-- Open: those two inspected pictures on real Linux hardware, and the Deck
-  (gamescope's WSI layer alongside ours).
+- Since then on the Deck (2026-10-04 to 2026-10-07, the Status block's M13 and M16 lines): Azahar,
+  Cemu and Ryujinx present through the layer under gamescope.
 
 ### M13. Owner feedback from the Deck (2026-10-04)
 
@@ -796,7 +797,7 @@ the Wii IR, the players page by eye, Steam's own radials and icons.
   editor-sync matches production for psp, gb, gba and n64 at both sizes. Contracts: placement.btrc (the
   strengths, no carbon layer on any psp/gb/gbc/gba variant, the PSP's bands, the Game Boys' centred
   whole steps, the 237-line steps) and bezel_emit's hidden layers, each failing under its mutation.
-  Open, the owner's call: at 1920x1080 the PSP's 3x shell (1178 px) is taller than the screen, so the
+  Open, the owner's call (issue #4): at 1920x1080 the PSP's 3x shell (1178 px) is taller than the screen, so the
   picture stays centred, a thin wood strip shows at the top and the button bar is half cut; centring the
   shell there needs a per-system rule, and applied to all it pushes the gb, gbc and gba pictures to the top.
 - Item 4 (Wii and Wii U lag): cause named 2026-10-04, Semu's settings built and checked in the podman VM;
@@ -814,7 +815,7 @@ the Wii IR, the players page by eye, Steam's own radials and icons.
   limit, Semu's own, is named here and not fixed: the Vulkan layer (Cemu, Ryujinx, Azahar) waits on the
   GPU at every present, fences in `submit` and glFinish in `compose` (semu_vulkan_core.btrc:279-327),
   even when Wii U draws no bezel and no shader. Passing such frames straight to present is the design's
-  passthrough task, open because it must keep the 3DS's whole-step layout with the bezel off.
+  passthrough task (issue #5), open because it must keep the 3DS's whole-step layout with the bezel off.
   The owner's options: test the card read-only in another reader and replace it (the biggest win); or,
   on the owner's word, keep the Wii and Wii U games being played on /home (201 GB free). That crosses
   filesystems, so it is a copy, never a rename (the mods migration's `--allow-copy` rule), and Semu does
@@ -2951,7 +2952,7 @@ Status: started 2026-10-06.
       Linux, not composed by Semu) its own arrow; Semu draws no pointer there, since none of them hands Semu its
       pointer as Azahar's touch patch does. Decision, reversible: they keep the emulator's arrow for now (a touch
       screen needs a visible aim); a crosshair there needs the Vulkan layer to read the X pointer, or a Semu cursor
-      theme on XCURSOR_PATH, open. So: DS and 3DS a crosshair, the Wii the game's own pointer (m16-check.cases
+      theme on XCURSOR_PATH, open (issue #7). So: DS and 3DS a crosshair, the Wii the game's own pointer (m16-check.cases
       C4), Switch, Wii U and standalone melonDS the emulator's arrow (C5 shows melonDS's).
     - Docked, the render scale's offered list is the target's (visual.display 1280x800), not the live screen:
       the 3DS and Dreamcast cores and the PSP core's 3x stay withheld on a TV. Reversible decision; reading the
@@ -3029,7 +3030,7 @@ Status: started 2026-10-06.
       island icon at the bottom right inside that lane, the full picture by 100 s; 164 shots analysed, none shrunk. No
       fix needed. The final run's 40 s window ended before the game: with the translation cache warm its first frame
       came at 45.5 s (113 s on a cold cache, an earlier run); boot-capture.cases line 7 films 70 s (the final run's track
-      moved it from 40 s), which holds a warm boot, and its comment says so. Open, the owner's call: the loading view
+      moved it from 40 s), which holds a warm boot, and its comment says so. Open, the owner's call (issue #4): the loading view
       is Ryujinx's own interface for about 18 s before the game (not over a composed
       picture); Ryujinx has no setting to hide it, so a black screen there needs a Ryujinx patch.
     - The Wii link slowdown (C3). Reproduced: C3 again showed Dolphin's VI rate (its own vblank log, the performance
@@ -3256,7 +3257,7 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   held. Only pads are grabbed: keyboards (and so Steam's radial keys, as XTest), the right
   trackpad's X pointer and the touchscreen still reach the game while the menu is open. macOS has no
   equivalent (GameController cannot be grabbed), so the menu over a macOS standalone stays
-  non-modal. Follow-up F2, an Azahar patch so a paused Azahar keeps presenting, stays open: with
+  non-modal. Follow-up F2, an Azahar patch so a paused Azahar keeps presenting, is not planned: with
   async_presentation=false it presents from the emulation thread, which blocks while paused, and
   with async presentation its present thread also only presents queued frames (fbd3fb0
   vk_present_window.cpp:310-324 waits on present_queue), so the patch would mean
@@ -3413,7 +3414,7 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   `nix build .#checks.aarch64-darwin.contracts` passes 2601 with no skip from pinned inputs;
   `make -j2 build test` from a touched source takes 61 s, all of it the two BTRC transpiles.
 - Remaining: the M1 "under a minute" wants a faster transpiler or one binary for CLI and
-  contracts; the x86_64-linux checks were evaluated, not built (no Linux builder here).
+  contracts.
 
 ### G2. Tests that report PASS without testing — done
 
@@ -3424,9 +3425,8 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   per-package check. `make nix-check` builds the checks. Quit chord and process-group
   behaviour have real tests (a fake child group is started and killed).
 - Python is gone from the integration check (socat), and it now checks RetroArch's exit status.
-- Remaining: one integration check per M3 system through `semu launch` with a real core on
-  Linux (needs a Linux builder; the check exists only for the synthetic core); `menu-e2e.sh`
-  and the Xvfb captures still need FRACTAL-NORTH.
+- Since done: `real-cores` boots a real core for each of the 12 RetroArch systems (see *Linux
+  builds from the Mac*).
 
 ### G3. Renderer defects — done, follow-ups listed
 
@@ -3502,10 +3502,9 @@ Rulings taken as defaults because the owner was not available (reversible; say i
   is marked broken on darwin. Moving would mean overriding nixpkgs' problem handlers in all
   eleven core flakes, so the root stays on its exact unstable revision (e554fab), which is as
   reproducible; revisit when 26.11 lands or the core flakes stop using the nixpkgs builder.
-- Remaining: nixpkgs still tracks `nixos-unstable`; ES-DE's nixpkgs (2026-01-02, insecure
-  FreeImage) and the pins M4 names (Cemu v2.6, Ryujinx 1.3.3, ES-DE, RetroArch 1.22.2, PCSX2
-  v2.6.3) are not refreshed; `librashader`, `syncthing` and `retroarch-joypad-autoconfig` are
-  nixpkgs packages used as-is. Since done (2026-09-25): definitions can `extends` another (objects
+- Remaining packaging work is issue #8: nixpkgs on a release branch, ES-DE's own older nixpkgs, the
+  pins M4 names, and `librashader` and `retroarch-joypad-autoconfig` used as they are. Since done
+  (2026-09-25): definitions can `extends` another (objects
   merge key by key, a null removes an inherited key); the macOS input file is the desktop's and the
   Deck's refines only its device and pad identities, and every target emits byte-identical
   configs to before (contract-tested). The targets stay whole: they differ mostly in whole path
@@ -3516,8 +3515,8 @@ Rulings taken as defaults because the owner was not available (reversible; say i
 - `config/assets/NOTICE.md` attributes Duimon (CC BY-NC-ND 4.0) and Soqueroeu (credit, no
   profit); the bundle ships each upstream's licence beside its plates; the derived PNGs left the
   repository and are baked by the nix stager on the building machine.
-- Remaining: the derived PNGs are still in git history (rewriting published history is the
-  owner's decision).
+- Since done (2026-10-07): the history was rewritten without the derived PNGs (the Status block's
+  copyright remediation line).
 
 ### G8. Python in the tree — done
 
@@ -3558,8 +3557,8 @@ once, so there is a 1 s pause. Azahar takes about 4 s to save or load and writes
 frame, so the script waits until RetroArch answers again and dates files from a start marker
 instead of the log. psx waits 12 s, so the screenshot shows the suite's menu and not OpenBIOS's
 spinning-cube shell, which also passes the spread test. Watch: one earlier attempt had Flycast never
-answer on the command port once under Rosetta; it did not happen again in 16 runs since. Still open:
-nixpkgs on a release branch with the M4 pin refresh (a full rebuild of every emulator; FRACTAL-NORTH).
+answer on the command port once under Rosetta; it did not happen again in 16 runs since. nixpkgs on a
+release branch with the M4 pin refresh (a full rebuild of every emulator) is issue #8.
 
 ### macOS product target (2026-09-23)
 
@@ -3656,16 +3655,15 @@ state under `~/Library/Application Support/Semu`. Done and observed on mbp21:
   QUIT in about 1 s); one PPSSPP save aborted inside the core in the full run, and two PSP
   reruns passed.
 
-Still open on the Mac:
+Later on the Mac (open work is at https://github.com/schiffy91/semu/issues):
 - Since then (2026-09-24/25): ES-DE through Semu.app starts in about 2 s with all 2125 games
   listed and the owner launched SNES, 3DS and N64 games from it; the note below is history.
-Still open on the Mac:
 - ES-DE through Semu.app, seen only through its log and stacks (the owner declined computer-use
   control): SDL3's CoreAudio open waits about six minutes on the default device, a Neural DSP
   Quad Cortex, where RetroArch's CoreAudio plays at once; listing the Drive-hosted ROM folders
   then blocks, most likely on macOS's one-time "access files in Google Drive" consent for
   Semu.app, which only the owner can grant. ES-DE's own launch command for a gb game (the `semu-retroarch` shim with an absolute `%ROM%`) plays, saves and quits via QUIT, after the bundle started defaulting and exporting `SEMU_TARGET` (the shims had run as linux-desktop and refused every macOS ROM, 3609a69). Linux checks pass in the VM with the system-folder copy (contracts 2764, launch-systems, real-cores).
-- Dolphin on Vulkan (MoltenVK ships in the build) exits at once in batch mode; OpenGL stays.
+- Dolphin on Vulkan (MoltenVK ships in the build) exits at once in batch mode; OpenGL stays (issue #10).
 - Done 2026-09-25: the bundle's Ryujinx launcher is signed ad hoc with
   `com.apple.security.hypervisor` (`ryujinx_semu.nix`, no hardened runtime so the window shim
   still loads) and macOS Ryujinx runs with `use_hypervisor` on; Animal Crossing reached its
@@ -3673,12 +3671,8 @@ Still open on the Mac:
 
 ### G9. Observation still missing (needs hardware)
 
-- On FRACTAL-NORTH: Xbox pad input, Start+Select on hardware, save and load by pad, reboot
-  survival (M2-M4); `menu-e2e.sh` with the BTRC pad; captures of wii, ps2 and n3ds through real
-  emulators; a 16:9 title for the widescreen switch; Azahar and Cemu GL after a reboot; Steam
-  launching the shortcut; `nix flake check` built on x86_64-linux.
-- On the Deck: all of M5 and the Deck halves of M6 and M8 (M8: `tests/deck/radial-check.cases`
-  off-screen, then the owner's Game Mode checks listed in its status).
+- What still needs the Deck or the desktop is tracked at https://github.com/schiffy91/semu/issues
+  (#3 the Deck's case files, #4 what only a person there can check).
 - Inspected Mac captures are retained under `build/verification/mbp21/2026-09-23/` (M9 matrix,
   gallery with verification table and overlays).
 
@@ -3694,7 +3688,9 @@ Still open on the Mac:
 
 ## Status
 
-Update this block whenever a milestone criterion changes state.
+Update this block whenever a milestone criterion changes state. Open work is tracked at
+https://github.com/schiffy91/semu/issues: a line here records what was observed, and an "open" inside a dated
+entry describes that date.
 
 - Single library root (2026-11-12): built; the contracts pass (9863 checks). Every asset is a folder of one root
   (`paths.root` or `$SEMU_ROOT`): roms, media, gamelists, themes, collections, bios, mods, saves, states,
@@ -3713,7 +3709,7 @@ Update this block whenever a milestone criterion changes state.
   states/: RetroArch wrote no state into a folder that was not there, which real-cores caught. The synthetic
   core carries libretro's constants by value (BTRC resolves a macro only through a declared binding), so
   retroarch-headless and launch-systems build again, and the sandboxed contracts check reads PLAN.md and the
-  harness scripts it inspects. Not yet observed: a game played on the Deck after the migration.
+  harness scripts it inspects. A game played on the Deck after the migration is issue #3.
 
 - Copyright remediation (2026-10-07): audited both published branches and 6202 distinct blobs.
   Removed the committed PSP plate and unused font atlas; bezel recipes still fetch pinned inputs
@@ -3796,9 +3792,9 @@ Update this block whenever a milestone criterion changes state.
   from the bundle with all 17 systems and the existing gamelists and media, no
   warnings; killing the launcher stops RetroArch; SAVE_STATE over the command
   port wrote `Semu/states/Gambatte/Tetris (World) (Rev 1).state` and
-  LOAD_STATE left RetroArch playing. Not yet observed: Xbox pad input and
-  Start+Select quit on hardware (no controller was connected during the
-  session), and survival across a reboot.
+  LOAD_STATE left RetroArch playing. Xbox pad input and Start+Select quit on
+  hardware (no controller was connected during the session) and survival
+  across a reboot are issue #4.
 - M3 RetroArch systems on desktop: 11 of 11 launched on FRACTAL-NORTH on
   2026-09-19 with an inspected screenshot each (gb, gbc, gba, nes, snes,
   genesis, n64, psx, nds, psp, dreamcast; psx needs about 20 s to boot). The
@@ -3811,10 +3807,10 @@ Update this block whenever a milestone criterion changes state.
   what gamescope already gives every core on the Deck. `nix flake check` runs
   the contract tests and a sandboxed headless RetroArch run (Xvfb, llvmpipe,
   synthetic core) that must answer VERSION, write a non-blank screenshot and
-  exit on QUIT. Not yet observed: pad input,
-  save and load, and the Start+Select chord on hardware (no controller was
-  connected). RetroArch 1.22 segfaults on GET_STATUS when the loaded core has
-  no core-info entry, so the check uses VERSION.
+  exit on QUIT. Pad input, save and load, and the Start+Select chord on
+  hardware (no controller was connected) are issue #4. RetroArch 1.22
+  segfaults on GET_STATUS when the loaded core has no core-info entry, so
+  the check uses VERSION.
 - M4 native emulators on desktop: 8 of 8 launched a real ROM fullscreen on
   FRACTAL-NORTH on 2026-09-19 with an inspected screenshot each (dolphin gc
   and wii, pcsx2, ppsspp, flycast, melonds, azahar, cemu, ryujinx). All come
@@ -3824,10 +3820,8 @@ Update this block whenever a milestone criterion changes state.
   the firmware seeded from the existing `Ryujinx/config/bis` tree and then
   reaches the controller applet (no pad connected). Existing saves are
   copied once into the state root on first launch (GameCube memory cards,
-  Wii NAND, PS2 memory cards and states, Cemu mlc01, Azahar nand and sdmc). Not yet
-  observed: pad input, save and load, Start+Select on hardware. Pushes to
-  GitHub are blocked behind a 1Password SSH authorization prompt on screen;
-  the host was switched with `--override-input semu git+file://...`.
+  Wii NAND, PS2 memory cards and states, Cemu mlc01, Azahar nand and sdmc). Pad
+  input, save and load, and Start+Select on hardware are issue #4.
 - M5 Steam Deck: delivery built and verified on the desktop, 0 of 17 systems
   accepted on hardware (no Deck was reachable from the session on
   2026-09-19). `nix build .#release` produces `Semu-x86_64.tar.zst` (about
@@ -3956,13 +3950,10 @@ Update this block whenever a milestone criterion changes state.
     settles 12 frames (history passes), with ramp, line, bar and clip cards.
   - About fifty cleanup commits removed verified dead code, unread keys (system.json render,
     verification, aliases and bios blocks; emulator default_system; steam_input key_names) and
-    stale docs. Left for the owner, since nothing was deleted: config/assets/fonts/menu-font.png
-    and packaging/sync/{package.nix,semu-syncthing.service.template} are orphaned.
+    stale docs.
   - All ten Linux checks pass in the VM (platform-matrix again after Azahar's and RetroArch's
     package.json learned their macOS build), and the macOS contracts in the Nix sandbox.
-  Open: the Deck's charger cannot keep up with Steam's idle UI (it discharged about 5 W net while
-  plugged in), so the final release waits for the Deck to come back charged; GBC/GBA mid-greys
-  are darker after removing the gamma lift that forced the clipping (owner's call on the Deck).
+  GBC/GBA mid-greys are darker after removing the gamma lift that forced the clipping.
   2026-10-03, the owner's "Dreamcast crashed when opening": ES-DE launched Resident Evil Code:
   Veronica at 09:19:43 with its folder's .m3u, play time 1 s. Standalone Flycast 2.7 opens no
   .m3u (OpenDisc knows chd, gdi, cdi, cue) and a command-line start exits with code 0 on "Unknown
@@ -3980,11 +3971,10 @@ Update this block whenever a milestone criterion changes state.
   - Extensions no bound emulator opens are no longer offered: dreamcast .iso, ps2 and gc
     .7z/.zip, psx .ecm, genesis .32x (none in the library).
   `--print-plan` over the Mac library gives disc 1 plus the ContentPath pair for all 7 Dreamcast
-  playlists and DMC2's disc 1, and keeps the .m3u for the 8 GC playlists. Awaits observation on
-  the Deck once launches are allowed: a `--delta` release, the four multi-disc cases at the end
-  of `tests/deck/system-matrix.cases` (the script now gives repeated cases their own directory
-  and records the emulator's argv), and a manual disc swap in each emulator. Left for the owner:
-  gc `Baten Kaitos Origins (USA).m3u` lists Disc 1 twice and no Disc 2.
+  playlists and DMC2's disc 1, and keeps the .m3u for the 8 GC playlists. The four multi-disc
+  cases at the end of `tests/deck/system-matrix.cases` (the script now gives repeated cases their
+  own directory and records the emulator's argv) are issue #3 on the Deck, and a disc swap by
+  hand in each emulator is issue #4.
   Review follow-ups, 2026-10-03 (offline, Deck untouched):
   - The extension check is general now. Each emulator.json declares `content.extensions`: what
     the emulator opens at its pinned revision, with file and line in `doc.content`. RetroArch
@@ -4013,10 +4003,11 @@ Update this block whenever a milestone criterion changes state.
     with every error silenced. In a container with an emulator that exits after 1 s, the old
     scripts printed `/proc/<pid>/cmdline: No such file or directory` and recorded nothing; the new
     ones record disc 1.
-  Still open from that review: a loose `X.m3u` sitting in the system folder points Flycast's
+  From that review, issue #6: a loose `X.m3u` sitting in the system folder points Flycast's
   ContentPath at the whole Dreamcast folder. Booting is unaffected, and every library playlist
   sits in its own folder.
-- M6 renderer: done on the desktop 2026-09-19, Deck pending. `libsemurenderer`
+- M6 renderer: done on the desktop 2026-09-19; the Deck's pictures are in the M5 line (from 2026-10-01)
+  and in the M13 to M16 lines. `libsemurenderer`
   (librashader GL) is linked into RetroArch's gl3 driver by the Semu build;
   the launcher passes `SEMU_RENDER_*` from `config/systems/<id>/{shaders,bezels}.json`.
   Observed on FRACTAL-NORTH through the pure Nix bundle with inspected
@@ -4046,7 +4037,7 @@ Update this block whenever a milestone criterion changes state.
   it. Standalone emulators that remain required: Cemu (Wii U) and Ryujinx
   (Switch) have no libretro core at all; Dolphin (GC/Wii) and PCSX2 (PS2)
   keep their standalone builds because the nixpkgs libretro forks of both
-  trail upstream. Not done: the Deck half of the criterion.
+  trail upstream.
 - M6 look (2026-09-19 evening): audited after the first captures looked
   flat. Three defects fixed in one pass: CRT systems declared a single
   `screen` preset the launcher never read (no shader at all on NES, SNES,
@@ -4078,9 +4069,9 @@ Update this block whenever a milestone criterion changes state.
   `userdata/<id>/config/shortcuts.vdf` (binary VDF walked entry by entry,
   foreign entries kept byte for byte, Steam's crc32 appid) and printed the
   `steam://rungameid/` URL against a scratch copy of the real profile; an
-  independent Python parse read the entry back. Not observed: Steam itself
-  launching the shortcut (Steam was running, so the live profile was left
-  alone), and anything on a Deck.
+  independent Python parse read the entry back. Steam itself launching the
+  shortcut on the desktop (Steam was running, so the live profile was left
+  alone) is issue #4; the Deck's shortcut is in the M5 line.
 - M8 unified input and native menu: done on the desktop 2026-09-19 (late).
   The supervisor in `src/launch/supervisor.btrc` reads gamepads and
   keyboards through evdev, turns Select-modifier chords and keyboard chords
@@ -4097,7 +4088,7 @@ Update this block whenever a milestone criterion changes state.
   so that last hop is proven only by the route log). `semu steam input`
   renders the Deck's Neptune templates (gamepad set, hotkey set, quick and
   menu trackpad radials with semantic icons, Wii controller layer) and
-  copies the icons, covered by a contract test; not yet loaded on a Deck.
+  copies the icons, covered by a contract test.
   2026-10-03, radial input delivery (offline, Deck untouched): radial chords reach the
   supervisor however Steam sends them and fire once (rulings: the X raw-key adapter, RetroArch
   keyboard ownership, xpad layouts). Observed in the podman VM under Xvfb with
@@ -4112,8 +4103,7 @@ Update this block whenever a milestone criterion changes state.
   BTN_WEST is the top button), and Start+Select quit. semu-btrc in that build loads
   /nix/store/cdpwb5...-libxcb-1.17.0, the libxcb the Deck's Mesa already ships. Not observable
   there: Semu's uinput typing never reaches a bare Xvfb, so the echo suppression rests on the
-  contracts (a socketpair through one real pollDevices tick, among others). Open for the Deck:
-  Steam's own XTest from :0 through gamescope's EI into the game's Xwayland, and the radial.
+  contracts (a socketpair through one real pollDevices tick, among others).
   2026-10-03, emulator hotkey hygiene and the menu pause (offline, Deck untouched; rulings above).
   Observed in the podman VM under Xvfb with `tests/integration/menu-pause.sh` (real games through
   `semu launch`, llvmpipe and lavapipe, ROMs and the PS2 BIOS folder mounted read-only):
@@ -4175,9 +4165,8 @@ Update this block whenever a milestone criterion changes state.
   `~/.steam/steam.pid` and no `--steam-root` it refused before writing anything.
   `packaging/steam/render-icons.sh --check` re-rendered all 21 Lucide icons (17 old, 4 new) from
   Lucide b442632 at RMSE 0 against the committed files; the four new ones were inspected on a dark
-  background. Still for the Deck: Steam loading the profile through the configset (controller_ui.txt
-  naming config/semu/controller_neptune.vdf as the Local Selection Path), the ring's feel and icons
-  in Game Mode, and both Steam Controllers on hardware.
+  background. The ring's feel and icons in Game Mode and both Steam Controllers on hardware are
+  issue #4.
   2026-10-04, the right trackpad on DS and 3DS (offline, Deck untouched; ruling above). In the podman
   VM under Xvfb (`tests/integration/touch-x11.sh`: xdotool XTest pointer, real RetroArch 1.22.2 with
   this tree's bridge and renderer, the synthetic core standing in under each library name, the
@@ -4202,9 +4191,7 @@ Update this block whenever a milestone criterion changes state.
   shim and MoltenVK stand-in, both with the SemuCompose mutex). Of the emulators, the header change
   rebuilds RetroArch and PCSX2 (both link the loader, which carries the header) in the next
   release; no other emulator does.
-  Still for the Deck: Steam's real trackpad through gamescope (the cursor over RetroArch, Azahar's
-  own cursor under gamescope's hide delay), a soft-press tap in a real game on each core, and the
-  remap files taking R2/L3/R3 away on the virtual pad.
+  On the Deck: the taps and the cursor off-screen are issue #3, the real trackpad's feel issue #4.
   2026-10-04, the Deck harness for the radial (offline, Deck read only; ruling above). Built:
   `tests/deck/input-check.sh` takes radial and trackpad tokens beside pad buttons, all on one clock
   that the pad and the new `tests/deck/inject.sh` share. Token i fires FIRST + i*GAP seconds after
@@ -4246,30 +4233,8 @@ Update this block whenever a milestone criterion changes state.
   640,560, 665,661 (from the switch receipt written meanwhile) and 1151,699, and fired each token
   within 85 ms of its time under Rosetta. It refused outside a bubblewrap, beside an X0, and with one
   display.
-  The Deck run, still to come: build one release with every radial commit (`build-release.sh
-  --delta`), deploy it once, and run `semu-deck-cli steam input` in the Steam-stopped window. Then run
-  `input-check.sh PAD tests/deck/radial-check.cases OUT` with tests/deck copied over and PAD the
-  x86_64 virtual_pad. It must show:
-  - result lines `inject: typing into :N`, `x-listener: :M` and each chord's `action: <id> keyboard
-    x1`, which proves XTest from another Xwayland goes through gamescope's EI to the game's display
-    and the XI2 raw listener, once;
-  - journal records 79/80/77/78/9 as each case lists, and switch receipts naming the new art and
-    preset;
-  - choices in OUT/home/semu.json, and gba's second launch starting on them;
-  - `ui.menu gamepad` for Select plus the top face button;
-  - `semu-retroarch: touch ... -> surface 1 native` near 128,96 on the DS cores and core x near
-    0.14/0.50/0.86 on the Azahar core, plus `semu-vulkan: touch ... -> 1` on standalone Azahar, the
-    same after a layout switch;
-  - toasts and bezels in the shots, Semu's cursor in cursor-n and none in idle-n;
-  - Ctrl+H not resetting psx, and nothing journaled on Cemu.
-  Only the owner can check, once in Game Mode: Steam loading the profile through the configset
-  (controller_ui.txt naming config/semu/controller_neptune.vdf instead of Last Resort); the ring's
-  layout, icon-only drawing, click-and-release firing, the empty centre and the haptics; Steam's
-  own XTest process and key timing; the trackpad's sensitivity, soft-press threshold, drag and the
-  cursor's look under gamescope; gamepad chords that Semu types through uinput into standalone
-  emulators (melonDS Shift+F1, Azahar's pause), with their echo suppression, which headless gamescope
-  cannot see (no libinput); the Deck touchscreen, Dolphin's Wii remotes and the lower-grip Wii layer;
-  both Steam Controllers; and how a shell-bezel decode stall feels.
+  The Deck run of `tests/deck/radial-check.cases` (each case's expected evidence is written above it) is
+  issue #3, and what only the owner can check in Game Mode is issue #4.
   2026-10-04, the modal menu (follow-up F1; offline, Deck untouched; ruling above). Built: the open
   menu grabs the pads the supervisor reads once all of them are at rest and releases them after the
   closing press (`src/launch/menu_modal.btrc`, run after every tick's drain); pads now track their
@@ -4289,10 +4254,10 @@ Update this block whenever a milestone criterion changes state.
   standing in for Steam's pad, one plugged in mid-menu), and fails under each of 7 mutations: no
   grab, no wait before grabbing, no wait for the closing release, the EVIOCGRAB ioctl dropped, the
   tick never updating the hold, sticks and triggers untracked, and the emulator's exit not releasing.
-  Still for the Deck: `radial-check.cases` case 5 (Ctrl+M over Azahar's OoT 3D title, d-pad and A in
+  On the Deck (issue #3): `radial-check.cases` case 5 (Ctrl+M over Azahar's OoT 3D title, d-pad and A in
   the menu) must now leave the title where it was, with `menu-holds: 1 gave-back: 1` in its result;
   and in Game Mode the same on Steam's real virtual pad. macOS stays non-modal (no grab in
-  GameController); F2 (Azahar presenting while paused) stays open (ruling above).
+  GameController); F2 (Azahar presenting while paused) is not planned (ruling above).
   2026-10-04, review follow-ups on input (offline, Deck untouched). A physical pad and Steam's copy
   of it run each chord once, and Steam's ignore list keeps the physical one closed (ruling above).
   `tests/integration/input-x11.sh` now also plays a positional pad and the Steam-pad replica at once,
@@ -4333,7 +4298,7 @@ Update this block whenever a milestone criterion changes state.
   pinned row by row (blanked == 8). 11 mutations each fail it: Square = Keyboard/A restored, the
   compiler guard off, Wiimote B on R4 again, an SDL name on the SteamDeck device, Dolphin's Enter
   unmapped, its !Ctrl guard dropped, a bare digit, main-row + for each of the three emulators, and
-  Azahar's Audio Mute key changed. Not observed in a running Wii game yet: the Deck run should check
+  Azahar's Audio Mute key changed. Not observed in a running Wii game yet (issue #3): the Deck run should check
   that Wiimote buttons follow Steam's pad, 1 and 2 are no longer held, and the menu holds them.
   2026-10-04, the installer and the style review. `install.sh` prints both Steam steps after a full
   and a delta install (`steam shortcuts && steam input`): without `steam input` Steam keeps its
@@ -4366,9 +4331,8 @@ Update this block whenever a milestone criterion changes state.
   slot switches Steam to a settings page whose left-pad radial holds every radial-v2 choice (Next Bezel,
   Bezel On/Off, Next Shader, Shader On/Off, Fit, Aspect, Controller Layout, Players, Reset) with Close in
   the centre, on the Deck, the new Steam Controller and the 2015 one; `radial-check.cases` (16 cases)
-  types every chord those radials send. Still for the Deck: `semu-deck-cli steam input` with Steam
-  stopped, then the radials in Game Mode and cases 14 to 16.
-- M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23); real-emulator captures still pending on FRACTAL-NORTH. Was done on the desktop 2026-09-19 (late) for
+  types every chord those radials send. The radials in Game Mode are issue #4.
+- M9 bezel and shader fidelity: done again 2026-09-23 through the real renderer on the Mac (G4: 60-cell matrix inspected, build/verification/mbp21/2026-09-23). Was done on the desktop 2026-09-19 (late) for
   every capturable non-modern system. gb, gbc, gba, nes, snes, genesis,
   n64, psx, nds, psp, dreamcast, gc, wii, ps2 and n3ds each declare a
   default and a materially different alternate for both shader and bezel
@@ -4473,12 +4437,7 @@ Update this block whenever a milestone criterion changes state.
   `flake.lock`): `HTTPResponse.bytes` with `HTTPServer.respond` sending
   binary bodies, and `FileSystem.readBytes`; the system `btrcpy` on PATH
   predates them, so build with the flake's compiler (`nix run .#btrcpy`) or
-  a checkout wrapper. Not done: baking the `art` plate from the layer stack
-  (the renderer still draws the committed plate, so changing the canvas
-  layer in the editor re-addresses rectangles without re-rendering art),
-  the fast/real galleries (M11.6) and the glass assets, which are whole
-  layers squeezed into the lens by the renderer and need a `crop` in their
-  recipes.
+  a checkout wrapper.
 - Layer stack in the renderer (2026-09-20): the compositor draws the
   package's layers itself (`SEMU_RENDER_CANVAS`, `SEMU_RENDER_LAYER_<n>` =
   file, extent or cover, above/below the screens, blend, opacity; up to
@@ -4523,24 +4482,17 @@ Update this block whenever a milestone criterion changes state.
   `SEMU_RENDER_COMPOSITOR_DIR`), read by the renderer at start and re-read
   once a second while a game runs, so a shader edit shows in the running
   game without rebuilding anything; a broken edit keeps the last good
-  program and logs. Still to do: the emulators link libsemurenderer
-  directly (PCSX2's and RetroArch's flakes take src/renderer as an input),
-  so renderer code changes rebuild PCSX2; dlopen against the ABI header
-  would end that. The crt-premium / crt-silver plates were deleted on
+  program and logs. The crt-premium / crt-silver plates were deleted on
   2026-09-20 (the user did not want them; every TV system has its Soqueroeu
   scene, Switch and Wii U stay bezel-free by design). Cutout handles became zones: the knob at a corner or
   edge middle sizes (Shift keeps the ratio), and just beyond it the same
   corner rounds (yellow diamond, drag toward the centre) or the same edge
-  bows (orange diamond, drag outward). Still open: bundling the upstream layer files into
-  the asset tree (today they resolve through `build/bezel/shaders`, so only
-  a launch from the repository checkout reaches them; the installed bundle
-  falls back to the flat plate), the DS/3DS/PSP captures, the fast/real
-  galleries, and the glass-asset crop. (2026-09-23: bundling and both galleries done, see G4.)
+  bows (orange diamond, drag outward).
 - M12 standalone bezels (2026-09-25): built. Linux Vulkan layer and macOS MoltenVK stand-in share
   images with the OpenGL compositor. Observed with real games: Azahar (Pushmo, Linux VM, touch
   lands on the composed bottom screen), Azahar (Ace Combat, Mac), Dolphin (Aggressive Inline,
-  Mac), Ryujinx (Animal Crossing, Mac). Ryujinx and Cemu load the layer on Linux but need native
-  hardware for a picture; the Mac touch check and the Deck remain.
+  Mac), Ryujinx (Animal Crossing, Mac). Since then on the Deck (the M13 and M16 lines): Azahar, Cemu
+  and Ryujinx present through the layer under gamescope.
 - M13 owner feedback from the Deck (2026-10-04): all six items built and observed off the Deck. On the
   Deck (release b1bf425): OoT 3D and MM3D load their packs and patches and TotK its mod from the central
   library after `semu mods migrate`; Semu's arrow shows on standalone Azahar after a tap; the radial v2
@@ -4548,18 +4500,18 @@ Update this block whenever a milestone criterion changes state.
   (Azahar's first move, the harness's keysyms and greps, Reset keeping play_mode, Fit with the bezel off,
   Dolphin's SDL names on the desktop, the missing contracts); cases 4, 14 and 16 pass on the Deck with
   release 5f55703. `semu mods migrate` moved the Mac's Drive library too (6 renames, the 5 Lime3DS
-  duplicates and 2 empty folders left in place). Open, needing the owner in Game Mode: the Wii IR, the
-  players page, Steam's radial pages and icons, item 1's glow and item 5's PSP by eye.
+  duplicates and 2 empty folders left in place). What needs the owner in Game Mode (the Wii IR, the
+  players page, Steam's radial pages and icons, item 1's glow and item 5's PSP by eye) is issue #4.
 - M14 owner feedback, round 2 (2026-10-04): all nine items implemented (191bea1 to 15cc2ec), observed on
   the Mac render host and in the podman VM (Super Mario 64 on GLideN64, Flycast, the build flags in the VM).
-  The owner played 15cc2ec in Game Mode, and what the owner still saw is M15. Open on the Deck: the reruns M14
-  names (the Wii layouts and Restart Game, Wii U Bezel, the N64's speed, the Dreamcast flicker, GDV-NTSC's
-  look and frame time).
+  The owner played 15cc2ec in Game Mode, and what the owner still saw is M15. The Deck reruns M14 names
+  (the Wii layouts and Restart Game, Wii U Bezel, the N64's speed, the Dreamcast flicker, GDV-NTSC's look and
+  frame time) are issues #3 and #4.
 - M15 owner feedback, round 3 (2026-10-05): all eight items implemented (db92462 to 0f535bb, then the
   review fixes), observed on the Mac render host, in the editor (headless Chrome) and in the podman VM
   (PCSX2, Beetle PSX, Mupen64Plus, Cemu with Mario Kart 8, the DS and 3DS touch routes). On the Deck
   (bdabd01, 2026-10-05) M15's "Deck acceptance" list, run off-screen by `tests/deck/m15-check.cases`, held
-  13 of 13; open: Wii U sound by ear.
+  13 of 13; Wii U sound by ear is issue #4.
 - M16 items 5 and 7 (Fit's four states, the Wii's sizes): built 2026-10-06 and observed on the Mac render host
   (every bezel system in the four states at 1280x800 and 1920x1080, judged by eye) and in the editor; contract
   fit_states.btrc. Fit cycles integer game, integer bezel, non-integer game and non-integer bezel; with no bezel
@@ -4567,9 +4519,9 @@ Update this block whenever a milestone criterion changes state.
   path used a separate integer switch while the Wii's Fit: Screen filled fractionally). The TVs keep integer bezel
   as their default at every size (the review round's reversible decision: docked, the NES, the PS1's and N64's
   speakers sets and the PS2 draw a step under the retired fit, whose stand ran 2.6-16% past the edge, outside
-  the owner's 1%). Open on the Deck: `tests/deck/m16-check.cases` (Fit cases) F1-F5 off-screen,
-  `SEMU_CHECK_SIZE=1920x1080` `tests/deck/m16-docked.cases` K1-K4, then by eye in Game Mode the CRT look and a
-  scrolling scene at the non-integer sizes.
+  the owner's 1%). The Deck checks (issue #3): `tests/deck/m16-check.cases` (Fit cases) F1-F5 off-screen,
+  `SEMU_CHECK_SIZE=1920x1080` `tests/deck/m16-docked.cases` K1-K4; then by eye in Game Mode (issue #4) the CRT
+  look and a scrolling scene at the non-integer sizes.
 - M16 item 2 (render scale): built 2026-10-06 (c83689f, 8a9a049) and observed on the Mac render host (frame and
   window producers at 1x, 2x and 3x, judged by eye) and in the podman VM (Super Mario 64 on GLideN64 and Def Jam
   on PCSX2 at 2x through Scale and Restart Game, The Wind Waker switched live on Dolphin); contract
@@ -4577,15 +4529,14 @@ Update this block whenever a milestone criterion changes state.
   system's declared scales, saved per system; Dolphin applies it live, the rest at Restart Game; the picture keeps
   its native placement. On the Deck (2026-10-06): release af0470d8 installed and `semu-deck-cli steam input` run
   with Steam stopped; the owner's controller_neptune.vdf carries the eleventh settings slot, Render Scale
-  (Ctrl+Shift+N, semu-scale.png). Open on the Deck: `tests/deck/m16-check.cases` S1-S4 and `radial-check.cases`
-  case 18 (pictures, receipts and full-speed rate lines at 2x) and the review round's S5-S7, then the GPU load
-  per system, and the slot by eye in Game Mode.
+  (Ctrl+Shift+N, semu-scale.png). The Deck checks (issue #3): `tests/deck/m16-check.cases` S1-S4 and
+  `radial-check.cases` case 18 (pictures, receipts and full-speed rate lines at 2x) and the review round's S5-S7,
+  then the GPU load per system; the slot by eye in Game Mode is issue #4.
 - M16 items 3 and 10 (the GB studio bezel deleted; TV cutout: the lip stands in the room's night light with no
   lit rim, and the curved picture edge blends over one device pixel toward a mirror that no longer snaps on at
   pixel centres): done on the Mac render host, all 19 TV variants at 1280x800 and 1920x1080 in every Fit state,
   the editor matching the renderer (MAE 0 on every variant at 1280x800, every TV at 1920x1080); contracts
-  tv_cutout.btrc and render_variants.btrc. Open on the Deck: `tests/deck/m16-check.cases` T1-T5 and G1 (the
-  Deck did not answer ssh this session).
+  tv_cutout.btrc and render_variants.btrc. The Deck checks (issue #3): `tests/deck/m16-check.cases` T1-T5 and G1.
 - M16 items 4, 8 and 9 (boot size, Dreamcast speed, shaders per system): built 2026-10-06 (1ba2de8, 6562dd9,
   11c5b12) and observed on the Mac render host and in the podman VM; contracts boot_resize.btrc, crt_gdv.btrc and
   crt_rule.btrc. Item 4's cause is Dolphin's late full-screen switch over an inner GL window sized once at start
@@ -4596,7 +4547,7 @@ Update this block whenever a milestone criterion changes state.
   on the Deck (2026-10-06, `tests/deck/boot-capture.cases` before and after the releases): the owner's shrink filmed on the M15 release in
   both Dolphin cases and gone from af0470d8 on; the other emulators never shrank; PCSX2's game list, Cemu's
   menu-bar window and a frame of Ryujinx's, also shown at boot, are gone too (9d52f6f: -nogui and Cemu's
-  full-screen-at-boot patch; a70ece76: Ryujinx's). Open on the Deck:
+  full-screen-at-boot patch; a70ece76: Ryujinx's). The Deck checks (issue #3):
   `tests/deck/m16-check.cases` (deck cases D1-D6) and the review's D7-D10 (GDV-NTSC on the 480-line four), and
   Sonic Adventure four ways (`tests/deck/system-matrix.cases`, PLAN M16 item 8's decision table).
 - M16 item 8 (Dreamcast speed): done 2026-10-06, observed on the Deck off-screen at Game Mode's own refresh; the
@@ -4626,7 +4577,7 @@ Update this block whenever a milestone criterion changes state.
   contracts right_trackpad, standalone_cursor, controller_layouts, players, emulator_runtime, radial_render. DS and
   3DS show Semu's crosshair, the Wii the game's own pointer, Switch, Wii U and standalone melonDS their emulator's
   arrow (the review round's reversible ruling); every Wii Remote layout, GameCube included, switches live through
-  Dolphin's own keys, which the review round moved off desktop shortcuts. Open on the Deck:
+  Dolphin's own keys, which the review round moved off desktop shortcuts. The Deck checks (issue #3):
   `tests/deck/m16-check.cases` C1-C5 and radial-check.cases 3, 4 and 16.
 - M16 review round (2026-10-06): 30 findings checked; fixed in ca99076 and the commits after it (integer Fit never
   below 1x while the picture fits, the render scale's wiring contracted, pictures fitted before they are rounded,
@@ -4637,7 +4588,7 @@ Update this block whenever a milestone criterion changes state.
   either until the Deck films after this round, see the items 4, 8 and 9 line) and item 9 is open for the 480-line
   four. Observed on the Mac render host (the rounding swept over 424 cells at both
   sizes before and after, the editor matching in the four states at both sizes, the gallery's 272 flat-card
-  checks and the reflection audit's 308 rows in the four states passing); open on the Deck: everything in the
+  checks and the reflection audit's 308 rows in the four states passing); the Deck checks (issue #3): everything in the
   block's list, `tests/deck/m16-docked.cases` with SEMU_CHECK_SIZE=1920x1080 among it.
 - M16 release for the Deck run: none installed by the review round (read-only on the Deck; the Deck chain builds
   and installs it); build it from origin/main at or after the commit that adds this line, which carries all ten
@@ -4652,8 +4603,8 @@ Update this block whenever a milestone criterion changes state.
   a short one is centred with whole black rows, a taller one is fitted). Standalone melonDS switches to its OpenGL
   renderer above 1x, so its ScaleFactor applies (seen in the VM at 2x). Seven case texts corrected (S2, S3, C3, C4,
   C5, D1, boot line 7). Observed on the Mac render host, in the editor (MAE 0) and in the podman VM; contracts
-  nominal_frame.btrc and render_scale.btrc, 13 mutations killed. Open on the Deck, after a release with it: the
-  reruns listed in PLAN M16's steady-track block.
+  nominal_frame.btrc and render_scale.btrc, 13 mutations killed. The Deck reruns listed in PLAN M16's
+  steady-track block, after a release with it, are issue #3.
 - M16 Deck probe (2026-10-06, release 4770562e, off-screen): RetroArch does not run fast in Game Mode (60.1 frames a
   second at 90 Hz with the sound in a PipeWire null sink; the 90 a second of the M16 runs was the harnesses cutting
   the sound, which they no longer do by default), but its own sync hands frames over in bursts at 90 Hz (44.8% frame
@@ -4663,19 +4614,8 @@ Update this block whenever a milestone criterion changes state.
   exists only behind its own loading view); boot-capture.cases line 7 films 70 s. The Wii's "link slowdown" is Mario
   Kart Wii loading its next attract course from the SD card at 1.4 MB/s, with or without a link. Steam's per-game
   60 Hz refresh is the owner's recommendation for the evenest 60 Hz games. Record: PLAN M16 "M16's Deck probe".
-- Active milestone (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
-  Mac (see *Gap review ... and its resolution*). What is left needs hardware or a ruling:
-  1. FRACTAL-NORTH: `nix flake check` built on x86_64-linux (contracts with the bezel tree,
-     retroarch-headless with socat, installer, platform-matrix), `tests/visual/menu-e2e.sh`
-     with the BTRC virtual pad, the pad/Start+Select/reboot items of M2-M4, real-emulator
-     captures of wii, ps2 and n3ds.
-  2. The Deck: M5 acceptance (`DECK_HOST=deck tests/deck/deploy.sh install`), then the Deck
-     halves of M6 and M8.
-  3. Engineering: per-system checks through `semu launch` and renderer dlopen are done and
-     built on x86_64 Linux from the Mac (see *Linux builds from the Mac*). Left: real cores with
-     real test ROMs per system, nixpkgs on a release branch and the M4 pin refresh, PCSX2 built
-     with the loader (all need a full emulator rebuild: FRACTAL-NORTH or a bigger VM disk), and a
-     design choice for a built-in fallback compositor (G3).
+- Gap review (2026-09-23): the P0 gaps from the 2026-09-22 review are closed on the
+  Mac (see *Gap review ... and its resolution*).
   Owner rulings (2026-09-23): handhelds default to `game` placement (gb, gbc, gba, psp); ES-DE
   may sit under a link and the ROM and BIOS folders are chosen from SEMU SETTINGS > LIBRARY;
   git history is left as it is; the old VM cache was freed for the Linux builds. The three
@@ -4694,9 +4634,8 @@ Update this block whenever a milestone criterion changes state.
   cache.nixos.org for each emulator and core), `nix flake check` passes
   including the `platform-matrix` check that evaluates the Linux and macOS
   derivations of all 22 (macOS: 5 emulators, 10 cores; Windows declared
-  planned everywhere), and the host runs that bundle. Built-on-macOS is
-  unverified: no Darwin builder here.
-- Last observed result: 2026-09-19 session. Every one of the 17 systems
+  planned everywhere), and the host runs that bundle.
+- The 2026-09-19 session's result: every one of the 17 systems
   launched a real ROM fullscreen on FRACTAL-NORTH through `semu launch` (11
   through RetroArch, 8 native), the RetroArch systems now render through the
   shared renderer with bezels and shaders switchable from settings, ES-DE
@@ -4705,9 +4644,4 @@ Update this block whenever a milestone criterion changes state.
   shim, Syncthing save sync and the Steam shortcut writer work from the CLI,
   `make test` passes 230 contract checks, `nix flake check` passes
   (contracts, headless RetroArch, installer), and a relocatable release runs
-  through bubblewrap. Unverified: gamepad input, Start+Select chord, reboot
-  survival, bezels on PCSX2, melonDS, Azahar, Cemu and Ryujinx, anything on
-  a physical Deck. Azahar and Cemu stopped creating GL contexts late in the
-  session even outside Semu (see M6); recheck after a reboot. Commits
-  after `52d60cf` are not pushed yet: GitHub SSH is waiting on the 1Password
-  authorization prompt on the desktop.
+  through bubblewrap.

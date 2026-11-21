@@ -3,14 +3,14 @@
 One declarative, Nix-built emulation environment. Semu reads its own JSON
 definitions under `config/`, resolves a target and the user's settings, and
 compiles ES-DE documents, emulator profiles and launch plans from them. Every
-emulator is built by Nix. `PLAN.md` is the goal contract and carries the live
-status.
+emulator is built by Nix. `PLAN.md` is the goal contract and the record of what
+was observed. Open work is tracked at https://github.com/schiffy91/semu/issues.
 
 Targets:
 
 - `linux-desktop`: a NixOS desktop.
 - `steam-deck`: the physical Deck.
-- `macos`: a development host.
+- `macos`: an Apple Silicon Mac, with RetroArch, Dolphin, Azahar and Ryujinx.
 
 Every target keeps its library at `~/Drive/media/Games/Emulation`, a folder of Google Drive. On the Linux targets the Drive client keeps that folder downloaded in place; on the Deck it stores it on the SD card.
 
@@ -54,7 +54,9 @@ src/          BTRC: model, resolve, check, emit (ES-DE, profiles), launch, cli
 config/       targets, systems, emulators, input, bezels (packages), assets, settings defaults
 packaging/    Nix packages and the flake helpers
 tests/        contracts/ (make test; spec/ holds the ported emulator specs), integration/
-              (real emulator runs in flake checks), visual/ (render host, gallery, Xvfb captures)
+              (real emulator runs in flake checks), visual/ (render host, gallery, Xvfb captures),
+              deck/ (the Deck's off-screen harness and its case files)
+ci/           checks.sh (every flake check), generated.sh, states.sh
 build/        ignored build output
 ```
 
@@ -79,9 +81,9 @@ platform. Bumping an emulator: edit its flake's `source` input, run
 
 ## Build and test
 
-The CLI, the contracts and the bezel tools build and run on Linux and on macOS (a
-development host: evdev input is idle there and nothing launches emulators). Nothing needs
-`btrcpy` on PATH; the Makefile runs the flake's pinned compiler.
+The CLI, the contracts and the bezel tools build and run on Linux and on macOS (evdev input
+is idle there; pads come through Apple's GameController). Nothing needs `btrcpy` on PATH:
+without one the Makefile runs the flake's pinned compiler.
 
 ```sh
 make build           # transpile src/semu.btrc with btrcpy and compile it
@@ -148,20 +150,21 @@ launcher runs programs through bubblewrap with that tree mounted read-only at
 `/nix`, so the Deck needs no Nix installation and no FUSE. The installer
 verifies the digest, installs into `~/Applications/Semu/releases/<digest>`,
 switches the `current` symlink, keeps one `previous` release, and writes a
-desktop entry.
+desktop entry. With Steam closed it also adds the Semu shortcut and the
+controller profile to Steam; while Steam runs it prints the two commands.
 
 ## Cache and releases
 
-`ci/targets.nix` is the single list of what gets built, for which systems, on which
+`.github/ci/targets.nix` is the single list of what gets built, for which systems, on which
 runners, and what a release carries. Adding a system or an attribute there is the whole
-change: the Makefile targets and both GitHub workflows read that file.
+change: the Makefile's cache targets and the cache and release workflows read that file.
 
 A machine of your own publishes for the others, with no account anywhere:
 
 ```sh
-make cache            # this host's ci/targets.nix attrs, signed into build/cache
+make cache            # this host's .github/ci/targets.nix attrs, signed into ~/.cache/nix-cache
 make cache-all        # the composed bundle and the Deck release as well
-make cache-serve      # serve build/cache over HTTP (PORT=8080)
+make cache-serve      # serve ~/.cache/nix-cache over HTTP (PORT=8080)
 ```
 
 The first run writes a signing key to `~/.config/nix/semu-cache-1.key` and prints its
@@ -175,7 +178,7 @@ nix.settings.extra-trusted-public-keys = [ "semu-cache-1:GAvdDO5fCGcTJsr1yyVLgnV
 
 In CI, `.github/workflows/cache.yml` builds one job per system and attribute every
 Monday and on every push to `main`. With a `CACHIX_AUTH_TOKEN` secret and a cache named
-in `ci/targets.nix` it pushes there; with a `NIX_CACHE_SECRET_KEY` secret and no Cachix
+in `.github/ci/targets.nix` it pushes there; with a `NIX_CACHE_SECRET_KEY` secret and no Cachix
 it signs the closure and leaves a flat cache as a workflow artifact, which
 `nix copy --from file://...` consumes unchanged. Set the `SEMU_CACHE_URL` and
 `SEMU_CACHE_PUBLIC_KEY` repository variables and the runners substitute from the cache
@@ -188,8 +191,8 @@ that do fit — the CLI, the renderer, ES-DE, RetroArch, the bezel and visual as
 what CI keeps warm.
 
 `.github/workflows/release.yml` turns a `v*` tag into a GitHub Release carrying
-`Semu-x86_64.tar.zst`, its digest, `install.sh` and a `SHA256SUMS`, built from the same
-`ci/targets.nix` entry that `make nix` uses. The tarball measured 1.5 GiB here — the
+`Semu-x86_64.tar.zst`, its digest, `install.sh` and a `SHA256SUMS`, built from the
+`release` entry of `.github/ci/targets.nix`. The tarball measured 1.5 GiB here — the
 4.5 GiB closure compresses well enough to stay under GitHub's 2 GiB asset limit, so the
 Deck release travels as one asset and `install.sh` verifies the digest beside it.
 
