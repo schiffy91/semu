@@ -16,6 +16,7 @@
         pkgs.libretro.citra.overrideAttrs (previous: {
           version = "0-unstable-e4cbe379bf";
           src = source;
+          patches = [ ./glslang-cstdint.patch ];  # the pinned glslang uses uint32_t without its header; the core's own list, whichever nixpkgs builds it
           allowSubstitutes = false;  # compiled by Semu, never a cache binary
           includeRetroArch = false;  # Semu wraps RetroArch itself; the nixpkgs launcher would drag in a Darwin-broken RetroArch
         });
